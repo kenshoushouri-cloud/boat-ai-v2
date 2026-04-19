@@ -1,11 +1,6 @@
+# -*- coding: utf-8 -*-
 import os
 
-os.environ["SUPABASE_URL"] = "https://dpctymeddnggfolvvcyf.supabase.co"
-os.environ["SUPABASE_KEY"] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwY3R5bWVkZG5nZ2ZvbHZ2Y3lmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjUzNjE1OSwiZXhwIjoyMDkyMTEyMTU5fQ.4ifEIF0LIKqgPOm5jpl7PbXMSflD_IOlBzMlfoQMyzs"
-os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = "iGY5wvLuLhTRZFGg8x3dk2T3OIH1XzBnrWNZicMvHGr7oT0RnpErALNchBCZa6GhwEM+FKrzxSLPfB/CT2Mu9r6j3+OQ7dW3s14JzS2cnoa0t9LbXHr0vaPyO0OxvMIIUxNRAYPl6jy4I4fo7don+wdB04t89/1O/w1cDnyilFU="
-os.environ["LINE_USER_ID"] = "U35eae9930b7cc8be77398eb0210e3f15"
-
-# -*- coding: utf-8 -*-
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
 from betting.bet_selector_v2 import select_bets
@@ -14,9 +9,14 @@ from notifications.formatter_v2 import format_prediction_message, format_skip_me
 from notifications.notifier import send_line_message
 from config.settings import MODEL_VERSION
 
+from run_report import main as report_main
+from run_results import main as results_main
+from run_day_jobs import main as day_main
+from run_night_jobs import main as night_main
 
-def main():
-    print("=== 3連単AI v2 実データテスト ===")
+
+def run_single_test():
+    print("=== 3連単AI v2 実データテスト ===")
 
     venue_id = "01"
     race_no = 1
@@ -46,7 +46,7 @@ def main():
     if not bets:
         print("見送り")
 
-        pred_rows = upsert("v2_predictions", {
+        upsert("v2_predictions", {
             "race_id": context["race_id"],
             "model_version": MODEL_VERSION,
             "buy_flag": False,
@@ -66,7 +66,7 @@ def main():
             reason="EV基準未達",
             model_version=MODEL_VERSION
         )
-        print("送信メッセージ:")
+        print("送信メッセージ:")
         print(msg)
 
         try:
@@ -79,9 +79,8 @@ def main():
 
     print("買い目:")
     for b in bets:
-        print(f"{b['ticket']}  オッズ:{b['odds']}  EV:{b['ev']}")
+        print(f"{b['ticket']}  オッズ:{b['odds']}  EV:{b['ev']}")
 
-    # buyありを明示的に保存
     pred_rows = upsert("v2_predictions", {
         "race_id": context["race_id"],
         "model_version": MODEL_VERSION,
@@ -122,7 +121,7 @@ def main():
         bets,
         model_version=MODEL_VERSION
     )
-    print("送信メッセージ:")
+    print("送信メッセージ:")
     print(msg)
 
     try:
@@ -130,6 +129,23 @@ def main():
         print("LINE送信結果:", line_res)
     except Exception as e:
         print("LINE送信エラー:", repr(e))
+
+
+def main():
+    job_mode = os.environ.get("JOB_MODE", "").strip().lower()
+    print("JOB_MODE:", job_mode)
+
+    if job_mode == "report":
+        report_main()
+    elif job_mode == "results":
+        results_main()
+    elif job_mode == "day":
+        day_main()
+    elif job_mode == "night":
+        night_main()
+    else:
+        # Pythonista の通常利用や、JOB_MODE未設定時の安全側
+        run_single_test()
 
 
 if __name__ == "__main__":
