@@ -1,3 +1,5 @@
+print("MAIN_PY_VERSION_TEST_20260420")
+
 # -*- coding: utf-8 -*-
 import os
 
