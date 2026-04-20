@@ -25,7 +25,7 @@ def save_notification_log(target_date, message_body, notification_type, delivery
 
 
 def run_day_prediction_job(race_date):
-    print("=== 昼予想ジョブ開始 ===")
+    print("=== 昼予想ジョブ開始 ===")
 
     races = load_race_list(
         race_date=race_date,
@@ -42,7 +42,6 @@ def run_day_prediction_job(race_date):
         race_no = r.get("race_no")
 
         context = load_race_context(venue_id, race_no, race_date)
-
         if not context:
             continue
 
@@ -50,12 +49,15 @@ def run_day_prediction_job(race_date):
 
         bets = select_bets(
             prediction_result,
-            min_ev=1.2,
-            min_odds=6.0,
+            min_ev=1.0,   # 1.2 → 1.0 に緩和
+            min_odds=4.0, # 6.0 → 4.0 に緩和
             max_bets=3
         )
 
+        print("race:", context["race_id"], "candidate_count:", len(prediction_result.get("candidates", [])), "bet_count:", len(bets))
+
         adopt, reason = judge_race_adoption(context, prediction_result, bets)
+        print("adopt:", context["race_id"], adopt, reason)
 
         if not adopt:
             continue
