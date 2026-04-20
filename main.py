@@ -1,7 +1,7 @@
-print("MAIN_PY_VERSION_TEST_20260420")
-
 # -*- coding: utf-8 -*-
 import os
+
+print("MAIN_PY_VERSION_TEST_20260420")
 
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
@@ -15,10 +15,11 @@ from run_report import main as report_main
 from run_results import main as results_main
 from run_day_jobs import main as day_main
 from run_night_jobs import main as night_main
+from run_seed import main as seed_main
 
 
 def run_single_test():
-    print("=== 3連単AI v2 実データテスト ===")
+    print("=== 3連単AI v2 実データテスト ===")
 
     venue_id = "01"
     race_no = 1
@@ -40,7 +41,7 @@ def run_single_test():
 
     bets = select_bets(
         prediction_result,
-        min_ev=0.90,   # テスト用
+        min_ev=0.90,
         min_odds=4.5,
         max_bets=3
     )
@@ -68,7 +69,7 @@ def run_single_test():
             reason="EV基準未達",
             model_version=MODEL_VERSION
         )
-        print("送信メッセージ:")
+        print("送信メッセージ:")
         print(msg)
 
         try:
@@ -81,7 +82,7 @@ def run_single_test():
 
     print("買い目:")
     for b in bets:
-        print(f"{b['ticket']}  オッズ:{b['odds']}  EV:{b['ev']}")
+        print(f"{b['ticket']}  オッズ:{b['odds']}  EV:{b['ev']}")
 
     pred_rows = upsert("v2_predictions", {
         "race_id": context["race_id"],
@@ -123,7 +124,7 @@ def run_single_test():
         bets,
         model_version=MODEL_VERSION
     )
-    print("送信メッセージ:")
+    print("送信メッセージ:")
     print(msg)
 
     try:
@@ -145,8 +146,9 @@ def main():
         day_main()
     elif job_mode == "night":
         night_main()
+    elif job_mode == "seed":
+        seed_main()
     else:
-        # Pythonista の通常利用や、JOB_MODE未設定時の安全側
         run_single_test()
 
 
