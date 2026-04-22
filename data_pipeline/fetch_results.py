@@ -40,17 +40,83 @@ def _parse_race_result(html, race_date, jcd, rno):
     full_text = soup.get_text(separator="\n")
     lines = [l.strip() for l in full_text.split("\n") if l.strip()]
 
-    # ✅ 払戻デバッグ：3連単・2連単周辺を出力
-    for i, line in enumerate(lines):
-        if "3連単" in line or "2連単" in line:
-            start = max(0, i - 1)
-            end = min(len(lines), i + 6)
-            print(f"PAYOUT CONTEXT [{jcd} R{rno}]:")
-            for l in lines[start:end]:
-                print(f"  '{l}'")
-            break
+    # --- 着順パース ---
+    boats = []
+    all_tables = soup.find_all("table")
+    for table in all_tables:
+        for tr in table.find_all("tr"):
+            tds = tr.find_all("td")
+            if len(tds) < 2:
+                continue
+            try:
+                place_no = int(tds[0].get_text(strip=True))
+                boat_no = int(tds[1].get_text(strip=True))
+                if 1 <= place_no <= 6 and 1 <= boat_no <= 6:
+                    boats.append({
+                        "racer_place_number": place_no,
+                        "racer_boat_number": boat_no,
+                    })
+            except Exception:
+                continue
 
-    return None  # デバッグ中は一時的にNoneを返す
+    # --- 払戻パース ---
+    payouts = {"trifecta": [], "exacta": []}
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if line in ("3連単", "2連単"):
+            kind = "trifecta" if line == "3連単" else "exacta"
+
+            # 以降の行から艇番と'-'を集める
+            combo_parts = []
+            j = i + 1
+            while j < len(lines) and len(combo_parts) < 10:
+                val = lines[j]
+                if val in {"1", "2", "3", "4", "5", "6", "-"}:
+                    combo_parts.append(val)
+                    j += 1
+                else:
+                    break
+
+            # 艇番だけ取り出して'-'で結合
+            boat_nums = [p for p in combo_parts if p != "-"]
+            if len(boat_nums) >= 2:
+                combo = "-".join(boat_nums)
+
+                # 払戻金額を探す
+                payout_yen = 0
+                while j < len(lines):
+                    try:
+                        payout_yen = int(lines[j].replace(",", ""))
+                        j += 1
+                        break
+                    except Exception:
+                        j += 1
+
+                payouts[kind].append({
+                    "combination": combo,
+                    "payout": payout_yen,
+                })
+
+            i = j
+            continue
+
+        i += 1
+
+    print(f"  boats={len(boats)} trifecta={payouts['trifecta'][:1]} exacta={payouts['exacta'][:1]}")
+
+    if not boats and not payouts["trifecta"]:
+        return None
+
+    return {
+        "race_date": race_date,
+        "race_stadium_number": int(jcd),
+        "race_number": int(rno),
+        "boats": boats,
+        "payouts": payouts,
+    }
 
 
 def fetch_result_rows(target_date):
