@@ -98,7 +98,7 @@ while i < len(lines):
             payout_yen = 0
             while j < len(lines):
                 try:
-                    candidate = int(lines[j].replace(",", ""))
+                    candidate = int(lines[j].replace(",", "))
                     if candidate >= 100:
                         payout_yen = candidate
                         j += 1
@@ -180,7 +180,7 @@ return default
 def _norm_ticket(v):
 if v is None:
 return None
-s = str(v).strip().replace(” “, “”)
+s = str(v).strip().replace(” “, ”)
 return s if s else None
 
 def _pick_payout(payouts, key):
@@ -197,7 +197,7 @@ pairs = []
 for b in boats:
 place_no = b.get(“racer_place_number”)
 boat_no = b.get(“racer_boat_number”)
-if place_no in (None, “”) or boat_no in (None, “”):
+if place_no in (None, “”) or boat_no in (None, ”):
 continue
 try:
 pairs.append((int(place_no), int(boat_no)))
@@ -217,7 +217,7 @@ race_no = row.get(“race_number”)
 if not race_date or stadium_no is None or race_no is None:
     return None
 
-hd = str(race_date).replace("-", "")
+hd = str(race_date).replace("-", ")
 venue_id = str(stadium_no).zfill(2)
 race_no = int(race_no)
 race_id = f"{hd}_{venue_id}_{race_no:02d}"
