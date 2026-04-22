@@ -207,7 +207,7 @@ def main():
         end_date_str="2026-04-20",
         sleep_sec=0.3,
         max_workers=5,
-        max_retry=3,
+        max_retry=2,
         retry_wait_sec=10.0,
         do_race=True,
         do_exhibition=True,
