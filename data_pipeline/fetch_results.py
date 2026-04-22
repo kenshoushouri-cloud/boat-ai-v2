@@ -36,7 +36,20 @@ def _parse_race_result(html, race_date, jcd, rno):
     OpenAPI互換の辞書を返す
     """
     soup = BeautifulSoup(html, "html.parser")
+    
+        # ✅ デバッグ：全テーブル確認
+    all_tables = soup.find_all("table")
+    print(f"RESULT TABLE COUNT: {len(all_tables)}")
+    for i, t in enumerate(all_tables[:5]):
+        trs = t.find_all("tr")
+        print(f"  TABLE[{i}] rows={len(trs)}")
+        for j, tr in enumerate(trs[:3]):
+            tds = tr.find_all(["td", "th"])
+            texts = [td.get_text(strip=True)[:15] for td in tds]
+            print(f"    TR[{j}]: {texts}")
 
+    return None  # 一時的に全部Noneで返す
+    
     # --- 着順パース ---
     # 成績表: class="is-w495" のテーブル
     boats = []
