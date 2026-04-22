@@ -32,6 +32,26 @@ def _fetch_race_result_html(hd, jcd, rno):
 
 def _parse_race_result(html, race_date, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
+    
+        no_data = soup.find(string=lambda t: t and "データがありません" in t)
+    if no_data:
+        return None
+
+    # ✅ 3連単・2連単周辺のテキストを確認
+    full_text = soup.get_text(separator="\n")
+    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+
+    for i, line in enumerate(lines):
+        if "3連単" in line or "2連単" in line:
+            # 前後5行を出力
+            start = max(0, i - 1)
+            end = min(len(lines), i + 6)
+            print(f"PAYOUT CONTEXT [{jcd} R{rno}]:")
+            for l in lines[start:end]:
+                print(f"  '{l}'")
+            break
+
+    return None  # 一時的
 
     # データなしチェック
     no_data = soup.find(string=lambda t: t and "データがありません" in t)
