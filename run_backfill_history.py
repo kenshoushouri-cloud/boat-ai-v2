@@ -143,8 +143,8 @@ def _run_batch(
 def run_history_backfill(
     start_date_str,
     end_date_str,
-    sleep_sec=1.0,
-    max_workers=2,
+    sleep_sec=0.3,
+    max_workers=5,
     max_retry=3,
     retry_wait_sec=10.0,
     do_race=True,
