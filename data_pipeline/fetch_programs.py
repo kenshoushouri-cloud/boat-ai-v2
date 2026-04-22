@@ -32,17 +32,18 @@ def _fetch_racelist_html(hd, jcd, rno):
 def _parse_racelist(html, hd, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
 
- # ✅ デバッグ：全テーブルのクラス名を出力
+    # ✅ デバッグ：テーブルの中身を確認
     all_tables = soup.find_all("table")
     print(f"TABLE COUNT: {len(all_tables)}")
-    for i, t in enumerate(all_tables[:5]):
-        print(f"  TABLE[{i}] class={t.get('class')}")
+    for i, t in enumerate(all_tables[:3]):
+        rows = t.find_all("tr")
+        print(f"  TABLE[{i}] rows={len(rows)}")
+        for j, tr in enumerate(rows[:3]):
+            tds = tr.find_all(["td", "th"])
+            texts = [td.get_text(strip=True)[:10] for td in tds]
+            print(f"    TR[{j}]: {texts}")
 
-    # ✅ デバッグ：データなし判定
-    no_data = soup.find(text="データがありません")
-    if no_data:
-        print(f"  → データなし確認")
-        return None
+    return None
 
     # レースタイトル
     race_title = ""
