@@ -13,11 +13,14 @@
 import os
 import sys
 import time
+import urllib.parse
+import requests as http_requests
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.dirname(**file**))
 
-from db.client import supabase  # Supabaseクライアントを直接使用
+from config.settings import SUPABASE_URL, SUPABASE_KEY
+from db.client import upsert
 from data_pipeline.fetch_results import (
 _fetch_race_result_html,
 _parse_race_result,
@@ -27,6 +30,12 @@ parse_result_row,
 TARGET_VENUES = [“01”, “06”, “12”, “18”, “24”]
 RACE_NUMBERS = list(range(1, 13))
 
+HEADERS = {
+“apikey”: SUPABASE_KEY,
+“Authorization”: f”Bearer {SUPABASE_KEY}”,
+“Content-Type”: “application/json”,
+}
+
 def daterange(start_date, end_date):
 cur = start_date
 while cur <= end_date:
@@ -35,21 +44,31 @@ cur += timedelta(days=1)
 
 def get_existing_race_ids_for_date(hd):
 “””
-race_idのプレフィックス（例: 20250322_）で v2_results を検索し
-保存済みのrace_idセットを返す
+race_idが {hd}_ で始まるレコードをv2_resultsから取得する
+例: hd=20250322 → 20250322_01_01 〜 20250322_24_12
 “””
-prefix_start = f”{hd}*”
-prefix_end = f”{hd}`"  # '_'の次のASCII文字が'`’なので範囲指定に使用
-res = (
-supabase
-.from*(“v2_results”)
-.select(“race_id”)
-.gte(“race_id”, prefix_start)
-.lt(“race_id”, prefix_end)
-.execute()
+prefix_start = f”{hd}_”
+prefix_end = f”{hd}`"  # '_'(95) の次のASCII文字 '`’(96) で範囲終端
+
+```
+url = (
+    f"{SUPABASE_URL}/rest/v1/v2_results"
+    f"?select=race_id"
+    f"&race_id=gte.{urllib.parse.quote(prefix_start)}"
+    f"&race_id=lt.{urllib.parse.quote(prefix_end)}"
+    f"&limit=1000"
 )
-rows = res.data or []
-return {row[“race_id”] for row in rows}
+
+try:
+    res = http_requests.get(url, headers=HEADERS, timeout=15)
+    if not res.ok:
+        print(f"❌ get_existing_race_ids失敗: {res.status_code} {res.text}")
+        return set()
+    return {row["race_id"] for row in res.json()}
+except Exception as e:
+    print(f"❌ get_existing_race_ids例外: {e}")
+    return set()
+```
 
 def generate_expected(hd):
 “”“期待されるrace_id → (venue, rno) のdict”””
@@ -82,17 +101,15 @@ for race_id, (venue, rno) in sorted(missing_ids.items()):
         confirmed_no_race.append(race_id)
 
         if record_no_race:
-            supabase.from_("v2_results").upsert({
+            upsert("v2_results", {
                 "race_id": race_id,
                 "result_status": "no_race",
                 "source": "missing_check",
-            }, on_conflict="race_id").execute()
+            }, on_conflict="race_id")
     else:
         parsed = parse_result_row(row)
         if parsed:
-            supabase.from_("v2_results").upsert(
-                parsed, on_conflict="race_id"
-            ).execute()
+            upsert("v2_results", parsed, on_conflict="race_id")
             print(f"    ✅ 復元成功: {race_id}")
             recovered.append(race_id)
         else:
