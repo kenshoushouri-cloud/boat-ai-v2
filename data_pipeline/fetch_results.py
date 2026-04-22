@@ -32,18 +32,17 @@ def _fetch_race_result_html(hd, jcd, rno):
 
 def _parse_race_result(html, race_date, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
-    
-        no_data = soup.find(string=lambda t: t and "データがありません" in t)
+
+    no_data = soup.find(string=lambda t: t and "データがありません" in t)
     if no_data:
         return None
 
-    # ✅ 3連単・2連単周辺のテキストを確認
     full_text = soup.get_text(separator="\n")
     lines = [l.strip() for l in full_text.split("\n") if l.strip()]
 
+    # ✅ 払戻デバッグ：3連単・2連単周辺を出力
     for i, line in enumerate(lines):
         if "3連単" in line or "2連単" in line:
-            # 前後5行を出力
             start = max(0, i - 1)
             end = min(len(lines), i + 6)
             print(f"PAYOUT CONTEXT [{jcd} R{rno}]:")
@@ -51,86 +50,7 @@ def _parse_race_result(html, race_date, jcd, rno):
                 print(f"  '{l}'")
             break
 
-    return None  # 一時的
-
-    # データなしチェック
-    no_data = soup.find(string=lambda t: t and "データがありません" in t)
-    if no_data:
-        return None
-
-    # --- 着順パース ---
-    # 全テーブルから着順テーブルを探す
-    boats = []
-    all_tables = soup.find_all("table")
-
-    for table in all_tables:
-        trs = table.find_all("tr")
-        for tr in trs:
-            tds = tr.find_all("td")
-            if len(tds) < 2:
-                continue
-            try:
-                place_no = int(tds[0].get_text(strip=True))
-                boat_no = int(tds[1].get_text(strip=True))
-                if 1 <= place_no <= 6 and 1 <= boat_no <= 6:
-                    boats.append({
-                        "racer_place_number": place_no,
-                        "racer_boat_number": boat_no,
-                    })
-            except Exception:
-                continue
-
-    # --- 払戻パース ---
-    # 全テキストから3連単・2連単を探す
-    payouts = {"trifecta": [], "exacta": []}
-
-    full_text = soup.get_text(separator="\n")
-    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if "3連単" in line:
-            try:
-                combo = lines[i + 1].replace(" ", "").replace("\u30fc", "-")
-                payout_text = lines[i + 2].replace(",", "").replace("円", "").replace("¥", "")
-                payout_yen = int(payout_text)
-                payouts["trifecta"].append({
-                    "combination": combo,
-                    "payout": payout_yen,
-                })
-                i += 3
-                continue
-            except Exception:
-                pass
-        elif "2連単" in line:
-            try:
-                combo = lines[i + 1].replace(" ", "").replace("\u30fc", "-")
-                payout_text = lines[i + 2].replace(",", "").replace("円", "").replace("¥", "")
-                payout_yen = int(payout_text)
-                payouts["exacta"].append({
-                    "combination": combo,
-                    "payout": payout_yen,
-                })
-                i += 3
-                continue
-            except Exception:
-                pass
-        i += 1
-
-    # デバッグ出力
-    print(f"  boats={len(boats)} trifecta={payouts['trifecta'][:1]} exacta={payouts['exacta'][:1]}")
-
-    if not boats and not payouts["trifecta"]:
-        return None
-
-    return {
-        "race_date": race_date,
-        "race_stadium_number": int(jcd),
-        "race_number": int(rno),
-        "boats": boats,
-        "payouts": payouts,
-    }
+    return None  # デバッグ中は一時的にNoneを返す
 
 
 def fetch_result_rows(target_date):
