@@ -1,104 +1,56 @@
-# -*- coding: utf-8 -*-
-from data_pipeline.load_race_list import load_race_list
-from data_pipeline.load_race import load_race_context
+from collections import defaultdict
+
 from models.predictor_v2 import predict_race
-from betting.bet_selector_v2 import select_bets
-from models.risk_manager import judge_race_adoption
-from notifications.formatter_v2 import format_batch_prediction_message
-from notifications.notifier import send_line_message
-from db.client import upsert
-from config.settings import MODEL_VERSION
 
 
-def save_notification_log(target_date, message_body, notification_type, delivery_result, race_id=None, venue_id=None):
-    upsert("v2_notifications", {
-        "notification_type": notification_type,
-        "target_date": target_date,
-        "race_id": race_id,
-        "venue_id": venue_id,
-        "message_body": message_body,
-        "delivery_status": "sent" if delivery_result.get("ok") else "failed",
-        "retry_key": None,
-        "line_response": delivery_result.get("text"),
-        "sent_at": None
-    }, on_conflict=["id"])
+MAX_RACES_PER_DAY = 5   # ←ここが超重要
+MIN_RACES_PER_DAY = 3   # 最低ライン
 
 
-def run_day_prediction_job(race_date):
-    print("=== 昼予想ジョブ開始 ===")
+def run_day_prediction_job(target_date, race_contexts):
+    results = []
 
-    races = load_race_list(
-        race_date=race_date,
-        session_type="day",
-        venue_ids=["01", "06", "12", "18", "24"]
-    )
+    # =========================
+    # 1 全レース予想
+    # =========================
+    for context in race_contexts:
+        try:
+            res = predict_race(context)
 
-    print("対象レース数:", len(races))
+            if not res:
+                continue
 
-    all_results = []
+            results.append(res)
 
-    for r in races:
-        venue_id = r.get("venue_id")
-        race_no = r.get("race_no")
+        except Exception as e:
+            print("predict error:", context.get("race_id"), e)
 
-        context = load_race_context(venue_id, race_no, race_date)
-        if not context:
-            continue
+    if not results:
+        return []
 
-        prediction_result = predict_race(context)
+    # =========================
+    # 2 race_scoreで並び替え
+    # =========================
+    results.sort(key=lambda x: x["race_score"], reverse=True)
 
-        bets = select_bets(
-            prediction_result,
-            min_ev=1.0,   # 1.2 → 1.0 に緩和
-            min_odds=4.0, # 6.0 → 4.0 に緩和
-            max_bets=3
+    # =========================
+    # 3 上位だけ採用
+    # =========================
+    adopted = results[:MAX_RACES_PER_DAY]
+
+    # 最低件数を満たす(データ薄い日の保険)
+    if len(adopted) < MIN_RACES_PER_DAY:
+        adopted = results[:MIN_RACES_PER_DAY]
+
+    # =========================
+    # 4 デバッグログ
+    # =========================
+    print("=== 採用レースランキング ===")
+    for r in adopted:
+        print(
+            "adopt:",
+            r["race_id"],
+            "score=", round(r["race_score"], 6)
         )
 
-        print("race:", context["race_id"], "candidate_count:", len(prediction_result.get("candidates", [])), "bet_count:", len(bets))
-
-        adopt, reason = judge_race_adoption(context, prediction_result, bets)
-        print("adopt:", context["race_id"], adopt, reason)
-
-        if not adopt:
-            continue
-
-        all_results.append({
-            "race_id": context["race_id"],
-            "venue_id": venue_id,
-            "race_no": race_no,
-            "bets": bets,
-            "weather": context.get("weather", {})
-        })
-
-    if not all_results:
-        msg = "【昼開催予想】\n推奨レースなし\nModel: " + MODEL_VERSION
-        print(msg)
-
-        res = send_line_message(msg)
-        print(res)
-
-        save_notification_log(
-            race_date,
-            msg,
-            "day_prediction",
-            res
-        )
-        return
-
-    msg = format_batch_prediction_message(
-        all_results,
-        title="昼開催 推奨レース",
-        model_version=MODEL_VERSION
-    )
-
-    print(msg)
-
-    res = send_line_message(msg)
-    print(res)
-
-    save_notification_log(
-        race_date,
-        msg,
-        "day_prediction",
-        res
-    )
+    return adopted
