@@ -1,31 +1,30 @@
 # -*- coding: utf-8 -*-
 
 def judge_race_adoption(context, prediction_result, bets):
-    """
-    簡易版:
-    - オッズ件数が少なすぎる
-    - エントリー不足
-    - 買い目なし
-    - 上位候補の優位性が弱い
-    の場合は見送り
-    """
-    entries = context.get("entries", [])
-    odds = context.get("odds", {})
-    candidates = prediction_result.get("candidates", [])
+    entries = context.get("entries", []) or []
+    candidates = prediction_result.get("candidates", []) or []
 
     if len(entries) < 6:
         return False, "出走表不足"
 
-    if len(odds) < 3:
-        return False, "オッズ不足"
+    if len(candidates) < 3:
+        return False, "候補不足"
 
     if not bets:
-        return False, "EV基準未達"
+        return False, "買い目なし"
 
-    if len(candidates) >= 2:
-        top_prob = candidates[0].get("probability", 0)
-        second_prob = candidates[1].get("probability", 0)
-        if (top_prob - second_prob) < 0.01:
-            return False, "上位拮抗"
+    top1 = candidates[0].get("probability", 0.0)
+    top2 = candidates[1].get("probability", 0.0)
+    bet_prob_sum = sum(b.get("prob", 0.0) for b in bets)
+
+    # 本当に壊れている時だけ止める
+    if top1 < 0.010:
+        return False, "軸不在"
+
+    if (top1 + top2) < 0.022:
+        return False, "上位弱い"
+
+    if bet_prob_sum < 0.018:
+        return False, "買い目弱い"
 
     return True, None
