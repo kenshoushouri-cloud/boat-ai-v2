@@ -31,76 +31,75 @@ def _fetch_race_result_html(hd, jcd, rno):
 
 
 def _parse_race_result(html, race_date, jcd, rno):
-    """
-    boatrace.jpの成績ページから着順・払戻を抽出し
-    OpenAPI互換の辞書を返す
-    """
     soup = BeautifulSoup(html, "html.parser")
-    
-     # ✅ divの構造を確認
-    print("HTML LENGTH:", len(html))
 
-    # 3連単・2連単を含むdivを探す
-    for keyword in ["3連単", "2連単", "trifecta", "exacta", "payout"]:
-        found = soup.find(text=lambda t: t and keyword in t)
-        if found:
-            print(f"KEYWORD '{keyword}' FOUND:", str(found.parent)[:100])
+    # データなしチェック
+    no_data = soup.find(string=lambda t: t and "データがありません" in t)
+    if no_data:
+        return None
 
-    # 着順テーブルを探す
-    divs = soup.find_all("div", class_=True)
-    print(f"DIV WITH CLASS COUNT: {len(divs)}")
-    for d in divs[:10]:
-        print(f"  DIV class={d.get('class')} text={d.get_text(strip=True)[:30]}")
-
-    return None
-    
-    # --- 着順パース ---
-    # 成績表: class="is-w495" のテーブル
+    # --- 着順パース ---
+    # 全テーブルから着順テーブルを探す
     boats = []
-    result_table = soup.find("table", class_="is-w495")
-    if result_table:
-        for tr in result_table.find_all("tr"):
+    all_tables = soup.find_all("table")
+
+    for table in all_tables:
+        trs = table.find_all("tr")
+        for tr in trs:
             tds = tr.find_all("td")
             if len(tds) < 2:
                 continue
             try:
                 place_no = int(tds[0].get_text(strip=True))
                 boat_no = int(tds[1].get_text(strip=True))
-                boats.append({
-                    "racer_place_number": place_no,
-                    "racer_boat_number": boat_no,
-                })
+                if 1 <= place_no <= 6 and 1 <= boat_no <= 6:
+                    boats.append({
+                        "racer_place_number": place_no,
+                        "racer_boat_number": boat_no,
+                    })
             except Exception:
                 continue
 
-    # --- 払戻パース ---
+    # --- 払戻パース ---
+    # 全テキストから3連単・2連単を探す
     payouts = {"trifecta": [], "exacta": []}
 
-    payout_tables = soup.find_all("table", class_="is-w243")
-    for table in payout_tables:
-        for tr in table.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 3:
-                continue
-            label = tds[0].get_text(strip=True)
-            combo = tds[1].get_text(strip=True).replace("\u30fc", "-").replace(" ", "")
-            payout_text = tds[2].get_text(strip=True).replace(",", "").replace("円", "")
+    full_text = soup.get_text(separator="\n")
+    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
 
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if "3連単" in line:
             try:
+                combo = lines[i + 1].replace(" ", "").replace("\u30fc", "-")
+                payout_text = lines[i + 2].replace(",", "").replace("円", "").replace("¥", "")
                 payout_yen = int(payout_text)
-            except Exception:
-                payout_yen = 0
-
-            if "3連単" in label:
                 payouts["trifecta"].append({
                     "combination": combo,
                     "payout": payout_yen,
                 })
-            elif "2連単" in label:
+                i += 3
+                continue
+            except Exception:
+                pass
+        elif "2連単" in line:
+            try:
+                combo = lines[i + 1].replace(" ", "").replace("\u30fc", "-")
+                payout_text = lines[i + 2].replace(",", "").replace("円", "").replace("¥", "")
+                payout_yen = int(payout_text)
                 payouts["exacta"].append({
                     "combination": combo,
                     "payout": payout_yen,
                 })
+                i += 3
+                continue
+            except Exception:
+                pass
+        i += 1
+
+    # デバッグ出力
+    print(f"  boats={len(boats)} trifecta={payouts['trifecta'][:1]} exacta={payouts['exacta'][:1]}")
 
     if not boats and not payouts["trifecta"]:
         return None
@@ -132,9 +131,9 @@ def fetch_result_rows(target_date):
             row = _parse_race_result(html, race_date, jcd, rno)
             if row:
                 rows.append(row)
-                print(f"  ✅ {jcd} R{rno} 着順={len(row['boats'])}艇 3連単={row['payouts']['trifecta'][:1]}")
+                print(f"  ✅ {jcd} R{rno} 着順={len(row['boats'])}艇")
             else:
-                print(f"  ⚠️  {jcd} R{rno} データなし(非開催or中止)")
+                print(f"  ⚠️  {jcd} R{rno} データなし")
 
             time.sleep(0.3)
 
@@ -231,7 +230,7 @@ def parse_result_row(row):
 
 
 if __name__ == "__main__":
-    rows, url = fetch_result_rows("2025-04-01")
+    rows, url = fetch_result_rows("2026-04-20")
     print("取得件数:", len(rows))
     for row in rows[:3]:
         debug_print_row(row)
