@@ -1,34 +1,128 @@
 # -*- coding: utf-8 -*-
 import json
+import time
 import requests
+from bs4 import BeautifulSoup
 
-RESULT_API_BASE = "https://boatraceopenapi.github.io/results/v2"
+TARGET_VENUES = ["01", "06", "12", "18", "24"]
+RACE_NUMBERS = range(1, 13)
+
+
+def _fetch_race_result_html(hd, jcd, rno):
+    url = (
+        f"https://www.boatrace.jp/owpc/pc/race/raceresult"
+        f"?rno={int(rno)}&jcd={str(jcd).zfill(2)}&hd={hd}"
+    )
+    try:
+        r = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://www.boatrace.jp/",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        r.encoding = r.apparent_encoding or "utf-8"
+        return r.text, url
+    except Exception as e:
+        print(f"fetch error: {jcd} R{rno} {e}")
+        return None, url
+
+
+def _parse_race_result(html, race_date, jcd, rno):
+    """
+    boatrace.jpの成績ページから着順・払戻を抽出し
+    OpenAPI互換の辞書を返す
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # --- 着順パース ---
+    # 成績表: class="is-w495" のテーブル
+    boats = []
+    result_table = soup.find("table", class_="is-w495")
+    if result_table:
+        for tr in result_table.find_all("tr"):
+            tds = tr.find_all("td")
+            if len(tds) < 2:
+                continue
+            try:
+                place_no = int(tds[0].get_text(strip=True))
+                boat_no = int(tds[1].get_text(strip=True))
+                boats.append({
+                    "racer_place_number": place_no,
+                    "racer_boat_number": boat_no,
+                })
+            except Exception:
+                continue
+
+    # --- 払戻パース ---
+    payouts = {"trifecta": [], "exacta": []}
+
+    payout_tables = soup.find_all("table", class_="is-w243")
+    for table in payout_tables:
+        for tr in table.find_all("tr"):
+            tds = tr.find_all("td")
+            if len(tds) < 3:
+                continue
+            label = tds[0].get_text(strip=True)
+            combo = tds[1].get_text(strip=True).replace("\u30fc", "-").replace(" ", "")
+            payout_text = tds[2].get_text(strip=True).replace(",", "").replace("円", "")
+
+            try:
+                payout_yen = int(payout_text)
+            except Exception:
+                payout_yen = 0
+
+            if "3連単" in label:
+                payouts["trifecta"].append({
+                    "combination": combo,
+                    "payout": payout_yen,
+                })
+            elif "2連単" in label:
+                payouts["exacta"].append({
+                    "combination": combo,
+                    "payout": payout_yen,
+                })
+
+    if not boats and not payouts["trifecta"]:
+        return None
+
+    return {
+        "race_date": race_date,
+        "race_stadium_number": int(jcd),
+        "race_number": int(rno),
+        "boats": boats,
+        "payouts": payouts,
+    }
 
 
 def fetch_result_rows(target_date):
     hd = str(target_date).replace("-", "")
-    year = hd[:4]
-    url = f"{RESULT_API_BASE}/{year}/{hd}.json"
+    race_date = f"{hd[:4]}-{hd[4:6]}-{hd[6:8]}"
 
-    print("RESULT API:", url)
+    print("RESULT SCRAPE:", hd)
 
-    res = requests.get(url, timeout=20)
-    res.raise_for_status()
+    rows = []
+    source_url = f"https://www.boatrace.jp/owpc/pc/race/raceresult?hd={hd}"
 
-    data = res.json()
+    for jcd in TARGET_VENUES:
+        for rno in RACE_NUMBERS:
+            html, url = _fetch_race_result_html(hd, jcd, rno)
+            if not html:
+                continue
 
-    print("ROOT TYPE:", type(data).__name__)
+            row = _parse_race_result(html, race_date, jcd, rno)
+            if row:
+                rows.append(row)
+                print(f"  ✅ {jcd} R{rno} 着順={len(row['boats'])}艇 3連単={row['payouts']['trifecta'][:1]}")
+            else:
+                print(f"  ⚠️  {jcd} R{rno} データなし(非開催or中止)")
 
-    if isinstance(data, dict):
-        print("ROOT KEYS:", list(data.keys()))
-        rows = data.get("results", [])
-        print("USING KEY: results LEN:", len(rows))
-        return rows, url
+            time.sleep(0.3)
 
-    if isinstance(data, list):
-        return data, url
-
-    return [], url
+    print(f"RESULT ROWS: {len(rows)}")
+    return rows, source_url
 
 
 def debug_print_row(row, idx=None):
@@ -56,13 +150,9 @@ def _norm_ticket(v):
 
 
 def _pick_payout(payouts, key):
-    """
-    payouts["exacta"] のような配列から1件目を拾う
-    """
     rows = payouts.get(key, [])
     if not rows:
         return None, 0
-
     row = rows[0]
     ticket = _norm_ticket(row.get("combination"))
     payout = _safe_int(row.get("payout"), 0)
@@ -70,30 +160,18 @@ def _pick_payout(payouts, key):
 
 
 def _extract_places(boats):
-    """
-    boats から着順順に艇番を並べる
-    """
     pairs = []
-
     for b in boats:
         place_no = b.get("racer_place_number")
         boat_no = b.get("racer_boat_number")
-
         if place_no in (None, "") or boat_no in (None, ""):
             continue
-
         try:
-            place_no = int(place_no)
-            boat_no = int(boat_no)
+            pairs.append((int(place_no), int(boat_no)))
         except Exception:
             continue
-
-        pairs.append((place_no, boat_no))
-
     pairs.sort(key=lambda x: x[0])
     ordered = [boat_no for _, boat_no in pairs]
-
-    # 1〜6着を埋める
     lanes = ordered + [None] * (6 - len(ordered))
     return lanes[:6]
 
@@ -112,7 +190,6 @@ def parse_result_row(row):
     race_id = f"{hd}_{venue_id}_{race_no:02d}"
 
     payouts = row.get("payouts", {}) or {}
-
     trifecta_ticket, trifecta_payout_yen = _pick_payout(payouts, "trifecta")
     exacta_ticket, exacta_payout_yen = _pick_payout(payouts, "exacta")
 
@@ -132,5 +209,14 @@ def parse_result_row(row):
         "exacta_ticket": exacta_ticket,
         "exacta_payout_yen": exacta_payout_yen,
         "result_status": "official",
-        "source": "boatrace_openapi",
+        "source": "boatrace_scrape",
     }
+
+
+if __name__ == "__main__":
+    rows, url = fetch_result_rows("2025-04-01")
+    print("取得件数:", len(rows))
+    for row in rows[:3]:
+        debug_print_row(row)
+        parsed = parse_result_row(row)
+        print("PARSED:", parsed)
