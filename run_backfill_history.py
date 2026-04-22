@@ -11,14 +11,14 @@ from app.jobs.race_seed_job import run_race_seed_job
 from app.jobs.odds_seed_job import run_odds_seed_job
 from app.jobs.result_fetch_job import run_result_fetch_job
 
-# exhibition_seed_job は任意（なければスキップ）
+# exhibition_seed_job は任意(なければスキップ)
 try:
     from app.jobs.exhibition_seed_job import run_exhibition_seed_job_backfill
     HAS_EXHIBITION = True
-    print("✅ exhibition_seed_job ロード成功")
+    print("✅ exhibition_seed_job ロード成功")
 except ImportError:
     HAS_EXHIBITION = False
-    print("⚠️ exhibition_seed_job なし → スキップ")
+    print("⚠️ exhibition_seed_job なし → スキップ")
 
 
 def daterange(start_date, end_date):
@@ -59,7 +59,7 @@ def _process_one_day(
             step_results.append(f"  [❌ exhibition] {e}")
         time.sleep(sleep_sec)
     elif do_exhibition and not HAS_EXHIBITION:
-        step_results.append("  [⚠️ exhibition スキップ]")
+        step_results.append("  [⚠️ exhibition スキップ]")
 
     if do_odds:
         try:
@@ -126,7 +126,7 @@ def run_history_backfill(
     do_odds=True,
     do_results=True,
 ):
-    print("=== 履歴バックフィル開始 ===")
+    print("=== 履歴バックフィル開始 ===")
     print("期間:", start_date_str, "→", end_date_str)
     print("並列数:", max_workers)
     print("リトライ上限:", max_retry)
@@ -162,7 +162,7 @@ def run_history_backfill(
         )
         ok_list.extend(retry_ok)
 
-    print("\n=== 履歴バックフィル終了 ===")
+    print("\n=== 履歴バックフィル終了 ===")
     print("対象日数:", len(date_list))
     print("成功日数:", len(ok_list))
     print("失敗日数:", len(ng_list))
@@ -172,7 +172,7 @@ def run_history_backfill(
         for d in sorted(ng_list):
             print(" ", d)
     else:
-        print("\n🎉 全日成功！")
+        print("\n🎉 全日成功!")
 
 
 def main():

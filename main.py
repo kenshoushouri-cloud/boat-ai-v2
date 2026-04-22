@@ -1,7 +1,15 @@
 # -*- coding: utf-8 -*-
 import os
 
-print("MAIN_PY_VERSION_TEST_20260420")
+# =========================
+# Pythonista ローカル用
+# 必ず実値に変更
+# =========================
+os.environ.setdefault("JOB_MODE", "day")
+os.environ.setdefault("SUPABASE_URL", "https://dpctymeddnggfolvvcyf.supabase.co")
+os.environ.setdefault("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwY3R5bWVkZG5nZ2ZvbHZ2Y3lmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjUzNjE1OSwiZXhwIjoyMDkyMTEyMTU5fQ.4ifEIF0LIKqgPOm5jpl7PbXMSflD_IOlBzMlfoQMyzs")
+os.environ.setdefault("LINE_CHANNEL_ACCESS_TOKEN", "iGY5wvLuLhTRZFGg8x3dk2T3OIH1XzBnrWNZicMvHGr7oT0RnpErALNchBCZa6GhwEM+FKrzxSLPfB/CT2Mu9r6j3+OQ7dW3s14JzS2cnoa0t9LbXHr0vaPyO0OxvMIIUxNRAYPl6jy4I4fo7don+wdB04t89/1O/w1cDnyilFU=")
+os.environ.setdefault("LINE_USER_ID", "U35eae9930b7cc8be77398eb0210e3f15")
 
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
@@ -16,6 +24,7 @@ from run_results import main as results_main
 from run_day_jobs import main as day_main
 from run_night_jobs import main as night_main
 from run_seed import main as seed_main
+from run_odds import main as odds_main
 
 
 def run_single_test():
@@ -26,6 +35,7 @@ def run_single_test():
     race_date = "20260415"
 
     context = load_race_context(venue_id, race_no, race_date)
+
     print("race_id:", context["race_id"])
     print("entry件数:", len(context["entries"]))
     print("odds件数:", len(context["odds"]))
@@ -77,7 +87,6 @@ def run_single_test():
             print("LINE送信結果:", line_res)
         except Exception as e:
             print("LINE送信エラー:", repr(e))
-
         return
 
     print("買い目:")
@@ -135,8 +144,11 @@ def run_single_test():
 
 
 def main():
+    print("MAIN_PY_VERSION_TEST_20260420")
     job_mode = os.environ.get("JOB_MODE", "").strip().lower()
+
     print("JOB_MODE:", job_mode)
+    print("MAIN_HAS_ODDS_BRANCH")
 
     if job_mode == "report":
         report_main()
@@ -148,7 +160,11 @@ def main():
         night_main()
     elif job_mode == "seed":
         seed_main()
+    elif job_mode == "odds":
+        print("RUN_ODDS_BRANCH")
+        odds_main()
     else:
+        print("RUN_SINGLE_TEST_BRANCH")
         run_single_test()
 
 
