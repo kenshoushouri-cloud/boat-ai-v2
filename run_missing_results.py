@@ -186,7 +186,7 @@ run_missing_check(
 start_date_str=“2025-03-13”,
 end_date_str=“2026-04-22”,
 sleep_sec=0.5,
-record_no_race=True,
+record_no_race=False,
 )
 
 if **name** == “**main**”:
