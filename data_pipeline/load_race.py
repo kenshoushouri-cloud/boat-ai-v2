@@ -2,45 +2,117 @@
 from db.client import select_where
 
 
-def build_race_id(race_date, venue_id, race_no):
-    return f"{race_date}_{venue_id}_{int(race_no):02d}"
+def _build_odds_map(odds_rows):
+    odds_map = {}
+
+    for row in odds_rows:
+        ticket = (
+            row.get("ticket")
+            or row.get("trifecta_ticket")
+            or row.get("combination")
+        )
+        odds = row.get("odds")
+
+        if ticket and odds is not None:
+            try:
+                odds_map[ticket] = float(odds)
+            except Exception:
+                pass
+
+    return odds_map
+
+
+def _build_exhibition_map(exhibition_rows):
+    exhibition_map = {}
+
+    for row in exhibition_rows:
+        lane = row.get("lane")
+        if lane is None:
+            continue
+
+        exhibition_map[str(lane)] = {
+            "lane": lane,
+            "exhibition_time": row.get("exhibition_time"),
+            "tilt": row.get("tilt"),
+            "course": row.get("course"),
+            "start_position": row.get("start_position"),
+            "start_timing": row.get("start_timing"),
+            "exhibition_rank": row.get("exhibition_rank"),
+        }
+
+    return exhibition_map
+
+
+def _extract_result_ticket(result_row):
+    if not result_row:
+        return None
+
+    return (
+        result_row.get("trifecta_ticket")
+        or result_row.get("trifecta")
+        or result_row.get("winning_ticket")
+        or result_row.get("ticket")
+    )
 
 
 def load_race_context(venue_id, race_no, race_date):
-    race_id = build_race_id(race_date, venue_id, race_no)
+    venue_id = str(venue_id).zfill(2)
+    race_no = int(race_no)
+    race_id = f"{str(race_date).replace('-', '')}_{venue_id}_{race_no:02d}"
 
     races = select_where("v2_races", {"race_id": race_id}, limit=1)
-    entries = select_where("v2_race_entries", {"race_id": race_id}, order_by="lane.asc")
-    exhibition = select_where("v2_exhibition", {"race_id": race_id}, order_by="lane.asc")
-    weather_rows = select_where("v2_race_weather", {"race_id": race_id}, limit=1)
-    odds_rows = select_where("v2_odds_trifecta", {"race_id": race_id})
+    if not races:
+        print("race not found:", race_id)
+        return None
 
-    race = races[0] if races else None
+    race = races[0]
+
+    entries = select_where(
+        "v2_race_entries",
+        {"race_id": race_id},
+        order_by="lane.asc"
+    )
+    print("entries count:", race_id, len(entries))
+
+    odds_rows = select_where(
+        "v2_odds_trifecta",
+        {"race_id": race_id}
+    )
+    print("odds count:", race_id, len(odds_rows))
+
+    exhibition_rows = select_where(
+        "v2_exhibition",
+        {"race_id": race_id},
+        order_by="lane.asc"
+    )
+    print("exhibition count:", race_id, len(exhibition_rows))
+
+    weather_rows = select_where(
+        "v2_race_weather",
+        {"race_id": race_id},
+        limit=1
+    )
     weather = weather_rows[0] if weather_rows else {}
 
-    ex_by_lane = {int(x["lane"]): x for x in exhibition if x.get("lane") is not None}
-    odds = {}
-    for row in odds_rows:
-        ticket = row.get("ticket")
-        odd = row.get("odds")
-        if ticket and odd is not None:
-            odds[ticket] = float(odd)
+    result_rows = select_where(
+        "v2_results",
+        {"race_id": race_id},
+        limit=1
+    )
+    result_row = result_rows[0] if result_rows else {}
 
-    merged_entries = []
-    for e in entries:
-        lane = int(e["lane"])
-        ex = ex_by_lane.get(lane, {})
-        merged = dict(e)
-        merged["exhibition_time"] = ex.get("exhibition_time")
-        merged["start_timing"] = ex.get("start_timing")
-        merged["exhibition_rank"] = ex.get("exhibition_rank")
-        merged["course"] = ex.get("course", lane)
-        merged_entries.append(merged)
+    odds_map = _build_odds_map(odds_rows)
+    exhibition_map = _build_exhibition_map(exhibition_rows)
 
     return {
         "race_id": race_id,
         "race": race,
-        "entries": merged_entries,
+        "venue_id": venue_id,
+        "race_no": race_no,
+        "entries": entries,
+        "odds": odds_map,
         "weather": weather,
-        "odds": odds
+        "exhibition": exhibition_map,
+        "result": _extract_result_ticket(result_row),
+        "result_row": result_row,
     }

@@ -2,13 +2,13 @@
 import json
 import requests
 
-BASE_URL = "https://boatraceopenapi.github.io/results/v2"
+RESULT_API_BASE = "https://boatraceopenapi.github.io/results/v2"
 
 
-def fetch_results_api(target_date):
-    compact = target_date.replace("-", "")
-    year = compact[:4]
-    url = f"{BASE_URL}/{year}/{compact}.json"
+def fetch_result_rows(target_date):
+    hd = str(target_date).replace("-", "")
+    year = hd[:4]
+    url = f"{RESULT_API_BASE}/{year}/{hd}.json"
 
     print("RESULT API:", url)
 
@@ -16,102 +16,121 @@ def fetch_results_api(target_date):
     res.raise_for_status()
 
     data = res.json()
-    return data.get("results", [])
+
+    print("ROOT TYPE:", type(data).__name__)
+
+    if isinstance(data, dict):
+        print("ROOT KEYS:", list(data.keys()))
+        rows = data.get("results", [])
+        print("USING KEY: results LEN:", len(rows))
+        return rows, url
+
+    if isinstance(data, list):
+        return data, url
+
+    return [], url
 
 
-def build_race_id_from_result(row, target_date):
-    venue_id = str(row.get("race_stadium_number", "")).zfill(2)
-    race_no = int(row.get("race_number", 0))
-    compact = target_date.replace("-", "")
-    return f"{compact}_{venue_id}_{race_no:02d}"
+def debug_print_row(row, idx=None):
+    print("=== RESULT ROW DEBUG START ===")
+    if idx is not None:
+        print("ROW INDEX:", idx)
+    print(json.dumps(row, ensure_ascii=False, indent=2))
+    print("=== RESULT ROW DEBUG END ===")
 
 
-def _extract_trifecta_payout(row):
-    payouts = row.get("payouts") or {}
-    trifecta = payouts.get("trifecta") or []
+def _safe_int(v, default=0):
+    try:
+        if v is None or v == "":
+            return default
+        return int(float(v))
+    except Exception:
+        return default
 
-    if trifecta and isinstance(trifecta, list):
-        first = trifecta[0] or {}
-        payout = first.get("payout") or 0
+
+def _norm_ticket(v):
+    if v is None:
+        return None
+    s = str(v).strip().replace(" ", "")
+    return s if s else None
+
+
+def _pick_payout(payouts, key):
+    """
+    payouts["exacta"] のような配列から1件目を拾う
+    """
+    rows = payouts.get(key, [])
+    if not rows:
+        return None, 0
+
+    row = rows[0]
+    ticket = _norm_ticket(row.get("combination"))
+    payout = _safe_int(row.get("payout"), 0)
+    return ticket, payout
+
+
+def _extract_places(boats):
+    """
+    boats から着順順に艇番を並べる
+    """
+    pairs = []
+
+    for b in boats:
+        place_no = b.get("racer_place_number")
+        boat_no = b.get("racer_boat_number")
+
+        if place_no in (None, "") or boat_no in (None, ""):
+            continue
+
         try:
-            return int(payout)
+            place_no = int(place_no)
+            boat_no = int(boat_no)
         except Exception:
-            return 0
+            continue
 
-    return 0
+        pairs.append((place_no, boat_no))
+
+    pairs.sort(key=lambda x: x[0])
+    ordered = [boat_no for _, boat_no in pairs]
+
+    # 1〜6着を埋める
+    lanes = ordered + [None] * (6 - len(ordered))
+    return lanes[:6]
 
 
-def _extract_trifecta_ticket(row):
-    payouts = row.get("payouts") or {}
-    trifecta = payouts.get("trifecta") or []
+def parse_result_row(row):
+    race_date = row.get("race_date")
+    stadium_no = row.get("race_stadium_number")
+    race_no = row.get("race_number")
 
-    if trifecta and isinstance(trifecta, list):
-        first = trifecta[0] or {}
-        combo = first.get("combination")
-        if combo:
-            return str(combo)
-
-    boats = row.get("boats", [])
-    ranking = sorted(boats, key=lambda x: x.get("racer_place_number") or 99)
-
-    def get_lane(place):
-        for b in ranking:
-            if b.get("racer_place_number") == place:
-                return b.get("racer_boat_number")
+    if not race_date or stadium_no is None or race_no is None:
         return None
 
-    first = get_lane(1)
-    second = get_lane(2)
-    third = get_lane(3)
+    hd = str(race_date).replace("-", "")
+    venue_id = str(stadium_no).zfill(2)
+    race_no = int(race_no)
+    race_id = f"{hd}_{venue_id}_{race_no:02d}"
 
-    if first and second and third:
-        return f"{first}-{second}-{third}"
+    payouts = row.get("payouts", {}) or {}
 
-    return None
+    trifecta_ticket, trifecta_payout_yen = _pick_payout(payouts, "trifecta")
+    exacta_ticket, exacta_payout_yen = _pick_payout(payouts, "exacta")
 
-
-def parse_result_row(row, target_date):
-    race_id = build_race_id_from_result(row, target_date)
-
-    boats = row.get("boats", [])
-    ranking = sorted(boats, key=lambda x: x.get("racer_place_number") or 99)
-
-    def get_lane(place):
-        for b in ranking:
-            if b.get("racer_place_number") == place:
-                return b.get("racer_boat_number")
-        return None
-
-    first = get_lane(1)
-    second = get_lane(2)
-    third = get_lane(3)
-    fourth = get_lane(4)
-    fifth = get_lane(5)
-    sixth = get_lane(6)
-
-    trifecta_ticket = _extract_trifecta_ticket(row)
-    trifecta_payout_yen = _extract_trifecta_payout(row)
+    boats = row.get("boats", []) or []
+    first_lane, second_lane, third_lane, fourth_lane, fifth_lane, sixth_lane = _extract_places(boats)
 
     return {
         "race_id": race_id,
-        "first_lane": first,
-        "second_lane": second,
-        "third_lane": third,
-        "fourth_lane": fourth,
-        "fifth_lane": fifth,
-        "sixth_lane": sixth,
+        "first_lane": first_lane,
+        "second_lane": second_lane,
+        "third_lane": third_lane,
+        "fourth_lane": fourth_lane,
+        "fifth_lane": fifth_lane,
+        "sixth_lane": sixth_lane,
         "trifecta_ticket": trifecta_ticket,
         "trifecta_payout_yen": trifecta_payout_yen,
-        "result_status": "official"
+        "exacta_ticket": exacta_ticket,
+        "exacta_payout_yen": exacta_payout_yen,
+        "result_status": "official",
+        "source": "boatrace_openapi",
     }
-
-
-def debug_print_one_result(target_date, target_race_id):
-    rows = fetch_results_api(target_date)
-    for row in rows:
-        race_id = build_race_id_from_result(row, target_date)
-        if race_id == target_race_id:
-            print("=== RAW RESULT ROW ===")
-            print(json.dumps(row, ensure_ascii=False, indent=2))
-            return
-    print("not found:", target_race_id)
