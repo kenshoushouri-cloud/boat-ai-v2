@@ -37,18 +37,22 @@ def _parse_race_result(html, race_date, jcd, rno):
     """
     soup = BeautifulSoup(html, "html.parser")
     
-        # ✅ デバッグ：全テーブル確認
-    all_tables = soup.find_all("table")
-    print(f"RESULT TABLE COUNT: {len(all_tables)}")
-    for i, t in enumerate(all_tables[:5]):
-        trs = t.find_all("tr")
-        print(f"  TABLE[{i}] rows={len(trs)}")
-        for j, tr in enumerate(trs[:3]):
-            tds = tr.find_all(["td", "th"])
-            texts = [td.get_text(strip=True)[:15] for td in tds]
-            print(f"    TR[{j}]: {texts}")
+     # ✅ divの構造を確認
+    print("HTML LENGTH:", len(html))
 
-    return None  # 一時的に全部Noneで返す
+    # 3連単・2連単を含むdivを探す
+    for keyword in ["3連単", "2連単", "trifecta", "exacta", "payout"]:
+        found = soup.find(text=lambda t: t and keyword in t)
+        if found:
+            print(f"KEYWORD '{keyword}' FOUND:", str(found.parent)[:100])
+
+    # 着順テーブルを探す
+    divs = soup.find_all("div", class_=True)
+    print(f"DIV WITH CLASS COUNT: {len(divs)}")
+    for d in divs[:10]:
+        print(f"  DIV class={d.get('class')} text={d.get_text(strip=True)[:30]}")
+
+    return None
     
     # --- 着順パース ---
     # 成績表: class="is-w495" のテーブル
