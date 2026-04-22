@@ -32,81 +32,88 @@ def _fetch_racelist_html(hd, jcd, rno):
 def _parse_racelist(html, hd, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
 
-    # ✅ デバッグ：テーブルの中身を確認
     all_tables = soup.find_all("table")
-    print(f"TABLE COUNT: {len(all_tables)}")
-    for i, t in enumerate(all_tables[:3]):
-        rows = t.find_all("tr")
-        print(f"  TABLE[{i}] rows={len(rows)}")
-        for j, tr in enumerate(rows[:3]):
-            tds = tr.find_all(["td", "th"])
-            texts = [td.get_text(strip=True)[:10] for td in tds]
-            print(f"    TR[{j}]: {texts}")
-
-    return None
-
-    # レースタイトル
-    race_title = ""
-    title_el = soup.find("h3", class_="is-title4-titleBold")
-    if title_el:
-        race_title = title_el.get_text(strip=True)
-
-    # 締切時刻
-    race_closed_at = None
-    time_el = soup.find("p", class_="is-timeBar1")
-    if time_el:
-        time_text = time_el.get_text(strip=True)
-        try:
-            date_str = f"{hd[:4]}-{hd[4:6]}-{hd[6:8]}"
-            race_closed_at = f"{date_str}T{time_text}:00+09:00"
-        except Exception:
-            pass
-
-    # 出走表テーブル
-    boats = []
-    table = soup.find("table", class_="is-w748")
-    if not table:
+    if len(all_tables) < 2:
         return None
 
-    for tr in table.find_all("tr", class_="is-fs12"):
-        tds = tr.find_all("td")
-        if len(tds) < 5:
-            continue
+    # TABLE[1] が出走表（ヘッダー3行 + 艇ごと4行）
+    table = all_tables[1]
+    all_trs = table.find_all("tr")
+    data_trs = all_trs[3:]
+
+    boats = []
+    i = 0
+    while i < len(data_trs):
+        block = data_trs[i:i + 4]
+        if not block:
+            break
+
+        tr0 = block[0]
+        tds = tr0.find_all(["td", "th"])
+
         try:
             boat_no = int(tds[0].get_text(strip=True))
-            racer_info = tds[2].get_text(strip=True)
-            racer_no_el = tds[2].find("a")
-            racer_no = int(racer_no_el.get_text(strip=True)) if racer_no_el else None
-            racer_name_el = tds[2].find("span")
-            racer_name = racer_name_el.get_text(strip=True) if racer_name_el else ""
+            if boat_no not in range(1, 7):
+                i += 1
+                continue
 
-            # 級別・支部・年齢・体重
-            racer_class = None
-            branch_no = None
-            age = None
-            weight = None
-            info_tds = tds[2].find_all("span")
+            # 登録番号・氏名
+            racer_td = tds[1]
+            texts = [t.strip() for t in racer_td.stripped_strings]
+            racer_no = None
+            racer_name = ""
+            for t in texts:
+                if t.isdigit() and len(t) == 4:
+                    racer_no = int(t)
+                elif len(t) <= 10 and not t.isdigit() and "/" not in t:
+                    if racer_name == "":
+                        racer_name = t
 
-            # モーター・ボート番号・勝率
+            # 全国勝率・2連率
+            national_win = None
+            national_p2 = None
+            try:
+                nat_texts = [t.strip() for t in tds[3].stripped_strings]
+                if len(nat_texts) >= 1:
+                    national_win = float(nat_texts[0])
+                if len(nat_texts) >= 2:
+                    national_p2 = float(nat_texts[1])
+            except Exception:
+                pass
+
+            # 当地勝率・2連率
+            local_win = None
+            local_p2 = None
+            try:
+                loc_texts = [t.strip() for t in tds[4].stripped_strings]
+                if len(loc_texts) >= 1:
+                    local_win = float(loc_texts[0])
+                if len(loc_texts) >= 2:
+                    local_p2 = float(loc_texts[1])
+            except Exception:
+                pass
+
+            # モーターNo・2連率
             motor_no = None
-            motor_place2 = None
-            boat_no2 = None
-            boat_place2 = None
+            motor_p2 = None
+            try:
+                mot_texts = [t.strip() for t in tds[5].stripped_strings]
+                if len(mot_texts) >= 1:
+                    motor_no = int(mot_texts[0])
+                if len(mot_texts) >= 2:
+                    motor_p2 = float(mot_texts[1])
+            except Exception:
+                pass
 
+            # ボートNo・2連率
+            boat_no2 = None
+            boat_p2 = None
             try:
-                motor_no = int(tds[3].get_text(strip=True).split()[0])
-            except Exception:
-                pass
-            try:
-                motor_place2 = float(tds[3].get_text(strip=True).split()[-1])
-            except Exception:
-                pass
-            try:
-                boat_no2 = int(tds[4].get_text(strip=True).split()[0])
-            except Exception:
-                pass
-            try:
-                boat_place2 = float(tds[4].get_text(strip=True).split()[-1])
+                boa_texts = [t.strip() for t in tds[6].stripped_strings]
+                if len(boa_texts) >= 1:
+                    boat_no2 = int(boa_texts[0])
+                if len(boa_texts) >= 2:
+                    boat_p2 = float(boa_texts[1])
             except Exception:
                 pass
 
@@ -114,33 +121,47 @@ def _parse_racelist(html, hd, jcd, rno):
                 "racer_boat_number": boat_no,
                 "racer_number": racer_no,
                 "racer_name": racer_name,
-                "racer_class_number": racer_class,
-                "racer_branch_number": branch_no,
-                "racer_age": age,
-                "racer_weight": weight,
+                "racer_class_number": None,
+                "racer_branch_number": None,
+                "racer_age": None,
+                "racer_weight": None,
                 "racer_motor_number": motor_no,
-                "racer_motor_place2_rate": motor_place2,
+                "racer_motor_place2_rate": motor_p2,
                 "racer_boat_number2": boat_no2,
-                "racer_boat_place2_rate": boat_place2,
-                "racer_national_win_rate": None,
-                "racer_national_place2_rate": None,
-                "racer_local_win_rate": None,
-                "racer_local_place2_rate": None,
+                "racer_boat_place2_rate": boat_p2,
+                "racer_national_win_rate": national_win,
+                "racer_national_place2_rate": national_p2,
+                "racer_local_win_rate": local_win,
+                "racer_local_place2_rate": local_p2,
                 "racer_tilt": None,
                 "racer_f_count": 0,
                 "racer_l_count": 0,
             })
-        except Exception as e:
-            print(f"boat parse error: {e}")
-            continue
+
+        except Exception:
+            pass
+
+        i += 4
 
     if not boats:
         return None
 
+    # 締切時刻（TABLE[0] の2行目から取得）
+    race_closed_at = None
+    try:
+        t0_trs = all_tables[0].find_all("tr")
+        times = [td.get_text(strip=True) for td in t0_trs[1].find_all("td")]
+        time_str = times[rno - 1] if rno <= len(times) else None
+        if time_str:
+            date_str = f"{hd[:4]}-{hd[4:6]}-{hd[6:8]}"
+            race_closed_at = f"{date_str}T{time_str}:00+09:00"
+    except Exception:
+        pass
+
     return {
         "race_stadium_number": int(jcd),
         "race_number": int(rno),
-        "race_title": race_title,
+        "race_title": "",
         "race_closed_at": race_closed_at,
         "boats": boats,
     }
@@ -233,3 +254,5 @@ if __name__ == "__main__":
     for row in rows[:2]:
         print("RACE:", row["race_stadium_number"], row["race_number"])
         print("BOATS:", len(row["boats"]))
+        for b in row["boats"]:
+            print(" ", b["racer_boat_number"], b["racer_name"], b["racer_national_win_rate"])
