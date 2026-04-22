@@ -32,6 +32,18 @@ def _fetch_racelist_html(hd, jcd, rno):
 def _parse_racelist(html, hd, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
 
+ # ✅ デバッグ：全テーブルのクラス名を出力
+    all_tables = soup.find_all("table")
+    print(f"TABLE COUNT: {len(all_tables)}")
+    for i, t in enumerate(all_tables[:5]):
+        print(f"  TABLE[{i}] class={t.get('class')}")
+
+    # ✅ デバッグ：データなし判定
+    no_data = soup.find(text="データがありません")
+    if no_data:
+        print(f"  → データなし確認")
+        return None
+
     # レースタイトル
     race_title = ""
     title_el = soup.find("h3", class_="is-title4-titleBold")
