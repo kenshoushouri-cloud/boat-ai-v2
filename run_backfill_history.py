@@ -29,19 +29,14 @@ def daterange(start_date, end_date):
 
 
 def _is_already_saved(target_date_hyphen):
-    """取得済みチェック:race・odds・resultsが存在するか確認"""
     date_plain = target_date_hyphen.replace("-", "")
-
-    # v2_races にその日のデータがあるか
     races = select_where(
         "v2_races",
         {"race_date": target_date_hyphen},
         limit=1
     )
     if not races:
-        return False  # レースデータ自体がない → 未取得
-
-    # v2_odds_trifecta にその日のデータがあるか
+        return False
     sample_race_id = races[0].get("race_id", f"{date_plain}_01_01")
     odds = select_where(
         "v2_odds_trifecta",
@@ -49,9 +44,8 @@ def _is_already_saved(target_date_hyphen):
         limit=1
     )
     if not odds:
-        return False  # オッズがない → 未取得
-
-    return True  # 両方ある → 取得済み
+        return False
+    return True
 
 
 def _process_one_day(
@@ -151,8 +145,8 @@ def _run_batch(
 def run_history_backfill(
     start_date_str,
     end_date_str,
-    sleep_sec=0.3,     # ✅ 高速化
-    max_workers=3,
+    sleep_sec=0.3,
+    max_workers=5,        # ✅ 5並列
     max_retry=3,
     retry_wait_sec=10.0,
     do_race=True,
@@ -211,10 +205,10 @@ def run_history_backfill(
 
 def main():
     run_history_backfill(
-        start_date_str="2026-01-01",
+        start_date_str="2025-01-01",
         end_date_str="2026-04-20",
         sleep_sec=0.3,
-        max_workers=3,
+        max_workers=5,
         max_retry=3,
         retry_wait_sec=10.0,
         do_race=True,
@@ -226,7 +220,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # ✅ 完了後もRailwayが再起動しないよう待機
-    print("✅ バックフィル完了 → 待機モード(Start Commandを元に戻してください)")
+    print("✅ バックフィル完了 → 待機モード")
     while True:
         time.sleep(3600)
