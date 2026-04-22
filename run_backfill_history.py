@@ -15,10 +15,10 @@ from app.jobs.result_fetch_job import run_result_fetch_job
 try:
     from app.jobs.exhibition_seed_job import run_exhibition_seed_job_backfill
     HAS_EXHIBITION = True
-    print("✅ exhibition_seed_job ロード成功")
+    print("✅ exhibition_seed_job ロード成功")
 except ImportError:
     HAS_EXHIBITION = False
-    print("⚠️ exhibition_seed_job なし → スキップ")
+    print("⚠️ exhibition_seed_job なし → スキップ")
 
 
 def daterange(start_date, end_date):
@@ -29,7 +29,6 @@ def daterange(start_date, end_date):
 
 
 def _is_already_saved(target_date_hyphen):
-    date_plain = target_date_hyphen.replace("-", "")
     races = select_where(
         "v2_races",
         {"race_date": target_date_hyphen},
@@ -37,15 +36,15 @@ def _is_already_saved(target_date_hyphen):
     )
     if not races:
         return False
-    sample_race_id = races[0].get("race_id", f"{date_plain}_01_01")
+    sample_race_id = races[0].get("race_id")
+    if not sample_race_id:
+        return False
     odds = select_where(
         "v2_odds_trifecta",
         {"race_id": sample_race_id},
         limit=1
     )
-    if not odds:
-        return False
-    return True
+    return len(odds) > 0
 
 
 def _process_one_day(
@@ -57,9 +56,8 @@ def _process_one_day(
     do_odds,
     do_results,
 ):
-    # 取得済みスキップ
     if _is_already_saved(target_date_hyphen):
-        print(f"⏭️  {target_date_hyphen} スキップ(取得済み)")
+        print(f"⏭️  {target_date_hyphen} スキップ（取得済み）")
         return target_date_hyphen, True
 
     print(f"\n=== {target_date_hyphen} 開始 ===")
@@ -84,7 +82,7 @@ def _process_one_day(
             step_results.append(f"  [❌ exhibition] {e}")
         time.sleep(sleep_sec)
     elif do_exhibition and not HAS_EXHIBITION:
-        step_results.append("  [⚠️ exhibition スキップ]")
+        step_results.append("  [⚠️ exhibition スキップ]")
 
     if do_odds:
         try:
@@ -146,7 +144,7 @@ def run_history_backfill(
     start_date_str,
     end_date_str,
     sleep_sec=0.3,
-    max_workers=5,        # ✅ 5並列
+    max_workers=5,
     max_retry=3,
     retry_wait_sec=10.0,
     do_race=True,
@@ -154,7 +152,7 @@ def run_history_backfill(
     do_odds=True,
     do_results=True,
 ):
-    print("=== 履歴バックフィル開始 ===")
+    print("=== 履歴バックフィル開始 ===")
     print("期間:", start_date_str, "→", end_date_str)
     print("並列数:", max_workers)
     print("リトライ上限:", max_retry)
@@ -190,7 +188,7 @@ def run_history_backfill(
         )
         ok_list.extend(retry_ok)
 
-    print("\n=== 履歴バックフィル終了 ===")
+    print("\n=== 履歴バックフィル終了 ===")
     print("対象日数:", len(date_list))
     print("成功日数:", len(ok_list))
     print("失敗日数:", len(ng_list))
@@ -200,7 +198,7 @@ def run_history_backfill(
         for d in sorted(ng_list):
             print(" ", d)
     else:
-        print("\n🎉 全日成功!")
+        print("\n🎉 全日成功！")
 
 
 def main():
@@ -220,6 +218,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-    print("✅ バックフィル完了 → 待機モード")
+    print("✅ バックフィル完了 → 待機モード")
     while True:
         time.sleep(3600)
