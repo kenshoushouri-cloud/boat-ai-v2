@@ -205,7 +205,7 @@ def main():
     run_history_backfill(
         start_date_str="2025-03-13",
         end_date_str="2026-04-20",
-        sleep_sec=0.3,
+        sleep_sec=0.5,
         max_workers=3,
         max_retry=3,
         retry_wait_sec=10.0,
