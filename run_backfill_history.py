@@ -203,7 +203,7 @@ def run_history_backfill(
 
 def main():
     run_history_backfill(
-        start_date_str="2025-03-13",
+        start_date_str="2026-01-01",
         end_date_str="2026-04-22",
         sleep_sec=0.5,
         max_workers=2,
