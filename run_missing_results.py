@@ -184,7 +184,7 @@ else:
 def main():
 run_missing_check(
 start_date_str=“2025-03-13”,
-end_date_str=“2026-04-22”,
+end_date_str=“2025-12-31”,
 sleep_sec=0.5,
 record_no_race=False,
 )
