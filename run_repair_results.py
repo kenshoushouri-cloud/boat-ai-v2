@@ -1,27 +1,11 @@
 # -*- coding: utf-8 -*-
-"""
-結果データ修復スクリプト
-以下の2つをまとめて実行します：
-
-【1】欠損チェック＆再取得
-- 期間内の全race_idを生成してv2_resultsと比較
-- 欠損しているrace_idを再スクレイピング
-- 取得成功 → 保存
-- 本当にデータなし → result_status="no_race" で記録
-
-【2】払戻0円の修正
-- v2_resultsのtrifecta_payout_yen=0のレコードを再スクレイピング
-- 正しい払戻金額で上書き保存
-
-実行タイミング：バックフィル完了後に実行してください
-"""
-
 import os
 import sys
 import time
 import urllib.parse
 import requests as http_requests
 from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -29,7 +13,6 @@ from config.settings import SUPABASE_URL, SUPABASE_KEY
 from db.client import upsert
 from data_pipeline.fetch_results import (
     _fetch_race_result_html,
-    _parse_race_result,
     parse_result_row,
 )
 
@@ -44,6 +27,116 @@ HEADERS = {
 
 
 # ============================================================
+# 払戻パース（デバッグログ付き）
+# ============================================================
+
+def _parse_race_result_debug(html, race_date, jcd, rno):
+    soup = BeautifulSoup(html, "html.parser")
+
+    no_data = soup.find(string=lambda t: t and "データがありません" in t)
+    if no_data:
+        print(f"    -> データがありません表示あり")
+        return None
+
+    full_text = soup.get_text(separator="\n")
+    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+
+    # --- 着順パース ---
+    boats = []
+    seen_places = set()
+    all_tables = soup.find_all("table")
+    for table in all_tables:
+        for tr in table.find_all("tr"):
+            tds = tr.find_all("td")
+            if len(tds) < 2:
+                continue
+            try:
+                place_no = int(tds[0].get_text(strip=True))
+                boat_no = int(tds[1].get_text(strip=True))
+                if (
+                    1 <= place_no <= 6
+                    and 1 <= boat_no <= 6
+                    and place_no not in seen_places
+                ):
+                    seen_places.add(place_no)
+                    boats.append({
+                        "racer_place_number": place_no,
+                        "racer_boat_number": boat_no,
+                    })
+            except Exception:
+                continue
+
+    # --- 払戻パース ---
+    payouts = {"trifecta": [], "exacta": []}
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if line in ("3連単", "2連単"):
+            kind = "trifecta" if line == "3連単" else "exacta"
+
+            # デバッグ: 前後の行を出力して払戻金額の位置を確認
+            debug_start = max(0, i - 1)
+            debug_end = min(len(lines), i + 20)
+            print(f"  DEBUG {kind} lines[{debug_start}:{debug_end}]: {lines[debug_start:debug_end]}")
+
+            # 艇番と'-'を収集
+            combo_parts = []
+            j = i + 1
+            while j < len(lines) and len(combo_parts) < 10:
+                val = lines[j]
+                if val in {"1", "2", "3", "4", "5", "6", "-"}:
+                    combo_parts.append(val)
+                    j += 1
+                else:
+                    break
+
+            boat_nums = [p for p in combo_parts if p != "-"]
+            if len(boat_nums) >= 2:
+                combo = "-".join(boat_nums)
+
+                # 払戻金額: 100円以上の整数が出るまでスキップ
+                payout_yen = 0
+                while j < len(lines):
+                    try:
+                        candidate = int(lines[j].replace(",", ""))
+                        if candidate >= 100:
+                            payout_yen = candidate
+                            j += 1
+                            break
+                    except Exception:
+                        pass
+                    j += 1
+
+                print(f"  DEBUG {kind} combo={combo} payout_yen={payout_yen}")
+
+                payouts[kind].append({
+                    "combination": combo,
+                    "payout": payout_yen,
+                })
+
+            i = j
+            continue
+
+        i += 1
+
+    print(f"  boats={len(boats)} trifecta={payouts['trifecta'][:1]} exacta={payouts['exacta'][:1]}")
+
+    if not boats and not payouts["trifecta"]:
+        print(f"    -> パース失敗: boats=0, trifecta空 (HTML長={len(html)}文字)")
+        return None
+
+    return {
+        "race_date": race_date,
+        "race_stadium_number": int(jcd),
+        "race_number": int(rno),
+        "boats": boats,
+        "payouts": payouts,
+    }
+
+
+# ============================================================
 # 共通ユーティリティ
 # ============================================================
 
@@ -55,10 +148,6 @@ def daterange(start_date, end_date):
 
 
 def scrape_and_save(hd, race_date, venue, rno, record_no_race=True):
-    """
-    1レースをスクレイピングしてv2_resultsに保存する。
-    戻り値: "ok" | "no_race" | "failed"
-    """
     race_id = f"{hd}_{venue}_{rno:02d}"
     html, url = _fetch_race_result_html(hd, venue, rno)
 
@@ -66,7 +155,7 @@ def scrape_and_save(hd, race_date, venue, rno, record_no_race=True):
         print(f"    ❌ fetch失敗: {race_id}")
         return "failed"
 
-    row = _parse_race_result(html, race_date, venue, rno)
+    row = _parse_race_result_debug(html, race_date, venue, rno)
 
     if row is None:
         print(f"    ⬜ データなし確認: {race_id}")
@@ -97,8 +186,7 @@ def scrape_and_save(hd, race_date, venue, rno, record_no_race=True):
 
 def get_existing_race_ids_for_date(hd):
     prefix_start = f"{hd}_"
-    prefix_end = f"{hd}`"  # '_'(95)の次のASCII文字'`'(96)で範囲終端
-
+    prefix_end = f"{hd}`"
     url = (
         f"{SUPABASE_URL}/rest/v1/v2_results"
         f"?select=race_id"
@@ -120,7 +208,7 @@ def get_existing_race_ids_for_date(hd):
 def run_missing_check(start_date_str, end_date_str, sleep_sec=0.5, record_no_race=True):
     print("\n" + "=" * 50)
     print("【1】欠損チェック＆再取得")
-    print("期間:", start_date_str, "→", end_date_str)
+    print("期間:", start_date_str, "->", end_date_str)
     print("=" * 50)
 
     start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
@@ -134,7 +222,6 @@ def run_missing_check(start_date_str, end_date_str, sleep_sec=0.5, record_no_rac
         hd = d.strftime("%Y%m%d")
         race_date = d.strftime("%Y-%m-%d")
 
-        # 期待されるrace_id一覧
         expected = {
             f"{hd}_{v}_{r:02d}": (v, r)
             for v in TARGET_VENUES
@@ -180,7 +267,6 @@ def run_missing_check(start_date_str, end_date_str, sleep_sec=0.5, record_no_rac
 # ============================================================
 
 def get_zero_payout_race_ids():
-    """trifecta_payout_yen=0 かつ result_status='official' のrace_idを取得"""
     url = (
         f"{SUPABASE_URL}/rest/v1/v2_results"
         f"?select=race_id"
@@ -215,8 +301,6 @@ def run_zero_payout_fix(sleep_sec=0.5):
     failed = []
 
     for race_id in sorted(race_ids):
-        # race_idからhd・venue・rnoを分解
-        # 形式: 20260211_06_01
         parts = race_id.split("_")
         if len(parts) != 3:
             print(f"    ❌ race_id形式エラー: {race_id}")
@@ -252,7 +336,6 @@ def main():
     END_DATE = "2026-04-22"
     SLEEP_SEC = 0.5
 
-    # 【1】欠損チェック＆再取得
     run_missing_check(
         start_date_str=START_DATE,
         end_date_str=END_DATE,
@@ -260,10 +343,9 @@ def main():
         record_no_race=True,
     )
 
-    # 【2】払戻0円の修正
     run_zero_payout_fix(sleep_sec=SLEEP_SEC)
 
-    print("\n🎉 全修復処理完了！")
+    print("\n全修復処理完了！")
 
 
 if __name__ == "__main__":
