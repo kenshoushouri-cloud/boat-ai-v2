@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 
 “””
-結果データ修復スクリプト
-以下の2つをまとめて実行します:
+結果データ修復スクリプト
+以下の2つをまとめて実行します：
 
-【1】欠損チェック&再取得
+【1】欠損チェック＆再取得
 
 - 期間内の全race_idを生成してv2_resultsと比較
-- 欠損しているrace_idを再スクレイピング
+- 欠損しているrace_idを再スクレイピング
 - 取得成功 → 保存
-- 本当にデータなし → result_status=“no_race” で記録
+- 本当にデータなし → result_status=“no_race” で記録
 
 【2】払戻0円の修正
 
-- v2_resultsのtrifecta_payout_yen=0のレコードを再スクレイピング
-- 正しい払戻金額で上書き保存
+- v2_resultsのtrifecta_payout_yen=0のレコードを再スクレイピング
+- 正しい払戻金額で上書き保存
 
-実行タイミング:バックフィル完了後に実行してください
+実行タイミング：バックフィル完了後に実行してください
 “””
 
 import os
@@ -59,7 +59,7 @@ cur += timedelta(days=1)
 
 def scrape_and_save(hd, race_date, venue, rno, record_no_race=True):
 “””
-1レースをスクレイピングしてv2_resultsに保存する。
+1レースをスクレイピングしてv2_resultsに保存する。
 戻り値: “ok” | “no_race” | “failed”
 “””
 race_id = f”{hd}*{venue}*{rno:02d}”
@@ -73,7 +73,7 @@ if not html:
 row = _parse_race_result(html, race_date, venue, rno)
 
 if row is None:
-    print(f"    ⬜ データなし確認: {race_id}")
+    print(f"    ⬜ データなし確認: {race_id}")
     if record_no_race:
         upsert("v2_results", {
             "race_id": race_id,
@@ -97,13 +97,13 @@ else:
 
 # ============================================================
 
-# 【1】欠損チェック&再取得
+# 【1】欠損チェック＆再取得
 
 # ============================================================
 
 def get_existing_race_ids_for_date(hd):
 prefix_start = f”{hd}_”
-prefix_end = f”{hd}`"  # '_'(95)の次のASCII文字'`’(96)で範囲終端
+prefix_end = f”{hd}`"  # '_'(95)の次のASCII文字'`’(96)で範囲終端
 
 ```
 url = (
@@ -126,7 +126,7 @@ except Exception as e:
 
 def run_missing_check(start_date_str, end_date_str, sleep_sec=0.5, record_no_race=True):
 print(”\n” + “=” * 50)
-print(”【1】欠損チェック&再取得”)
+print(”【1】欠損チェック＆再取得”)
 print(“期間:”, start_date_str, “→”, end_date_str)
 print(”=” * 50)
 
@@ -218,7 +218,7 @@ race_ids = get_zero_payout_race_ids()
 print(f"対象件数: {len(race_ids)}件")
 
 if not race_ids:
-    print("✅ 払戻0円のレコードなし")
+    print("✅ 払戻0円のレコードなし")
     return
 
 ok = []
@@ -260,12 +260,12 @@ if failed:
 # ============================================================
 
 def main():
-START_DATE = “2025 6-01-01”
+START_DATE = “2025-03-13”
 END_DATE = “2026-04-22”
 SLEEP_SEC = 0.5
 
 ```
-# 【1】欠損チェック&再取得
+# 【1】欠損チェック＆再取得
 run_missing_check(
     start_date_str=START_DATE,
     end_date_str=END_DATE,
@@ -276,7 +276,7 @@ run_missing_check(
 # 【2】払戻0円の修正
 run_zero_payout_fix(sleep_sec=SLEEP_SEC)
 
-print("\n🎉 全修復処理完了!")
+print("\n🎉 全修復処理完了！")
 ```
 
 if **name** == “**main**”:
