@@ -248,7 +248,7 @@ def run_zero_payout_fix(sleep_sec=0.5):
 # ============================================================
 
 def main():
-    START_DATE = "2025-03-13"
+    START_DATE = "2026-01-01"
     END_DATE = "2026-04-22"
     SLEEP_SEC = 0.5
 
