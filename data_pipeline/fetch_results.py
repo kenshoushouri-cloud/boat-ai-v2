@@ -98,7 +98,7 @@ def _parse_race_result(html, race_date, jcd, rno):
                 payout_yen = 0
                 while j < len(lines):
                     try:
-                        candidate = int(lines[j].replace(",", ""))
+                        candidate = int(lines[j].replace(",", "").replace("¥", "").replace("￥", ""))
                         if candidate >= 100:
                             payout_yen = candidate
                             j += 1
