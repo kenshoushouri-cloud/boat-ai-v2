@@ -27,7 +27,7 @@ HEADERS = {
 
 
 # ============================================================
-# 払戻パース（デバッグログ付き）
+# 払戻パース（digits方式 + デバッグログ付き）
 # ============================================================
 
 def _parse_race_result_debug(html, race_date, jcd, rno):
@@ -76,12 +76,10 @@ def _parse_race_result_debug(html, race_date, jcd, rno):
         if line in ("3連単", "2連単"):
             kind = "trifecta" if line == "3連単" else "exacta"
 
-            # デバッグ: 前後の行を出力して払戻金額の位置を確認
             debug_start = max(0, i - 1)
             debug_end = min(len(lines), i + 20)
             print(f"  DEBUG {kind} lines[{debug_start}:{debug_end}]: {lines[debug_start:debug_end]}")
 
-            # 艇番と'-'を収集
             combo_parts = []
             j = i + 1
             while j < len(lines) and len(combo_parts) < 10:
@@ -96,11 +94,12 @@ def _parse_race_result_debug(html, race_date, jcd, rno):
             if len(boat_nums) >= 2:
                 combo = "-".join(boat_nums)
 
-                # 払戻金額: 100円以上の整数が出るまでスキップ
+                # digits方式: 数字以外を全て除去してから変換
                 payout_yen = 0
                 while j < len(lines):
                     try:
-                        candidate = int(lines[j].replace(",", ""))
+                        digits = "".join(c for c in lines[j] if c.isdigit())
+                        candidate = int(digits) if digits else 0
                         if candidate >= 100:
                             payout_yen = candidate
                             j += 1
