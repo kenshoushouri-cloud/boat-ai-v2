@@ -182,8 +182,8 @@ def run_missing_check(
 
 def main():
     run_missing_check(
-        start_date_str="2026-01-01",
-        end_date_str="2026-04-22",
+        start_date_str="2025-04-01",
+        end_date_str="2025-12-31",
         sleep_sec=0.5,
         record_no_race=True,
     )
