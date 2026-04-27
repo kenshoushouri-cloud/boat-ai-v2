@@ -343,7 +343,7 @@ def main():
     # 欠損チェック＆再取得
     run_missing_check(
         start_date_str="2025-04-01",
-        end_date_str="2026-04-22",
+        end_date_str="2026-04-25",
         sleep_sec=0.5,
         record_no_race=True,
     )
