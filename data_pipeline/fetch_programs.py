@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import requests
 import time
 from bs4 import BeautifulSoup
@@ -29,6 +30,53 @@ def _fetch_racelist_html(hd, jcd, rno):
         return None, url
 
 
+def _parse_fl_st(text):
+    """
+    'F0L00.19' -> (f_count=0, l_count=0, avg_st=0.19)
+    'F1L00.14' -> (f_count=1, l_count=0, avg_st=0.14)
+    """
+    f_count = 0
+    l_count = 0
+    avg_st = None
+    try:
+        m = re.search(r'F(\d+)L(\d+)([\d.]+)', text.replace(" ", ""))
+        if m:
+            f_count = int(m.group(1))
+            l_count = int(m.group(2))
+            avg_st = float(m.group(3))
+    except Exception:
+        pass
+    return f_count, l_count, avg_st
+
+
+def _parse_rate_pair(td):
+    """
+    tdから (勝率/No, 2連率) のペアを取得する
+    例: '4.4326.3639.09' -> [4.43, 26.36, 39.09] の先頭2つ
+    """
+    try:
+        texts = [t.strip() for t in td.stripped_strings]
+        if not texts:
+            return None, None
+        # 数値を全部抽出
+        nums = []
+        for t in texts:
+            # カンマ区切りや改行で複数入っている場合も対応
+            parts = re.findall(r'[\d]+\.[\d]+|[\d]+', t)
+            for p in parts:
+                try:
+                    nums.append(float(p))
+                except Exception:
+                    pass
+        if len(nums) >= 2:
+            return nums[0], nums[1]
+        elif len(nums) == 1:
+            return nums[0], None
+    except Exception:
+        pass
+    return None, None
+
+
 def _parse_racelist(html, hd, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
 
@@ -36,15 +84,10 @@ def _parse_racelist(html, hd, jcd, rno):
     if len(all_tables) < 2:
         return None
 
+    # TABLE[1] が出走表（ヘッダー3行 + 艇ごと4行）
     table = all_tables[1]
     all_trs = table.find_all("tr")
     data_trs = all_trs[3:]
-
-    # デバッグ: 最初の1艇分（4行）のtd内容を出力
-    if data_trs:
-        for row_i, tr in enumerate(data_trs[:4]):
-            tds = tr.find_all(["td", "th"])
-            print(f"  DEBUG row{row_i}: {[td.get_text(strip=True)[:20] for td in tds]}")
 
     boats = []
     i = 0
@@ -57,68 +100,83 @@ def _parse_racelist(html, hd, jcd, rno):
         tds = tr0.find_all(["td", "th"])
 
         try:
-            boat_no = int(tds[0].get_text(strip=True))
+            boat_no = int(tds[0].get_text(strip=True).translate(
+                str.maketrans("１２３４５６", "123456")
+            ))
             if boat_no not in range(1, 7):
                 i += 1
                 continue
 
-            # 登録番号・氏名
+            # tds[1]: 選手名（級・支部・年齢・体重も含まれる場合あり）
             racer_td = tds[1]
             texts = [t.strip() for t in racer_td.stripped_strings]
-            racer_no = None
             racer_name = ""
             for t in texts:
-                if t.isdigit() and len(t) == 4:
-                    racer_no = int(t)
-                elif len(t) <= 10 and not t.isdigit() and "/" not in t:
-                    if racer_name == "":
-                        racer_name = t
+                if len(t) >= 2 and not t.isdigit() and "/" not in t:
+                    racer_name = t
+                    break
 
-            # 全国勝率・2連率
-            national_win = None
-            national_p2 = None
+            # tds[2]: 登録番号
+            racer_no = None
             try:
-                nat_texts = [t.strip() for t in tds[3].stripped_strings]
-                if len(nat_texts) >= 1:
-                    national_win = float(nat_texts[0])
-                if len(nat_texts) >= 2:
-                    national_p2 = float(nat_texts[1])
+                reg_text = tds[2].get_text(strip=True)
+                m = re.search(r'\d{4}', reg_text)
+                if m:
+                    racer_no = int(m.group())
             except Exception:
                 pass
 
-            # 当地勝率・2連率
-            local_win = None
-            local_p2 = None
+            # tds[3]: F回数・L回数・平均ST (例: F0L00.19)
+            f_count = 0
+            l_count = 0
+            avg_st = None
             try:
-                loc_texts = [t.strip() for t in tds[4].stripped_strings]
-                if len(loc_texts) >= 1:
-                    local_win = float(loc_texts[0])
-                if len(loc_texts) >= 2:
-                    local_p2 = float(loc_texts[1])
+                fl_text = tds[3].get_text(strip=True)
+                f_count, l_count, avg_st = _parse_fl_st(fl_text)
             except Exception:
                 pass
 
-            # モーターNo・2連率
+            # tds[4]: 全国勝率・2連率
+            national_win, national_p2 = _parse_rate_pair(tds[4])
+
+            # tds[5]: 当地勝率・2連率
+            local_win, local_p2 = _parse_rate_pair(tds[5])
+
+            # tds[6]: モーターNo・2連率
             motor_no = None
             motor_p2 = None
             try:
-                mot_texts = [t.strip() for t in tds[5].stripped_strings]
-                if len(mot_texts) >= 1:
-                    motor_no = int(mot_texts[0])
-                if len(mot_texts) >= 2:
-                    motor_p2 = float(mot_texts[1])
+                mot_nums = []
+                for t in tds[6].stripped_strings:
+                    parts = re.findall(r'[\d]+\.[\d]+|[\d]+', t.strip())
+                    for p in parts:
+                        try:
+                            mot_nums.append(float(p))
+                        except Exception:
+                            pass
+                if len(mot_nums) >= 1:
+                    motor_no = int(mot_nums[0])
+                if len(mot_nums) >= 2:
+                    motor_p2 = mot_nums[1]
             except Exception:
                 pass
 
-            # ボートNo・2連率
+            # tds[7]: ボートNo・2連率
             boat_no2 = None
             boat_p2 = None
             try:
-                boa_texts = [t.strip() for t in tds[6].stripped_strings]
-                if len(boa_texts) >= 1:
-                    boat_no2 = int(boa_texts[0])
-                if len(boa_texts) >= 2:
-                    boat_p2 = float(boa_texts[1])
+                boa_nums = []
+                for t in tds[7].stripped_strings:
+                    parts = re.findall(r'[\d]+\.[\d]+|[\d]+', t.strip())
+                    for p in parts:
+                        try:
+                            boa_nums.append(float(p))
+                        except Exception:
+                            pass
+                if len(boa_nums) >= 1:
+                    boat_no2 = int(boa_nums[0])
+                if len(boa_nums) >= 2:
+                    boat_p2 = boa_nums[1]
             except Exception:
                 pass
 
@@ -139,12 +197,22 @@ def _parse_racelist(html, hd, jcd, rno):
                 "racer_local_win_rate": local_win,
                 "racer_local_place2_rate": local_p2,
                 "racer_tilt": None,
-                "racer_f_count": 0,
-                "racer_l_count": 0,
+                "racer_f_count": f_count,
+                "racer_l_count": l_count,
+                "racer_avg_st": avg_st,
             })
 
-        except Exception:
-            pass
+            print(
+                f"    PARSE: {boat_no} {racer_name} no={racer_no}"
+                f" nat={national_win}/{national_p2}"
+                f" loc={local_win}/{local_p2}"
+                f" motor={motor_no}/{motor_p2}"
+                f" boat={boat_no2}/{boat_p2}"
+                f" F{f_count}L{l_count} ST={avg_st}"
+            )
+
+        except Exception as e:
+            print(f"    PARSE ERROR boat_block i={i}: {e}")
 
         i += 4
 
@@ -244,6 +312,7 @@ def parse_entry_rows(row, target_date):
             "boat_place2_rate": boat.get("racer_boat_place2_rate"),
             "tilt": boat.get("racer_tilt"),
             "assumed_course": boat.get("racer_boat_number"),
+            "avg_st": boat.get("racer_avg_st"),
         }
         entries.append(entry)
     return entries
@@ -256,4 +325,6 @@ if __name__ == "__main__":
         print("RACE:", row["race_stadium_number"], row["race_number"])
         print("BOATS:", len(row["boats"]))
         for b in row["boats"]:
-            print(" ", b["racer_boat_number"], b["racer_name"], b["racer_national_win_rate"])
+            print(" ", b["racer_boat_number"], b["racer_name"],
+                  "nat=", b["racer_national_win_rate"],
+                  "motor=", b["racer_motor_number"], b["racer_motor_place2_rate"])
