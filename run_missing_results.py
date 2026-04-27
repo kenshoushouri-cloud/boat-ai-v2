@@ -329,7 +329,7 @@ def main():
     # 2025年データのバックフィル
     run_history_backfill(
         start_date_str="2025-04-01",
-        end_date_str="2025-12-31",
+        end_date_str="2026-04-25",
         sleep_sec=0.5,
         max_workers=3,
         max_retry=3,
