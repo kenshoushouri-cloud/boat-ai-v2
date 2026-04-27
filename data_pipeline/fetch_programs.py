@@ -31,6 +31,22 @@ def _fetch_racelist_html(hd, jcd, rno):
 
 def _parse_racelist(html, hd, jcd, rno):
     soup = BeautifulSoup(html, "html.parser")
+    all_tables = soup.find_all("table")
+    if len(all_tables) < 2:
+        return None
+
+    table = all_tables[1]
+    all_trs = table.find_all("tr")
+    data_trs = all_trs[3:]
+
+    # デバッグ: 最初の1艇分（4行）のtd内容を出力
+    if data_trs:
+        for row_i, tr in enumerate(data_trs[:4]):
+            tds = tr.find_all(["td", "th"])
+            print(f"  DEBUG row{row_i}: {[td.get_text(strip=True)[:20] for td in tds]}")
+
+def _parse_racelist(html, hd, jcd, rno):
+    soup = BeautifulSoup(html, "html.parser")
 
     all_tables = soup.find_all("table")
     if len(all_tables) < 2:
