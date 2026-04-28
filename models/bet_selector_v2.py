@@ -1,72 +1,82 @@
-# models/bet_selector_v2.py
-
+# -*- coding: utf-8 -*-
 from models.confidence_v2 import calc_confidence
 
-RACE_SCORE_THRESHOLD = 0.06
-TRIFECTA_THRESHOLD = 0.10
-TOP1_THRESHOLD = 0.020
-GAP_THRESHOLD = 0.003
+# ============================================================
+# パラメータ（バックテストで調整）
+# ============================================================
+
+# レーススコア足切り（低すぎるレースは見送り）
+RACE_SCORE_MIN = 0.08
+
+# EV（期待値）足切り: EV >= 1.0 で期待値プラス
+EV_MIN = 0.90
+
+# 最低オッズ: これ以下はトリガミリスクがある
+ODDS_MIN = 5.0
+
+# 1レース最大買い目数
+MAX_BETS = 5
+
+# 上位候補のスコア差閾値（1位と2位が接近しすぎていれば見送り）
+GAP_MIN = 0.002
 
 
-def select_bets(feature_rows):
+def select_bets(prediction_result, min_ev=EV_MIN, min_odds=ODDS_MIN, max_bets=MAX_BETS):
     """
-    戻り値:
-    {
-        "adopt": bool,
-        "type": "quinella" or "trifecta",
-        "bets": [(pattern, prob), ...],
-        "confidence": dict
+    prediction_result: predict_race() の戻り値
+
+    戻り値: list of {
+        ticket, prob, odds, ev
     }
+    空リスト = 見送り
     """
+    candidates = prediction_result.get("candidates", [])
+    race_score = prediction_result.get("race_score", 0.0)
 
-    conf = calc_confidence(feature_rows)
+    if not candidates:
+        return []
 
-    # 並び替え
-    rows = sorted(feature_rows, key=lambda x: x["total_score"], reverse=True)
+    conf = calc_confidence(prediction_result)
 
-    # 不採用条件
-    if conf["race_score"] < RACE_SCORE_THRESHOLD:
-        return {
-            "adopt": False,
-            "reason": "low_race_score",
-            "confidence": conf
-        }
+    # レーススコア足切り
+    if conf["race_score"] < RACE_SCORE_MIN:
+        print(f"  SKIP: race_score低 {conf['race_score']:.4f} < {RACE_SCORE_MIN}")
+        return []
 
-    top = rows[0]["lane"]
-    second = rows[1]["lane"]
-    third = rows[2]["lane"]
+    # 1位と2位の差が小さすぎる場合は見送り（混戦）
+    if conf["gap12"] < GAP_MIN:
+        print(f"  SKIP: gap12小 {conf['gap12']:.4f} < {GAP_MIN}")
+        return []
 
-    # =========================
-    # 3連単発動条件
-    # =========================
-    if (
-        conf["race_score"] >= TRIFECTA_THRESHOLD
-        and conf["top1"] >= TOP1_THRESHOLD
-        and conf["gap12"] >= GAP_THRESHOLD
-    ):
-        bets = [
-            (f"{top}-{second}-{third}", rows[0]["total_score"]),
-            (f"{top}-{second}-{rows[3]['lane']}", rows[1]["total_score"])
-        ]
+    # EV・オッズ条件を満たす買い目を抽出
+    bets = []
+    for c in candidates:
+        odds = c.get("odds")
+        ev = c.get("ev")
+        prob = c.get("probability", 0.0)
 
-        return {
-            "adopt": True,
-            "type": "trifecta",
-            "bets": bets,
-            "confidence": conf
-        }
+        if odds is None or ev is None:
+            continue
+        if odds < min_odds:
+            continue
+        if ev < min_ev:
+            continue
 
-    # =========================
-    # 基本:2連単
-    # =========================
-    bets = [
-        (f"{top}-{second}", rows[0]["total_score"]),
-        (f"{top}-{third}", rows[1]["total_score"])
-    ]
+        bets.append({
+            "ticket": c["ticket"],
+            "prob": prob,
+            "odds": odds,
+            "ev": ev,
+        })
 
-    return {
-        "adopt": True,
-        "type": "quinella",
-        "bets": bets,
-        "confidence": conf
-    }
+        if len(bets) >= max_bets:
+            break
+
+    if not bets:
+        print(f"  SKIP: EV/オッズ条件を満たす買い目なし")
+        return []
+
+    # EVの高い順にソート
+    bets.sort(key=lambda x: x["ev"], reverse=True)
+
+    return bets
