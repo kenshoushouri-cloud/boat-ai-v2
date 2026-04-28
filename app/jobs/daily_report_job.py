@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
-from db.client import select, upsert
+import urllib.parse
+import requests as http_requests
+from db.client import upsert
 from notifications.formatter_v2 import format_daily_report_message
 from notifications.notifier import send_line_message
-from config.settings import MODEL_VERSION
+from config.settings import MODEL_VERSION, SUPABASE_URL, SUPABASE_KEY
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+}
 
 
 def _safe_int(v, default=0):
@@ -24,72 +32,75 @@ def _safe_bool(v):
     return False
 
 
+def _fetch_predictions_for_date(race_date_compact):
+    """対象日のv2_predictionsをrace_idプレフィックスで取得"""
+    prefix_start = f"{race_date_compact}_"
+    prefix_end = f"{race_date_compact}`"
+    url = (
+        f"{SUPABASE_URL}/rest/v1/v2_predictions"
+        f"?select=*"
+        f"&race_id=gte.{urllib.parse.quote(prefix_start)}"
+        f"&race_id=lt.{urllib.parse.quote(prefix_end)}"
+        f"&limit=10000"
+    )
+    try:
+        res = http_requests.get(url, headers=HEADERS, timeout=15)
+        if not res.ok:
+            print(f"❌ predictions取得失敗: {res.status_code}")
+            return []
+        return res.json()
+    except Exception as e:
+        print(f"❌ predictions例外: {e}")
+        return []
+
+
+def _fetch_results_for_date(race_date_compact):
+    """対象日のv2_resultsをrace_idプレフィックスで取得"""
+    prefix_start = f"{race_date_compact}_"
+    prefix_end = f"{race_date_compact}`"
+    url = (
+        f"{SUPABASE_URL}/rest/v1/v2_results"
+        f"?select=race_id,trifecta_ticket,trifecta_payout_yen"
+        f"&race_id=gte.{urllib.parse.quote(prefix_start)}"
+        f"&race_id=lt.{urllib.parse.quote(prefix_end)}"
+        f"&limit=10000"
+    )
+    try:
+        res = http_requests.get(url, headers=HEADERS, timeout=15)
+        if not res.ok:
+            print(f"❌ results取得失敗: {res.status_code}")
+            return []
+        return res.json()
+    except Exception as e:
+        print(f"❌ results例外: {e}")
+        return []
+
+
 def build_daily_report(target_date):
     race_date_compact = target_date.replace("-", "")
 
-    all_predictions = select("v2_predictions")
-    all_tickets = select("v2_prediction_tickets")
-    all_results = select("v2_results")
+    all_predictions = _fetch_predictions_for_date(race_date_compact)
+    all_results = _fetch_results_for_date(race_date_compact)
 
-    # 対象日だけ拾う
-    predictions = []
-    for p in all_predictions:
-        race_id = str(p.get("race_id", ""))
-        if not race_id.startswith(race_date_compact + "_"):
-            continue
-        predictions.append(p)
+    # 結果をrace_idでマップ化
+    results_map = {r["race_id"]: r for r in all_results}
 
-    # 同一 race_id が複数ある場合、buy_flag=True 優先、次に id 最大
-    by_race = {}
-    for p in predictions:
-        race_id = str(p.get("race_id", ""))
-        current = by_race.get(race_id)
+    # buy_flag=True の買い目のみ対象
+    bought = [p for p in all_predictions if _safe_bool(p.get("buy_flag")) and p.get("ticket")]
 
-        if current is None:
-            by_race[race_id] = p
-            continue
+    predicted_race_ids = set(p["race_id"] for p in bought)
+    predicted_races = len(predicted_race_ids)
+    total_points = len(bought)
+    total_stake_yen = total_points * 100
 
-        current_buy = _safe_bool(current.get("buy_flag"))
-        new_buy = _safe_bool(p.get("buy_flag"))
-
-        if new_buy and not current_buy:
-            by_race[race_id] = p
-            continue
-
-        if new_buy == current_buy:
-            if _safe_int(p.get("id"), 0) > _safe_int(current.get("id"), 0):
-                by_race[race_id] = p
-
-    predictions = list(by_race.values())
-
-    # buy_flag=True のものを「予想レース」とみなす
-    adopted_predictions = [p for p in predictions if _safe_bool(p.get("buy_flag"))]
-    adopted_prediction_ids = set(p.get("id") for p in adopted_predictions)
-
-    tickets = [
-        t for t in all_tickets
-        if t.get("prediction_id") in adopted_prediction_ids
-    ]
-
-    results_map = {}
-    for r in all_results:
-        race_id = str(r.get("race_id", ""))
-        if race_id.startswith(race_date_compact + "_"):
-            results_map[race_id] = r
-
-    predicted_races = len(adopted_predictions)
-    total_points = len(tickets)
-    total_stake_yen = 0
     total_payout_yen = 0
     hit_races_set = set()
     trigami_count = 0
     hit_details = []
 
-    for t in tickets:
-        stake_yen = _safe_int(t.get("recommended_bet_yen"), 100)
-        total_stake_yen += stake_yen
-
-        race_id = t.get("race_id")
+    for p in bought:
+        race_id = p.get("race_id")
+        ticket = p.get("ticket")
         actual = results_map.get(race_id)
         if not actual:
             continue
@@ -97,17 +108,17 @@ def build_daily_report(target_date):
         actual_ticket = actual.get("trifecta_ticket")
         payout_yen = _safe_int(actual.get("trifecta_payout_yen"), 0)
 
-        if t.get("ticket") == actual_ticket:
+        if ticket == actual_ticket:
             total_payout_yen += payout_yen
             hit_races_set.add(race_id)
 
-            if payout_yen < stake_yen:
+            if payout_yen < 100:
                 trigami_count += 1
 
             hit_details.append({
                 "race_id": race_id,
-                "ticket": t.get("ticket"),
-                "payout_yen": payout_yen
+                "ticket": ticket,
+                "payout_yen": payout_yen,
             })
 
     hit_races = len(hit_races_set)
@@ -115,7 +126,7 @@ def build_daily_report(target_date):
     roi = (total_payout_yen / total_stake_yen) if total_stake_yen > 0 else 0
     trigami_rate = (trigami_count / len(hit_details)) if hit_details else 0
 
-    report = {
+    return {
         "date": target_date,
         "predicted_races": predicted_races,
         "hit_races": hit_races,
@@ -126,18 +137,12 @@ def build_daily_report(target_date):
         "roi_pct": round(roi * 100, 1),
         "trigami_rate_pct": round(trigami_rate * 100, 1),
         "hit_details": hit_details,
-        "prediction_count_all": len(predictions),
-        "prediction_count_buy": len(adopted_predictions),
     }
-
-    return report
 
 
 def save_daily_stats(report):
     hit_count = len(report["hit_details"])
-    trigami_bets = 0
-    if hit_count > 0:
-        trigami_bets = int(round(report["trigami_rate_pct"] * hit_count / 100.0))
+    trigami_bets = int(round(report["trigami_rate_pct"] * hit_count / 100.0)) if hit_count else 0
 
     upsert("v2_daily_stats", {
         "stat_date": report["date"],
@@ -154,20 +159,19 @@ def save_daily_stats(report):
         "hit_rate": report["hit_rate_pct"] / 100.0,
         "trigami_rate": report["trigami_rate_pct"] / 100.0,
         "avg_payout_yen": (report["total_payout_yen"] / hit_count) if hit_count else 0,
-        "note": f"daily report generated / all={report['prediction_count_all']} buy={report['prediction_count_buy']}"
-    }, on_conflict=["stat_date"])
+    }, on_conflict="stat_date")
 
 
 def run_daily_report_job(target_date):
-    print("=== 前日レポートジョブ開始 ===")
+    print("=== 前日レポートジョブ開始 ===")
 
     report = build_daily_report(target_date)
-    print("集計確認:", report)
+    print("集計:", report)
+
+    save_daily_stats(report)
 
     msg = format_daily_report_message(report, model_version=MODEL_VERSION)
     print(msg)
-
-    save_daily_stats(report)
 
     try:
         line_res = send_line_message(msg)
