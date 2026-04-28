@@ -16,7 +16,6 @@ from datetime import datetime, timedelta
 
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
-from betting.bet_selector_v2 import select_bets
 from models.risk_manager import judge_race_adoption
 from backtest.scenario import detect_scenario_type
 from db.client import upsert
@@ -29,6 +28,14 @@ HEADERS = {
 }
 
 TARGET_VENUES = ["01", "06", "12", "18", "24"]
+
+# ============================================================
+# バックテスト用パラメータ
+# 展示データなしの過去データでは通常より閾値を下げる
+# ============================================================
+BT_TRIFECTA_RACE_SCORE = 0.10   # 通常0.20 → 下げる
+BT_EXACTA_TOP1_MIN = 0.040      # 通常0.060 → 下げる
+BT_MAX_BETS = 2
 
 
 # ============================================================
@@ -78,6 +85,56 @@ def _daterange(start_str, end_str):
 
 
 # ============================================================
+# バックテスト用買い目選択
+# ============================================================
+
+def _select_bets_backtest(prediction_result):
+    """
+    展示データなし環境用の緩い閾値で買い目を選択する
+    """
+    candidates = prediction_result.get("candidates", [])
+    exacta_candidates = prediction_result.get("exacta_candidates", [])
+    race_score = prediction_result.get("race_score", 0.0)
+
+    if not candidates or not exacta_candidates:
+        return []
+
+    exacta_top1 = exacta_candidates[0].get("probability", 0.0)
+
+    # 3連単条件
+    if (
+        race_score >= BT_TRIFECTA_RACE_SCORE
+        and exacta_top1 >= BT_EXACTA_TOP1_MIN
+    ):
+        top = candidates[0]
+        bets = [{
+            "ticket": top["ticket"],
+            "prob": top.get("probability", 0.0),
+            "odds": top.get("odds"),
+            "ev": top.get("ev"),
+            "bet_type": "trifecta",
+        }]
+
+        # 2点目: 1着同じで2着違い
+        top_first = top["ticket"].split("-")[0]
+        for c in candidates[1:]:
+            first = c["ticket"].split("-")[0]
+            if first == top_first:
+                bets.append({
+                    "ticket": c["ticket"],
+                    "prob": c.get("probability", 0.0),
+                    "odds": c.get("odds"),
+                    "ev": c.get("ev"),
+                    "bet_type": "trifecta",
+                })
+                break
+
+        return bets[:BT_MAX_BETS]
+
+    return []
+
+
+# ============================================================
 # 1レースのバックテスト
 # ============================================================
 
@@ -102,8 +159,10 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
         print(f"  predict error: {race_id} {e}")
         return None
 
-    bets = select_bets(prediction_result)
-    adopt, reason = judge_race_adoption(context, prediction_result, bets)
+    bets = _select_bets_backtest(prediction_result)
+    adopt = len(bets) > 0
+    reason = None if adopt else "閾値未達"
+
     scenario = detect_scenario_type(context, prediction_result)
 
     actual = _fetch_result(race_id)
@@ -117,7 +176,6 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
     if result_status != "official":
         return None
 
-    # 集計
     stake_yen = len(bets) * 100 if adopt else 0
     payout_yen = 0
     hit = False
@@ -138,7 +196,6 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
     top1_prob = candidates[0].get("probability", 0) if candidates else 0
     top2_prob = candidates[1].get("probability", 0) if len(candidates) >= 2 else 0
 
-    # v2_backtest_races のカラムに合わせたデータ
     record = {
         "run_id": run_id,
         "race_id": race_id,
@@ -148,7 +205,7 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
         "session_type": session_type,
         "scenario_type": scenario,
         "buy_flag": adopt,
-        "skip_reason": reason if not adopt else None,
+        "skip_reason": reason,
         "predicted_ticket_count": len(bets) if adopt else 0,
         "winning_ticket": actual_ticket,
         "stake_yen": stake_yen,
@@ -187,7 +244,6 @@ def _summarize(results, run_id, start_date, end_date):
     hit_rate = (len(hits) / adopted_races * 100) if adopted_races > 0 else 0.0
     trigami_rate = (len(trigamis) / len(hits) * 100) if hits else 0.0
 
-    # シナリオ別集計
     scenario_stats = {}
     for r in adopted:
         sc = r["scenario_type"]
@@ -218,7 +274,6 @@ def _summarize(results, run_id, start_date, end_date):
         sc_hit = (s["hit"] / s["count"] * 100) if s["count"] > 0 else 0
         print(f"  {sc}: {s['count']}レース 的中{sc_hit:.0f}% ROI{sc_roi:.0f}%")
 
-    # v2_backtest_runs のカラムに合わせたデータ
     summary = {
         "run_id": run_id,
         "model_version": MODEL_VERSION,
@@ -286,6 +341,6 @@ def run_backtest(start_date, end_date, run_id=None):
 
 if __name__ == "__main__":
     run_backtest(
-        start_date="2025-04-01",
-        end_date="2025-06-30",
+        start_date="2026-04-20",
+        end_date="2026-04-27",
     )
