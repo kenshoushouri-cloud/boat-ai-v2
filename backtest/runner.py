@@ -35,11 +35,10 @@ TARGET_VENUES = ["01", "06", "12", "18", "24"]
 # データ取得
 # ============================================================
 
-def _fetch_race_ids_for_date(race_date):
-    """対象日の全race_idを取得"""
+def _fetch_race_list_for_date(race_date):
     url = (
         f"{SUPABASE_URL}/rest/v1/v2_races"
-        f"?select=race_id,venue_id,race_no"
+        f"?select=race_id,venue_id,race_no,session_type"
         f"&race_date=eq.{race_date}"
         f"&limit=1000"
     )
@@ -53,7 +52,6 @@ def _fetch_race_ids_for_date(race_date):
 
 
 def _fetch_result(race_id):
-    """v2_resultsから結果を取得"""
     url = (
         f"{SUPABASE_URL}/rest/v1/v2_results"
         f"?select=trifecta_ticket,trifecta_payout_yen,result_status"
@@ -83,10 +81,9 @@ def _daterange(start_str, end_str):
 # 1レースのバックテスト
 # ============================================================
 
-def _backtest_one_race(race_date, venue_id, race_no, run_id):
+def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
     race_id = f"{race_date.replace('-', '')}_{venue_id}_{int(race_no):02d}"
 
-    # コンテキスト構築
     context = load_race_context(venue_id, race_no, race_date)
     if not context:
         return None
@@ -99,21 +96,16 @@ def _backtest_one_race(race_date, venue_id, race_no, run_id):
     if not odds:
         return None
 
-    # 予測
     try:
         prediction_result = predict_race(context)
     except Exception as e:
         print(f"  predict error: {race_id} {e}")
         return None
 
-    # 買い目選択
     bets = select_bets(prediction_result)
     adopt, reason = judge_race_adoption(context, prediction_result, bets)
-
-    # シナリオ判定
     scenario = detect_scenario_type(context, prediction_result)
 
-    # 実績取得
     actual = _fetch_result(race_id)
     if not actual:
         return None
@@ -125,7 +117,7 @@ def _backtest_one_race(race_date, venue_id, race_no, run_id):
     if result_status != "official":
         return None
 
-    # 結果集計
+    # 集計
     stake_yen = len(bets) * 100 if adopt else 0
     payout_yen = 0
     hit = False
@@ -142,35 +134,39 @@ def _backtest_one_race(race_date, venue_id, race_no, run_id):
 
     profit = payout_yen - stake_yen
 
-    result = {
+    candidates = prediction_result.get("candidates", [])
+    top1_prob = candidates[0].get("probability", 0) if candidates else 0
+    top2_prob = candidates[1].get("probability", 0) if len(candidates) >= 2 else 0
+
+    # v2_backtest_races のカラムに合わせたデータ
+    record = {
         "run_id": run_id,
         "race_id": race_id,
-        "venue_id": venue_id,
-        "race_no": race_no,
         "race_date": race_date,
-        "model_version": MODEL_VERSION,
-        "scenario": scenario,
-        "adopted": adopt,
+        "race_no": race_no,
+        "venue_id": venue_id,
+        "session_type": session_type,
+        "scenario_type": scenario,
+        "buy_flag": adopt,
         "skip_reason": reason if not adopt else None,
-        "bet_count": len(bets) if adopt else 0,
+        "predicted_ticket_count": len(bets) if adopt else 0,
+        "winning_ticket": actual_ticket,
         "stake_yen": stake_yen,
-        "actual_ticket": actual_ticket,
-        "actual_payout_yen": actual_payout,
-        "hit": hit,
         "payout_yen": payout_yen,
+        "hit_flag": hit,
         "profit_yen": profit,
         "trigami": trigami,
         "race_score": prediction_result.get("race_score", 0.0),
         "top1_ticket": bets[0]["ticket"] if bets else None,
-        "top1_prob": bets[0]["prob"] if bets else None,
-        "top1_odds": bets[0]["odds"] if bets else None,
-        "top1_ev": bets[0]["ev"] if bets else None,
+        "top1_prob": top1_prob,
+        "top2_prob": top2_prob,
+        "prob_gap": round(top1_prob - top2_prob, 6),
+        "max_ev": bets[0].get("ev") if bets else None,
+        "top1_odds": bets[0].get("odds") if bets else None,
     }
 
-    # DB保存
-    upsert("v2_backtest_races", result, on_conflict="race_id,run_id")
-
-    return result
+    upsert("v2_backtest_races", record, on_conflict="race_id,run_id")
+    return record
 
 
 # ============================================================
@@ -178,8 +174,8 @@ def _backtest_one_race(race_date, venue_id, race_no, run_id):
 # ============================================================
 
 def _summarize(results, run_id, start_date, end_date):
-    adopted = [r for r in results if r["adopted"]]
-    hits = [r for r in adopted if r["hit"]]
+    adopted = [r for r in results if r["buy_flag"]]
+    hits = [r for r in adopted if r["hit_flag"]]
     trigamis = [r for r in hits if r["trigami"]]
 
     total_races = len(results)
@@ -194,13 +190,13 @@ def _summarize(results, run_id, start_date, end_date):
     # シナリオ別集計
     scenario_stats = {}
     for r in adopted:
-        sc = r["scenario"]
+        sc = r["scenario_type"]
         if sc not in scenario_stats:
             scenario_stats[sc] = {"count": 0, "hit": 0, "stake": 0, "payout": 0}
         scenario_stats[sc]["count"] += 1
         scenario_stats[sc]["stake"] += r["stake_yen"]
         scenario_stats[sc]["payout"] += r["payout_yen"]
-        if r["hit"]:
+        if r["hit_flag"]:
             scenario_stats[sc]["hit"] += 1
 
     print("\n" + "=" * 50)
@@ -222,11 +218,12 @@ def _summarize(results, run_id, start_date, end_date):
         sc_hit = (s["hit"] / s["count"] * 100) if s["count"] > 0 else 0
         print(f"  {sc}: {s['count']}レース 的中{sc_hit:.0f}% ROI{sc_roi:.0f}%")
 
+    # v2_backtest_runs のカラムに合わせたデータ
     summary = {
         "run_id": run_id,
         "model_version": MODEL_VERSION,
-        "start_date": start_date,
-        "end_date": end_date,
+        "target_start_date": start_date,
+        "target_end_date": end_date,
         "total_races": total_races,
         "adopted_races": adopted_races,
         "hit_races": len(hits),
@@ -237,6 +234,7 @@ def _summarize(results, run_id, start_date, end_date):
         "roi": round(roi, 2),
         "trigami_rate": round(trigami_rate, 2),
         "scenario_stats": str(scenario_stats),
+        "note": f"backtest run_id={run_id}",
     }
 
     upsert("v2_backtest_runs", summary, on_conflict="run_id")
@@ -258,7 +256,7 @@ def run_backtest(start_date, end_date, run_id=None):
     all_results = []
 
     for race_date in _daterange(start_date, end_date):
-        races = _fetch_race_ids_for_date(race_date)
+        races = _fetch_race_list_for_date(race_date)
         if not races:
             continue
 
@@ -269,11 +267,14 @@ def run_backtest(start_date, end_date, run_id=None):
             if venue_id not in TARGET_VENUES:
                 continue
             race_no = r.get("race_no")
+            session_type = r.get("session_type", "")
 
-            result = _backtest_one_race(race_date, venue_id, race_no, run_id)
+            result = _backtest_one_race(
+                race_date, venue_id, race_no, session_type, run_id
+            )
             if result:
                 all_results.append(result)
-                status = "HIT" if result["hit"] else ("採用" if result["adopted"] else "見送")
+                status = "HIT" if result["hit_flag"] else ("採用" if result["buy_flag"] else "見送")
                 print(f"  {result['race_id']} {status} profit={result['profit_yen']:+d}円")
 
     if not all_results:
