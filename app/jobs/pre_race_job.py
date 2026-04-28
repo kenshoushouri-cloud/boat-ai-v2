@@ -5,7 +5,7 @@ import requests as http_requests
 
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
-from betting.bet_selector_v2 import select_bets
+from betting.bet_selector_ev import select_bets_ev
 from models.risk_manager import judge_race_adoption
 from notifications.formatter_v2 import format_prediction_message
 from notifications.notifier import send_line_message
@@ -23,9 +23,6 @@ MINUTES_BEFORE_RACE = 30
 
 
 def _get_upcoming_races(race_date):
-    """
-    締切時刻がNow+5分〜Now+MINUTES_BEFORE_RACE分以内のレースを取得
-    """
     now_jst = datetime.utcnow() + timedelta(hours=9)
     window_start = now_jst + timedelta(minutes=5)
     window_end = now_jst + timedelta(minutes=MINUTES_BEFORE_RACE)
@@ -50,7 +47,6 @@ def _get_upcoming_races(race_date):
 
 
 def _already_notified(race_id):
-    """直前通知済みかチェック"""
     url = (
         f"{SUPABASE_URL}/rest/v1/v2_notifications"
         f"?race_id=eq.{urllib.parse.quote(race_id)}"
@@ -78,18 +74,15 @@ def run_pre_race_job(race_date):
         venue_id = r.get("venue_id")
         race_no = r.get("race_no")
 
-        # 通知済みならスキップ
         if _already_notified(race_id):
             print(f"  skip(通知済み): {race_id}")
             continue
 
-        # 最新オッズを取得してコンテキスト構築
         context = load_race_context(venue_id, race_no, race_date)
         if not context:
             print(f"  contextなし: {race_id}")
             continue
 
-        # オッズが入っていない場合はスキップ
         if not context.get("odds"):
             print(f"  オッズなし: {race_id}")
             continue
@@ -100,7 +93,8 @@ def run_pre_race_job(race_date):
             print(f"  predict error: {race_id} {e}")
             continue
 
-        bets = select_bets(prediction_result)
+        # EV基準で買い目選択
+        bets = select_bets_ev(prediction_result)
         adopt, reason = judge_race_adoption(context, prediction_result, bets)
 
         if not adopt:
@@ -115,7 +109,6 @@ def run_pre_race_job(race_date):
             }, on_conflict="race_id,notification_type")
             continue
 
-        # 買い目メッセージ送信
         msg = format_prediction_message(
             context,
             bets,
@@ -125,7 +118,6 @@ def run_pre_race_job(race_date):
         res = send_line_message(msg)
         print(f"  LINE送信: {race_id} {res}")
 
-        # 通知ログ保存
         upsert("v2_notifications", {
             "notification_type": "pre_race",
             "target_date": race_date,
@@ -136,7 +128,6 @@ def run_pre_race_job(race_date):
             "line_response": res.get("text"),
         }, on_conflict="race_id,notification_type")
 
-        # 予想保存
         for rank, bet in enumerate(bets, 1):
             upsert("v2_predictions", {
                 "race_id": race_id,
@@ -150,4 +141,4 @@ def run_pre_race_job(race_date):
                 "expected_value": bet.get("ev"),
                 "recommended_bet_yen": 100,
                 "notification_type": "pre_race",
-            }, on_conflict="race_id,model_version")
+            }, on_conflict="race_id,model_version,ticket")
