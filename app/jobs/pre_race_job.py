@@ -4,7 +4,6 @@ import urllib.parse
 import requests as http_requests
 
 from data_pipeline.load_race import load_race_context
-from data_pipeline.fetch_odds import fetch_odds_trifecta
 from models.predictor_v2 import predict_race
 from betting.bet_selector_v2 import select_bets
 from models.risk_manager import judge_race_adoption
@@ -113,7 +112,7 @@ def run_pre_race_job(race_date):
                 "venue_id": venue_id,
                 "message_body": f"見送り: {reason}",
                 "delivery_status": "skipped",
-            }, on_conflict=["id"])
+            }, on_conflict="race_id,notification_type")
             continue
 
         # 買い目メッセージ送信
@@ -135,7 +134,7 @@ def run_pre_race_job(race_date):
             "message_body": msg,
             "delivery_status": "sent" if res.get("ok") else "failed",
             "line_response": res.get("text"),
-        }, on_conflict=["id"])
+        }, on_conflict="race_id,notification_type")
 
         # 予想保存
         for rank, bet in enumerate(bets, 1):
@@ -151,4 +150,4 @@ def run_pre_race_job(race_date):
                 "expected_value": bet.get("ev"),
                 "recommended_bet_yen": 100,
                 "notification_type": "pre_race",
-            }, on_conflict=["race_id", "model_version"])
+            }, on_conflict="race_id,model_version")
