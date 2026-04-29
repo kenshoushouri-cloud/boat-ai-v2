@@ -140,7 +140,8 @@ def _select_bets_backtest(prediction_result):
 
 def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
     race_id = f"{race_date.replace('-', '')}_{venue_id}_{int(race_no):02d}"
-
+    race_id = f"{race_date.replace('-', '')}_{venue_id}_{int(race_no):02d}"
+    
     context = load_race_context(venue_id, race_no, race_date)
     if not context:
         return None
