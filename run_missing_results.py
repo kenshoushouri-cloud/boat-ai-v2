@@ -328,10 +328,10 @@ def main():
 
     # 2025年データのバックフィル
     run_history_backfill(
-        start_date_str="2026-04-25",
+        start_date_str="2025-04-01",
         end_date_str="2026-04-29",
         sleep_sec=0.5,
-        max_workers=3,
+        max_workers=5,
         max_retry=3,
         retry_wait_sec=10.0,
         do_race=True,
@@ -342,7 +342,7 @@ def main():
 
     # 欠損チェック＆再取得
     run_missing_check(
-        start_date_str="2026-04-25",
+        start_date_str="2025-04-01",
         end_date_str="2026-04-29",
         sleep_sec=0.5,
         record_no_race=True,
