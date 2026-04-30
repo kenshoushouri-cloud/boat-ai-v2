@@ -331,7 +331,7 @@ def main():
         start_date_str="2025-04-01",
         end_date_str="2026-04-29",
         sleep_sec=0.5,
-        max_workers=4,
+        max_workers=2,
         max_retry=3,
         retry_wait_sec=10.0,
         do_race=True,
