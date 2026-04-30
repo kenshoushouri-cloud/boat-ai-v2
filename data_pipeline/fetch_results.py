@@ -4,7 +4,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-TARGET_VENUES = ["01", "06", "12", "18", "24"]
+TARGET_VENUES = ["01", "08", "12", "19", "24"]
 RACE_NUMBERS = range(1, 13)
 
 
