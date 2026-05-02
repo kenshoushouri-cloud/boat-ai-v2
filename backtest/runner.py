@@ -342,6 +342,6 @@ def run_backtest(start_date, end_date, run_id=None):
 
 if __name__ == "__main__":
     run_backtest(
-        start_date="2026-04-20",
-        end_date="2026-04-27",
+        start_date="2025-03-13",
+        end_date="2026-04-30",
     )
