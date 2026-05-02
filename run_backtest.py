@@ -3,19 +3,34 @@ from backtest.runner import run_backtest
 
 
 def main():
-    summary = run_backtest(
-    start_date="2025-03-13",
-    end_date="2026-04-30",
-    run_id="v2.0.0_threshold_015",
-    )
+    start = "2025-03-13"
+    end = "2026-04-30"
 
-    if summary:
-        print("\n=== 最終サマリー ===")
-        print(f"採用レース: {summary['adopted_races']}")
-        print(f"的中率:     {summary['hit_rate']:.1f}%")
-        print(f"回収率:     {summary['roi']:.1f}%")
-        print(f"損益:       {summary['profit_yen']:+,}円")
-        print(f"トリガミ率: {summary['trigami_rate']:.1f}%")
+    # 安定モード
+    print("\n" + "=" * 60)
+    print("安定モード バックテスト")
+    print("=" * 60)
+    stable = run_backtest(start_date=start, end_date=end, mode="stable")
+
+    if stable:
+        print("\n=== 安定モード サマリー ===")
+        print(f"採用レース: {stable['adopted_races']}")
+        print(f"的中率:     {stable['hit_rate']:.1f}%")
+        print(f"回収率:     {stable['roi']:.1f}%")
+        print(f"損益:       {stable['profit_yen']:+,}円")
+
+    # 馬王モード
+    print("\n" + "=" * 60)
+    print("馬王モード バックテスト")
+    print("=" * 60)
+    ana = run_backtest(start_date=start, end_date=end, mode="ana")
+
+    if ana:
+        print("\n=== 馬王モード サマリー ===")
+        print(f"採用レース: {ana['adopted_races']}")
+        print(f"的中率:     {ana['hit_rate']:.1f}%")
+        print(f"回収率:     {ana['roi']:.1f}%")
+        print(f"損益:       {ana['profit_yen']:+,}円")
 
 
 if __name__ == "__main__":
