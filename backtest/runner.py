@@ -2,12 +2,14 @@
 """
 バックテストランナー
 
-過去データ（v2_races・v2_race_entries・v2_odds_trifecta・v2_results）を使って
-予測モデルの精度を検証する。
+2モード対応:
+- stable: 安定モード（1日最大7点）
+- ana:    馬王モード・穴狙い（1日最大5点）
 
 使い方:
     from backtest.runner import run_backtest
-    run_backtest("2025-03-13", "2026-04-30")
+    run_backtest("2025-03-13", "2026-04-30", mode="stable")
+    run_backtest("2025-03-13", "2026-04-30", mode="ana")
 """
 
 import urllib.parse
@@ -16,7 +18,6 @@ from datetime import datetime, timedelta
 
 from data_pipeline.load_race import load_race_context
 from models.predictor_v2 import predict_race
-from models.risk_manager import judge_race_adoption
 from backtest.scenario import detect_scenario_type
 from db.client import upsert
 from config.settings import SUPABASE_URL, SUPABASE_KEY, MODEL_VERSION
@@ -30,12 +31,27 @@ HEADERS = {
 TARGET_VENUES = ["01", "06", "12", "18", "24"]
 
 # ============================================================
-# バックテスト用パラメータ
-# 展示データなしの過去データでは通常より閾値を下げる
+# モード別パラメータ
 # ============================================================
-BT_TRIFECTA_RACE_SCORE = 0.15  # 0.10 → 0.15
-BT_EXACTA_TOP1_MIN = 0.050     # 0.040 → 0.050
-BT_MAX_BETS = 2
+
+MODE_PARAMS = {
+    "stable": {
+        "race_score_min": 0.18,     # レーススコア足切り
+        "exacta_top1_min": 0.055,   # 2連単1位確率の下限
+        "max_bets_per_race": 2,     # 1レース最大買い目
+        "max_points_per_day": 7,    # 1日最大点数
+        "odds_min": None,           # オッズ下限なし（朝時点ではオッズ未確定）
+        "description": "安定モード",
+    },
+    "ana": {
+        "race_score_min": 0.12,     # 緩め（穴狙いなのでスコアより確率重視）
+        "exacta_top1_min": 0.040,
+        "max_bets_per_race": 1,     # 1点勝負
+        "max_points_per_day": 5,    # 1日最大5点
+        "odds_min": 15.0,           # 15倍以上の穴のみ
+        "description": "馬王モード（穴狙い）",
+    },
+}
 
 
 # ============================================================
@@ -85,13 +101,10 @@ def _daterange(start_str, end_str):
 
 
 # ============================================================
-# バックテスト用買い目選択
+# モード別買い目選択
 # ============================================================
 
-def _select_bets_backtest(prediction_result):
-    """
-    展示データなし環境用の緩い閾値で買い目を選択する
-    """
+def _select_bets(prediction_result, params):
     candidates = prediction_result.get("candidates", [])
     exacta_candidates = prediction_result.get("exacta_candidates", [])
     race_score = prediction_result.get("race_score", 0.0)
@@ -101,21 +114,28 @@ def _select_bets_backtest(prediction_result):
 
     exacta_top1 = exacta_candidates[0].get("probability", 0.0)
 
-    # 3連単条件
-    if (
-        race_score >= BT_TRIFECTA_RACE_SCORE
-        and exacta_top1 >= BT_EXACTA_TOP1_MIN
-    ):
-        top = candidates[0]
-        bets = [{
-            "ticket": top["ticket"],
-            "prob": top.get("probability", 0.0),
-            "odds": top.get("odds"),
-            "ev": top.get("ev"),
-            "bet_type": "trifecta",
-        }]
+    if race_score < params["race_score_min"]:
+        return []
+    if exacta_top1 < params["exacta_top1_min"]:
+        return []
 
-        # 2点目: 1着同じで2着違い
+    # 穴モードはオッズ下限チェック
+    odds_min = params.get("odds_min")
+    if odds_min:
+        top_odds = candidates[0].get("odds")
+        if top_odds is None or top_odds < odds_min:
+            return []
+
+    top = candidates[0]
+    bets = [{
+        "ticket": top["ticket"],
+        "prob": top.get("probability", 0.0),
+        "odds": top.get("odds"),
+        "ev": top.get("ev"),
+        "bet_type": "trifecta",
+    }]
+
+    if params["max_bets_per_race"] >= 2:
         top_first = top["ticket"].split("-")[0]
         for c in candidates[1:]:
             first = c["ticket"].split("-")[0]
@@ -129,18 +149,16 @@ def _select_bets_backtest(prediction_result):
                 })
                 break
 
-        return bets[:BT_MAX_BETS]
-
-    return []
+    return bets[:params["max_bets_per_race"]]
 
 
 # ============================================================
 # 1レースのバックテスト
 # ============================================================
 
-def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
+def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, params):
     race_id = f"{race_date.replace('-', '')}_{venue_id}_{int(race_no):02d}"
-    
+
     context = load_race_context(venue_id, race_no, race_date)
     if not context:
         return None
@@ -159,7 +177,7 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
         print(f"  predict error: {race_id} {e}")
         return None
 
-    bets = _select_bets_backtest(prediction_result)
+    bets = _select_bets(prediction_result, params)
     adopt = len(bets) > 0
     reason = None if adopt else "閾値未達"
 
@@ -196,7 +214,7 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
     top1_prob = candidates[0].get("probability", 0) if candidates else 0
     top2_prob = candidates[1].get("probability", 0) if len(candidates) >= 2 else 0
 
-    record = {
+    return {
         "run_id": run_id,
         "race_id": race_id,
         "race_date": race_date,
@@ -222,15 +240,12 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id):
         "top1_odds": bets[0].get("odds") if bets else None,
     }
 
-    upsert("v2_backtest_races", record, on_conflict="race_id,run_id")
-    return record
-
 
 # ============================================================
 # サマリー集計
 # ============================================================
 
-def _summarize(results, run_id, start_date, end_date):
+def _summarize(results, run_id, start_date, end_date, mode):
     adopted = [r for r in results if r["buy_flag"]]
     hits = [r for r in adopted if r["hit_flag"]]
     trigamis = [r for r in hits if r["trigami"]]
@@ -244,6 +259,12 @@ def _summarize(results, run_id, start_date, end_date):
     hit_rate = (len(hits) / adopted_races * 100) if adopted_races > 0 else 0.0
     trigami_rate = (len(trigamis) / len(hits) * 100) if hits else 0.0
 
+    # 日数
+    days = len(set(r["race_date"] for r in adopted)) if adopted else 1
+    avg_points_per_day = len(adopted) / days if days > 0 else 0
+    avg_stake_per_day = total_stake / days if days > 0 else 0
+    avg_profit_per_day = profit / days if days > 0 else 0
+
     scenario_stats = {}
     for r in adopted:
         sc = r["scenario_type"]
@@ -256,17 +277,20 @@ def _summarize(results, run_id, start_date, end_date):
             scenario_stats[sc]["hit"] += 1
 
     print("\n" + "=" * 50)
-    print(f"バックテスト結果: {start_date} -> {end_date}")
+    print(f"バックテスト結果: {start_date} -> {end_date} [{mode}]")
     print("=" * 50)
-    print(f"対象レース数:   {total_races}")
-    print(f"採用レース数:   {adopted_races}")
-    print(f"的中レース数:   {len(hits)}")
-    print(f"的中率:         {hit_rate:.1f}%")
-    print(f"投資額:         {total_stake:,}円")
-    print(f"回収額:         {total_payout:,}円")
-    print(f"損益:           {profit:+,}円")
-    print(f"回収率:         {roi:.1f}%")
-    print(f"トリガミ率:     {trigami_rate:.1f}%")
+    print(f"対象レース数:       {total_races}")
+    print(f"採用レース数:       {adopted_races}")
+    print(f"的中レース数:       {len(hits)}")
+    print(f"的中率:             {hit_rate:.1f}%")
+    print(f"投資額:             {total_stake:,}円")
+    print(f"回収額:             {total_payout:,}円")
+    print(f"損益:               {profit:+,}円")
+    print(f"回収率:             {roi:.1f}%")
+    print(f"トリガミ率:         {trigami_rate:.1f}%")
+    print(f"1日平均点数:        {avg_points_per_day:.1f}点")
+    print(f"1日平均投資:        {avg_stake_per_day:.0f}円")
+    print(f"1日平均損益:        {avg_profit_per_day:+.0f}円")
 
     print("\n--- シナリオ別 ---")
     for sc, s in sorted(scenario_stats.items()):
@@ -289,7 +313,7 @@ def _summarize(results, run_id, start_date, end_date):
         "roi": round(roi, 2),
         "trigami_rate": round(trigami_rate, 2),
         "scenario_stats": str(scenario_stats),
-        "note": f"backtest run_id={run_id}",
+        "note": f"mode={mode} avg_points={avg_points_per_day:.1f}/day",
     }
 
     upsert("v2_backtest_runs", summary, on_conflict="run_id")
@@ -300,11 +324,14 @@ def _summarize(results, run_id, start_date, end_date):
 # メイン
 # ============================================================
 
-def run_backtest(start_date, end_date, run_id=None):
+def run_backtest(start_date, end_date, mode="stable", run_id=None):
+    params = MODE_PARAMS.get(mode, MODE_PARAMS["stable"])
+
     if run_id is None:
-        run_id = f"{MODEL_VERSION}_{start_date}_{end_date}"
+        run_id = f"{MODEL_VERSION}_{mode}_{start_date}_{end_date}"
 
     print(f"=== バックテスト開始 ===")
+    print(f"モード: {params['description']}")
     print(f"期間: {start_date} -> {end_date}")
     print(f"run_id: {run_id}")
 
@@ -315,7 +342,9 @@ def run_backtest(start_date, end_date, run_id=None):
         if not races:
             continue
 
-        print(f"\n{race_date}: {len(races)}レース")
+        # 日次の点数管理
+        day_points = 0
+        day_candidates = []
 
         for r in races:
             venue_id = str(r.get("venue_id", "")).zfill(2)
@@ -325,22 +354,47 @@ def run_backtest(start_date, end_date, run_id=None):
             session_type = r.get("session_type", "")
 
             result = _backtest_one_race(
-                race_date, venue_id, race_no, session_type, run_id
+                race_date, venue_id, race_no, session_type, run_id, params
             )
             if result:
-                all_results.append(result)
-                status = "HIT" if result["hit_flag"] else ("採用" if result["buy_flag"] else "見送")
+                day_candidates.append(result)
+
+        # race_scoreの高い順に並べて1日の点数上限内で採用
+        day_candidates.sort(key=lambda x: x["race_score"], reverse=True)
+
+        for result in day_candidates:
+            if result["buy_flag"]:
+                if day_points + result["predicted_ticket_count"] > params["max_points_per_day"]:
+                    # 上限超えるので見送りに変更
+                    result["buy_flag"] = False
+                    result["skip_reason"] = "1日点数上限"
+                    result["stake_yen"] = 0
+                    result["payout_yen"] = 0
+                    result["profit_yen"] = 0
+                    result["hit_flag"] = False
+                else:
+                    day_points += result["predicted_ticket_count"]
+
+            upsert("v2_backtest_races", result, on_conflict="race_id,run_id")
+            all_results.append(result)
+
+            status = "HIT" if result["hit_flag"] else ("採用" if result["buy_flag"] else "見送")
+            if result["buy_flag"] or result["hit_flag"]:
                 print(f"  {result['race_id']} {status} profit={result['profit_yen']:+d}円")
+
+        if day_points > 0:
+            print(f"{race_date}: {day_points}点採用")
 
     if not all_results:
         print("結果なし")
         return None
 
-    return _summarize(all_results, run_id, start_date, end_date)
+    return _summarize(all_results, run_id, start_date, end_date, mode)
 
 
 if __name__ == "__main__":
     run_backtest(
         start_date="2025-03-13",
         end_date="2026-04-30",
+        mode="stable",
     )
