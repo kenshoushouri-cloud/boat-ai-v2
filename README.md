@@ -28,8 +28,6 @@
 |-------------------------|--------------|-------|
 |`run_morning_jobs.py`    |朝まとめ予想をLINE配信 |毎朝8時JST|
 |`run_pre_race_jobs.py`   |直前にEV再計算・買い目配信|5分ごと   |
-|`run_day_jobs.py`        |昼開催予想         |昼前     |
-|`run_night_jobs.py`      |夜開催予想         |夜前     |
 |`run_results.py`         |前日結果の取得と保存    |毎朝     |
 |`run_report.py`          |前日レポートの作成と通知  |毎朝     |
 |`run_odds.py`            |オッズ取得         |随時     |
@@ -58,14 +56,14 @@
 
 ## Railwayサービス構成
 
-|サービス名          |Start Command                |Cron (UTC)     |
-|---------------|-----------------------------|---------------|
-|boat-v2-results|`python run_results.py`      |`30 17 * * *`  |
-|boat-v2-seed   |`python run_seed.py`         |`0 18 * * *`   |
-|boat-v2-odds   |`python run_odds.py`         |`30 18 * * *`  |
-|boat-v2-morning|`python run_morning_jobs.py` |`0 23 * * *`   |
-|boat-v2-prerace|`python run_pre_race_jobs.py`|`*/5 0-9 * * *`|
-|boat-v2-report |`python run_report.py`       |`30 2 * * *`   |
+|サービス名          |JOB_MODE |Cron (UTC)     |内容      |
+|---------------|---------|---------------|--------|
+|boat-v2-results|`results`|`30 17 * * *`  |前日結果取得  |
+|boat-v2-seed   |`seed`   |`0 18 * * *`   |当日レース投入 |
+|boat-v2-odds   |`odds`   |`30 18 * * *`  |オッズ取得   |
+|boat-v2-morning|`morning`|`0 23 * * *`   |朝まとめ予想配信|
+|boat-v2-prerace|`prerace`|`*/5 0-9 * * *`|直前予想配信  |
+|boat-v2-report |`report` |`30 2 * * *`   |前日レポート配信|
 
 ## 主要テーブル（Supabase）
 
