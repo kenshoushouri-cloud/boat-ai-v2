@@ -1,42 +1,81 @@
 # boat_ai_v2
 
-競艇 3連単専用 v2 システム
+競艇 3連単専用 AI予想システム v2
 
-## 主な機能
-- 3連単予想
-- EVベース買い目選定
-- 推奨レースのみ通知
-- 前日レポート
-- 結果取得
-- 通知ログ保存
+## 概要
+
+- 安定モードと馬王モード（穴狙い）の2モード並行運用
+- 朝の一括予想配信 + レース直前のEVベース買い目配信
+- 1日800〜1,200円の投資を目安に運用
+
+## モード説明
+
+### 安定モード
+
+- 確率・スコアベースで買い目選択
+- 1日最大7点・100円/点
+- 3連単優先・2連単保険
+
+### 馬王モード（穴狙い）
+
+- オッズ15倍以上の穴のみ狙う
+- 1日最大5点・100円/点
+- 1点勝負
 
 ## 実行ファイル
-- `python main.py`  
-  単レースのテスト実行
 
-- `python run_day_jobs.py`  
-  昼開催の推奨レース通知
+|ファイル                     |内容            |タイミング  |
+|-------------------------|--------------|-------|
+|`run_morning_jobs.py`    |朝まとめ予想をLINE配信 |毎朝8時JST|
+|`run_pre_race_jobs.py`   |直前にEV再計算・買い目配信|5分ごと   |
+|`run_day_jobs.py`        |昼開催予想         |昼前     |
+|`run_night_jobs.py`      |夜開催予想         |夜前     |
+|`run_results.py`         |前日結果の取得と保存    |毎朝     |
+|`run_report.py`          |前日レポートの作成と通知  |毎朝     |
+|`run_odds.py`            |オッズ取得         |随時     |
+|`run_seed.py`            |当日レース投入       |毎朝     |
+|`run_backtest.py`        |バックテスト実行      |随時     |
+|`run_missing_results.py` |欠損データ補完・払戻修正  |随時     |
+|`run_repair_entries.py`  |出走表NULLデータ修復  |随時     |
+|`run_backfill_history.py`|過去データ一括取得     |随時     |
 
-- `python run_night_jobs.py`  
-  夜開催の推奨レース通知
+## 環境変数（Railwayで設定）
 
-- `python run_results.py`  
-  前日結果の取得と保存
+|変数名                        |内容                      |
+|---------------------------|------------------------|
+|`SUPABASE_URL`             |SupabaseプロジェクトURL       |
+|`SUPABASE_KEY`             |Supabase service_roleキー |
+|`LINE_CHANNEL_ACCESS_TOKEN`|LINEチャネルアクセストークン        |
+|`LINE_USER_ID`             |LINE送信先ユーザーID           |
+|`ENABLE_LINE_NOTIFY`       |LINE通知ON/OFF（true/false）|
 
-- `python run_report.py`  
-  前日レポートの作成と通知
+## インフラ構成
 
-## 必要設定
-`config/settings.py` に以下を設定
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
-- `LINE_CHANNEL_ACCESS_TOKEN`
-- `LINE_USER_ID`
-- `MODEL_VERSION`
+- **Railway**: ジョブ実行（各サービスにCronスケジュール設定）
+- **GitHub**: コード管理（privateリポジトリ）
+- **Supabase**: データ保存（v2_races・v2_results等）
+- **LINE Messaging API**: 予想通知配信
 
-## 本番運用想定
-- Railway: ジョブ実行
-- GitHub: コード管理
-- Supabase: データ保存
-- LINE Developers: 通知
-- Pythonista: 補助運用
+## Railwayサービス構成
+
+|サービス名          |Start Command                |Cron (UTC)     |
+|---------------|-----------------------------|---------------|
+|boat-v2-results|`python run_results.py`      |`30 17 * * *`  |
+|boat-v2-seed   |`python run_seed.py`         |`0 18 * * *`   |
+|boat-v2-odds   |`python run_odds.py`         |`30 18 * * *`  |
+|boat-v2-morning|`python run_morning_jobs.py` |`0 23 * * *`   |
+|boat-v2-prerace|`python run_pre_race_jobs.py`|`*/5 0-9 * * *`|
+|boat-v2-report |`python run_report.py`       |`30 2 * * *`   |
+
+## 主要テーブル（Supabase）
+
+- `v2_races`: レース基本情報
+- `v2_race_entries`: 出走表・選手成績
+- `v2_odds_trifecta`: 3連単オッズ
+- `v2_exhibition`: 展示データ
+- `v2_results`: レース結果・払戻
+- `v2_predictions`: 予想買い目
+- `v2_notifications`: LINE通知ログ
+- `v2_daily_stats`: 日次集計
+- `v2_backtest_runs`: バックテスト結果サマリー
+- `v2_backtest_races`: バックテスト詳細
