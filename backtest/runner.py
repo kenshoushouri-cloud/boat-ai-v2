@@ -7,7 +7,7 @@
 
 使い方:
     from backtest.runner import run_backtest
-    run_backtest("2025-04-01", "2025-12-31")
+    run_backtest("2025-03-13", "2026-04-30")
 """
 
 import urllib.parse
