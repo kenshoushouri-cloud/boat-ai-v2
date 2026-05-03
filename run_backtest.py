@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+print("BACKTEST START")  # 追加
+from backtest.runner import run_backtest
+
+
 def main():
     start = "2025-03-13"
     end = "2026-04-30"
