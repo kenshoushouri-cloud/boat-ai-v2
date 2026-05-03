@@ -16,3 +16,7 @@ def main():
         print(f"回収率:     {stable['roi']:.1f}%")
         print(f"損益:       {stable['profit_yen']:+,}円")
         print(f"1日平均投資: {stable['total_stake_yen'] / 409:.0f}円")
+        
+
+if __name__ == "__main__":
+    main()
