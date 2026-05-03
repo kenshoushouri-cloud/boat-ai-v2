@@ -3,8 +3,8 @@
 バックテストランナー
 
 2モード対応:
-- stable: 安定モード（1日最大7点）
-- ana:    馬王モード・穴狙い（1日最大5点）
+- stable: 安定モード（attack優先・mixed厳しめ）
+- ana:    馬王モード・穴狙い
 
 使い方:
     from backtest.runner import run_backtest
@@ -36,19 +36,30 @@ TARGET_VENUES = ["01", "06", "12", "18", "24"]
 
 MODE_PARAMS = {
     "stable": {
-        "race_score_min": 0.18,     # レーススコア足切り
-        "exacta_top1_min": 0.055,   # 2連単1位確率の下限
-        "max_bets_per_race": 2,     # 1レース最大買い目
-        "max_points_per_day": 7,    # 1日最大点数
-        "odds_min": None,           # オッズ下限なし（朝時点ではオッズ未確定）
-        "description": "安定モード",
+        # シナリオ別の採用条件
+        "scenario_thresholds": {
+            "attack":  {"race_score_min": 0.14, "exacta_top1_min": 0.050},
+            "mixed":   {"race_score_min": 0.22, "exacta_top1_min": 0.065},
+            "escape":  {"race_score_min": 0.16, "exacta_top1_min": 0.055},
+            "hole":    {"race_score_min": 0.20, "exacta_top1_min": 0.060},
+            "unknown": {"race_score_min": 0.99, "exacta_top1_min": 0.99},
+        },
+        "max_bets_per_race": 2,
+        "max_points_per_day": 7,
+        "odds_min": None,
+        "description": "安定モード（attack優先）",
     },
     "ana": {
-        "race_score_min": 0.12,     # 緩め（穴狙いなのでスコアより確率重視）
-        "exacta_top1_min": 0.040,
-        "max_bets_per_race": 1,     # 1点勝負
-        "max_points_per_day": 5,    # 1日最大5点
-        "odds_min": 15.0,           # 15倍以上の穴のみ
+        "scenario_thresholds": {
+            "attack":  {"race_score_min": 0.10, "exacta_top1_min": 0.035},
+            "mixed":   {"race_score_min": 0.15, "exacta_top1_min": 0.045},
+            "escape":  {"race_score_min": 0.12, "exacta_top1_min": 0.040},
+            "hole":    {"race_score_min": 0.10, "exacta_top1_min": 0.035},
+            "unknown": {"race_score_min": 0.99, "exacta_top1_min": 0.99},
+        },
+        "max_bets_per_race": 1,
+        "max_points_per_day": 5,
+        "odds_min": 15.0,
         "description": "馬王モード（穴狙い）",
     },
 }
@@ -101,10 +112,10 @@ def _daterange(start_str, end_str):
 
 
 # ============================================================
-# モード別買い目選択
+# シナリオ別買い目選択
 # ============================================================
 
-def _select_bets(prediction_result, params):
+def _select_bets(prediction_result, scenario, params):
     candidates = prediction_result.get("candidates", [])
     exacta_candidates = prediction_result.get("exacta_candidates", [])
     race_score = prediction_result.get("race_score", 0.0)
@@ -112,14 +123,19 @@ def _select_bets(prediction_result, params):
     if not candidates or not exacta_candidates:
         return []
 
+    # シナリオ別の閾値を取得
+    sc_params = params["scenario_thresholds"].get(
+        scenario, params["scenario_thresholds"]["unknown"]
+    )
+
     exacta_top1 = exacta_candidates[0].get("probability", 0.0)
 
-    if race_score < params["race_score_min"]:
+    if race_score < sc_params["race_score_min"]:
         return []
-    if exacta_top1 < params["exacta_top1_min"]:
+    if exacta_top1 < sc_params["exacta_top1_min"]:
         return []
 
-    # 穴モードはオッズ下限チェック
+    # 穴モードのオッズ下限チェック
     odds_min = params.get("odds_min")
     if odds_min:
         top_odds = candidates[0].get("odds")
@@ -177,11 +193,11 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, param
         print(f"  predict error: {race_id} {e}")
         return None
 
-    bets = _select_bets(prediction_result, params)
-    adopt = len(bets) > 0
-    reason = None if adopt else "閾値未達"
-
     scenario = detect_scenario_type(context, prediction_result)
+
+    bets = _select_bets(prediction_result, scenario, params)
+    adopt = len(bets) > 0
+    reason = None if adopt else f"閾値未達({scenario})"
 
     actual = _fetch_result(race_id)
     if not actual:
@@ -259,7 +275,6 @@ def _summarize(results, run_id, start_date, end_date, mode):
     hit_rate = (len(hits) / adopted_races * 100) if adopted_races > 0 else 0.0
     trigami_rate = (len(trigamis) / len(hits) * 100) if hits else 0.0
 
-    # 日数
     days = len(set(r["race_date"] for r in adopted)) if adopted else 1
     avg_points_per_day = len(adopted) / days if days > 0 else 0
     avg_stake_per_day = total_stake / days if days > 0 else 0
@@ -296,7 +311,8 @@ def _summarize(results, run_id, start_date, end_date, mode):
     for sc, s in sorted(scenario_stats.items()):
         sc_roi = (s["payout"] / s["stake"] * 100) if s["stake"] > 0 else 0
         sc_hit = (s["hit"] / s["count"] * 100) if s["count"] > 0 else 0
-        print(f"  {sc}: {s['count']}レース 的中{sc_hit:.0f}% ROI{sc_roi:.0f}%")
+        sc_profit = s["payout"] - s["stake"]
+        print(f"  {sc}: {s['count']}レース 的中{sc_hit:.0f}% ROI{sc_roi:.0f}% 損益{sc_profit:+,}円")
 
     summary = {
         "run_id": run_id,
@@ -342,7 +358,6 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
         if not races:
             continue
 
-        # 日次の点数管理
         day_points = 0
         day_candidates = []
 
@@ -359,13 +374,15 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
             if result:
                 day_candidates.append(result)
 
-        # race_scoreの高い順に並べて1日の点数上限内で採用
-        day_candidates.sort(key=lambda x: x["race_score"], reverse=True)
+        # attackシナリオを最優先・次にrace_score順
+        scenario_priority = {"attack": 0, "escape": 1, "hole": 2, "mixed": 3, "unknown": 4}
+        day_candidates.sort(
+            key=lambda x: (scenario_priority.get(x["scenario_type"], 5), -x["race_score"])
+        )
 
         for result in day_candidates:
             if result["buy_flag"]:
                 if day_points + result["predicted_ticket_count"] > params["max_points_per_day"]:
-                    # 上限超えるので見送りに変更
                     result["buy_flag"] = False
                     result["skip_reason"] = "1日点数上限"
                     result["stake_yen"] = 0
@@ -378,9 +395,9 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
             upsert("v2_backtest_races", result, on_conflict="race_id,run_id")
             all_results.append(result)
 
-            status = "HIT" if result["hit_flag"] else ("採用" if result["buy_flag"] else "見送")
             if result["buy_flag"] or result["hit_flag"]:
-                print(f"  {result['race_id']} {status} profit={result['profit_yen']:+d}円")
+                status = "HIT" if result["hit_flag"] else "採用"
+                print(f"  {result['race_id']} [{result['scenario_type']}] {status} profit={result['profit_yen']:+d}円")
 
         if day_points > 0:
             print(f"{race_date}: {day_points}点採用")
