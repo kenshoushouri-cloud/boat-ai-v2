@@ -2,13 +2,73 @@
 
 # ============================================================
 # NULLデータの平均値補完
-# データが溜まったらバックテストで調整する
 # ============================================================
-DEFAULT_NATIONAL_PLACE2 = 32.0   # 全国2連率の平均的な値
-DEFAULT_LOCAL_PLACE2 = 30.0      # 当地2連率の平均的な値
-DEFAULT_MOTOR_PLACE2 = 33.0      # モーター2連率の平均的な値
-DEFAULT_BOAT_PLACE2 = 34.0       # ボート2連率の平均的な値
-DEFAULT_AVG_ST = 0.18            # 平均スタートタイム
+DEFAULT_NATIONAL_PLACE2 = 32.0
+DEFAULT_LOCAL_PLACE2 = 30.0
+DEFAULT_MOTOR_PLACE2 = 33.0
+DEFAULT_BOAT_PLACE2 = 34.0
+DEFAULT_AVG_ST = 0.18
+
+# ============================================================
+# 会場×コース別 1着率補正スコア
+# 実データ（2025-03-13〜2026-04-30）から計算
+# ============================================================
+VENUE_LANE_SCORES = {
+    "01": {  # 桐生: 外コース強い・荒れやすい
+        1: 2.762, 2: 2.747, 3: 3.385, 4: 4.070, 5: 3.537, 6: 2.343,
+    },
+    "06": {  # 常滑: 2〜3コース差しが効く
+        1: 2.932, 2: 3.401, 3: 3.571, 4: 3.195, 5: 2.694, 6: 2.403,
+    },
+    "12": {  # 住之江: ほぼ平均・1コースやや強い
+        1: 3.249, 2: 3.344, 3: 2.957, 4: 2.824, 5: 2.313, 6: 1.553,
+    },
+    "18": {  # 下関: 1コース強い・5〜6コース極端に弱い
+        1: 3.509, 2: 3.116, 3: 2.908, 4: 2.648, 5: 1.380, 6: 1.355,
+    },
+    "24": {  # 大村: 1コース最強・外コース弱い
+        1: 3.561, 2: 2.880, 3: 2.659, 4: 2.267, 5: 2.049, 6: 1.314,
+    },
+}
+
+DEFAULT_LANE_SCORES = {1: 3.2, 2: 3.1, 3: 3.1, 4: 3.0, 5: 2.4, 6: 1.8}
+
+# ============================================================
+# レース番号別×コース補正値
+# R11・R12は1コース圧倒的、R2・R3は外コース比較的強い
+# ============================================================
+RACE_NO_LANE_BIAS = {
+    1:  {1: 0.988, 2: 0.947, 3: 1.163, 4: 1.008, 5: 1.279, 6: 0.667},
+    2:  {1: 0.808, 2: 1.374, 3: 1.188, 4: 1.316, 5: 1.097, 6: 1.036},
+    3:  {1: 0.838, 2: 1.229, 3: 1.313, 4: 1.005, 5: 1.114, 6: 1.617},
+    4:  {1: 0.935, 2: 1.046, 3: 1.022, 4: 1.216, 5: 1.098, 6: 1.098},
+    5:  {1: 0.964, 2: 1.144, 3: 0.862, 4: 1.004, 5: 1.204, 6: 1.250},
+    6:  {1: 0.936, 2: 1.018, 3: 1.023, 4: 1.272, 5: 0.870, 6: 1.404},
+    7:  {1: 0.988, 2: 1.019, 3: 1.256, 4: 0.784, 5: 0.870, 6: 1.008},
+    8:  {1: 0.988, 2: 0.780, 3: 0.987, 4: 1.218, 5: 1.359, 6: 0.794},
+    9:  {1: 1.009, 2: 1.069, 3: 0.981, 4: 0.988, 5: 0.795, 6: 0.978},
+    10: {1: 1.049, 2: 0.963, 3: 0.966, 4: 0.830, 5: 0.993, 6: 0.825},
+    11: {1: 1.205, 2: 0.697, 3: 0.698, 4: 0.822, 5: 0.780, 6: 0.642},
+    12: {1: 1.280, 2: 0.684, 3: 0.634, 4: 0.565, 5: 0.736, 6: 0.500},
+}
+
+# ============================================================
+# 選手級別×コース補正値
+# A1選手が外コースにいると平均の2倍強い
+# ============================================================
+CLASS_LANE_BIAS = {
+    1: {1: 1.268, 2: 1.141, 3: 0.724, 4: 0.713},  # 1コース
+    2: {1: 1.303, 2: 1.186, 3: 0.802, 4: 1.204},  # 2コース
+    3: {1: 1.401, 2: 1.115, 3: 0.796, 4: 1.151},  # 3コース
+    4: {1: 1.777, 2: 1.187, 3: 0.733, 4: 0.500},  # 4コース
+    5: {1: 1.976, 2: 1.310, 3: 0.623, 4: 0.660},  # 5コース
+    6: {1: 2.000, 2: 1.139, 3: 0.500, 4: 0.500},  # 6コース
+}
+
+# 会場別外コース補正乗数
+VENUE_OUTER_MULTIPLIER = {
+    "01": 1.4, "06": 1.2, "12": 0.9, "18": 0.7, "24": 0.6,
+}
 
 
 def _to_float(v, default=0.0):
@@ -29,46 +89,36 @@ def _to_int(v, default=0):
         return default
 
 
-def _venue_bias(venue_id):
-    table = {
-        "01": {"inner": 0.94, "outer": 1.10},
-        "06": {"inner": 0.90, "outer": 1.18},
-        "12": {"inner": 0.95, "outer": 1.10},
-        "18": {"inner": 0.90, "outer": 1.20},
-        "24": {"inner": 1.05, "outer": 0.95},
-    }
-    return table.get(str(venue_id).zfill(2), {"inner": 1.0, "outer": 1.0})
-
-
-def _lane_score(lane, venue_bias):
+def _lane_score(lane, venue_id):
+    """会場×コース別1着率から算出したスコア"""
     lane = _to_int(lane)
-    table = {
-        1: 3.2,
-        2: 3.1,
-        3: 3.1,
-        4: 3.0,
-        5: 2.4,
-        6: 1.8,
-    }
-    score = table.get(lane, 0.0)
-    if lane == 1:
-        score *= venue_bias["inner"]
-    elif lane >= 4:
-        score *= venue_bias["outer"]
-    return score
+    scores = VENUE_LANE_SCORES.get(str(venue_id).zfill(2), DEFAULT_LANE_SCORES)
+    return scores.get(lane, 0.0)
+
+
+def _race_no_bias(lane, race_no):
+    """レース番号別コース補正"""
+    lane = _to_int(lane)
+    race_no = _to_int(race_no)
+    bias = RACE_NO_LANE_BIAS.get(race_no, {})
+    return bias.get(lane, 1.0)
+
+
+def _class_lane_bias(lane, racer_class):
+    """選手級別×コース補正"""
+    lane = _to_int(lane)
+    racer_class = _to_int(racer_class)
+    if racer_class == 0:
+        return 1.0
+    bias = CLASS_LANE_BIAS.get(lane, {})
+    return bias.get(racer_class, 1.0)
 
 
 def _class_score(c):
-    return {
-        1: 4.5,
-        2: 3.0,
-        3: 1.6,
-        4: 0.6,
-    }.get(_to_int(c), 0.5)
+    return {1: 4.5, 2: 3.0, 3: 1.6, 4: 0.6}.get(_to_int(c), 0.5)
 
 
 def _st_score(st):
-    # NULLの場合はデフォルト値で補完（スコア0扱い）
     if st is None or st == "":
         return 0.0
     st = _to_float(st, DEFAULT_AVG_ST)
@@ -76,20 +126,17 @@ def _st_score(st):
 
 
 def _two_rate_score(nat, loc):
-    # NULLの場合は平均値で補完
     nat = _to_float(nat, DEFAULT_NATIONAL_PLACE2) if nat is not None else DEFAULT_NATIONAL_PLACE2
     loc = _to_float(loc, DEFAULT_LOCAL_PLACE2) if loc is not None else DEFAULT_LOCAL_PLACE2
     return (nat * 0.55 + loc * 0.45) / 7.2
 
 
 def _motor_score(m):
-    # NULLの場合は平均値で補完
     val = _to_float(m, DEFAULT_MOTOR_PLACE2) if m is not None else DEFAULT_MOTOR_PLACE2
     return val / 38.0
 
 
 def _boat_score(b):
-    # NULLの場合は平均値で補完
     val = _to_float(b, DEFAULT_BOAT_PLACE2) if b is not None else DEFAULT_BOAT_PLACE2
     return val / 42.0
 
@@ -181,10 +228,10 @@ def _start_timing_score(ex):
     return 0.0
 
 
-def _outside_attack(lane, avg_st, ex, venue_bias):
+def _outside_attack(lane, avg_st, ex, venue_id):
     lane = _to_int(lane)
-    # avg_stがNULLの場合はデフォルト値
     st = _to_float(avg_st, DEFAULT_AVG_ST) if avg_st is not None else DEFAULT_AVG_ST
+    outer_multiplier = VENUE_OUTER_MULTIPLIER.get(str(venue_id).zfill(2), 1.0)
     score = 0.0
     if lane in (3, 4, 5):
         if st <= 0.14:
@@ -199,15 +246,16 @@ def _outside_attack(lane, avg_st, ex, venue_bias):
             score += 1.2
         elif lane in (3, 4, 5) and ex_time <= 6.70:
             score += 0.6
-    return score * venue_bias["outer"]
+    return score * outer_multiplier
 
 
-def _third_bias(lane, avg_st, nat, loc, ex, venue_bias):
+def _third_bias(lane, avg_st, nat, loc, ex, venue_id):
     lane = _to_int(lane)
     st = _to_float(avg_st, DEFAULT_AVG_ST) if avg_st is not None else DEFAULT_AVG_ST
     nat = _to_float(nat, DEFAULT_NATIONAL_PLACE2) if nat is not None else DEFAULT_NATIONAL_PLACE2
     loc = _to_float(loc, DEFAULT_LOCAL_PLACE2) if loc is not None else DEFAULT_LOCAL_PLACE2
     mix = nat * 0.55 + loc * 0.45
+    outer_multiplier = VENUE_OUTER_MULTIPLIER.get(str(venue_id).zfill(2), 1.0)
     score = 0.0
     if lane == 2:
         score += 0.10
@@ -232,16 +280,15 @@ def _third_bias(lane, avg_st, nat, loc, ex, venue_bias):
         elif lane in (3, 4, 5, 6) and ex_time <= 6.70:
             score += 0.4
     if lane in (4, 5, 6):
-        score *= venue_bias["outer"]
+        score *= outer_multiplier
     return score
 
 
 def build_entry_features(context):
     entries = context.get("entries", [])
     ex_map = context.get("exhibition", {}) or {}
-
     venue_id = str(context.get("venue_id", "")).zfill(2)
-    venue_bias = _venue_bias(venue_id)
+    race_no = _to_int(context.get("race_no", 0))
     rank_map = _build_rank_map(ex_map)
 
     rows = []
@@ -249,6 +296,7 @@ def build_entry_features(context):
     for e in entries:
         lane = _to_int(e.get("lane"))
         ex = ex_map.get(str(lane), {})
+        racer_class = _to_int(e.get("racer_class", 0))
 
         nat2 = e.get("national_place2_rate") or e.get("national_2rate")
         loc2 = e.get("local_place2_rate") or e.get("local_2rate")
@@ -256,24 +304,40 @@ def build_entry_features(context):
         motor2 = e.get("motor_place2_rate") or e.get("motor_2rate")
         boat2 = e.get("boat_place2_rate") or e.get("boat_2rate")
 
-        score = (
-            _lane_score(lane, venue_bias)
-            + _class_score(e.get("racer_class"))
+        # ベーススコア（会場×コース補正済み）
+        base = _lane_score(lane, venue_id)
+
+        # レース番号補正を乗算
+        race_bias = _race_no_bias(lane, race_no)
+
+        # 選手級別×コース補正を乗算
+        class_bias = _class_lane_bias(lane, racer_class)
+
+        # コアスコア（補正乗算）
+        core_score = base * race_bias * class_bias
+
+        # 加算スコア
+        additive_score = (
+            _class_score(racer_class)
             + _st_score(avg_st)
             + _two_rate_score(nat2, loc2)
             + _motor_score(motor2)
             + _boat_score(boat2)
-            + _outside_attack(lane, avg_st, ex, venue_bias)
-            + _third_bias(lane, avg_st, nat2, loc2, ex, venue_bias)
+            + _outside_attack(lane, avg_st, ex, venue_id)
+            + _third_bias(lane, avg_st, nat2, loc2, ex, venue_id)
             + _ex_score(ex, rank_map)
             + _tilt_score(ex)
             + _start_timing_score(ex)
             - _penalty(e.get("f_count"), e.get("l_count"))
         )
 
+        score = core_score + additive_score
+
         rows.append({
             "lane": lane,
             "score": round(score, 4),
+            "race_bias": round(race_bias, 3),
+            "class_bias": round(class_bias, 3),
         })
 
     rows.sort(key=lambda x: x["score"], reverse=True)
