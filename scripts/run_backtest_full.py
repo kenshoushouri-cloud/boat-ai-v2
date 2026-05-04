@@ -6,6 +6,7 @@ Railway Start Command:
     python scripts/run_backtest_full.py
 
 特徴:
+- オッズなしバックテスト odds_mode="no_odds"
 - run_backtest の途中ログを一旦キャプチャ
 - 最後に stable / ana / portfolio の結果だけを整理して表示
 - エラー時だけ内部ログを表示
@@ -28,9 +29,9 @@ from backtest.portfolio_runner import run_portfolio_backtest
 START_DATE = "2025-03-13"
 END_DATE = "2026-04-30"
 
-STABLE_RUN_ID = "v2_stable_20250313_20260430"
-ANA_RUN_ID = "v2_ana_20250313_20260430"
-PORTFOLIO_RUN_ID = "v2_portfolio_20250313_20260430"
+STABLE_RUN_ID = "v2_stable_noodds_20250313_20260430"
+ANA_RUN_ID = "v2_ana_noodds_20250313_20260430"
+PORTFOLIO_RUN_ID = "v2_portfolio_noodds_20250313_20260430"
 
 
 def _yen(v):
@@ -102,7 +103,7 @@ def _run_safely(label, fn):
 
 
 def main():
-    print("=== バックテスト実行開始 ===", flush=True)
+    print("=== オッズなしバックテスト実行開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
 
     stable_summary, stable_err, stable_log = _run_safely(
@@ -112,6 +113,7 @@ def main():
             end_date=END_DATE,
             mode="stable",
             run_id=STABLE_RUN_ID,
+            odds_mode="no_odds",
         )
     )
 
@@ -122,6 +124,7 @@ def main():
             end_date=END_DATE,
             mode="ana",
             run_id=ANA_RUN_ID,
+            odds_mode="no_odds",
         )
     )
 
