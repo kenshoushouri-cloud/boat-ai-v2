@@ -2,9 +2,17 @@
 """
 3日間テスト実行用
 
-Railway Shell / ローカル実行例:
+Railway Start Command:
     python scripts/run_backtest_test.py
 """
+
+import os
+import sys
+
+# Railwayで scripts/ から実行しても、プロジェクト直下の backtest/ models/ を読めるようにする
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from backtest.runner import run_backtest
 from backtest.portfolio_runner import run_portfolio_backtest
