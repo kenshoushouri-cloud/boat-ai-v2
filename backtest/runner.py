@@ -50,7 +50,7 @@ MODE_PARAMS = {
         # シナリオ別の採用条件
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.14, "exacta_top1_min": 0.050},
-            "mixed":   {"race_score_min": 0.18, "exacta_top1_min": 0.055},
+            "mixed":   {"race_score_min": 0.22, "exacta_top1_min": 0.065},
             "escape":  {"race_score_min": 0.16, "exacta_top1_min": 0.055},
             "hole":    {"race_score_min": 0.20, "exacta_top1_min": 0.060},
             "unknown": {"race_score_min": 0.99, "exacta_top1_min": 0.99},
@@ -607,28 +607,38 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None, odds_mode="no
     if run_id is None:
         run_id = f"{MODEL_VERSION}_{mode}_{odds_mode}_{start_date}_{end_date}"
 
-    print("=== バックテスト開始 ===")
-    print(f"モード: {params['description']}")
-    print(f"オッズモード: {odds_mode}")
-    print(f"期間: {start_date} -> {end_date}")
-    print(f"run_id: {run_id}")
-    print(f"保存キー: race_id, run_id, mode")
-    print(f"1点単価: {UNIT_YEN}円")
+    dates = list(_daterange(start_date, end_date))
+    total_days = len(dates)
+
+    print("=== バックテスト開始 ===", flush=True)
+    print(f"モード: {params['description']}", flush=True)
+    print(f"オッズモード: {odds_mode}", flush=True)
+    print(f"期間: {start_date} -> {end_date} / {total_days}日", flush=True)
+    print(f"run_id: {run_id}", flush=True)
+    print(f"保存キー: race_id, run_id, mode", flush=True)
+    print(f"1点単価: {UNIT_YEN}円", flush=True)
 
     all_results = []
 
-    for race_date in _daterange(start_date, end_date):
+    for day_index, race_date in enumerate(dates, 1):
+        print(f"[{mode}] {race_date} 開始 ({day_index}/{total_days})", flush=True)
+
         races = _fetch_race_list_for_date(race_date)
         if not races:
+            print(f"[{mode}] {race_date} レースなし/取得失敗 ({day_index}/{total_days})", flush=True)
             continue
 
+        target_count = 0
         day_points = 0
+        day_profit = 0
         day_candidates = []
 
         for r in races:
             venue_id = str(r.get("venue_id", "")).zfill(2)
             if venue_id not in TARGET_VENUES:
                 continue
+
+            target_count += 1
 
             race_no = r.get("race_no")
             session_type = r.get("session_type", "")
@@ -664,6 +674,9 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None, odds_mode="no
             )
         )
 
+        bought_count = 0
+        hit_count = 0
+
         for result in day_candidates:
             if result["buy_flag"]:
                 points = _safe_int(result.get("predicted_ticket_count"), 0)
@@ -688,6 +701,12 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None, odds_mode="no
             all_results.append(result)
 
             if result["buy_flag"]:
+                bought_count += 1
+                day_profit += _safe_int(result.get("profit_yen"), 0)
+
+                if result["hit_flag"]:
+                    hit_count += 1
+
                 status = "HIT" if result["hit_flag"] else "採用"
                 print(
                     f"  {result['race_id']} "
@@ -695,14 +714,20 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None, odds_mode="no
                     f"{status} "
                     f"{result.get('top1_ticket')} "
                     f"prob={result.get('top1_prob')} "
-                    f"profit={_safe_int(result.get('profit_yen'), 0):+d}円"
+                    f"profit={_safe_int(result.get('profit_yen'), 0):+d}円",
+                    flush=True,
                 )
 
-        if day_points > 0:
-            print(f"{race_date}: {day_points}点 / {day_points * UNIT_YEN}円 採用")
+        print(
+            f"[{mode}] {race_date} 完了 ({day_index}/{total_days}) "
+            f"対象={target_count} 保存={len(day_candidates)} "
+            f"採用={bought_count}R/{day_points}点 的中={hit_count} "
+            f"日次損益={day_profit:+,}円",
+            flush=True,
+        )
 
     if not all_results:
-        print("結果なし")
+        print("結果なし", flush=True)
         return None
 
     return _summarize(all_results, run_id, start_date, end_date, mode, odds_mode=odds_mode)
