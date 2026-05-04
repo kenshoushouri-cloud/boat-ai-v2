@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-フィルター適用・オッズなしバックテスト実行用
-
-Railway Procfile:
-    web: python3 -u scripts/run_backtest_full.py
+桐生9R専用・オッズなしバックテスト実行用
 """
 
 import os
@@ -20,9 +17,9 @@ from backtest.portfolio_runner import run_portfolio_backtest
 START_DATE = "2025-03-13"
 END_DATE = "2026-04-30"
 
-STABLE_RUN_ID = "v2_stable_filtered_noodds_20250313_20260430"
-ANA_RUN_ID = "v2_ana_filtered_noodds_20250313_20260430"
-PORTFOLIO_RUN_ID = "v2_portfolio_filtered_noodds_20250313_20260430"
+STABLE_RUN_ID = "v2_stable_kiryu9_noodds_20250313_20260430"
+ANA_RUN_ID = "v2_ana_kiryu9_noodds_20250313_20260430"
+PORTFOLIO_RUN_ID = "v2_portfolio_kiryu9_noodds_20250313_20260430"
 
 
 def _yen(v):
@@ -82,8 +79,10 @@ def _short(label, summary):
 
 
 def main():
-    print("=== フィルター適用・オッズなしバックテスト実行開始 ===", flush=True)
+    print("=== 桐生9R専用・オッズなしバックテスト実行開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
+    print("条件: ana 桐生9R / top1_prob 0.015〜0.020 / race_score 0.14〜0.16", flush=True)
+    print("stable: 停止", flush=True)
 
     stable_summary = run_backtest(
         start_date=START_DATE,
@@ -117,8 +116,8 @@ def main():
     print(f"ana_run_id:       {ANA_RUN_ID}", flush=True)
     print(f"portfolio_run_id: {PORTFOLIO_RUN_ID}", flush=True)
 
-    _print_one_summary("stable / 安定モード", stable_summary)
-    _print_one_summary("ana / 馬王モード", ana_summary)
+    _print_one_summary("stable / 停止", stable_summary)
+    _print_one_summary("ana / 桐生9R専用", ana_summary)
     _print_one_summary("portfolio / 統合", portfolio_summary)
 
     print("\n" + "=" * 72, flush=True)
