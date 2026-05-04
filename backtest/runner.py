@@ -47,6 +47,12 @@ MODE_PARAMS = {
     "stable": {
         "mode": "stable",
 
+        # 会場×レース番号フィルター
+        # 2026/04の30日テスト結果から、stableは常滑2Rだけ残す
+        "allowed_venue_race": {
+            "06": [2],
+        },
+
         # シナリオ別の採用条件
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.14, "exacta_top1_min": 0.050},
@@ -83,6 +89,15 @@ MODE_PARAMS = {
 
     "ana": {
         "mode": "ana",
+
+        # 会場×レース番号フィルター
+        # 2026/04の30日テスト結果から、利益が出やすい組み合わせだけ残す
+        "allowed_venue_race": {
+            "18": [6],      # 下関 6R
+            "12": [1],      # 住之江 1R
+            "01": [5, 9],   # 桐生 5R・9R
+            "06": [2, 6],   # 常滑 2R・6R
+        },
 
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.10, "exacta_top1_min": 0.035},
@@ -354,6 +369,19 @@ def _select_bets(prediction_result, scenario, params, odds_mode="no_odds"):
 
 def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, params, odds_mode="no_odds"):
     race_id = _race_id(race_date, venue_id, race_no)
+
+    # 会場×レース番号フィルター
+    # params["allowed_venue_race"] がある場合、その組み合わせ以外は検証対象外にする。
+    allowed = params.get("allowed_venue_race")
+    if allowed:
+        v = str(venue_id).zfill(2)
+        rn = int(race_no)
+
+        if v not in allowed:
+            return None
+
+        if rn not in allowed[v]:
+            return None
 
     context = load_race_context(venue_id, race_no, race_date)
     if not context:
