@@ -8,6 +8,10 @@
 - 3連単専用
 """
 
+# ============================================================
+# モード別ルール
+# ============================================================
+
 MODE_RULES = {
     "stable": {
         "label": "安定モード",
@@ -16,6 +20,8 @@ MODE_RULES = {
         "max_odds": 25.0,
         "min_prob": 0.015,
         "max_bets": 2,
+
+        # 安定モードは同じ1着軸の2点まで
         "same_first_only": True,
     },
     "ana": {
@@ -25,10 +31,16 @@ MODE_RULES = {
         "max_odds": 80.0,
         "min_prob": 0.008,
         "max_bets": 1,
+
+        # 穴は1点勝負
         "same_first_only": False,
     },
 }
 
+
+# ============================================================
+# utility
+# ============================================================
 
 def _to_float(v, default=None):
     try:
@@ -82,6 +94,10 @@ def _normalize_candidate(c):
     }
 
 
+# ============================================================
+# core selector
+# ============================================================
+
 def _select_by_rule(prediction_result, rule):
     candidates = prediction_result.get("candidates", [])
 
@@ -117,6 +133,7 @@ def _select_by_rule(prediction_result, rule):
             f"prob>={rule['min_prob']}"
         )
 
+    # EV優先、同EVなら確率優先
     filtered.sort(
         key=lambda x: (x["ev"], x["prob"], x["odds"]),
         reverse=True
@@ -136,6 +153,8 @@ def _select_by_rule(prediction_result, rule):
 
         for c in filtered[1:]:
             first = c["ticket"].split("-")[0]
+
+            # 同じ1着軸の別買い目だけ追加
             if first == top_first and c["ticket"] != top["ticket"]:
                 bets.append(c)
                 break
@@ -150,12 +169,30 @@ def _select_by_rule(prediction_result, rule):
     return bets[:max_bets], None
 
 
+# ============================================================
+# public functions
+# ============================================================
+
 def select_bets_ev_mode(prediction_result, mode="stable", override_rule=None):
     """
     stable / ana モード対応のEVセレクター。
 
     戻り値:
         bets, reason
+
+    bets:
+        [
+            {
+                "ticket": "1-2-3",
+                "prob": 0.023,
+                "odds": 12.5,
+                "ev": 1.42,
+                "bet_type": "trifecta",
+            }
+        ]
+
+    reason:
+        見送り理由。採用時は None。
     """
     rule = dict(MODE_RULES.get(mode, MODE_RULES["stable"]))
 
@@ -176,6 +213,9 @@ def select_bets_ev(
     """
     旧 pre_race_job 互換用。
     既存コードが select_bets_ev() を呼んでいても動くように残す。
+
+    戻り値:
+        bets のみ
     """
     rule = {
         "min_ev": min_ev,
