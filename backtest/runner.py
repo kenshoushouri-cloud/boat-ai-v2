@@ -50,7 +50,7 @@ MODE_PARAMS = {
         # シナリオ別の採用条件
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.14, "exacta_top1_min": 0.050},
-            "mixed":   {"race_score_min": 0.22, "exacta_top1_min": 0.065},
+            "mixed":   {"race_score_min": 0.18, "exacta_top1_min": 0.055},
             "escape":  {"race_score_min": 0.16, "exacta_top1_min": 0.055},
             "hole":    {"race_score_min": 0.20, "exacta_top1_min": 0.060},
             "unknown": {"race_score_min": 0.99, "exacta_top1_min": 0.99},
