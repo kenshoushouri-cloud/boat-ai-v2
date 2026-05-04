@@ -48,9 +48,9 @@ MODE_PARAMS = {
         "mode": "stable",
 
         # 会場×レース番号フィルター
-        # 2026/04の30日テスト結果から、stableは常滑2Rだけ残す
+        # stableは全期間でROI不足のため一旦停止
         "allowed_venue_race": {
-            "06": [2],
+            "XX": [],
         },
 
         # シナリオ別の採用条件
@@ -67,11 +67,14 @@ MODE_PARAMS = {
         "max_points_per_day": 7,
 
         # オッズなしバックテスト条件
+        # stableは停止中
         "no_odds_rule": {
-            "min_tri_prob": 0.018,
-            "max_tri_prob": 0.080,
+            "min_tri_prob": 0.999,
+            "max_tri_prob": 1.000,
+            "min_race_score": 0.999,
+            "max_race_score": 1.000,
             "same_first_only": True,
-            "max_bets": 2,
+            "max_bets": 1,
         },
 
         # 直前EV条件。実運用後のオッズあり検証用。
@@ -91,12 +94,9 @@ MODE_PARAMS = {
         "mode": "ana",
 
         # 会場×レース番号フィルター
-        # 2026/04の30日テスト結果から、利益が出やすい組み合わせだけ残す
+        # 全期間で最も成績が安定した桐生9Rだけ残す
         "allowed_venue_race": {
-            "18": [6],      # 下関 6R
-            "12": [1],      # 住之江 1R
-            "01": [5, 9],   # 桐生 5R・9R
-            "06": [2, 6],   # 常滑 2R・6R
+            "01": [9],      # 桐生 9R
         },
 
         "scenario_thresholds": {
@@ -112,10 +112,13 @@ MODE_PARAMS = {
         "max_points_per_day": 5,
 
         # オッズなしバックテスト条件
-        # 馬王モードは「AI評価では拾えるが本命すぎない」買い目を狙う。
+        # 桐生9R専用:
+        # top1_prob 0.015〜0.020、race_score 0.14〜0.16 の帯だけ買う
         "no_odds_rule": {
-            "min_tri_prob": 0.010,
-            "max_tri_prob": 0.045,
+            "min_tri_prob": 0.015,
+            "max_tri_prob": 0.020,
+            "min_race_score": 0.140,
+            "max_race_score": 0.160,
             "same_first_only": False,
             "max_bets": 1,
         },
@@ -279,8 +282,16 @@ def _select_bets_no_odds(prediction_result, params):
 
     min_prob = _safe_float(rule.get("min_tri_prob"), 0.0)
     max_prob = _safe_float(rule.get("max_tri_prob"), 1.0)
+    min_race_score = _safe_float(rule.get("min_race_score"), 0.0)
+    max_race_score = _safe_float(rule.get("max_race_score"), 1.0)
     max_bets = _safe_int(rule.get("max_bets"), params.get("max_bets_per_race", 1))
     same_first_only = bool(rule.get("same_first_only", False))
+
+    race_score = _safe_float(prediction_result.get("race_score"), 0.0)
+    if race_score < min_race_score:
+        return []
+    if race_score >= max_race_score:
+        return []
 
     rows = []
 
