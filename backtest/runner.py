@@ -47,12 +47,6 @@ MODE_PARAMS = {
     "stable": {
         "mode": "stable",
 
-        # 会場×レース番号フィルター
-        # stableは全期間でROI不足のため一旦停止
-        "allowed_venue_race": {
-            "XX": [],
-        },
-
         # シナリオ別の採用条件
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.14, "exacta_top1_min": 0.050},
@@ -67,14 +61,11 @@ MODE_PARAMS = {
         "max_points_per_day": 7,
 
         # オッズなしバックテスト条件
-        # stableは停止中
         "no_odds_rule": {
-            "min_tri_prob": 0.999,
-            "max_tri_prob": 1.000,
-            "min_race_score": 0.999,
-            "max_race_score": 1.000,
+            "min_tri_prob": 0.018,
+            "max_tri_prob": 0.080,
             "same_first_only": True,
-            "max_bets": 1,
+            "max_bets": 2,
         },
 
         # 直前EV条件。実運用後のオッズあり検証用。
@@ -93,12 +84,6 @@ MODE_PARAMS = {
     "ana": {
         "mode": "ana",
 
-        # 会場×レース番号フィルター
-        # 全期間で最も成績が安定した桐生9Rだけ残す
-        "allowed_venue_race": {
-            "01": [9],      # 桐生 9R
-        },
-
         "scenario_thresholds": {
             "attack":  {"race_score_min": 0.10, "exacta_top1_min": 0.035},
             "mixed":   {"race_score_min": 0.15, "exacta_top1_min": 0.045},
@@ -112,13 +97,10 @@ MODE_PARAMS = {
         "max_points_per_day": 5,
 
         # オッズなしバックテスト条件
-        # 桐生9R専用:
-        # top1_prob 0.015〜0.020、race_score 0.14〜0.16 の帯だけ買う
+        # 馬王モードは「AI評価では拾えるが本命すぎない」買い目を狙う。
         "no_odds_rule": {
-            "min_tri_prob": 0.015,
-            "max_tri_prob": 0.020,
-            "min_race_score": 0.140,
-            "max_race_score": 0.160,
+            "min_tri_prob": 0.010,
+            "max_tri_prob": 0.045,
             "same_first_only": False,
             "max_bets": 1,
         },
@@ -282,16 +264,8 @@ def _select_bets_no_odds(prediction_result, params):
 
     min_prob = _safe_float(rule.get("min_tri_prob"), 0.0)
     max_prob = _safe_float(rule.get("max_tri_prob"), 1.0)
-    min_race_score = _safe_float(rule.get("min_race_score"), 0.0)
-    max_race_score = _safe_float(rule.get("max_race_score"), 1.0)
     max_bets = _safe_int(rule.get("max_bets"), params.get("max_bets_per_race", 1))
     same_first_only = bool(rule.get("same_first_only", False))
-
-    race_score = _safe_float(prediction_result.get("race_score"), 0.0)
-    if race_score < min_race_score:
-        return []
-    if race_score >= max_race_score:
-        return []
 
     rows = []
 
@@ -380,19 +354,6 @@ def _select_bets(prediction_result, scenario, params, odds_mode="no_odds"):
 
 def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, params, odds_mode="no_odds"):
     race_id = _race_id(race_date, venue_id, race_no)
-
-    # 会場×レース番号フィルター
-    # params["allowed_venue_race"] がある場合、その組み合わせ以外は検証対象外にする。
-    allowed = params.get("allowed_venue_race")
-    if allowed:
-        v = str(venue_id).zfill(2)
-        rn = int(race_no)
-
-        if v not in allowed:
-            return None
-
-        if rn not in allowed[v]:
-            return None
 
     context = load_race_context(venue_id, race_no, race_date)
     if not context:
