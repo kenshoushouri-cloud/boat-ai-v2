@@ -7,8 +7,10 @@
 - ana:    馬王モード・穴狙い
 
 今回の修正版:
-- models/bet_selector_ev.py の EVセレクターを使用
-- mode / model_version / bets_json を保存
+- 過去バックテスト用 odds_mode="no_odds" に対応
+- odds_mode="no_odds" ではオッズ不要で買い目選定
+- odds_mode="ev" では models/bet_selector_ev.py のEVセレクターを使用
+- mode / model_version / bets_json / odds_mode を保存
 - on_conflict は race_id,run_id,mode
 - トリガミ判定を「払戻 < 投資額」に修正
 - stable / ana は個別実行のまま維持
@@ -58,7 +60,15 @@ MODE_PARAMS = {
         "max_bets_per_race": 2,
         "max_points_per_day": 7,
 
-        # 直前EV条件
+        # オッズなしバックテスト条件
+        "no_odds_rule": {
+            "min_tri_prob": 0.018,
+            "max_tri_prob": 0.080,
+            "same_first_only": True,
+            "max_bets": 2,
+        },
+
+        # 直前EV条件。実運用後のオッズあり検証用。
         "ev_rule": {
             "min_ev": 1.10,
             "min_odds": 3.5,
@@ -86,7 +96,16 @@ MODE_PARAMS = {
         "max_bets_per_race": 1,
         "max_points_per_day": 5,
 
-        # 馬王モードは高EV・中穴以上だけ
+        # オッズなしバックテスト条件
+        # 馬王モードは「AI評価では拾えるが本命すぎない」買い目を狙う。
+        "no_odds_rule": {
+            "min_tri_prob": 0.010,
+            "max_tri_prob": 0.045,
+            "same_first_only": False,
+            "max_bets": 1,
+        },
+
+        # 実運用後のオッズあり検証用。
         "ev_rule": {
             "min_ev": 1.35,
             "min_odds": 12.0,
@@ -125,6 +144,24 @@ def _safe_int(v, default=0):
 
 def _race_id(race_date, venue_id, race_no):
     return f"{race_date.replace('-', '')}_{str(venue_id).zfill(2)}_{int(race_no):02d}"
+
+
+def _candidate_prob(c):
+    return _safe_float(c.get("probability", c.get("prob", 0.0)), 0.0)
+
+
+def _normalize_ticket_candidate(c):
+    ticket = c.get("ticket")
+    if not ticket:
+        return None
+
+    return {
+        "ticket": ticket,
+        "prob": _candidate_prob(c),
+        "odds": c.get("odds"),
+        "ev": c.get("ev"),
+        "bet_type": "trifecta",
+    }
 
 
 # ============================================================
@@ -183,26 +220,19 @@ def _daterange(start_str, end_str):
 
 
 # ============================================================
-# シナリオ別 + EV 買い目選択
+# 買い目選択
 # ============================================================
 
-def _select_bets(prediction_result, scenario, params):
-    """
-    バックテスト用の買い目選択。
-
-    注意:
-    最終的な買い目選択は models/bet_selector_ev.py に統一する。
-    ここではシナリオ別の最低条件だけ確認する。
-    """
+def _passes_scenario_filter(prediction_result, scenario, params):
     candidates = prediction_result.get("candidates", [])
     exacta_candidates = prediction_result.get("exacta_candidates", [])
     race_score = _safe_float(prediction_result.get("race_score"), 0.0)
 
     if not candidates:
-        return []
+        return False
 
     if not exacta_candidates:
-        return []
+        return False
 
     sc_params = params["scenario_thresholds"].get(
         scenario,
@@ -212,11 +242,83 @@ def _select_bets(prediction_result, scenario, params):
     exacta_top1 = _safe_float(exacta_candidates[0].get("probability"), 0.0)
 
     if race_score < sc_params["race_score_min"]:
-        return []
+        return False
 
     if exacta_top1 < sc_params["exacta_top1_min"]:
+        return False
+
+    return True
+
+
+def _select_bets_no_odds(prediction_result, params):
+    """
+    過去バックテスト用。
+    オッズがないため、3連単候補の probability だけで買い目を選ぶ。
+
+    注意:
+    これはEV検証ではなく、予測ロジック単体の検証。
+    的中時の払戻は v2_results.trifecta_payout_yen で計算する。
+    """
+    rule = params.get("no_odds_rule", {})
+    candidates = prediction_result.get("candidates", [])
+
+    min_prob = _safe_float(rule.get("min_tri_prob"), 0.0)
+    max_prob = _safe_float(rule.get("max_tri_prob"), 1.0)
+    max_bets = _safe_int(rule.get("max_bets"), params.get("max_bets_per_race", 1))
+    same_first_only = bool(rule.get("same_first_only", False))
+
+    rows = []
+
+    for c in candidates:
+        row = _normalize_ticket_candidate(c)
+        if not row:
+            continue
+
+        prob = _safe_float(row.get("prob"), 0.0)
+
+        if prob < min_prob:
+            continue
+
+        # 本命すぎる低配当想定の買い目を避ける
+        if prob > max_prob:
+            continue
+
+        rows.append(row)
+
+    if not rows:
         return []
 
+    # probability優先。オッズなしなのでEVは使わない。
+    rows.sort(key=lambda x: x["prob"], reverse=True)
+
+    if max_bets <= 1:
+        return rows[:1]
+
+    top = rows[0]
+    bets = [top]
+
+    if same_first_only:
+        top_first = top["ticket"].split("-")[0]
+
+        for c in rows[1:]:
+            first = c["ticket"].split("-")[0]
+            if first == top_first and c["ticket"] != top["ticket"]:
+                bets.append(c)
+                break
+    else:
+        for c in rows[1:]:
+            if c["ticket"] != top["ticket"]:
+                bets.append(c)
+            if len(bets) >= max_bets:
+                break
+
+    return bets[:max_bets]
+
+
+def _select_bets_ev(prediction_result, params):
+    """
+    オッズありバックテスト・実運用検証用。
+    """
     mode = params.get("mode", "stable")
     ev_rule = params.get("ev_rule")
 
@@ -232,11 +334,25 @@ def _select_bets(prediction_result, scenario, params):
     return bets[:params["max_bets_per_race"]]
 
 
+def _select_bets(prediction_result, scenario, params, odds_mode="no_odds"):
+    """
+    シナリオ条件を満たした後、
+    odds_mode に応じて買い目選択を切り替える。
+    """
+    if not _passes_scenario_filter(prediction_result, scenario, params):
+        return []
+
+    if odds_mode == "ev":
+        return _select_bets_ev(prediction_result, params)
+
+    return _select_bets_no_odds(prediction_result, params)
+
+
 # ============================================================
 # 1レースのバックテスト
 # ============================================================
 
-def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, params):
+def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, params, odds_mode="no_odds"):
     race_id = _race_id(race_date, venue_id, race_no)
 
     context = load_race_context(venue_id, race_no, race_date)
@@ -249,9 +365,9 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, param
     if len(entries) < 6:
         return None
 
-    # 現在のrunnerは「直前オッズあり」のバックテスト用。
-    # 朝候補/直前精査の完全分離は portfolio_runner 追加後に別STEPで対応。
-    if not odds:
+    # evモードだけオッズ必須。
+    # no_oddsモードでは過去オッズなしで検証する。
+    if odds_mode == "ev" and not odds:
         return None
 
     try:
@@ -262,9 +378,9 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, param
 
     scenario = detect_scenario_type(context, prediction_result)
 
-    bets = _select_bets(prediction_result, scenario, params)
+    bets = _select_bets(prediction_result, scenario, params, odds_mode=odds_mode)
     adopt = len(bets) > 0
-    reason = None if adopt else f"閾値/EV条件未達({scenario})"
+    reason = None if adopt else f"閾値/買い目条件未達({scenario}, {odds_mode})"
 
     actual = _fetch_result(race_id)
     if not actual:
@@ -300,10 +416,13 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, param
     top1_prob = _safe_float(candidates[0].get("probability"), 0.0) if candidates else 0.0
     top2_prob = _safe_float(candidates[1].get("probability"), 0.0) if len(candidates) >= 2 else 0.0
 
+    top_bet = bets[0] if bets else {}
+
     return {
         "run_id": run_id,
         "model_version": MODEL_VERSION,
         "mode": params.get("mode"),
+        "odds_mode": odds_mode,
 
         "race_id": race_id,
         "race_date": race_date,
@@ -325,12 +444,12 @@ def _backtest_one_race(race_date, venue_id, race_no, session_type, run_id, param
         "trigami": trigami,
 
         "race_score": _safe_float(prediction_result.get("race_score"), 0.0),
-        "top1_ticket": bets[0]["ticket"] if bets else None,
-        "top1_prob": top1_prob,
+        "top1_ticket": top_bet.get("ticket") if bets else None,
+        "top1_prob": top_bet.get("prob") if bets else top1_prob,
         "top2_prob": top2_prob,
         "prob_gap": round(top1_prob - top2_prob, 6),
-        "max_ev": bets[0].get("ev") if bets else None,
-        "top1_odds": bets[0].get("odds") if bets else None,
+        "max_ev": top_bet.get("ev") if bets else None,
+        "top1_odds": top_bet.get("odds") if bets else None,
 
         "bets_json": json.dumps(bets, ensure_ascii=False) if bets else None,
     }
@@ -368,7 +487,7 @@ def _calc_max_drawdown(adopted):
     return max_dd
 
 
-def _summarize(results, run_id, start_date, end_date, mode):
+def _summarize(results, run_id, start_date, end_date, mode, odds_mode="no_odds"):
     adopted = [r for r in results if r["buy_flag"]]
     hits = [r for r in adopted if r["hit_flag"]]
     trigamis = [r for r in hits if r["trigami"]]
@@ -407,7 +526,7 @@ def _summarize(results, run_id, start_date, end_date, mode):
             scenario_stats[sc]["hit"] += 1
 
     print("\n" + "=" * 60)
-    print(f"バックテスト結果: {start_date} -> {end_date} [{mode}]")
+    print(f"バックテスト結果: {start_date} -> {end_date} [{mode} / {odds_mode}]")
     print("=" * 60)
     print(f"対象レース数:       {total_races}")
     print(f"採用レース数:       {adopted_races}")
@@ -456,7 +575,7 @@ def _summarize(results, run_id, start_date, end_date, mode):
 
         "scenario_stats": json.dumps(scenario_stats, ensure_ascii=False),
         "note": (
-            f"mode={mode} "
+            f"mode={mode} odds_mode={odds_mode} "
             f"points={total_points} "
             f"avg_points={avg_points_per_day:.1f}/day "
             f"max_losing_streak={max_losing_streak} "
@@ -464,6 +583,8 @@ def _summarize(results, run_id, start_date, end_date, mode):
         ),
     }
 
+    # v2_backtest_runs に odds_mode カラムがある場合だけ保存したいが、
+    # 環境差を避けるため note に含める。
     upsert("v2_backtest_runs", summary, on_conflict="run_id")
     return summary
 
@@ -472,14 +593,23 @@ def _summarize(results, run_id, start_date, end_date, mode):
 # メイン
 # ============================================================
 
-def run_backtest(start_date, end_date, mode="stable", run_id=None):
+def run_backtest(start_date, end_date, mode="stable", run_id=None, odds_mode="no_odds"):
+    """
+    odds_mode:
+        no_odds : 過去オッズなし検証。推奨。
+        ev      : オッズありEV検証。今後の蓄積データ向け。
+    """
     params = MODE_PARAMS.get(mode, MODE_PARAMS["stable"])
 
+    if odds_mode not in ("no_odds", "ev"):
+        odds_mode = "no_odds"
+
     if run_id is None:
-        run_id = f"{MODEL_VERSION}_{mode}_{start_date}_{end_date}"
+        run_id = f"{MODEL_VERSION}_{mode}_{odds_mode}_{start_date}_{end_date}"
 
     print("=== バックテスト開始 ===")
     print(f"モード: {params['description']}")
+    print(f"オッズモード: {odds_mode}")
     print(f"期間: {start_date} -> {end_date}")
     print(f"run_id: {run_id}")
     print(f"保存キー: race_id, run_id, mode")
@@ -510,6 +640,7 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
                 session_type=session_type,
                 run_id=run_id,
                 params=params,
+                odds_mode=odds_mode,
             )
 
             if result:
@@ -529,7 +660,7 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
             key=lambda x: (
                 scenario_priority.get(x["scenario_type"], 5),
                 -_safe_float(x.get("race_score"), 0.0),
-                -_safe_float(x.get("max_ev"), 0.0),
+                -_safe_float(x.get("top1_prob"), 0.0),
             )
         )
 
@@ -563,8 +694,7 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
                     f"[{result['mode']}:{result['scenario_type']}] "
                     f"{status} "
                     f"{result.get('top1_ticket')} "
-                    f"odds={result.get('top1_odds')} "
-                    f"ev={result.get('max_ev')} "
+                    f"prob={result.get('top1_prob')} "
                     f"profit={_safe_int(result.get('profit_yen'), 0):+d}円"
                 )
 
@@ -575,7 +705,7 @@ def run_backtest(start_date, end_date, mode="stable", run_id=None):
         print("結果なし")
         return None
 
-    return _summarize(all_results, run_id, start_date, end_date, mode)
+    return _summarize(all_results, run_id, start_date, end_date, mode, odds_mode=odds_mode)
 
 
 if __name__ == "__main__":
@@ -583,4 +713,5 @@ if __name__ == "__main__":
         start_date="2025-03-13",
         end_date="2026-04-30",
         mode="stable",
+        odds_mode="no_odds",
     )
