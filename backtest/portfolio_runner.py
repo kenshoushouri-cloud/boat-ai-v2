@@ -454,17 +454,22 @@ def run_portfolio_backtest(
     if portfolio_run_id is None:
         portfolio_run_id = f"{MODEL_VERSION}_portfolio_{start_date}_{end_date}"
 
-    print("=== portfolio統合バックテスト開始 ===")
-    print(f"期間: {start_date} -> {end_date}")
-    print(f"stable_run_id: {stable_run_id}")
-    print(f"ana_run_id: {ana_run_id}")
-    print(f"portfolio_run_id: {portfolio_run_id}")
-    print(f"1日上限: {DAILY_BUDGET_YEN}円 / {DAILY_MAX_POINTS}点")
+    dates = list(_daterange(start_date, end_date))
+    total_days = len(dates)
+
+    print("=== portfolio統合バックテスト開始 ===", flush=True)
+    print(f"期間: {start_date} -> {end_date} / {total_days}日", flush=True)
+    print(f"stable_run_id: {stable_run_id}", flush=True)
+    print(f"ana_run_id: {ana_run_id}", flush=True)
+    print(f"portfolio_run_id: {portfolio_run_id}", flush=True)
+    print(f"1日上限: {DAILY_BUDGET_YEN}円 / {DAILY_MAX_POINTS}点", flush=True)
 
     all_selected = []
     all_rows = []
 
-    for race_date in _daterange(start_date, end_date):
+    for day_index, race_date in enumerate(dates, 1):
+        print(f"[portfolio] {race_date} 開始 ({day_index}/{total_days})", flush=True)
+
         stable_rows = _fetch_backtest_rows(stable_run_id, race_date)
         ana_rows = _fetch_backtest_rows(ana_run_id, race_date)
 
@@ -481,12 +486,14 @@ def run_portfolio_backtest(
             rows.append(r)
 
         if not rows:
+            print(f"[portfolio] {race_date} 候補なし ({day_index}/{total_days})", flush=True)
             continue
 
         selected, rejected = _apply_portfolio_budget(rows)
 
         day_points = 0
         day_profit = 0
+        day_hits = 0
 
         for row in selected:
             row = _recalculate_row_result(row)
@@ -499,6 +506,8 @@ def run_portfolio_backtest(
 
             day_points += _safe_int(row.get("portfolio_points"), 0)
             day_profit += _safe_int(row.get("profit_yen"), 0)
+            if row.get("hit_flag"):
+                day_hits += 1
 
             upsert(
                 "v2_backtest_races",
@@ -524,11 +533,16 @@ def run_portfolio_backtest(
 
             all_rows.append(row)
 
-        if day_points > 0:
-            print(f"{race_date}: {day_points}点 profit={day_profit:+,}円")
+        print(
+            f"[portfolio] {race_date} 完了 ({day_index}/{total_days}) "
+            f"候補={len(rows)} 採用={len(selected)}R/{day_points}点 "
+            f"的中={day_hits} 日次損益={day_profit:+,}円 "
+            f"除外={len(rejected)}",
+            flush=True,
+        )
 
     if not all_rows:
-        print("統合対象なし")
+        print("統合対象なし", flush=True)
         return None
 
     return _summarize(
