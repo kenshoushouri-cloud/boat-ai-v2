@@ -23,7 +23,7 @@ from backtest.portfolio_runner import run_portfolio_backtest
 
 
 START_DATE = "2026-04-01"
-END_DATE = "2026-04-03"
+END_DATE = "2026-04-30"
 
 STABLE_RUN_ID = "test_stable_noodds_20260401_20260403"
 ANA_RUN_ID = "test_ana_noodds_20260401_20260403"
