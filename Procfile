@@ -1,1 +1,1 @@
-web: python3 -u scripts/run_backtest_test.py
+web: python3 -u scripts/run_backtest_full.py
