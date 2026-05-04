@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-全期間バックテスト実行用
+フィルター適用・オッズなしバックテスト実行用
 
 Railway Procfile:
     web: python3 -u scripts/run_backtest_full.py
-
-特徴:
-- オッズなしバックテスト odds_mode="no_odds"
-- 日付ごとの進行状況をリアルタイム表示
-- 最後に stable / ana / portfolio の結果を整理して表示
 """
 
 import os
@@ -25,9 +20,9 @@ from backtest.portfolio_runner import run_portfolio_backtest
 START_DATE = "2025-03-13"
 END_DATE = "2026-04-30"
 
-STABLE_RUN_ID = "v2_stable_noodds_20250313_20260430"
-ANA_RUN_ID = "v2_ana_noodds_20250313_20260430"
-PORTFOLIO_RUN_ID = "v2_portfolio_noodds_20250313_20260430"
+STABLE_RUN_ID = "v2_stable_filtered_noodds_20250313_20260430"
+ANA_RUN_ID = "v2_ana_filtered_noodds_20250313_20260430"
+PORTFOLIO_RUN_ID = "v2_portfolio_filtered_noodds_20250313_20260430"
 
 
 def _yen(v):
@@ -87,7 +82,7 @@ def _short(label, summary):
 
 
 def main():
-    print("=== オッズなしバックテスト実行開始 ===", flush=True)
+    print("=== フィルター適用・オッズなしバックテスト実行開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
 
     stable_summary = run_backtest(
