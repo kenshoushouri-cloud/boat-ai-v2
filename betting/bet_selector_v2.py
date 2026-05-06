@@ -3,9 +3,10 @@
 # =========================
 # 方針
 # - 本線は3連単
-# - ただし低配当っぽい3連単は買わない
-# - 3連単条件に届かない時だけ2連単を使う
-# - 2連単も保険なので厳しめ
+# - ただし低配当っぽい3連単は買わない
+# - 3連単条件に届かない時だけ2連単を使う
+# - 2連単も保険なので厳しめ
+# - betsには odds / ev も引き継ぐ
 # =========================
 
 # -------------------------
@@ -13,7 +14,7 @@
 # -------------------------
 TRIFECTA_RACE_SCORE_THRESHOLD = 0.20
 TRIFECTA_EXACTA_TOP1_THRESHOLD = 0.060
-TRIFECTA_PROB_MAX = 0.030      # 高すぎる=本命すぎる=低配当リスク
+TRIFECTA_PROB_MAX = 0.030      # 高すぎる=本命すぎる=低配当リスク
 TRIFECTA_BET_MAX = 2
 
 # -------------------------
@@ -28,6 +29,54 @@ EXACTA_TRI_TOP1_MIN = 0.018
 EXACTA_BET_MAX = 2
 
 
+def _to_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _extract_odds(row):
+    """
+    candidate側のキー名揺れに対応して odds を取得する。
+    """
+    for key in ["odds", "trifecta_odds", "exacta_odds", "odds_value"]:
+        if key in row and row.get(key) is not None:
+            return _to_float(row.get(key))
+    return None
+
+
+def _make_bet(row, bet_type):
+    """
+    prediction候補から保存用betを作る。
+    probability / odds / ev をここで必ず引き継ぐ。
+    """
+    prob = _to_float(row.get("probability", row.get("prob", 0.0)), 0.0)
+    odds = _extract_odds(row)
+
+    ev = row.get("ev", row.get("expected_value"))
+    ev = _to_float(ev)
+
+    if ev is None and odds is not None:
+        ev = round(prob * odds, 4)
+
+    bet = {
+        "ticket": row["ticket"],
+        "prob": prob,
+        "bet_type": bet_type,
+    }
+
+    if odds is not None:
+        bet["odds"] = odds
+
+    if ev is not None:
+        bet["ev"] = ev
+
+    return bet
+
+
 def _build_trifecta_bets(prediction_result, max_bets=2):
     candidates = prediction_result.get("candidates", [])
     if not candidates:
@@ -36,11 +85,7 @@ def _build_trifecta_bets(prediction_result, max_bets=2):
     bets = []
 
     top = candidates[0]
-    bets.append({
-        "ticket": top["ticket"],
-        "prob": top.get("probability", 0.0),
-        "bet_type": "trifecta",
-    })
+    bets.append(_make_bet(top, "trifecta"))
 
     if max_bets <= 1:
         return bets
@@ -48,27 +93,19 @@ def _build_trifecta_bets(prediction_result, max_bets=2):
     top_first, top_second, top_third = top["ticket"].split("-")
     second_choice = None
 
-    # 1着同じ・2着同じ・3着違い
+    # 1着同じ・2着同じ・3着違い
     for c in candidates[1:]:
         first, second, third = c["ticket"].split("-")
         if first == top_first and second == top_second and third != top_third:
-            second_choice = {
-                "ticket": c["ticket"],
-                "prob": c.get("probability", 0.0),
-                "bet_type": "trifecta",
-            }
+            second_choice = _make_bet(c, "trifecta")
             break
 
-    # 1着同じ・2着違い
+    # 1着同じ・2着違い
     if second_choice is None:
         for c in candidates[1:]:
             first, second, third = c["ticket"].split("-")
             if first == top_first and second != top_second:
-                second_choice = {
-                    "ticket": c["ticket"],
-                    "prob": c.get("probability", 0.0),
-                    "bet_type": "trifecta",
-                }
+                second_choice = _make_bet(c, "trifecta")
                 break
 
     if second_choice:
@@ -84,11 +121,7 @@ def _build_exacta_bets(prediction_result, max_bets=2):
 
     bets = []
     for row in exacta_candidates[:max_bets]:
-        bets.append({
-            "ticket": row["ticket"],
-            "prob": row.get("probability", 0.0),
-            "bet_type": "exacta",
-        })
+        bets.append(_make_bet(row, "exacta"))
 
     return bets
 
@@ -113,7 +146,7 @@ def _passes_trifecta_filter(prediction_result):
     if exacta_top1 < TRIFECTA_EXACTA_TOP1_THRESHOLD:
         return False, "3連単軸不足"
 
-    # 本命すぎる3連単は、実質的に旨味が薄いので切る
+    # 本命すぎる3連単は、実質的に旨味が薄いので切る
     if tri_top1 > TRIFECTA_PROB_MAX:
         return False, "3連単低配当リスク"
 
@@ -147,7 +180,7 @@ def _passes_exacta_filter(prediction_result):
         return False, "2連単低配当リスク"
 
     if top2 > EXACTA_TOP2_MAX:
-        return False, "2連単2位強すぎ"
+        return False, "2連単2位強すぎ"
 
     if tri_top1 < EXACTA_TRI_TOP1_MIN:
         return False, "3連単妙味不足"
@@ -157,7 +190,7 @@ def _passes_exacta_filter(prediction_result):
 
 def select_bets(prediction_result, max_bets=2):
     # =========================
-    # まず3連単を優先
+    # まず3連単を優先
     # =========================
     ok_tri, reason_tri = _passes_trifecta_filter(prediction_result)
     if ok_tri:
@@ -171,7 +204,7 @@ def select_bets(prediction_result, max_bets=2):
         print("bet_selector trifecta skip:", reason_tri)
 
     # =========================
-    # 次に2連単を保険で使う
+    # 次に2連単を保険で使う
     # =========================
     ok_ex, reason_ex = _passes_exacta_filter(prediction_result)
     if not ok_ex:
