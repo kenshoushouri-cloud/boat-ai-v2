@@ -64,33 +64,42 @@ def run_morning_summary_job(race_date):
     # 合計点数がMAX_POINTS_PER_DAY以内になるように絞り込む
     adopted = []
     total_points = 0
+
     for result in candidate_results:
         bet_count = len(result["bets"])
+
         if total_points + bet_count > MAX_POINTS_PER_DAY:
             continue
+
         adopted.append(result)
         total_points += bet_count
+
         if total_points >= MAX_POINTS_PER_DAY:
             break
 
     print(f"採用レース数: {len(adopted)}レース / {total_points}点")
 
     # 採用レースをDBに保存
+    # 1レース複数点を保存するため、on_conflict は ticket_rank まで含める
     for result in adopted:
         for rank, bet in enumerate(result["bets"], 1):
-            upsert("v2_predictions", {
-                "race_id": result["race_id"],
-                "model_version": MODEL_VERSION,
-                "buy_flag": True,
-                "race_score": result["race_score"],
-                "ticket": bet["ticket"],
-                "ticket_rank": rank,
-                "probability": bet["prob"],
-                "odds": bet.get("odds"),
-                "expected_value": bet.get("ev"),
-                "recommended_bet_yen": 100,
-                "notification_type": "morning_summary",
-            }, on_conflict=["race_id", "model_version"])
+            upsert(
+                "v2_predictions",
+                {
+                    "race_id": result["race_id"],
+                    "model_version": MODEL_VERSION,
+                    "buy_flag": True,
+                    "race_score": result["race_score"],
+                    "ticket": bet["ticket"],
+                    "ticket_rank": rank,
+                    "probability": bet["prob"],
+                    "odds": bet.get("odds"),
+                    "expected_value": bet.get("ev"),
+                    "recommended_bet_yen": 100,
+                    "notification_type": "morning_summary",
+                },
+                on_conflict=["race_id", "model_version", "ticket_rank"]
+            )
 
     if not adopted:
         msg = f"【朝まとめ予想 {race_date}】\n本日の推奨レースなし\nModel: {MODEL_VERSION}"
@@ -104,5 +113,6 @@ def run_morning_summary_job(race_date):
         model_version=MODEL_VERSION
     )
     print(msg)
+
     res = send_line_message(msg)
     print("LINE送信結果:", res)
