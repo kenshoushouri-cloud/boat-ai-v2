@@ -14,6 +14,7 @@ def main():
     job_mode = os.environ.get("JOB_MODE", "idle").strip().lower()
 
     print("JOB_MODE:", job_mode)
+    print("JOB_MODE repr:", repr(job_mode))
 
     if job_mode in ("", "idle"):
         print("JOB_MODE未設定またはidle → 待機モード")
