@@ -4,6 +4,7 @@
 # 方針
 # - 本線は3連単
 # - ただし低配当っぽい3連単は買わない
+# - 異常高オッズ・低確率EV暴れを除外する
 # - 3連単条件に届かない時だけ2連単を使う
 # - 2連単も保険なので厳しめ
 # - betsには odds / ev も引き継ぐ
@@ -14,7 +15,20 @@
 # -------------------------
 TRIFECTA_RACE_SCORE_THRESHOLD = 0.20
 TRIFECTA_EXACTA_TOP1_THRESHOLD = 0.060
-TRIFECTA_PROB_MAX = 0.030      # 高すぎる=本命すぎる=低配当リスク
+
+# 高すぎる確率 = 本命すぎる = 低配当リスク
+TRIFECTA_PROB_MAX = 0.030
+
+# 低すぎる確率 = オッズだけでEVが跳ねやすい
+TRIFECTA_PROB_MIN = 0.010
+
+# オッズ安全帯
+TRIFECTA_ODDS_MIN = 8.0
+TRIFECTA_ODDS_MAX = 200.0
+
+# EVが大きすぎる場合は、低確率×超高オッズの暴れとみなす
+TRIFECTA_EV_MAX = 3.0
+
 TRIFECTA_BET_MAX = 2
 
 # -------------------------
@@ -48,6 +62,20 @@ def _extract_odds(row):
     return None
 
 
+def _extract_ev(row, prob=None, odds=None):
+    """
+    ev / expected_value があれば使う。
+    なければ prob * odds で計算する。
+    """
+    ev = row.get("ev", row.get("expected_value"))
+    ev = _to_float(ev)
+
+    if ev is None and prob is not None and odds is not None:
+        ev = round(prob * odds, 4)
+
+    return ev
+
+
 def _make_bet(row, bet_type):
     """
     prediction候補から保存用betを作る。
@@ -55,12 +83,7 @@ def _make_bet(row, bet_type):
     """
     prob = _to_float(row.get("probability", row.get("prob", 0.0)), 0.0)
     odds = _extract_odds(row)
-
-    ev = row.get("ev", row.get("expected_value"))
-    ev = _to_float(ev)
-
-    if ev is None and odds is not None:
-        ev = round(prob * odds, 4)
+    ev = _extract_ev(row, prob=prob, odds=odds)
 
     bet = {
         "ticket": row["ticket"],
@@ -77,8 +100,55 @@ def _make_bet(row, bet_type):
     return bet
 
 
-def _build_trifecta_bets(prediction_result, max_bets=2):
+def _passes_trifecta_bet_safety(row):
+    """
+    3連単の個別買い目安全フィルター。
+    低確率×超高オッズによるEV暴れを避ける。
+    """
+    ticket = row.get("ticket")
+    prob = _to_float(row.get("probability", row.get("prob", 0.0)), 0.0)
+    odds = _extract_odds(row)
+    ev = _extract_ev(row, prob=prob, odds=odds)
+
+    if prob < TRIFECTA_PROB_MIN:
+        return False, f"{ticket} 確率下限未満 prob={prob:.4f}"
+
+    if odds is None:
+        return False, f"{ticket} オッズなし"
+
+    if odds < TRIFECTA_ODDS_MIN:
+        return False, f"{ticket} オッズ低すぎ odds={odds:.1f}"
+
+    if odds > TRIFECTA_ODDS_MAX:
+        return False, f"{ticket} オッズ高すぎ odds={odds:.1f}"
+
+    if ev is not None and ev > TRIFECTA_EV_MAX:
+        return False, f"{ticket} EV高すぎ ev={ev:.3f}"
+
+    return True, None
+
+
+def _safe_trifecta_candidates(prediction_result):
+    """
+    3連単候補から安全フィルターを通過したものだけを返す。
+    """
     candidates = prediction_result.get("candidates", [])
+    safe = []
+
+    for c in candidates:
+        ok, reason = _passes_trifecta_bet_safety(c)
+        if ok:
+            safe.append(c)
+        else:
+            # ログが多すぎないよう、候補上位だけ理由を出す
+            if len(safe) < 2:
+                print("bet_selector trifecta safety skip:", reason)
+
+    return safe
+
+
+def _build_trifecta_bets(prediction_result, max_bets=2):
+    candidates = _safe_trifecta_candidates(prediction_result)
     if not candidates:
         return []
 
@@ -149,6 +219,10 @@ def _passes_trifecta_filter(prediction_result):
     # 本命すぎる3連単は、実質的に旨味が薄いので切る
     if tri_top1 > TRIFECTA_PROB_MAX:
         return False, "3連単低配当リスク"
+
+    safe_candidates = _safe_trifecta_candidates(prediction_result)
+    if not safe_candidates:
+        return False, "3連単安全条件不足"
 
     return True, None
 
