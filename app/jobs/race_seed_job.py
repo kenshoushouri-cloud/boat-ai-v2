@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+
 from data_pipeline.fetch_programs import (
     fetch_programs_api,
     parse_race_row,
@@ -14,8 +16,28 @@ NIGHT_VENUES = {"01", "07", "12", "15", "18", "20", "24"}
 
 
 def _normalize_venues(venue_ids=None):
+    """
+    優先順位:
+    1. 引数 venue_ids
+    2. 環境変数 BACKFILL_VENUES
+    3. 環境変数 TARGET_VENUES
+    4. 既存デフォルト TARGET_VENUES
+    """
     if venue_ids is None:
-        venue_ids = DEFAULT_TARGET_VENUES
+        env_venues = (
+            os.environ.get("BACKFILL_VENUES")
+            or os.environ.get("TARGET_VENUES")
+            or ""
+        ).strip()
+
+        if env_venues:
+            venue_ids = [
+                v.strip()
+                for v in env_venues.split(",")
+                if v.strip()
+            ]
+        else:
+            venue_ids = DEFAULT_TARGET_VENUES
 
     return {str(v).zfill(2) for v in venue_ids}
 
@@ -32,12 +54,20 @@ def _detect_session_type(venue_id):
 def run_race_seed_job(target_date, venue_ids=None):
     print("=== レース投入ジョブ開始 ===")
     print("対象日:", target_date)
+    print("引数 venue_ids:", venue_ids)
+    print("ENV BACKFILL_VENUES:", os.environ.get("BACKFILL_VENUES"))
+    print("ENV TARGET_VENUES:", os.environ.get("TARGET_VENUES"))
 
     target_venues = _normalize_venues(venue_ids)
     print("対象場:", ",".join(sorted(target_venues)))
 
     rows = fetch_programs_api(target_date, venue_ids=target_venues)
     print("API件数:", len(rows))
+
+    print("DEBUG fetched venues:", sorted({
+        str(row.get("race_stadium_number", "")).zfill(2)
+        for row in rows
+    }))
 
     saved_races = 0
     saved_entries = 0
@@ -48,6 +78,7 @@ def run_race_seed_job(target_date, venue_ids=None):
 
         if venue_id not in target_venues:
             skipped += 1
+            print("skip venue:", venue_id)
             continue
 
         race_data = parse_race_row(row, target_date)
