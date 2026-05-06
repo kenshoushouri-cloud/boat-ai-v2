@@ -22,8 +22,10 @@ def _normalize_venues(venue_ids=None):
 
 def _detect_session_type(venue_id):
     venue_id = str(venue_id).zfill(2)
+
     if venue_id in NIGHT_VENUES:
         return "night"
+
     return "day"
 
 
@@ -34,7 +36,7 @@ def run_race_seed_job(target_date, venue_ids=None):
     target_venues = _normalize_venues(venue_ids)
     print("対象場:", ",".join(sorted(target_venues)))
 
-    rows = fetch_programs_api(target_date)
+    rows = fetch_programs_api(target_date, venue_ids=target_venues)
     print("API件数:", len(rows))
 
     saved_races = 0
@@ -52,12 +54,19 @@ def run_race_seed_job(target_date, venue_ids=None):
         race_data["session_type"] = _detect_session_type(venue_id)
 
         print("race upsert start:", i, race_data["race_id"])
-        race_res = upsert("v2_races", race_data, on_conflict=["race_id"])
+
+        race_res = upsert(
+            "v2_races",
+            race_data,
+            on_conflict=["race_id"],
+        )
+
         print(
             "race upsert ok:",
             race_data["race_id"],
-            race_res[:1] if isinstance(race_res, list) else race_res
+            race_res[:1] if isinstance(race_res, list) else race_res,
         )
+
         saved_races += 1
 
         entry_rows = parse_entry_rows(row, target_date)
@@ -69,19 +78,22 @@ def run_race_seed_job(target_date, venue_ids=None):
                 j,
                 entry["race_id"],
                 entry["lane"],
-                entry.get("racer_name")
+                entry.get("racer_name"),
             )
+
             entry_res = upsert(
                 "v2_race_entries",
                 entry,
-                on_conflict=["race_id", "lane"]
+                on_conflict=["race_id", "lane"],
             )
+
             print(
                 "entry upsert ok:",
                 entry["race_id"],
                 entry["lane"],
-                entry_res[:1] if isinstance(entry_res, list) else entry_res
+                entry_res[:1] if isinstance(entry_res, list) else entry_res,
             )
+
             saved_entries += 1
 
     print("保存レース件数:", saved_races)
