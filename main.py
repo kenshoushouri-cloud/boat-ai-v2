@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 
 from run_report import main as report_main
 from run_results import main as results_main
@@ -7,6 +8,15 @@ from run_morning_jobs import main as morning_main
 from run_pre_race_jobs import main as prerace_main
 from run_seed import main as seed_main
 from run_odds import main as odds_main
+
+
+def idle_loop():
+    print("JOB_MODE未設定またはidle → 待機モード")
+    print("バックテストは実行しません。")
+
+    while True:
+        print("boat_ai_v2 idle...")
+        time.sleep(300)
 
 
 def main():
@@ -25,9 +35,12 @@ def main():
         seed_main()
     elif job_mode == "odds":
         odds_main()
+    elif job_mode in ("", "idle"):
+        idle_loop()
     else:
-        print("JOB_MODE未設定 → 終了")
-        print("有効なJOB_MODE: report / results / morning / prerace / seed / odds")
+        print("不明なJOB_MODE:", job_mode)
+        print("有効なJOB_MODE: idle / report / results / morning / prerace / seed / odds")
+        print("安全のため終了します。")
 
 
 if __name__ == "__main__":
