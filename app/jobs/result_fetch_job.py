@@ -7,9 +7,28 @@ from data_pipeline.fetch_results import (
 )
 
 
-def run_result_fetch_job(target_date, debug_first_n=3):
-    print("=== 結果取得ジョブ開始 ===")
+def _normalize_venues(venue_ids=None):
+    if venue_ids is None:
+        return None
+    return {str(v).zfill(2) for v in venue_ids}
+
+
+def _venue_from_race_id(race_id):
+    try:
+        return str(race_id).split("_")[1].zfill(2)
+    except Exception:
+        return None
+
+
+def run_result_fetch_job(target_date, debug_first_n=3, venue_ids=None):
+    print("=== 結果取得ジョブ開始 ===")
     print("対象日:", target_date)
+
+    target_venues = _normalize_venues(venue_ids)
+    if target_venues:
+        print("対象場:", ",".join(sorted(target_venues)))
+    else:
+        print("対象場: all / existing races only")
 
     rows, source_url = fetch_result_rows(target_date)
     print("API件数:", len(rows))
@@ -19,6 +38,8 @@ def run_result_fetch_job(target_date, debug_first_n=3):
 
     saved_count = 0
     skip_count = 0
+    venue_skip_count = 0
+    no_race_skip_count = 0
 
     for row in rows:
         parsed = parse_result_row(row)
@@ -27,10 +48,17 @@ def run_result_fetch_job(target_date, debug_first_n=3):
             continue
 
         race_id = parsed["race_id"]
+        venue_id = _venue_from_race_id(race_id)
 
+        if target_venues and venue_id not in target_venues:
+            venue_skip_count += 1
+            continue
+
+        # v2_races に存在するレースだけ結果保存する
+        # これで他場以外や未投入レースへのFKエラーを防ぐ
         races = select_where("v2_races", {"race_id": race_id}, limit=1)
         if not races:
-            skip_count += 1
+            no_race_skip_count += 1
             continue
 
         data = {
@@ -61,3 +89,5 @@ def run_result_fetch_job(target_date, debug_first_n=3):
 
     print("保存件数:", saved_count)
     print("skip件数:", skip_count)
+    print("venue skip件数:", venue_skip_count)
+    print("v2_races未投入skip件数:", no_race_skip_count)
