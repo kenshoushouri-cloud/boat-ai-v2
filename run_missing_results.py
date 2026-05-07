@@ -330,7 +330,7 @@ def main():
     run_history_backfill(
         start_date_str="2025-04-01",
         end_date_str="2026-04-30",
-        sleep_sec=0.5,
+        sleep_sec=0.7,
         max_workers=4,
         max_retry=3,
         retry_wait_sec=10.0,
@@ -344,7 +344,7 @@ def main():
     run_missing_check(
         start_date_str="2025-04-01",
         end_date_str="2026-04-30",
-        sleep_sec=0.5,
+        sleep_sec=0.7,
         record_no_race=True,
     )
 
