@@ -25,7 +25,7 @@ def main():
         end_date_str=os.environ.get("BACKFILL_END_DATE", "2026-04-30"),
         venue_ids=OTHER_VENUES,
         sleep_sec=0.7,
-        max_workers=2,
+        max_workers=4,
         max_retry=3,
         retry_wait_sec=15.0,
         do_race=True,
