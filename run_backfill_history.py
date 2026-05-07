@@ -306,7 +306,7 @@ def main():
             "13", "14", "15", "16", "17",
             "19", "20", "21", "22", "23",
         ],
-        sleep_sec=0.5,
+        sleep_sec=0.7,
         max_workers=4,
         max_retry=3,
         retry_wait_sec=15.0,
