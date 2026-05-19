@@ -5,6 +5,7 @@ import sys
 import time
 import requests
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 
 sys.path.append(os.path.dirname(__file__))
@@ -15,6 +16,7 @@ from db.client import upsert
 LEGACY_VENUES_DEFAULT = ["01", "06", "12", "18", "24"]
 RNO = 1
 
+# 01 桐生 / 07 蒲郡 / 12 住之江 / 15 丸亀 / 18 下関 / 20 若松 / 24 大村
 NIGHT_VENUES = {"01", "07", "12", "15", "18", "20", "24"}
 
 HTTP_HEADERS = {
@@ -35,6 +37,20 @@ def _env_bool(name, default=True):
     if raw is None:
         return default
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
+
+def _env_float(name, default):
+    try:
+        return float(os.getenv(name, str(default)))
+    except Exception:
+        return default
 
 
 def daterange(start_date, end_date):
@@ -71,11 +87,13 @@ def _safe_float(v, default=None):
 def _extract_numbers(text):
     text = _zen_to_han(text)
     nums = []
+
     for p in re.findall(r"\d+\.\d+|\d+", text):
         try:
             nums.append(float(p))
         except Exception:
             pass
+
     return nums
 
 
@@ -96,27 +114,37 @@ def _parse_fl_st(text):
 
 def _parse_rate_pair(td):
     nums = []
-    for t in td.stripped_strings:
-        nums.extend(_extract_numbers(t))
+
+    try:
+        for t in td.stripped_strings:
+            nums.extend(_extract_numbers(t))
+    except Exception:
+        pass
 
     if len(nums) >= 2:
         return nums[0], nums[1]
     if len(nums) == 1:
         return nums[0], None
+
     return None, None
 
 
 def _pick_racer_name(td):
-    texts = [t.strip() for t in td.stripped_strings if t.strip()]
+    try:
+        texts = [t.strip() for t in td.stripped_strings if t.strip()]
+    except Exception:
+        return ""
 
     for t in texts:
-        if t in {"A1", "A2", "B1", "B2"}:
+        t2 = _zen_to_han(t)
+
+        if t2 in {"A1", "A2", "B1", "B2"}:
             continue
-        if "/" in t:
+        if "/" in t2:
             continue
-        if re.fullmatch(r"\d+", _zen_to_han(t)):
+        if re.fullmatch(r"\d+", t2):
             continue
-        if len(t) >= 2:
+        if len(t2) >= 2:
             return t
 
     return ""
@@ -127,13 +155,14 @@ def _fetch_racelist_html(hd, jcd, rno=1):
         "https://www.boatrace.jp/owpc/pc/race/racelist"
         f"?rno={int(rno)}&jcd={str(jcd).zfill(2)}&hd={hd}"
     )
+
     try:
         r = requests.get(url, headers=HTTP_HEADERS, timeout=20)
         r.raise_for_status()
         r.encoding = r.apparent_encoding or "utf-8"
         return r.text, url
     except Exception as e:
-        print(f"    ❌ racelist fetch error: {jcd} R{rno} {e}")
+        print(f"    ❌ racelist fetch error: jcd={jcd} R{rno} {e}")
         return None, url
 
 
@@ -142,13 +171,14 @@ def _fetch_result_html(hd, jcd, rno=1):
         "https://www.boatrace.jp/owpc/pc/race/raceresult"
         f"?rno={int(rno)}&jcd={str(jcd).zfill(2)}&hd={hd}"
     )
+
     try:
         r = requests.get(url, headers=HTTP_HEADERS, timeout=20)
         r.raise_for_status()
         r.encoding = r.apparent_encoding or "utf-8"
         return r.text, url
     except Exception as e:
-        print(f"    ❌ result fetch error: {jcd} R{rno} {e}")
+        print(f"    ❌ result fetch error: jcd={jcd} R{rno} {e}")
         return None, url
 
 
@@ -158,10 +188,12 @@ def _parse_entry_tr(tds):
 
     boat_text = _zen_to_han(tds[0].get_text(strip=True))
     m_boat = re.search(r"[1-6]", boat_text)
+
     if not m_boat:
         return None
 
     lane = int(m_boat.group())
+
     if not (1 <= lane <= 6):
         return None
 
@@ -180,6 +212,7 @@ def _parse_entry_tr(tds):
     motor_no = None
     motor_p2 = None
     motor_nums = _extract_numbers(tds[6].get_text(" ", strip=True))
+
     if len(motor_nums) >= 1:
         motor_no = int(motor_nums[0])
     if len(motor_nums) >= 2:
@@ -188,6 +221,7 @@ def _parse_entry_tr(tds):
     boat_no2 = None
     boat_p2 = None
     boat_nums = _extract_numbers(tds[7].get_text(" ", strip=True))
+
     if len(boat_nums) >= 1:
         boat_no2 = int(boat_nums[0])
     if len(boat_nums) >= 2:
@@ -224,11 +258,11 @@ def _parse_racelist(html, hd, jcd, rno=1):
 
     boats_by_lane = {}
 
-    # table番号固定にせず、全tableのtrを走査する
     for table in soup.find_all("table"):
         for tr in table.find_all("tr"):
             tds = tr.find_all(["td", "th"])
             entry = _parse_entry_tr(tds)
+
             if not entry:
                 continue
 
@@ -245,11 +279,12 @@ def _parse_racelist(html, hd, jcd, rno=1):
         return None
 
     race_closed_at = None
+
     try:
         text = soup.get_text("\n")
         times = re.findall(r"\b\d{1,2}:\d{2}\b", text)
+
         if times:
-            # R1なので先頭の時刻を採用
             time_str = times[0]
             date_str = f"{hd[:4]}-{hd[4:6]}-{hd[6:8]}"
             race_closed_at = f"{date_str}T{time_str}:00+09:00"
@@ -298,6 +333,7 @@ def parse_entry_rows(row, target_date):
     race_id = build_race_id(target_date, venue_id, race_no)
 
     entries = []
+
     for boat in row.get("boats", []):
         lane = boat.get("racer_boat_number")
 
@@ -344,6 +380,7 @@ def _parse_race_result_fixed(html, race_date, jcd, rno):
     for table in soup.find_all("table"):
         for tr in table.find_all("tr"):
             tds = tr.find_all("td")
+
             if len(tds) < 2:
                 continue
 
@@ -367,6 +404,7 @@ def _parse_race_result_fixed(html, race_date, jcd, rno):
     payouts = {"trifecta": [], "exacta": []}
 
     i = 0
+
     while i < len(lines):
         line = lines[i]
 
@@ -378,6 +416,7 @@ def _parse_race_result_fixed(html, race_date, jcd, rno):
 
             while j < len(lines) and len(combo_parts) < 10:
                 val = _zen_to_han(lines[j])
+
                 if val in {"1", "2", "3", "4", "5", "6", "-"}:
                     combo_parts.append(val)
                     j += 1
@@ -390,6 +429,7 @@ def _parse_race_result_fixed(html, race_date, jcd, rno):
                 combo = "-".join(boat_nums)
 
                 payout_yen = 0
+
                 while j < len(lines):
                     digits = "".join(c for c in _zen_to_han(lines[j]) if c.isdigit())
                     candidate = int(digits) if digits else 0
@@ -426,18 +466,21 @@ def _parse_race_result_fixed(html, race_date, jcd, rno):
 def _norm_ticket(v):
     if v is None:
         return None
+
     s = str(v).strip().replace(" ", "")
     return s if s else None
 
 
 def _pick_payout(payouts, key):
     rows = payouts.get(key, [])
+
     if not rows:
         return None, 0
 
     row = rows[0]
     ticket = _norm_ticket(row.get("combination"))
     payout = _safe_int(row.get("payout"), 0) or 0
+
     return ticket, payout
 
 
@@ -459,6 +502,7 @@ def _extract_places(boats):
     pairs.sort(key=lambda x: x[0])
     ordered = [boat_no for _, boat_no in pairs]
     lanes = ordered + [None] * (6 - len(ordered))
+
     return lanes[:6]
 
 
@@ -508,22 +552,35 @@ def repair_one_race(target_date, venue_id, sleep_sec=0.3, do_results=True):
     print(f"\n=== repair R1 start: {race_id} ===")
 
     html, _ = _fetch_racelist_html(hd, venue_id, RNO)
+
     if not html:
         print(f"  ❌ racelist fetch failed: {race_id}")
         return False
 
     row = _parse_racelist(html, hd, venue_id, RNO)
+
     if not row:
         print(f"  ⬜ racelist no data / parse failed: {race_id}")
         return False
 
     race_data = parse_race_row(row, target_date)
-    upsert("v2_races", race_data, on_conflict=["race_id"])
+
+    upsert(
+        "v2_races",
+        race_data,
+        on_conflict=["race_id"],
+    )
+
     print(f"  ✅ v2_races upsert: {race_id}")
 
     entries = parse_entry_rows(row, target_date)
+
     for entry in entries:
-        upsert("v2_race_entries", entry, on_conflict=["race_id", "lane"])
+        upsert(
+            "v2_race_entries",
+            entry,
+            on_conflict=["race_id", "lane"],
+        )
 
     print(f"  ✅ v2_race_entries upsert: {race_id} entries={len(entries)}")
 
@@ -531,12 +588,20 @@ def repair_one_race(target_date, venue_id, sleep_sec=0.3, do_results=True):
         time.sleep(sleep_sec)
 
         result_html, _ = _fetch_result_html(hd, venue_id, RNO)
+
         if result_html:
             result_row = _parse_race_result_fixed(result_html, target_date, venue_id, RNO)
+
             if result_row:
                 parsed = parse_result_row(result_row)
+
                 if parsed:
-                    upsert("v2_results", parsed, on_conflict=["race_id"])
+                    upsert(
+                        "v2_results",
+                        parsed,
+                        on_conflict=["race_id"],
+                    )
+
                     print(
                         f"  ✅ v2_results upsert: {race_id}"
                         f" 3連単={parsed.get('trifecta_ticket')}"
@@ -550,7 +615,37 @@ def repair_one_race(target_date, venue_id, sleep_sec=0.3, do_results=True):
     return True
 
 
-def run_odds_for_touched_dates(touched_dates, venues):
+def _repair_task(args):
+    target_date, venue_id, sleep_sec, do_results = args
+    race_id = build_race_id(target_date, venue_id, RNO)
+
+    try:
+        success = repair_one_race(
+            target_date=target_date,
+            venue_id=venue_id,
+            sleep_sec=sleep_sec,
+            do_results=do_results,
+        )
+
+        return {
+            "race_id": race_id,
+            "target_date": target_date,
+            "venue_id": venue_id,
+            "success": success,
+            "error": None,
+        }
+
+    except Exception as e:
+        return {
+            "race_id": race_id,
+            "target_date": target_date,
+            "venue_id": venue_id,
+            "success": False,
+            "error": str(e),
+        }
+
+
+def run_odds_for_touched_dates(touched_dates, venues, max_workers=1):
     try:
         from app.jobs.odds_seed_job import run_odds_seed_job
     except Exception as e:
@@ -558,19 +653,46 @@ def run_odds_for_touched_dates(touched_dates, venues):
         return
 
     venues_csv = ",".join(sorted({str(v).zfill(2) for v in venues}))
+
     os.environ["TARGET_VENUES"] = venues_csv
     os.environ["BACKFILL_VENUES"] = venues_csv
 
-    print("\n=== 1R odds補修開始 ===")
-    print("対象日数:", len(touched_dates))
-    print("対象場:", venues_csv)
+    dates = sorted(touched_dates)
 
-    for d in sorted(touched_dates):
+    print("\n=== 1R odds補修開始 ===")
+    print("対象日数:", len(dates))
+    print("対象場:", venues_csv)
+    print("odds並列数:", max_workers)
+
+    def _odds_task(d):
         try:
             print(f"\n--- odds_seed_job: {d} ---")
             run_odds_seed_job(d)
+            return d, True, None
         except Exception as e:
-            print(f"  ❌ odds_seed_job failed: {d} {e}")
+            return d, False, str(e)
+
+    if max_workers <= 1:
+        for d in dates:
+            d, ok, err = _odds_task(d)
+
+            if ok:
+                print(f"  ✅ odds_seed_job ok: {d}")
+            else:
+                print(f"  ❌ odds_seed_job failed: {d} {err}")
+
+        return
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_odds_task, d) for d in dates]
+
+        for future in as_completed(futures):
+            d, ok, err = future.result()
+
+            if ok:
+                print(f"  ✅ odds_seed_job ok: {d}")
+            else:
+                print(f"  ❌ odds_seed_job failed: {d} {err}")
 
 
 def main():
@@ -578,46 +700,86 @@ def main():
     end_date_str = os.getenv("REPAIR_END_DATE", "2025-03-31")
     venues = _env_list("REPAIR_VENUES", LEGACY_VENUES_DEFAULT)
 
-    sleep_sec = float(os.getenv("REPAIR_SLEEP_SEC", "0.3"))
+    sleep_sec = _env_float("REPAIR_SLEEP_SEC", 0.3)
     do_results = _env_bool("REPAIR_DO_RESULTS", True)
     do_odds = _env_bool("REPAIR_DO_ODDS", True)
+
+    repair_workers = _env_int("REPAIR_WORKERS", 3)
+    odds_workers = _env_int("REPAIR_ODDS_WORKERS", 1)
+
+    if repair_workers < 1:
+        repair_workers = 1
+    if repair_workers > 5:
+        print("⚠️ REPAIR_WORKERS は最大5に制限します")
+        repair_workers = 5
+
+    if odds_workers < 1:
+        odds_workers = 1
+    if odds_workers > 3:
+        print("⚠️ REPAIR_ODDS_WORKERS は最大3に制限します")
+        odds_workers = 3
 
     print("=== 旧5場 1R 専用補修開始 ===")
     print("期間:", start_date_str, "→", end_date_str)
     print("対象場:", ",".join(venues))
     print("do_results:", do_results)
     print("do_odds:", do_odds)
+    print("repair並列数:", repair_workers)
+    print("odds並列数:", odds_workers)
+    print("sleep_sec:", sleep_sec)
 
     start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
     end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
 
-    ok = []
-    ng = []
-    touched_dates = set()
+    tasks = []
 
     for d in daterange(start_date, end_date):
         target_date = d.strftime("%Y-%m-%d")
 
         for venue_id in venues:
-            success = repair_one_race(
-                target_date=target_date,
-                venue_id=venue_id,
-                sleep_sec=sleep_sec,
-                do_results=do_results,
-            )
+            tasks.append((target_date, venue_id, sleep_sec, do_results))
 
-            race_id = build_race_id(target_date, venue_id, RNO)
+    ok = []
+    ng = []
+    touched_dates = set()
 
-            if success:
-                ok.append(race_id)
-                touched_dates.add(target_date)
+    print("補修対象レース数:", len(tasks))
+
+    if repair_workers == 1:
+        for task in tasks:
+            result = _repair_task(task)
+
+            if result["success"]:
+                ok.append(result["race_id"])
+                touched_dates.add(result["target_date"])
+                print("✅ repair ok:", result["race_id"])
             else:
-                ng.append(race_id)
+                ng.append(result["race_id"])
+                print("⬜ repair ng:", result["race_id"], result["error"] or "")
 
             time.sleep(sleep_sec)
 
+    else:
+        with ThreadPoolExecutor(max_workers=repair_workers) as executor:
+            futures = [executor.submit(_repair_task, task) for task in tasks]
+
+            for future in as_completed(futures):
+                result = future.result()
+
+                if result["success"]:
+                    ok.append(result["race_id"])
+                    touched_dates.add(result["target_date"])
+                    print("✅ repair ok:", result["race_id"])
+                else:
+                    ng.append(result["race_id"])
+                    print("⬜ repair ng:", result["race_id"], result["error"] or "")
+
     if do_odds and touched_dates:
-        run_odds_for_touched_dates(touched_dates, venues)
+        run_odds_for_touched_dates(
+            touched_dates=touched_dates,
+            venues=venues,
+            max_workers=odds_workers,
+        )
 
     print("\n=== 旧5場 1R 専用補修終了 ===")
     print("成功:", len(ok))
