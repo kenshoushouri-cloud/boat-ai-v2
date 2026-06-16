@@ -17,7 +17,7 @@ backtest_multi_patterns_v3.py
 - public.v2_odds_trifecta
 
 Railway Start Command:
-    python backtest_multi_patterns_v3.py
+    python backtest_multi_patterns_v3_loglite.py
 
 主な環境変数:
     BACKTEST_START_DATE=2025-03-13
@@ -114,6 +114,18 @@ RETRY_MAX = int(os.getenv("BACKTEST_RETRY_MAX", "3"))
 RETRY_SLEEP = float(os.getenv("BACKTEST_RETRY_SLEEP", "2.0"))
 DAY_SLEEP = float(os.getenv("BACKTEST_DAY_SLEEP", "0.0"))
 
+# Railwayログ制限対策
+# 0=日次ログをかなり抑制、1=従来寄り
+VERBOSE_LOG = os.getenv("BACKTEST_VERBOSE_LOG", "0") == "1"
+# 何日ごとに進捗ログを出すか。0なら日次進捗ログなし。
+LOG_EVERY_DAYS = int(os.getenv("BACKTEST_LOG_EVERY_DAYS", "7"))
+# adopted_counts の長い内訳を出すか
+PRINT_ADOPTED_COUNTS = os.getenv("BACKTEST_PRINT_ADOPTED_COUNTS", "0") == "1"
+# JSON summary 全文を出すか。CSVがあるので通常0推奨。
+PRINT_JSON_SUMMARY = os.getenv("BACKTEST_PRINT_JSON_SUMMARY", "0") == "1"
+# コンソールに表示する上位戦略数
+SUMMARY_TOP_N = int(os.getenv("BACKTEST_SUMMARY_TOP_N", "12"))
+
 HTTP_TIMEOUT = int(os.getenv("BACKTEST_HTTP_TIMEOUT", "40"))
 PAGE_SIZE = int(os.getenv("BACKTEST_PAGE_SIZE", "1000"))
 
@@ -144,7 +156,7 @@ DEFAULT_COURSE_BIAS = {1: 3.20, 2: 3.10, 3: 3.10, 4: 3.00, 5: 2.40, 6: 1.80}
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ backtest_multi_patterns_v3.py VERSION 2026-06-16 odds-band-favrank [fixed-nfkc]", flush=True)
+    print("✅ backtest_multi_patterns_v3_loglite.py VERSION 2026-06-16 odds-band-favrank [log-lite]", flush=True)
     print(f"SUPABASE_URL: {SUPABASE_URL}", flush=True)
     print(f"SUPABASE_KEY: {'OK' if bool(SUPABASE_KEY) else 'MISSING'}", flush=True)
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -901,6 +913,7 @@ def main() -> None:
     print(f"min_ev={MIN_EV} min_odds={MIN_ODDS} max_odds={MAX_ODDS} insurance_min_odds={INSURANCE_MIN_ODDS}", flush=True)
     print(f"strict_seed={STRICT_SEED} prob_temp={PROB_TEMP}", flush=True)
     print(f"odds_page_size={ODDS_PAGE_SIZE} retry_max={RETRY_MAX} day_sleep={DAY_SLEEP}s", flush=True)
+    print(f"log: verbose={VERBOSE_LOG} every_days={LOG_EVERY_DAYS} adopted_counts={PRINT_ADOPTED_COUNTS} json_summary={PRINT_JSON_SUMMARY} top_n={SUMMARY_TOP_N}", flush=True)
 
     stats: Dict[str, StrategyStats] = {s.name: StrategyStats(s.name, s.description) for s in STRATEGIES}
 
@@ -927,18 +940,32 @@ def main() -> None:
 
         day_candidates = _build_day_candidates(race_date, races, results, entries_by_race, odds_by_race, stats)
 
+        adopted_total = 0
         adopted_counts = []
         for st in STRATEGIES:
             selected = _apply_daily_budget(day_candidates[st.name])
             for rc in selected:
                 stats[st.name].adopt(rc)
-            adopted_counts.append(f"{st.name}:{len(selected)}R")
+            adopted_total += len(selected)
+            if PRINT_ADOPTED_COUNTS:
+                adopted_counts.append(f"{st.name}:{len(selected)}R")
 
-        print(
-            f"[{idx}/{len(dates)}] {race_date} races={len(races)} ready={ready_today} seed={seed_today} "
-            f"adopted({', '.join(adopted_counts)}) elapsed={time.time() - t0:.1f}s",
-            flush=True,
-        )
+        should_log = False
+        if VERBOSE_LOG:
+            should_log = True
+        elif LOG_EVERY_DAYS > 0 and (idx == 1 or idx == len(dates) or idx % LOG_EVERY_DAYS == 0):
+            should_log = True
+
+        if should_log:
+            if PRINT_ADOPTED_COUNTS:
+                adopted_text = f" adopted({', '.join(adopted_counts)})"
+            else:
+                adopted_text = f" adopted_total={adopted_total}"
+            print(
+                f"[{idx}/{len(dates)}] {race_date} races={len(races)} ready={ready_today} seed={seed_today}"
+                f"{adopted_text} elapsed={time.time() - t0:.1f}s",
+                flush=True,
+            )
 
         if DAY_SLEEP > 0 and idx < len(dates):
             time.sleep(DAY_SLEEP)
@@ -955,8 +982,8 @@ def main() -> None:
     summary_rows = [stats[s.name].summary_row() for s in STRATEGIES]
     summary_rows.sort(key=lambda r: (r["roi"], r["profit_yen"]), reverse=True)
 
-    print("\n--- 戦略別サマリー ROI順 ---", flush=True)
-    for r in summary_rows:
+    print(f"\n--- 戦略別サマリー ROI順 Top {SUMMARY_TOP_N} ---", flush=True)
+    for r in summary_rows[:SUMMARY_TOP_N]:
         print(
             f"{r['strategy']:<22} "
             f"採用{r['adopted_races']:>5}R/{r['total_points']:>5}点 "
@@ -971,8 +998,11 @@ def main() -> None:
             flush=True,
         )
 
-    print("\n--- JSON summary ---", flush=True)
-    print(json.dumps(summary_rows, ensure_ascii=False, indent=2), flush=True)
+    if PRINT_JSON_SUMMARY:
+        print("\n--- JSON summary ---", flush=True)
+        print(json.dumps(summary_rows, ensure_ascii=False, indent=2), flush=True)
+    else:
+        print("\nJSON summary: skipped. CSV summary を確認してください。", flush=True)
 
     _write_csv(summary_rows, stats)
     print("=== 複数パターン・バックテスト終了 ===", flush=True)
