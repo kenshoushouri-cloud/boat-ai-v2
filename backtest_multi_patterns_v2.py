@@ -30,6 +30,11 @@ Railway Start Command:
     BACKTEST_INSURANCE_MIN_ODDS=6.0
     BACKTEST_STRICT_SEED=1                # 1: 1号艇A1/A2かつ2〜6号艇B1/B2
     BACKTEST_WRITE_CSV=1                  # /tmp/backtest_reports にCSV出力
+    BACKTEST_TEMP=2.20                    # _ticket_probabilities の温度パラメータ
+    BACKTEST_ODDS_PAGE_SIZE=5000          # オッズ専用ページサイズ
+    BACKTEST_RETRY_MAX=3                  # HTTPリトライ上限
+    BACKTEST_RETRY_SLEEP=2.0             # リトライ間隔(秒)
+    BACKTEST_DAY_SLEEP=0.0               # 日付ループ間スリープ(秒)
 
 注意:
 - ここでの予測は、既存の predictor_v2 に依存しない簡易EVスコアです。
@@ -89,8 +94,18 @@ STRICT_SEED = os.getenv("BACKTEST_STRICT_SEED", "1") == "1"
 WRITE_CSV = os.getenv("BACKTEST_WRITE_CSV", "1") == "1"
 CSV_DIR = os.getenv("BACKTEST_CSV_DIR", "/tmp/backtest_reports")
 
+# [FIX④] 温度パラメータを環境変数化
+PROB_TEMP = float(os.getenv("BACKTEST_TEMP", "2.20"))
+
 HTTP_TIMEOUT = int(os.getenv("BACKTEST_HTTP_TIMEOUT", "40"))
 PAGE_SIZE = int(os.getenv("BACKTEST_PAGE_SIZE", "1000"))
+# [FIX④] オッズ専用ページサイズ（1日分最大34,560行 → デフォルト5000で約7リクエストに削減）
+ODDS_PAGE_SIZE = int(os.getenv("BACKTEST_ODDS_PAGE_SIZE", "5000"))
+# [FIX⑤] リトライ設定
+RETRY_MAX = int(os.getenv("BACKTEST_RETRY_MAX", "3"))
+RETRY_SLEEP = float(os.getenv("BACKTEST_RETRY_SLEEP", "2.0"))
+# [FIX⑤] 日付ループ間スリープ（Supabaseレートリミット対策）
+DAY_SLEEP = float(os.getenv("BACKTEST_DAY_SLEEP", "0.0"))
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -98,6 +113,7 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
+# [FIX⑦] CLASS_NAME は出力ログに活用（未使用変数を解消）
 CLASS_NAME = {1: "B2", 2: "B1", 3: "A2", 4: "A1"}
 CLASS_WEIGHT = {1: 0.15, 2: 0.55, 3: 1.15, 4: 1.55}
 
@@ -164,8 +180,9 @@ def _pct(v: float) -> str:
     return f"{v:.1f}%"
 
 
-def _yen(v: Any) -> str:
-    return f"{_safe_int(v):,}円"
+def _yen(v: int) -> str:
+    # [FIX⑦] 引数を int に明示して型を明確化
+    return f"{v:,}円"
 
 
 def _norm_ticket(ticket: Any) -> str:
@@ -188,9 +205,31 @@ def _ticket_tuple(ticket: str) -> Tuple[int, int, int]:
     return int(a), int(b), int(c)
 
 
+def _class_label(racer_class: int) -> str:
+    """[FIX⑦] CLASS_NAME を活用してクラスラベルを返す。"""
+    return CLASS_NAME.get(racer_class, f"C{racer_class}")
+
+
 # ============================================================
 # Supabase REST
 # ============================================================
+
+def _http_get_with_retry(url: str) -> List[Dict[str, Any]]:
+    """[FIX⑤] リトライ付きHTTP GET。"""
+    last_err: Optional[Exception] = None
+    for attempt in range(1, RETRY_MAX + 1):
+        try:
+            res = requests.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
+            if not res.ok:
+                raise RuntimeError(f"HTTP {res.status_code}: {res.text[:300]}")
+            return res.json()
+        except Exception as e:
+            last_err = e
+            if attempt < RETRY_MAX:
+                print(f"  [retry {attempt}/{RETRY_MAX}] {e} — {RETRY_SLEEP}s 後に再試行", flush=True)
+                time.sleep(RETRY_SLEEP)
+    raise RuntimeError(f"リトライ上限到達: {last_err}")
+
 
 def _rest_get(table: str, params: Dict[str, str], page_size: int = PAGE_SIZE) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
@@ -201,10 +240,7 @@ def _rest_get(table: str, params: Dict[str, str], page_size: int = PAGE_SIZE) ->
         p["offset"] = str(offset)
         query = urllib.parse.urlencode(p, safe=",.*()")
         url = f"{SUPABASE_URL}/rest/v1/{table}?{query}"
-        res = requests.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
-        if not res.ok:
-            raise RuntimeError(f"GET {table} failed {res.status_code}: {res.text[:500]}")
-        part = res.json()
+        part = _http_get_with_retry(url)  # [FIX⑤] リトライ対応
         if not part:
             break
         rows.extend(part)
@@ -214,8 +250,96 @@ def _rest_get(table: str, params: Dict[str, str], page_size: int = PAGE_SIZE) ->
     return rows
 
 
-def _fetch_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, float]]]:
-    """1日分の races/results/entries/odds を取得する。"""
+def _rest_get_range(
+    table: str,
+    select: str,
+    col: str,
+    gte: str,
+    lt: str,
+    page_size: int = PAGE_SIZE,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    offset = 0
+    while True:
+        parts = [
+            ("select", select),
+            (col, f"gte.{gte}"),
+            (col, f"lt.{lt}"),
+            ("order", f"{col}.asc"),
+            ("limit", str(page_size)),
+            ("offset", str(offset)),
+        ]
+        query = urllib.parse.urlencode(parts, safe=",.*()")
+        url = f"{SUPABASE_URL}/rest/v1/{table}?{query}"
+        part = _http_get_with_retry(url)  # [FIX⑤] リトライ対応
+        if not part:
+            break
+        rows.extend(part)
+        if len(part) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
+# [FIX③] _is_backtest_ready の戻り値をタプル化してチケット復元ロジックを一元管理
+def _check_backtest_ready(
+    result: Optional[Dict[str, Any]],
+    entries: List[Dict[str, Any]],
+    odds: Dict[str, float],
+) -> Tuple[bool, str, int]:
+    """
+    (is_ready, actual_ticket, actual_payout_yen) を返す。
+
+    result_status が "parse_incomplete" の場合も通過させる。
+    その場合 trifecta_ticket が空なら first/second/third_lane から復元する。
+    意図的な動作（parse_incompleteでも着順が取れていれば検証対象にする）。
+    """
+    if not result:
+        return False, "", 0
+    if result.get("result_status") not in ("official", "parse_incomplete"):
+        return False, "", 0
+
+    # チケット復元（DRY化：_build_day_candidates での二重処理を廃止）
+    actual_ticket = _norm_ticket(result.get("trifecta_ticket"))
+    if not actual_ticket:
+        fl = result.get("first_lane")
+        sl = result.get("second_lane")
+        tl = result.get("third_lane")
+        if fl and sl and tl:
+            actual_ticket = _norm_ticket(f"{fl}-{sl}-{tl}")
+    if not actual_ticket:
+        return False, "", 0
+
+    actual_payout = _safe_int(result.get("trifecta_payout_yen"), 0)
+    if actual_payout <= 0:
+        return False, "", 0
+
+    by_lane = _entry_by_lane(entries)
+    if len(by_lane) != 6:
+        return False, "", 0
+    for lane in range(1, 7):
+        e = by_lane.get(lane, {})
+        if not e.get("racer_number") or e.get("racer_class") is None:
+            return False, "", 0
+
+    if len(odds) != 120:
+        return False, "", 0
+
+    return True, actual_ticket, actual_payout
+
+
+def _fetch_day_rows(
+    date_str: str,
+) -> Tuple[
+    List[Dict[str, Any]],
+    Dict[str, Tuple[bool, str, int]],
+    Dict[str, List[Dict[str, Any]]],
+    Dict[str, Dict[str, float]],
+]:
+    """
+    1日分の races/results/entries/odds を取得する。
+    results は {race_id: (is_ready, actual_ticket, payout_yen)} に変換済みで返す。
+    """
     day_prefix = _rid_prefix(date_str)
     next_prefix = _rid_prefix(_next_day(date_str))
 
@@ -229,7 +353,6 @@ def _fetch_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict
     )
     races = [r for r in races if str(r.get("venue_id", "")).zfill(2) in TARGET_VENUES]
 
-    # 同一カラムの gte/lt をREST URLに重ねる必要があるため range専用関数を使う
     results_rows = _rest_get_range(
         "v2_results",
         select="race_id,result_status,trifecta_ticket,trifecta_payout_yen,first_lane,second_lane,third_lane",
@@ -237,7 +360,7 @@ def _fetch_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict
         gte=day_prefix,
         lt=next_prefix,
     )
-    results = {r["race_id"]: r for r in results_rows}
+    raw_results: Dict[str, Dict[str, Any]] = {r["race_id"]: r for r in results_rows}
 
     entries_rows = _rest_get_range(
         "v2_race_entries",
@@ -250,13 +373,14 @@ def _fetch_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict
     for e in entries_rows:
         entries.setdefault(e["race_id"], []).append(e)
 
+    # [FIX④] オッズは専用ページサイズ(ODDS_PAGE_SIZE)で取得してHTTPリクエスト数を削減
     odds_rows = _rest_get_range(
         "v2_odds_trifecta",
         select="race_id,ticket,odds",
         col="race_id",
         gte=day_prefix,
         lt=next_prefix,
-        page_size=PAGE_SIZE,
+        page_size=ODDS_PAGE_SIZE,
     )
     odds: Dict[str, Dict[str, float]] = {}
     for o in odds_rows:
@@ -266,35 +390,14 @@ def _fetch_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict
             continue
         odds.setdefault(rid, {})[ticket] = _safe_float(o.get("odds"), 0.0)
 
-    return races, results, entries, odds
+    # [FIX③] ready判定をここで一括実施（_build_day_candidates での重複処理を排除）
+    checked_results: Dict[str, Tuple[bool, str, int]] = {}
+    for rid, raw in raw_results.items():
+        checked_results[rid] = _check_backtest_ready(
+            raw, entries.get(rid, []), odds.get(rid, {})
+        )
 
-
-def _rest_get_range(table: str, select: str, col: str, gte: str, lt: str, page_size: int = PAGE_SIZE) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    offset = 0
-    while True:
-        # PostgRESTでは同一カラムの gte/lt をURLに重ねる必要があるため手動構築
-        parts = [
-            ("select", select),
-            (col, f"gte.{gte}"),
-            (col, f"lt.{lt}"),
-            ("order", f"{col}.asc"),
-            ("limit", str(page_size)),
-            ("offset", str(offset)),
-        ]
-        query = urllib.parse.urlencode(parts, safe=",.*()")
-        url = f"{SUPABASE_URL}/rest/v1/{table}?{query}"
-        res = requests.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
-        if not res.ok:
-            raise RuntimeError(f"GET {table} range failed {res.status_code}: {res.text[:500]}")
-        part = res.json()
-        if not part:
-            break
-        rows.extend(part)
-        if len(part) < page_size:
-            break
-        offset += page_size
-    return rows
+    return races, checked_results, entries, odds
 
 
 # ============================================================
@@ -308,35 +411,6 @@ def _entry_by_lane(entries: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
         if 1 <= lane <= 6:
             d[lane] = e
     return d
-
-
-def _is_backtest_ready(result: Optional[Dict[str, Any]], entries: List[Dict[str, Any]], odds: Dict[str, float]) -> bool:
-    if not result:
-        return False
-    if result.get("result_status") not in ("official", "parse_incomplete"):
-        return False
-    actual_ticket = _norm_ticket(result.get("trifecta_ticket"))
-    if not actual_ticket:
-        # trifecta_ticket が空でも first/second/third から復元できる場合に備える
-        fl = result.get("first_lane")
-        sl = result.get("second_lane")
-        tl = result.get("third_lane")
-        if fl and sl and tl:
-            actual_ticket = _norm_ticket(f"{fl}-{sl}-{tl}")
-    if not actual_ticket:
-        return False
-    if _safe_int(result.get("trifecta_payout_yen"), 0) <= 0:
-        return False
-    by_lane = _entry_by_lane(entries)
-    if len(by_lane) != 6:
-        return False
-    for lane in range(1, 7):
-        e = by_lane.get(lane, {})
-        if not e.get("racer_number") or e.get("racer_class") is None:
-            return False
-    if len(odds) != 120:
-        return False
-    return True
 
 
 def _is_seed_race(entries: List[Dict[str, Any]], strict: bool = STRICT_SEED) -> bool:
@@ -376,9 +450,8 @@ def _ticket_probabilities(entries: List[Dict[str, Any]], venue_id: str) -> Dict[
     by_lane = _entry_by_lane(entries)
     raw = {lane: _lane_raw_strength(by_lane[lane], lane, venue_id) for lane in range(1, 7)}
 
-    # 温度を高めにして過信を抑える
-    temp = 2.20
-    weights = {lane: math.exp(raw[lane] / temp) for lane in range(1, 7)}
+    # [FIX⑥] 温度パラメータを定数 PROB_TEMP（環境変数 BACKTEST_TEMP）から取得
+    weights = {lane: math.exp(raw[lane] / PROB_TEMP) for lane in range(1, 7)}
 
     probs: Dict[str, float] = {}
     total = sum(weights.values())
@@ -490,7 +563,6 @@ def _select_bets_for_strategy(candidates: List[Dict[str, Any]], st: Strategy) ->
         return []
 
     if st.insurance_count > 0:
-        # 保険は、本線以外から、オッズ6倍以上かつEV/確率のバランスが良いものを採用
         used = {b["ticket"] for b in bets}
         insurance_candidates = [
             c for c in rows
@@ -498,10 +570,14 @@ def _select_bets_for_strategy(candidates: List[Dict[str, Any]], st: Strategy) ->
         ]
         insurance_candidates.sort(key=lambda x: (x["ev"], x["prob"]), reverse=True)
 
+        current_main_count = len(bets)  # 本線確定点数
+        ins_added = 0
+
         for c in insurance_candidates:
-            if len([b for b in bets if b.get("label") == "insurance"]) >= st.insurance_count:
+            if ins_added >= st.insurance_count:
                 break
-            projected_points = len(bets) + 1
+            # [FIX⑦] 保険追加後の合計点数で トリガミ判定（確定済み本線 + これまでの保険 + 今回の保険）
+            projected_points = current_main_count + ins_added + 1
             projected_stake = projected_points * UNIT_YEN
             projected_payout = c["odds"] * UNIT_YEN
             if st.require_insurance_no_trigami and projected_payout < projected_stake:
@@ -509,6 +585,7 @@ def _select_bets_for_strategy(candidates: List[Dict[str, Any]], st: Strategy) ->
             b = dict(c)
             b["label"] = "insurance"
             bets.append(b)
+            ins_added += 1
 
     return bets
 
@@ -542,7 +619,8 @@ class StrategyStats:
     total_payout_yen: int = 0
     profit_yen: int = 0
     max_losing_streak: int = 0
-    _cur_losing_streak: int = 0
+    # [FIX⑧] repr=False で dataclass の __repr__ から除外
+    _cur_losing_streak: int = field(default=0, repr=False)
     daily: Dict[str, Dict[str, int]] = field(default_factory=dict)
 
     def add_eligible(self) -> None:
@@ -630,7 +708,7 @@ class StrategyStats:
 def _build_day_candidates(
     race_date: str,
     races: List[Dict[str, Any]],
-    results: Dict[str, Dict[str, Any]],
+    checked_results: Dict[str, Tuple[bool, str, int]],  # [FIX③] タプル形式
     entries_by_race: Dict[str, List[Dict[str, Any]]],
     odds_by_race: Dict[str, Dict[str, float]],
     stats: Dict[str, StrategyStats],
@@ -641,22 +719,19 @@ def _build_day_candidates(
         rid = r.get("race_id")
         venue_id = str(r.get("venue_id", "")).zfill(2)
         race_no = _safe_int(r.get("race_no"), 0)
-        result = results.get(rid)
+
+        # [FIX③] ready判定とチケット取得を一括（重複ロジック廃止）
+        is_ready, actual_ticket, actual_payout = checked_results.get(rid, (False, "", 0))
+        if not is_ready:
+            continue
+
         entries = entries_by_race.get(rid, [])
         odds = odds_by_race.get(rid, {})
-
-        if not _is_backtest_ready(result, entries, odds):
-            continue
 
         is_seed = _is_seed_race(entries)
         candidates = _rank_candidates(entries, venue_id, odds)
         if not candidates:
             continue
-
-        actual_ticket = _norm_ticket(result.get("trifecta_ticket"))
-        if not actual_ticket:
-            actual_ticket = _norm_ticket(f"{result.get('first_lane')}-{result.get('second_lane')}-{result.get('third_lane')}")
-        actual_payout = _safe_int(result.get("trifecta_payout_yen"), 0)
 
         for st in STRATEGIES:
             if st.seed_only and not is_seed:
@@ -692,7 +767,9 @@ def _build_day_candidates(
 def _apply_daily_budget(candidates: List[RaceCandidate]) -> List[RaceCandidate]:
     if DAILY_BUDGET_YEN <= 0:
         return candidates
-    rows = sorted(candidates, key=lambda x: x.priority, reverse=True)
+
+    # [FIX②] 優先度が同じなら点数が少ない候補を先に採用してバジェット効率を最大化
+    rows = sorted(candidates, key=lambda x: (-x.priority, len(x.bets)))
     selected: List[RaceCandidate] = []
     used_points = 0
     for rc in rows:
@@ -743,7 +820,8 @@ def main() -> None:
     print(f"unit: {UNIT_YEN}円", flush=True)
     print(f"daily_budget: {DAILY_BUDGET_YEN}円 / max_points={DAILY_MAX_POINTS}", flush=True)
     print(f"min_ev={MIN_EV} min_odds={MIN_ODDS} max_odds={MAX_ODDS} insurance_min_odds={INSURANCE_MIN_ODDS}", flush=True)
-    print(f"strict_seed={STRICT_SEED}", flush=True)
+    print(f"strict_seed={STRICT_SEED} prob_temp={PROB_TEMP}", flush=True)
+    print(f"odds_page_size={ODDS_PAGE_SIZE} retry_max={RETRY_MAX} day_sleep={DAY_SLEEP}s", flush=True)
 
     stats: Dict[str, StrategyStats] = {s.name: StrategyStats(s.name, s.description) for s in STRATEGIES}
 
@@ -754,21 +832,24 @@ def main() -> None:
 
     for idx, race_date in enumerate(dates, start=1):
         t0 = time.time()
-        races, results, entries_by_race, odds_by_race = _fetch_day_rows(race_date)
+        races, checked_results, entries_by_race, odds_by_race = _fetch_day_rows(race_date)
         total_races_seen += len(races)
 
         ready_today = 0
         seed_today = 0
         for r in races:
             rid = r.get("race_id")
-            if _is_backtest_ready(results.get(rid), entries_by_race.get(rid, []), odds_by_race.get(rid, {})):
+            is_ready, _, _ = checked_results.get(rid, (False, "", 0))
+            if is_ready:
                 ready_today += 1
                 if _is_seed_race(entries_by_race.get(rid, [])):
                     seed_today += 1
         total_ready += ready_today
         total_seed_ready += seed_today
 
-        day_candidates = _build_day_candidates(race_date, races, results, entries_by_race, odds_by_race, stats)
+        day_candidates = _build_day_candidates(
+            race_date, races, checked_results, entries_by_race, odds_by_race, stats
+        )
 
         adopted_counts = []
         for st in STRATEGIES:
@@ -777,11 +858,16 @@ def main() -> None:
                 stats[st.name].adopt(rc)
             adopted_counts.append(f"{st.name}:{len(selected)}R")
 
+        elapsed = time.time() - t0
         print(
             f"[{idx}/{len(dates)}] {race_date} races={len(races)} ready={ready_today} seed={seed_today} "
-            f"adopted({', '.join(adopted_counts)}) elapsed={time.time()-t0:.1f}s",
+            f"adopted({', '.join(adopted_counts)}) elapsed={elapsed:.1f}s",
             flush=True,
         )
+
+        # [FIX⑤] 日付ループ間スリープ（レートリミット対策）
+        if DAY_SLEEP > 0 and idx < len(dates):
+            time.sleep(DAY_SLEEP)
 
     print("\n" + "=" * 88, flush=True)
     print("バックテスト最終結果", flush=True)
