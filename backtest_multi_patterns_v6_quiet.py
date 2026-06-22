@@ -108,8 +108,8 @@ RUN_CONFIG = {
     # PostgRESTは1000件上限になりやすいので1000固定。
     "odds_page_size": 1000,
     "page_size": 1000,
-    "http_timeout": 40,
-    "retry_max": 3,
+    "http_timeout": 25,
+    "retry_max": 2,
     "retry_sleep": 2.0,
     "day_sleep": 0.0,
 
@@ -117,7 +117,7 @@ RUN_CONFIG = {
     "write_csv": True,
     "csv_dir": "/tmp/backtest_reports",
     "verbose_log": False,
-    "log_every_days": 14,
+    "log_every_days": 1,
     "print_adopted_counts": False,
     "print_json_summary": False,
     "summary_top_n": 15,
@@ -221,7 +221,7 @@ DEFAULT_COURSE_BIAS = {1: 3.20, 2: 3.10, 3: 3.10, 4: 3.00, 5: 2.40, 6: 1.80}
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ backtest_multi_patterns_v6_quiet.py VERSION 2026-06-21 quiet-log", flush=True)
+    print("✅ backtest_multi_patterns_v6_quiet.py VERSION 2026-06-21 watchdog-dropin", flush=True)
     print(f"SUPABASE_URL: {SUPABASE_URL}", flush=True)
     print(f"SUPABASE_KEY: {'OK' if bool(SUPABASE_KEY) else 'MISSING'}", flush=True)
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -1429,6 +1429,7 @@ def main() -> None:
 
     for idx, race_date in enumerate(dates, start=1):
         t0 = time.time()
+        print(f"[{idx}/{len(dates)}] {race_date} fetch start", flush=True)
         races, results, entries_by_race, odds_by_race = _fetch_day_rows(race_date)
         total_races_seen += len(races)
 
@@ -1483,6 +1484,8 @@ def main() -> None:
         if DAY_SLEEP > 0 and idx < len(dates):
             time.sleep(DAY_SLEEP)
 
+    print("[finalize] 日別処理完了。集計を開始します。", flush=True)
+
     print("\n" + "=" * 88, flush=True)
     print("バックテスト最終結果", flush=True)
     print("=" * 88, flush=True)
@@ -1527,6 +1530,7 @@ def main() -> None:
 
     for focus_name in FOCUS_STRATEGIES:
         records = focus_records_by_strategy.get(focus_name, [])
+        print(f"[focus] {focus_name} records={len(records)}", flush=True)
         _print_focus_report_v6(focus_name, records)
         _write_focus_csv_v6(focus_name, records)
 
