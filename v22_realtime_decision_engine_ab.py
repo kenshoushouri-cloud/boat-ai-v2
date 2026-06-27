@@ -1577,14 +1577,23 @@ def _print_stage_diagnostics(strategy: str, records: List[Dict[str, Any]]) -> No
 # ============================================================
 
 def _rest_post_upsert(table: str, rows: List[Dict[str, Any]], on_conflict: str, chunk_size: int = 500) -> int:
+    """
+    Supabase/PostgREST upsert helper.
+
+    fix1:
+    - `on_conflict` だけではなく Prefer: resolution=merge-duplicates を明示。
+    - 409 duplicate key でCronが止まらないようにする。
+    """
     if not rows:
         return 0
     total = 0
+    post_headers = dict(HEADERS)
+    post_headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
     for i in range(0, len(rows), chunk_size):
         part = rows[i:i + chunk_size]
         query = urllib.parse.urlencode({"on_conflict": on_conflict})
         url = f"{SUPABASE_URL}/rest/v1/{table}?{query}"
-        r = requests.post(url, headers=HEADERS, data=json.dumps(part, ensure_ascii=False), timeout=HTTP_TIMEOUT)
+        r = requests.post(url, headers=post_headers, data=json.dumps(part, ensure_ascii=False), timeout=HTTP_TIMEOUT)
         if r.status_code >= 400:
             raise RuntimeError(f"UPSERT {table} failed {r.status_code}: {r.text[:800]}")
         total += len(part)
@@ -1756,7 +1765,38 @@ def _realtime_judge(candidate: Dict[str, Any], exh_rows: List[Dict[str, Any]], w
 
 
 def _save_decisions(rows: List[Dict[str, Any]]) -> int:
-    return _rest_post_upsert("v2_realtime_decisions", rows, "race_id,decision_label,selector_mode,mode_name,ticket", chunk_size=500)
+    """
+    v2_realtime_decisionsを冪等保存する。
+
+    fix1:
+    - 同一run内で同じ race_id/decision_label/selector_mode/mode_name/ticket が複数出た場合、
+      Supabase upsert前に1行へ畳み込む。
+    - 15分Cronで同じ候補が再判定されても、既存行はupdate扱いにする。
+    """
+    if not rows:
+        return 0
+
+    dedup: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
+    for r in rows:
+        key = (
+            str(r.get("race_id") or ""),
+            str(r.get("decision_label") or ""),
+            str(r.get("selector_mode") or ""),
+            str(r.get("mode_name") or ""),
+            str(r.get("ticket") or ""),
+        )
+        dedup[key] = r
+
+    out = list(dedup.values())
+    if len(out) != len(rows):
+        print(f"decision rows deduped: {len(rows)} -> {len(out)}", flush=True)
+
+    return _rest_post_upsert(
+        "v2_realtime_decisions",
+        out,
+        "race_id,decision_label,selector_mode,mode_name,ticket",
+        chunk_size=500,
+    )
 
 
 def _rt_odds_dict_for_race(rt_odds_ticket_rows: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
@@ -1788,7 +1828,7 @@ def _low_precondition_count(rows: List[Dict[str, Any]]) -> Dict[str, int]:
 
 def main() -> None:
     _require_settings()
-    print("✅ v22_realtime_decision_engine_ab.py VERSION 2026-06-23 realtime-decision-engine-ab", flush=True)
+    print("✅ v22_realtime_decision_engine_ab.py VERSION 2026-06-27 realtime-decision-engine-ab-fix1", flush=True)
     print("=== v22 直前判定エンジン開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} DECISION_LABEL={DECISION_LABEL} "
