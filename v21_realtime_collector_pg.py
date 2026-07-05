@@ -296,24 +296,80 @@ def _ensure_realtime_tables() -> None:
     ]
 
     alter_list = [
-        # weather
+        # weather: 既存テーブルが簡易schemaで作られていた場合に備えて全カラムを補完
+        "alter table v2_realtime_weather_snapshots add column if not exists race_id text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists race_date date;",
+        "alter table v2_realtime_weather_snapshots add column if not exists venue_id text;",
         "alter table v2_realtime_weather_snapshots add column if not exists venue_code text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists race_no integer;",
+        "alter table v2_realtime_weather_snapshots add column if not exists snapshot_label text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists snapshot_at timestamptz;",
+        "alter table v2_realtime_weather_snapshots add column if not exists source text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists weather text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists temperature_c numeric;",
+        "alter table v2_realtime_weather_snapshots add column if not exists water_temperature_c numeric;",
+        "alter table v2_realtime_weather_snapshots add column if not exists wind_speed_m numeric;",
+        "alter table v2_realtime_weather_snapshots add column if not exists wind_direction text;",
+        "alter table v2_realtime_weather_snapshots add column if not exists wave_height_cm numeric;",
         "alter table v2_realtime_weather_snapshots add column if not exists raw jsonb;",
         "alter table v2_realtime_weather_snapshots add column if not exists updated_at timestamptz;",
+
         # exhibition
+        "alter table v2_realtime_exhibition_snapshots add column if not exists race_id text;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists race_date date;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists venue_id text;",
         "alter table v2_realtime_exhibition_snapshots add column if not exists venue_code text;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists race_no integer;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists snapshot_label text;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists snapshot_at timestamptz;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists source text;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists lane integer;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_course integer;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time_rank integer;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time_diff numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing_rank integer;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing_diff numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists tilt numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists original_tilt numeric;",
+        "alter table v2_realtime_exhibition_snapshots add column if not exists tilt_change numeric;",
         "alter table v2_realtime_exhibition_snapshots add column if not exists raw jsonb;",
         "alter table v2_realtime_exhibition_snapshots add column if not exists updated_at timestamptz;",
+
         # entry
+        "alter table v2_realtime_entry_snapshots add column if not exists race_id text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists race_date date;",
+        "alter table v2_realtime_entry_snapshots add column if not exists venue_id text;",
         "alter table v2_realtime_entry_snapshots add column if not exists venue_code text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists race_no integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists snapshot_label text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists snapshot_at timestamptz;",
+        "alter table v2_realtime_entry_snapshots add column if not exists source text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists lane integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists racer_number integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists racer_name text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists racer_class text;",
+        "alter table v2_realtime_entry_snapshots add column if not exists original_course integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists exhibition_course integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists is_course_changed boolean;",
+        "alter table v2_realtime_entry_snapshots add column if not exists motor_no integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists boat_no integer;",
+        "alter table v2_realtime_entry_snapshots add column if not exists tilt numeric;",
         "alter table v2_realtime_entry_snapshots add column if not exists raw jsonb;",
         "alter table v2_realtime_entry_snapshots add column if not exists updated_at timestamptz;",
-        # odds
-        "alter table v2_realtime_odds_snapshots add column if not exists venue_code text;",
+
+        # odds: 初期bootstrapで簡易版が作成済みだったため snapshot_label が無いケースを補正
+        "alter table v2_realtime_odds_snapshots add column if not exists race_id text;",
         "alter table v2_realtime_odds_snapshots add column if not exists race_date date;",
         "alter table v2_realtime_odds_snapshots add column if not exists venue_id text;",
+        "alter table v2_realtime_odds_snapshots add column if not exists venue_code text;",
         "alter table v2_realtime_odds_snapshots add column if not exists race_no integer;",
+        "alter table v2_realtime_odds_snapshots add column if not exists snapshot_label text;",
+        "alter table v2_realtime_odds_snapshots add column if not exists snapshot_at timestamptz;",
         "alter table v2_realtime_odds_snapshots add column if not exists source text;",
+        "alter table v2_realtime_odds_snapshots add column if not exists ticket text;",
+        "alter table v2_realtime_odds_snapshots add column if not exists odds numeric;",
         "alter table v2_realtime_odds_snapshots add column if not exists market_rank integer;",
         "alter table v2_realtime_odds_snapshots add column if not exists prev_odds numeric;",
         "alter table v2_realtime_odds_snapshots add column if not exists odds_delta numeric;",
@@ -945,7 +1001,7 @@ def main() -> None:
     _require_settings()
     _ensure_realtime_tables()
 
-    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres", flush=True)
+    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix1", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} "
