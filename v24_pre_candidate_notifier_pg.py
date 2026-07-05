@@ -1151,7 +1151,10 @@ def main() -> None:
 
     resp = _send_line_message(msg)
     ok = 200 <= int(resp.get("status_code", 0)) < 300
-    status = "sent" if ok else "failed"
+    if DRY_RUN:
+        status = "dry_run"
+    else:
+        status = "sent" if ok else "failed"
     _save_pre_notification(msg, status, resp, selected)
 
     print("\n=== v24 PG 仮買い目LINE通知 summary ===", flush=True)
