@@ -753,6 +753,18 @@ def _event_day_by_venue(date_str: str) -> Dict[str, int]:
 
 
 def _is_candidate_race(venue_id: str, race_no: int, event_day_no: int) -> bool:
+    """
+    v22のab判定候補とv21収集対象を揃える。
+
+    v22のabには low_exR10_12_base が含まれるため、
+    1〜9Rは全場で候補化される可能性がある。
+    旧v21は venue_best/day_best だけを収集していたため、
+    22場4Rのような low_exR10_12_base 候補で
+    「直前オッズsnapshotなし」になっていた。
+    """
+    if 1 <= race_no <= 9:
+        return True
+
     style = _infer_venue_style(venue_id)
 
     venue_best = (
@@ -931,7 +943,7 @@ def main() -> None:
     _require_settings()
     _ensure_realtime_tables()
 
-    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix4-fix2", flush=True)
+    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix5-scope-fix2", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} "
