@@ -6,7 +6,7 @@ Railway Postgres版 v21 単体テスト用ラッパー。
 Variablesを毎回作成しなくても、ここで通常値を設定します。
 
 Railway Start Command:
-    python run_v21_pg.py
+    python -u run_v21_pg.py
 """
 
 import os
