@@ -3,10 +3,7 @@
 run_v21_debug_pg.py
 
 Railway Postgres版 v21 の軽量デバッグ起動。
-止まって見える場合の切り分け用です。
-
-通常の candidates 全件ではなく、まず1レースだけ取得します。
-対象は TARGET_DATE の 22場4R をデフォルトにしています。
+1レースだけ取得して切り分けます。
 
 Railway Start Command:
     python -u run_v21_debug_pg.py
