@@ -193,110 +193,20 @@ def _looks_no_data(html: Optional[str]) -> bool:
 # ============================================================
 
 def _ensure_realtime_tables() -> None:
+    """
+    リアルタイム系テーブルのschemaを自動補正する。
+    既存テーブルが簡易schemaで作られていても、不足カラムを先に追加してから
+    unique indexを作るため、snapshot_label missingで落ちない。
+    """
     ddl_list = [
-        """
-        create table if not exists v2_realtime_weather_snapshots (
-            id bigserial primary key,
-            race_id text not null,
-            race_date date,
-            venue_id text,
-            venue_code text,
-            race_no integer,
-            snapshot_label text not null,
-            snapshot_at timestamptz,
-            source text,
-            weather text,
-            temperature_c numeric,
-            water_temperature_c numeric,
-            wind_speed_m numeric,
-            wind_direction text,
-            wave_height_cm numeric,
-            raw jsonb,
-            updated_at timestamptz
-        );
-        """,
-        """
-        create table if not exists v2_realtime_exhibition_snapshots (
-            id bigserial primary key,
-            race_id text not null,
-            race_date date,
-            venue_id text,
-            venue_code text,
-            race_no integer,
-            snapshot_label text not null,
-            snapshot_at timestamptz,
-            source text,
-            lane integer not null,
-            exhibition_course integer,
-            exhibition_time numeric,
-            exhibition_time_rank integer,
-            exhibition_time_diff numeric,
-            start_timing numeric,
-            start_timing_rank integer,
-            start_timing_diff numeric,
-            tilt numeric,
-            original_tilt numeric,
-            tilt_change numeric,
-            raw jsonb,
-            updated_at timestamptz
-        );
-        """,
-        """
-        create table if not exists v2_realtime_entry_snapshots (
-            id bigserial primary key,
-            race_id text not null,
-            race_date date,
-            venue_id text,
-            venue_code text,
-            race_no integer,
-            snapshot_label text not null,
-            snapshot_at timestamptz,
-            source text,
-            lane integer not null,
-            racer_number integer,
-            racer_name text,
-            racer_class text,
-            original_course integer,
-            exhibition_course integer,
-            is_course_changed boolean,
-            motor_no integer,
-            boat_no integer,
-            tilt numeric,
-            raw jsonb,
-            updated_at timestamptz
-        );
-        """,
-        """
-        create table if not exists v2_realtime_odds_snapshots (
-            id bigserial primary key,
-            race_id text not null,
-            race_date date,
-            venue_id text,
-            venue_code text,
-            race_no integer,
-            snapshot_label text not null,
-            snapshot_at timestamptz,
-            source text,
-            ticket text not null,
-            odds numeric,
-            market_rank integer,
-            prev_odds numeric,
-            odds_delta numeric,
-            odds_delta_pct numeric,
-            prev_market_rank integer,
-            market_rank_delta integer,
-            is_favorite boolean,
-            is_odds_too_low boolean,
-            is_odds_drift boolean,
-            is_odds_steam boolean,
-            raw jsonb,
-            updated_at timestamptz
-        );
-        """,
+        "create table if not exists v2_realtime_weather_snapshots (id bigserial primary key);",
+        "create table if not exists v2_realtime_exhibition_snapshots (id bigserial primary key);",
+        "create table if not exists v2_realtime_entry_snapshots (id bigserial primary key);",
+        "create table if not exists v2_realtime_odds_snapshots (id bigserial primary key);",
     ]
 
     alter_list = [
-        # weather: 既存テーブルが簡易schemaで作られていた場合に備えて全カラムを補完
+        # weather
         "alter table v2_realtime_weather_snapshots add column if not exists race_id text;",
         "alter table v2_realtime_weather_snapshots add column if not exists race_date date;",
         "alter table v2_realtime_weather_snapshots add column if not exists venue_id text;",
@@ -359,7 +269,7 @@ def _ensure_realtime_tables() -> None:
         "alter table v2_realtime_entry_snapshots add column if not exists raw jsonb;",
         "alter table v2_realtime_entry_snapshots add column if not exists updated_at timestamptz;",
 
-        # odds: 初期bootstrapで簡易版が作成済みだったため snapshot_label が無いケースを補正
+        # odds
         "alter table v2_realtime_odds_snapshots add column if not exists race_id text;",
         "alter table v2_realtime_odds_snapshots add column if not exists race_date date;",
         "alter table v2_realtime_odds_snapshots add column if not exists venue_id text;",
@@ -382,6 +292,11 @@ def _ensure_realtime_tables() -> None:
         "alter table v2_realtime_odds_snapshots add column if not exists is_odds_steam boolean;",
         "alter table v2_realtime_odds_snapshots add column if not exists raw jsonb;",
         "alter table v2_realtime_odds_snapshots add column if not exists updated_at timestamptz;",
+
+        # base entry compatibility
+        "alter table v2_race_entries add column if not exists tilt numeric;",
+        "alter table v2_race_entries add column if not exists motor_no integer;",
+        "alter table v2_race_entries add column if not exists boat_no integer;",
     ]
 
     index_list = [
@@ -391,7 +306,11 @@ def _ensure_realtime_tables() -> None:
         "create unique index if not exists uq_v2_rt_odds_race_label_ticket on v2_realtime_odds_snapshots (race_id, snapshot_label, ticket);",
     ]
 
-    for sql in ddl_list + alter_list + index_list:
+    for sql in ddl_list:
+        execute(sql)
+    for sql in alter_list:
+        execute(sql)
+    for sql in index_list:
         execute(sql)
 
 
@@ -404,6 +323,17 @@ def _upsert(table: str, rows: List[Dict[str, Any]], on_conflict: str, chunk_size
         part = rows[i:i + chunk_size]
         total += upsert_rows(table, part, cols)
     return total
+
+
+def _ensure_base_entry_compat() -> None:
+    """v2_race_entries の旧schema差分を吸収する。"""
+    for sql in [
+        "alter table v2_race_entries add column if not exists tilt numeric;",
+        "alter table v2_race_entries add column if not exists motor_no integer;",
+        "alter table v2_race_entries add column if not exists boat_no integer;",
+    ]:
+        execute(sql)
+
 
 
 # ============================================================
@@ -722,7 +652,7 @@ def fetch_day_base(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, List[
 
     entries_rows = fetch_all(
         """
-        select race_id,lane,racer_number,racer_name,racer_class,motor_no,boat_no,tilt
+        select *
         from v2_race_entries
         where race_id >= %s and race_id < %s
         order by race_id asc, lane asc;
@@ -1001,7 +931,7 @@ def main() -> None:
     _require_settings()
     _ensure_realtime_tables()
 
-    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix1", flush=True)
+    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix4-fix2", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} "
