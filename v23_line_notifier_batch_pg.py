@@ -347,7 +347,8 @@ def insert_notification(decision: Dict[str, Any], message_text: str, status: str
             str(decision.get("venue_id") or "").zfill(2),
             decision.get("race_no"),
             str(decision.get("id") or ""),
-            _now_iso() if status == "sent" else None,
+            # 既存DBでは sent_at が NOT NULL の場合があるため、dry_run/failedでも処理時刻を入れる
+            _now_iso(),
             status,
             LINE_TO if not DRY_RUN else "DRY_RUN",
             "final_buy_batch" if batch else "final_buy",
@@ -387,7 +388,7 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix3-fix3", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix4", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
