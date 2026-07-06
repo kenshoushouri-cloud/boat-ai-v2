@@ -3,7 +3,7 @@
 run_v23_pg.py
 
 Railway Postgres版 v23 起動ラッパー。
-fix3: v23本体のversion不一致では止めず、検出versionを表示して続行します。
+fix4: v23本体のversion不一致では止めず、検出versionを表示して続行します。
 
 Railway Start Command:
     python -u run_v23_pg.py
@@ -27,8 +27,8 @@ def _check_pg_file():
     detected = m.group(0) if m else "VERSION行が見つかりません"
     print(f"detected_v23_file={detected}", flush=True)
 
-    if "railway-postgres-fix3" not in s:
-        print("WARNING: v23_line_notifier_batch_pg.py がfix3ではない可能性があります。今回は続行します。", flush=True)
+    if "railway-postgres-fix4" not in s:
+        print("WARNING: v23_line_notifier_batch_pg.py がfix4ではない可能性があります。今回は続行します。", flush=True)
 
 os.environ.setdefault("TARGET_DATE", datetime.now(JST).strftime("%Y-%m-%d"))
 os.environ.setdefault("DECISION_LABEL", "final_ab")
@@ -42,7 +42,7 @@ os.environ.setdefault("DAILY_LINE_LIMIT", "3")
 os.environ.setdefault("MONTHLY_LINE_LIMIT", "180")
 os.environ.setdefault("TEST_MODE", "1")
 
-print("✅ run_v23_pg.py fix3", flush=True)
+print("✅ run_v23_pg.py fix4", flush=True)
 print(f"TARGET_DATE={os.environ.get('TARGET_DATE')}", flush=True)
 print(f"DECISION_LABEL={os.environ.get('DECISION_LABEL')}", flush=True)
 print(f"SELECTOR_MODE={os.environ.get('SELECTOR_MODE')}", flush=True)
