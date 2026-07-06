@@ -22,7 +22,7 @@ def _assert_pg_file():
     if not p.exists():
         raise RuntimeError("v23_line_notifier_batch_pg.py が見つかりません。")
     s = p.read_text(encoding="utf-8", errors="ignore")
-    if "v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres" not in s:
+    if "v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix1" not in s:
         raise RuntimeError("v23_line_notifier_batch_pg.py が古い、またはPG版ではありません。")
 
 
