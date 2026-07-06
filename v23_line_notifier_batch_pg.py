@@ -368,18 +368,22 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix1", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
         f"DAILY_LINE_LIMIT={DAILY_LINE_LIMIT} MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT} TEST_MODE={TEST_MODE}",
         flush=True,
     )
-    guard = _usage_guard()
+    # DRY_RUNではLINE送信しないため、送信上限ガードは通さない。
+    # 本送信時だけ日/月上限を確認する。
+    guard = None if DRY_RUN else _usage_guard()
     if guard:
         print(f"LINE送信上限ガード: {guard}", flush=True)
         print("=== v23 PG batch LINE通知終了 ===", flush=True)
         return
+    if DRY_RUN:
+        print("DRY_RUNのためLINE送信上限ガードはスキップします。", flush=True)
     decisions = fetch_buy_decisions()
     print(f"pending_buy_decisions={len(decisions)}", flush=True)
     if not decisions:
