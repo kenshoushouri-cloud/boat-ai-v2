@@ -159,11 +159,27 @@ def _usage_guard() -> Optional[str]:
 
 
 def _already_sent_keys_for_date() -> Set[str]:
+    """
+    final BUY通知の重複だけを防ぐ。
+
+    fix2:
+    - DRY_RUN時は本文確認を優先するため重複除外しない。
+    - pre候補通知とfinal BUY通知は別物なので、pre候補のsent履歴では弾かない。
+    - 本送信時は final_buy 系、または v22 selector_version の通知履歴だけで重複除外する。
+    """
+    if DRY_RUN:
+        return set()
+
     rows = fetch_all(
         """
-        select race_id, ticket
+        select race_id, ticket, status, message_type, selector_version
         from v2_line_notifications
-        where race_date = %s and status = 'sent';
+        where race_date = %s
+          and status = 'sent'
+          and (
+                coalesce(message_type, '') in ('final_buy', 'final_buy_batch')
+                or coalesce(selector_version, '') in ('v22_realtime_decision_engine', 'v22_realtime_decision_engine_pg')
+          );
         """,
         (TARGET_DATE,),
     )
@@ -192,6 +208,9 @@ def fetch_buy_decisions() -> List[Dict[str, Any]]:
         (TARGET_DATE, DECISION_LABEL, SELECTOR_MODE, MAX_SEND * 3),
     )
     sent_keys = _already_sent_keys_for_date()
+    if DRY_RUN:
+        print("DRY_RUNのため重複通知チェックはスキップします。", flush=True)
+
     filtered: List[Dict[str, Any]] = []
     skipped_dup = 0
     for r in rows:
@@ -203,7 +222,7 @@ def fetch_buy_decisions() -> List[Dict[str, Any]]:
         if len(filtered) >= MAX_SEND:
             break
     if skipped_dup:
-        print(f"dedup_skipped={skipped_dup}", flush=True)
+        print(f"final_buy_dedup_skipped={skipped_dup}", flush=True)
     return filtered
 
 
@@ -304,7 +323,7 @@ def send_line_message(text: str) -> Dict[str, Any]:
     return {"dry_run": False, "status_code": r.status_code, "body": r.text[:1000]}
 
 
-def insert_notification(decision: Dict[str, Any], message_text: str, status: str, resp: Dict[str, Any], error: str = "") -> Optional[str]:
+def insert_notification(decision: Dict[str, Any], message_text: str, status: str, resp: Dict[str, Any], error: str = "", batch: bool = False) -> Optional[str]:
     row = fetch_one(
         """
         insert into v2_line_notifications (
@@ -331,7 +350,7 @@ def insert_notification(decision: Dict[str, Any], message_text: str, status: str
             _now_iso() if status == "sent" else None,
             status,
             LINE_TO if not DRY_RUN else "DRY_RUN",
-            "push",
+            "final_buy_batch" if batch else "final_buy",
             message_text,
             decision.get("selector_version"),
             decision.get("selector_mode"),
@@ -368,7 +387,7 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix1", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix2", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
@@ -417,7 +436,7 @@ def main() -> None:
         except Exception as e:
             failed = 1
             try:
-                insert_notification(decisions[0], msg, "failed", {"status_code": 0, "body": ""}, error=repr(e))
+                insert_notification(decisions[0], msg, "failed", {"status_code": 0, "body": ""}, error=repr(e), batch=True)
             except Exception:
                 pass
             print(f"ERROR: {repr(e)}", flush=True)
