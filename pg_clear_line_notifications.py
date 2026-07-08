@@ -2,56 +2,47 @@
 """
 pg_clear_line_notifications.py
 
-Railway Postgres版。
-指定日の v2_line_notifications を削除します。
-DRY_RUNテスト時に保存された通知履歴を消したい時だけ使います。
+Railway Postgres 本番前のLINE通知ログ削除用。
+テスト送信ログで DAILY_LINE_LIMIT や重複判定に影響が出ないようにします。
 
 Railway Start Command:
-    python pg_clear_line_notifications.py
+    python -u pg_clear_line_notifications.py
 
 Variables:
-    DATABASE_URL
-    TARGET_DATE=YYYY-MM-DD
-    PG_CLEAR_CONFIRM=YES
+    DATABASE_URL=${{postgres.DATABASE_URL}}
+    PG_CLEAR_LINE_CONFIRM=YES
+
+注意:
+    v2_line_notifications のみ削除します。
+    レース、出走表、結果、オッズ、直前判定データは削除しません。
 """
 
+from __future__ import annotations
+
 import os
-from datetime import datetime, timedelta, timezone
-
-from db_pg import execute, fetch_one
-
-JST = timezone(timedelta(hours=9))
-TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
+from db_pg import fetch_one, execute
 
 
-def main():
+def main() -> None:
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です。")
-    if os.getenv("PG_CLEAR_CONFIRM") != "YES":
-        raise RuntimeError("安全装置: PG_CLEAR_CONFIRM=YES を設定してから実行してください。")
 
-    before = fetch_one(
-        "select count(*) as c from v2_line_notifications where race_date = %s;",
-        (TARGET_DATE,),
-    )
-    before_count = int(before.get("c", 0)) if before else 0
+    confirm = os.getenv("PG_CLEAR_LINE_CONFIRM", "")
+    if confirm != "YES":
+        print("PG_CLEAR_LINE_CONFIRM=YES が必要です。削除せず終了します。", flush=True)
+        return
 
-    execute(
-        "delete from v2_line_notifications where race_date = %s;",
-        (TARGET_DATE,),
-    )
+    before = fetch_one("select count(*) as cnt from v2_line_notifications;")
+    before_cnt = int(before.get("cnt") or 0)
 
-    after = fetch_one(
-        "select count(*) as c from v2_line_notifications where race_date = %s;",
-        (TARGET_DATE,),
-    )
-    after_count = int(after.get("c", 0)) if after else 0
+    execute("delete from v2_line_notifications;")
 
-    print("=== clear line notifications ===", flush=True)
-    print(f"TARGET_DATE={TARGET_DATE}", flush=True)
-    print(f"before={before_count}", flush=True)
-    print(f"after={after_count}", flush=True)
-    print("=== clear finished ===", flush=True)
+    after = fetch_one("select count(*) as cnt from v2_line_notifications;")
+    after_cnt = int(after.get("cnt") or 0)
+
+    print("=== clear line notifications finished ===", flush=True)
+    print(f"before: {before_cnt}", flush=True)
+    print(f"after: {after_cnt}", flush=True)
 
 
 if __name__ == "__main__":
