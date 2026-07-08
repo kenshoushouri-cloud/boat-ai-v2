@@ -2,8 +2,12 @@
 """
 pg_backtest_ready_check.py
 
-Railway Postgres用。
-指定期間の v2_races / entries / results / odds の揃い具合を確認します。
+Railway Postgres用 readiness確認 fix1。
+
+fix1:
+- v2_results.result_status が未設定でも、3連単結果と払戻が入っていれば result_ok と判定。
+- result_status の分布も表示。
+- odds 120通り未満のレースも確認。
 
 Railway Start Command:
     python -u pg_backtest_ready_check.py
@@ -36,8 +40,28 @@ def main() -> None:
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です。")
 
-    print("=== PG backtest readiness check ===", flush=True)
+    print("=== PG backtest readiness check fix1 ===", flush=True)
     print(f"CHECK_START_DATE={START_DATE} CHECK_END_DATE={END_DATE}", flush=True)
+
+    status_rows = fetch_all(
+        """
+        select
+            coalesce(result_status, '(null)') as result_status,
+            count(*) as rows
+        from v2_results
+        where race_id >= replace(%s, '-', '')
+          and race_id < replace((%s::date + interval '1 day')::date::text, '-', '')
+        group by coalesce(result_status, '(null)')
+        order by rows desc;
+        """,
+        (START_DATE, END_DATE),
+    )
+    print("\n--- result_status distribution ---", flush=True)
+    if not status_rows:
+        print("v2_resultsなし", flush=True)
+    else:
+        for r in status_rows:
+            print(f"{r['result_status']}: {_safe_int(r.get('rows'))}", flush=True)
 
     total = fetch_one(
         """
@@ -50,9 +74,15 @@ def main() -> None:
                 count(distinct e.lane) as entries_count,
                 count(distinct o.ticket) as odds_count,
                 max(case
-                    when res.result_status in ('official', 'parse_incomplete')
-                     and coalesce(res.trifecta_ticket, '') <> ''
-                     and coalesce(res.trifecta_payout_yen, 0) > 0
+                    when coalesce(res.trifecta_payout_yen, 0) > 0
+                     and (
+                        coalesce(nullif(res.trifecta_ticket, ''), '') <> ''
+                        or (
+                            res.first_lane is not null
+                            and res.second_lane is not null
+                            and res.third_lane is not null
+                        )
+                     )
                     then 1 else 0 end) as result_ok
             from v2_races r
             left join v2_race_entries e on e.race_id = r.race_id
@@ -86,9 +116,15 @@ def main() -> None:
                 count(distinct e.lane) as entries_count,
                 count(distinct o.ticket) as odds_count,
                 max(case
-                    when res.result_status in ('official', 'parse_incomplete')
-                     and coalesce(res.trifecta_ticket, '') <> ''
-                     and coalesce(res.trifecta_payout_yen, 0) > 0
+                    when coalesce(res.trifecta_payout_yen, 0) > 0
+                     and (
+                        coalesce(nullif(res.trifecta_ticket, ''), '') <> ''
+                        or (
+                            res.first_lane is not null
+                            and res.second_lane is not null
+                            and res.third_lane is not null
+                        )
+                     )
                     then 1 else 0 end) as result_ok
             from v2_races r
             left join v2_race_entries e on e.race_id = r.race_id
@@ -139,12 +175,12 @@ def main() -> None:
         group by r.race_id, r.race_date, r.venue_id, r.race_no
         having count(distinct o.ticket) < 120
         order by missing_odds desc, r.race_date asc, r.venue_id asc, r.race_no asc
-        limit 30;
+        limit 40;
         """,
         (START_DATE, END_DATE),
     )
 
-    print("\n--- odds missing worst 30 ---", flush=True)
+    print("\n--- odds missing worst 40 ---", flush=True)
     if not worst:
         print("odds欠けなし", flush=True)
     else:
