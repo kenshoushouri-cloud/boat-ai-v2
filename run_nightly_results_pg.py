@@ -2,42 +2,67 @@
 """
 run_nightly_results_pg.py
 
-Railway Postgres版。
-夜間の結果取得用。
-当日の全場・全Rについて、結果だけを取得して v2_results に保存します。
+Railway Postgres版：当日結果取得用ランナー。
 
 Railway Start Command:
-    python run_nightly_results_pg.py
+    python -u run_nightly_results_pg.py
 
-通常運用:
-    日本時間 23:30 以降に実行
-
-テスト時:
-    TARGET_DATE=2026-07-05 などを指定可能
+ポイント:
+- TARGET_DATE が未設定ならJSTの当日を使う。
+- repair_month_all_pg.py はこのファイルと同じ階層から絶対パスで実行する。
+  Railwayの作業ディレクトリ差異による FileNotFoundError を防ぐ。
 """
+
+from __future__ import annotations
 
 import os
 import runpy
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
-today = os.getenv("TARGET_DATE", datetime.now(JST).strftime("%Y-%m-%d"))
+BASE_DIR = Path(__file__).resolve().parent
 
-os.environ["REPAIR_START_DATE"] = today
-os.environ["REPAIR_END_DATE"] = today
+# 同じ階層の db_pg.py / repair_month_all_pg.py を確実にimport・実行できるようにする
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
-# 結果だけ取得
+
+def _today_jst() -> str:
+    return datetime.now(JST).strftime("%Y-%m-%d")
+
+
+target_date = os.environ.setdefault("TARGET_DATE", _today_jst())
+
+# 当日1日分を対象にする
+os.environ.setdefault("REPAIR_START_DATE", target_date)
+os.environ.setdefault("REPAIR_END_DATE", target_date)
+
+# 全場・全R
+os.environ.setdefault(
+    "REPAIR_VENUES",
+    "01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24",
+)
+os.environ.setdefault("REPAIR_RACE_NOS", "1,2,3,4,5,6,7,8,9,10,11,12")
+
+# 夜間結果取得: 結果のみ。レース・出走表・オッズは取得しない。
 os.environ.setdefault("REPAIR_DO_RACES", "0")
 os.environ.setdefault("REPAIR_DO_RESULTS", "1")
 os.environ.setdefault("REPAIR_DO_ODDS", "0")
 
-# 結果取得は軽めなので、並列は少しだけ上げてもOK
+# Railway Hobby向けの安全寄り設定
 os.environ.setdefault("REPAIR_WORKERS", "4")
 os.environ.setdefault("REPAIR_ODDS_WORKERS", "1")
 os.environ.setdefault("REPAIR_SLEEP_SEC", "0.1")
+os.environ.setdefault("REPAIR_SOURCE", "run_nightly_results_pg")
 
 print("✅ run_nightly_results_pg.py", flush=True)
-print(f"TARGET_DATE={today}", flush=True)
+print(f"TARGET_DATE={target_date}", flush=True)
 print("Railway Postgres版：当日結果取得を開始します。", flush=True)
 
-runpy.run_path("repair_month_all_pg.py", run_name="__main__")
+repair_path = BASE_DIR / "repair_month_all_pg.py"
+if not repair_path.exists():
+    raise FileNotFoundError(f"repair_month_all_pg.py が見つかりません: {repair_path}")
+
+runpy.run_path(str(repair_path), run_name="__main__")
