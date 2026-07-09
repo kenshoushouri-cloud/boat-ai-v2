@@ -3,23 +3,17 @@
 run_pre_window_pg.py
 
 Railway Postgres版：締切時刻ウィンドウ内のレースIDを抽出し、
-既存の v24_pre_candidate_notifier_pg.py に渡すためのラッパーです。
-
-重要:
-- このファイルは TARGET_RACE_IDS / PRE_WINDOW_START / PRE_WINDOW_END を環境変数へセットします。
-- v24_pre_candidate_notifier_pg.py 側が TARGET_RACE_IDS を読む実装になっていない場合、
-  候補抽出側は従来どおり全体処理になる可能性があります。
-- その場合は次工程で v24_pre_candidate_notifier_pg.py 側に TARGET_RACE_IDS フィルタを追加してください。
+v24_pre_candidate_notifier_pg.py に TARGET_RACE_IDS として渡すラッパーです。
 
 Start Command:
     python -u run_pre_window_pg.py
 
 主な環境変数:
-    TARGET_DATE=2026-07-09
-    WINDOW_NAME=morning|day|night
+    TARGET_DATE=2026-07-09          # 未指定ならJST当日
+    WINDOW_NAME=morning|day|night   # 任意。WINDOW_START/ENDが優先
     WINDOW_START=08:30
-    WINDOW_END=10:15
-    PRE_SESSION=morning
+    WINDOW_END=10:15                # 後半枠は空でもOK
+    PRE_SESSION=day|night|all       # 未指定なら morning/day は day、night は night
 """
 
 from __future__ import annotations
@@ -44,7 +38,7 @@ def _today_jst() -> str:
 
 
 def _resolve_window() -> Tuple[str, Optional[str], str]:
-    name = (os.getenv("WINDOW_NAME") or os.getenv("PRE_SESSION") or "").strip().lower()
+    name = (os.getenv("WINDOW_NAME") or "").strip().lower()
 
     start = (os.getenv("WINDOW_START") or "").strip()
     end = (os.getenv("WINDOW_END") or "").strip()
@@ -63,6 +57,16 @@ def _resolve_window() -> Tuple[str, Optional[str], str]:
         name = f"{start}-{end or 'end'}"
 
     return start, (end or None), name
+
+
+def _default_pre_session(window_name: str) -> str:
+    """
+    v24_pre_candidate_notifier_pg.py の PRE_SESSION は day|night|all 想定。
+    morning は昼間扱いにする。
+    """
+    if window_name == "night":
+        return "night"
+    return "day"
 
 
 def _connect():
@@ -151,7 +155,7 @@ def select_window_races(target_date: str, start: str, end: Optional[str]) -> Lis
 
 
 def main() -> None:
-    print("✅ run_pre_window_pg.py", flush=True)
+    print("✅ run_pre_window_pg.py VERSION 2026-07-09 target-race-ids", flush=True)
 
     target_date = os.getenv("TARGET_DATE") or _today_jst()
     window_start, window_end, window_name = _resolve_window()
@@ -178,15 +182,17 @@ def main() -> None:
         print("対象レースなし。終了します。", flush=True)
         return
 
+    pre_session = os.getenv("PRE_SESSION") or _default_pre_session(window_name)
+
     # v24側へ渡す環境変数。
     os.environ["TARGET_DATE"] = target_date
     os.environ["TARGET_RACE_IDS"] = ",".join(race_ids)
     os.environ["PRE_WINDOW_START"] = window_start
     os.environ["PRE_WINDOW_END"] = window_end or ""
-    os.environ["PRE_SESSION"] = os.getenv("PRE_SESSION") or window_name
+    os.environ["PRE_SESSION"] = pre_session
 
-    # LINE通知は既存v24側の DRY_RUN / TEST_MODE / DAILY_LINE_LIMIT に従う。
-    print("TARGET_RACE_IDS exported.", flush=True)
+    print(f"TARGET_RACE_IDS exported: {len(race_ids)} races", flush=True)
+    print(f"PRE_SESSION exported: {pre_session}", flush=True)
     print("v24_pre_candidate_notifier_pg.py を実行します。", flush=True)
 
     base_dir = Path(__file__).resolve().parent
@@ -194,11 +200,6 @@ def main() -> None:
 
     if not v24_path.exists():
         raise FileNotFoundError(f"v24_pre_candidate_notifier_pg.py が見つかりません: {v24_path}")
-
-    print(
-        "注意: v24側が TARGET_RACE_IDS 非対応の場合、候補抽出は従来どおり全体対象になる可能性があります。",
-        flush=True,
-    )
 
     runpy.run_path(str(v24_path), run_name="__main__")
 
