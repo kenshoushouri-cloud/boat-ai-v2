@@ -67,6 +67,12 @@ BAD_VENUES = tuple(str(v).zfill(2) for v in RUN_CONFIG["bad_venues"])
 
 JST = timezone(timedelta(hours=9))
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
+TARGET_RACE_IDS_RAW = os.getenv("TARGET_RACE_IDS", "").strip()
+TARGET_RACE_IDS = {
+    x.strip()
+    for x in TARGET_RACE_IDS_RAW.split(",")
+    if x.strip()
+}
 SELECTOR_MODE = os.getenv("SELECTOR_MODE", "balanced").strip().lower()
 PRE_SESSION = os.getenv("PRE_SESSION", "day").strip().lower()
 DRY_RUN = os.getenv("DRY_RUN", "0").strip() in ("1", "true", "True", "yes", "YES")
@@ -225,45 +231,90 @@ def _fetch_live_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str,
     day_prefix = _rid_prefix(date_str)
     next_prefix = _rid_prefix(_next_day(date_str))
 
-    races = fetch_all(
-        """
-        select *
-        from v2_races
-        where race_date = %s
-        order by venue_id asc, race_no asc;
-        """,
-        (date_str,),
-    )
+    if TARGET_RACE_IDS:
+        races = fetch_all(
+            """
+            select *
+            from v2_races
+            where race_date = %s
+              and race_id = any(%s)
+            order by venue_id asc, race_no asc;
+            """,
+            (date_str, list(TARGET_RACE_IDS)),
+        )
+    else:
+        races = fetch_all(
+            """
+            select *
+            from v2_races
+            where race_date = %s
+            order by venue_id asc, race_no asc;
+            """,
+            (date_str,),
+        )
+
     races = [
         r for r in races
         if str(r.get("venue_id") or r.get("venue_code") or "").zfill(2) in TARGET_VENUES
     ]
 
-    entries_rows = fetch_all(
-        """
-        select race_id,lane,racer_number,racer_class,racer_name,
-               national_win_rate,national_place2_rate,
-               local_win_rate,local_place2_rate,
-               motor_no,boat_no,avg_st
-        from v2_race_entries
-        where race_id >= %s and race_id < %s
-        order by race_id asc, lane asc;
-        """,
-        (day_prefix, next_prefix),
-    )
+    race_ids = [str(r.get("race_id")) for r in races if r.get("race_id")]
+
+    if not race_ids:
+        return races, {}, {}
+
+    if TARGET_RACE_IDS:
+        entries_rows = fetch_all(
+            """
+            select race_id,lane,racer_number,racer_class,racer_name,
+                   national_win_rate,national_place2_rate,
+                   local_win_rate,local_place2_rate,
+                   motor_no,boat_no,avg_st
+            from v2_race_entries
+            where race_id = any(%s)
+            order by race_id asc, lane asc;
+            """,
+            (race_ids,),
+        )
+    else:
+        entries_rows = fetch_all(
+            """
+            select race_id,lane,racer_number,racer_class,racer_name,
+                   national_win_rate,national_place2_rate,
+                   local_win_rate,local_place2_rate,
+                   motor_no,boat_no,avg_st
+            from v2_race_entries
+            where race_id >= %s and race_id < %s
+            order by race_id asc, lane asc;
+            """,
+            (day_prefix, next_prefix),
+        )
+
     entries_by_race: Dict[str, List[Dict[str, Any]]] = {}
     for e in entries_rows:
         entries_by_race.setdefault(e.get("race_id"), []).append(e)
 
-    odds_rows = fetch_all(
-        """
-        select race_id,ticket,odds
-        from v2_odds_trifecta
-        where race_id >= %s and race_id < %s
-        order by race_id asc, ticket asc;
-        """,
-        (day_prefix, next_prefix),
-    )
+    if TARGET_RACE_IDS:
+        odds_rows = fetch_all(
+            """
+            select race_id,ticket,odds
+            from v2_odds_trifecta
+            where race_id = any(%s)
+            order by race_id asc, ticket asc;
+            """,
+            (race_ids,),
+        )
+    else:
+        odds_rows = fetch_all(
+            """
+            select race_id,ticket,odds
+            from v2_odds_trifecta
+            where race_id >= %s and race_id < %s
+            order by race_id asc, ticket asc;
+            """,
+            (day_prefix, next_prefix),
+        )
+
     odds_by_race: Dict[str, Dict[str, float]] = {}
     for o in odds_rows:
         rid = o.get("race_id")
@@ -273,6 +324,7 @@ def _fetch_live_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str,
             odds_by_race.setdefault(rid, {})[t] = odd
 
     return races, entries_by_race, odds_by_race
+
 
 
 def _fetch_race_rows_for_event_day(target_date: str, lookback_days: int = 10) -> List[Dict[str, Any]]:
@@ -998,13 +1050,16 @@ def main() -> None:
     _require_settings()
     _ensure_line_notification_columns()
 
-    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-05 railway-postgres", flush=True)
+    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-09 target-race-ids", flush=True)
     print("=== v24 PG 仮買い目LINE通知開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} PRE_SESSION={PRE_SESSION} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} MIN_ODDS_ROWS={MIN_ODDS_ROWS}",
         flush=True,
     )
+
+    if TARGET_RACE_IDS:
+        print(f"TARGET_RACE_IDS enabled: {len(TARGET_RACE_IDS)} races", flush=True)
 
     guard = _usage_guard()
     if guard:
