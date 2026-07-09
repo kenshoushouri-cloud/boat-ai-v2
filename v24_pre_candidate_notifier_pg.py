@@ -81,8 +81,9 @@ LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_TO = (os.getenv("LINE_TO") or os.getenv("LINE_USER_ID") or os.getenv("LINE_GROUP_ID") or "").strip()
 MAX_ITEMS_PER_MESSAGE = int(os.getenv("MAX_ITEMS_PER_MESSAGE", "6"))
 MIN_ODDS_ROWS = int(os.getenv("MIN_ODDS_ROWS", "100"))
-DAILY_LINE_LIMIT = int(os.getenv("DAILY_LINE_LIMIT", "3"))
-MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "100"))
+PRE_DAILY_LINE_LIMIT = int(os.getenv("PRE_DAILY_LINE_LIMIT", os.getenv("DAILY_LINE_LIMIT", "2")))
+DAILY_LINE_LIMIT = PRE_DAILY_LINE_LIMIT
+MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "150"))
 EVENT_DAY_LOOKBACK = int(os.getenv("EVENT_DAY_LOOKBACK", "10"))
 
 CLASS_WEIGHT = {1: 0.15, 2: 0.55, 3: 1.15, 4: 1.55}
@@ -1050,11 +1051,12 @@ def main() -> None:
     _require_settings()
     _ensure_line_notification_columns()
 
-    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-09 target-race-ids", flush=True)
+    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-09 target-race-ids pre-limit", flush=True)
     print("=== v24 PG 仮買い目LINE通知開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} PRE_SESSION={PRE_SESSION} SELECTOR_MODE={SELECTOR_MODE} "
-        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} MIN_ODDS_ROWS={MIN_ODDS_ROWS}",
+        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} MIN_ODDS_ROWS={MIN_ODDS_ROWS} "
+        f"PRE_DAILY_LINE_LIMIT={PRE_DAILY_LINE_LIMIT} MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT}",
         flush=True,
     )
 
