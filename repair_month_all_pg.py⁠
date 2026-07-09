@@ -254,38 +254,54 @@ def _zen_to_han(s: str) -> str:
     return str(s or "").translate(trans)
 
 
-def parse_deadline_time(html: str) -> Optional[str]:
+def parse_deadline_time(html: str, race_no: Optional[int] = None) -> Optional[str]:
     """
-    BOAT RACE公式の racelist ページから締切予定時刻 HH:MM を取得する。
-    取れない場合は None。
+    BOAT RACE公式のracelistページから締切予定時刻 HH:MM を取得する。
+
+    racelistページ上部には、当該場の1R〜12Rの締切予定時刻がまとめて並ぶため、
+    race_noが渡された場合は「race_no番目の時刻」を優先して返す。
+    これにより、全レースに1Rの締切時刻が入る問題を防ぐ。
     """
     text = _zen_to_han(_html_text(html))
 
-    patterns = [
-        r"締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"締切予定\s*(\d{1,2}:\d{2})",
-        r"締切時刻\s*(\d{1,2}:\d{2})",
-        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"発売締切\s*(\d{1,2}:\d{2})",
-        r"締切\s*(\d{1,2}:\d{2})",
-    ]
-
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            hhmm = m.group(1)
+    def fmt(hhmm: str) -> Optional[str]:
+        try:
             h, mi = hhmm.split(":")
             return f"{int(h):02d}:{int(mi):02d}"
+        except Exception:
+            return None
 
-    # 念のため、締切という語の近くにある時刻を拾う。
-    m = re.search(r"締切.{0,20}?(\d{1,2}:\d{2})", text)
+    # 最優先: 「締切予定時刻」以降に並ぶ時刻一覧から、race_no番目を拾う。
+    # 例: 締切予定時刻 08:32 09:01 09:30 ...
+    anchor_patterns = ["締切予定時刻", "締切予定", "投票締切予定時刻", "締切時刻"]
+    for anchor in anchor_patterns:
+        if anchor not in text:
+            continue
+        segment = text.split(anchor, 1)[1]
+        # 次の大きな見出しに入る前までを見る。長すぎると別情報の時刻を拾うため控えめにする。
+        segment = segment[:600]
+        times = re.findall(r"\b\d{1,2}:\d{2}\b", segment)
+        times = [t for t in (fmt(x) for x in times) if t]
+        if race_no is not None and len(times) >= int(race_no):
+            return times[int(race_no) - 1]
+        if race_no is None and times:
+            return times[0]
+        # race_no番目が取れない場合でも、時刻が1つだけならそれを返す。
+        if len(times) == 1:
+            return times[0]
+
+    # 保険: ページ全体から時刻を拾う。race_no番目が取れる場合のみ採用。
+    all_times = re.findall(r"\b\d{1,2}:\d{2}\b", text)
+    all_times = [t for t in (fmt(x) for x in all_times) if t]
+    if race_no is not None and len(all_times) >= int(race_no):
+        return all_times[int(race_no) - 1]
+
+    # 最終保険: 「締切」の近くにある時刻を拾う。
+    m = re.search(r"締切.{0,30}?(\d{1,2}:\d{2})", text)
     if m:
-        hhmm = m.group(1)
-        h, mi = hhmm.split(":")
-        return f"{int(h):02d}:{int(mi):02d}"
+        return fmt(m.group(1))
 
     return None
-
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
     """
@@ -736,7 +752,7 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if _looks_no_race(html):
                 return RaceResult(race_id=rid, ok=False, no_race=True, error="no_race")
 
-            deadline_time = parse_deadline_time(html or "")
+            deadline_time = parse_deadline_time(html or "", race_no)
             deadline_at = make_deadline_at(date_str, deadline_time)
 
             race_row = {
