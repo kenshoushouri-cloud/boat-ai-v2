@@ -25,6 +25,10 @@ Railway Start Command:
 - db_pg.py が同じGitHubリポジトリに必要です。
 - Railway Python Service側に DATABASE_URL が必要です。
 - 最初は REPAIR_RACE_NOS=1 / REPAIR_DO_ODDS=0 で小さくテストしてください。
+
+2026-07-09 修正:
+- v2_races.deadline_time / deadline_at 保存に対応。
+- オッズ取得ループ時に racelist / 出走表を二重取得しないよう修正。
 """
 
 from __future__ import annotations
@@ -181,7 +185,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-05 railway-postgres", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -245,9 +249,59 @@ def parse_race_name(html: str) -> Optional[str]:
 def _zen_to_han(s: str) -> str:
     trans = str.maketrans({
         "０":"0","１":"1","２":"2","３":"3","４":"4","５":"5","６":"6","７":"7","８":"8","９":"9",
-        "．":".","／":"/","－":"-","　":" ",
+        "．":".","／":"/","－":"-","　":" ","：":":",
     })
     return str(s or "").translate(trans)
+
+
+def parse_deadline_time(html: str) -> Optional[str]:
+    """
+    BOAT RACE公式の racelist ページから締切予定時刻 HH:MM を取得する。
+    取れない場合は None。
+    """
+    text = _zen_to_han(_html_text(html))
+
+    patterns = [
+        r"締切予定時刻\s*(\d{1,2}:\d{2})",
+        r"締切予定\s*(\d{1,2}:\d{2})",
+        r"締切時刻\s*(\d{1,2}:\d{2})",
+        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
+        r"発売締切\s*(\d{1,2}:\d{2})",
+        r"締切\s*(\d{1,2}:\d{2})",
+    ]
+
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            hhmm = m.group(1)
+            h, mi = hhmm.split(":")
+            return f"{int(h):02d}:{int(mi):02d}"
+
+    # 念のため、締切という語の近くにある時刻を拾う。
+    m = re.search(r"締切.{0,20}?(\d{1,2}:\d{2})", text)
+    if m:
+        hhmm = m.group(1)
+        h, mi = hhmm.split(":")
+        return f"{int(h):02d}:{int(mi):02d}"
+
+    return None
+
+
+def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
+    """
+    date_str + HH:MM からJST付きISO文字列を作る。
+    例: 2026-07-09 + 08:45 -> 2026-07-09T08:45:00+09:00
+    """
+    if not deadline_time:
+        return None
+
+    try:
+        h, m = map(int, deadline_time.split(":"))
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        dt = d.replace(hour=h, minute=m, second=0, microsecond=0, tzinfo=JST)
+        return dt.isoformat()
+    except Exception:
+        return None
 
 
 def _num_token(v: str) -> Optional[float]:
@@ -674,11 +728,16 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
         result_saved = 0
         odds_saved = 0
 
-        if DO_RACES:
+        # オッズ取得ループ時は racelist / 出走表を再取得しない。
+        # DO_RACES=True DO_ODDS=True の同時実行でも、racelistは前段のrace/resultループで1回だけ取得する。
+        if DO_RACES and not do_odds:
             url = _official_url("racelist", date_str, venue_id, race_no)
             html = _fetch(url)
             if _looks_no_race(html):
                 return RaceResult(race_id=rid, ok=False, no_race=True, error="no_race")
+
+            deadline_time = parse_deadline_time(html or "")
+            deadline_at = make_deadline_at(date_str, deadline_time)
 
             race_row = {
                 "race_id": rid,
@@ -688,6 +747,8 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
                 "venue_name": VENUE_NAMES.get(venue_id, venue_id),
                 "race_no": int(race_no),
                 "race_name": parse_race_name(html or ""),
+                "deadline_time": deadline_time,
+                "deadline_at": deadline_at,
                 "status": "official" if DO_RESULTS else "scheduled",
                 "data_quality_score": 0,
                 "missing_count": 0,
