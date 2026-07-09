@@ -1,210 +1,308 @@
 # -*- coding: utf-8 -*-
 """
 v28_daily_status_report_line.py
-夜に1回だけ、競艇AIの日次稼働レポートをLINE配信します。
-集計元: v2_learning_daily_reports
+Railway Postgres版 日次稼働レポートLINE通知。Supabaseは使用しません。
 """
+from __future__ import annotations
 
-import os, json
+import json
+import os
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
 import requests
 
+try:
+    from psycopg.types.json import Jsonb
+except Exception:
+    Jsonb = lambda x: json.dumps(x, ensure_ascii=False)  # type: ignore
+
+from db_pg import execute, fetch_all, fetch_one
+
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-06-30 daily-status-report-line-v1"
-
-SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or ""
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or ""
-LINE_TO = os.getenv("LINE_TO") or os.getenv("LINE_USER_ID") or ""
-
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
-SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab")
-TEST_MODE = os.getenv("TEST_MODE", "1") == "1"
-DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
-HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "60"))
+SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip().lower() or "ab"
+DRY_RUN = os.getenv("DRY_RUN", "1").strip() in ("1", "true", "True", "yes", "YES")
+TEST_MODE = os.getenv("TEST_MODE", "1").strip() not in ("0", "false", "False", "no", "NO")
+REPORT_DAILY_LINE_LIMIT = int(os.getenv("REPORT_DAILY_LINE_LIMIT", os.getenv("DAILY_LINE_LIMIT", "1")))
+MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "150"))
+HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "35"))
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+LINE_TO = (os.getenv("LINE_TO") or os.getenv("LINE_USER_ID") or os.getenv("LINE_GROUP_ID") or "").strip()
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-}
 
-def require_settings():
-    missing = []
-    if not SUPABASE_URL:
-        missing.append("SUPABASE_URL")
-    if not SUPABASE_KEY:
-        missing.append("SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY")
-    if not DRY_RUN:
-        if not LINE_CHANNEL_ACCESS_TOKEN:
-            missing.append("LINE_CHANNEL_ACCESS_TOKEN")
-        if not LINE_TO:
-            missing.append("LINE_TO/LINE_USER_ID")
-    if missing:
-        raise RuntimeError("必要な環境変数が不足しています: " + ", ".join(missing))
-
-def num(row, *names):
-    for name in names:
-        try:
-            if isinstance(row, dict) and name in row and row.get(name) is not None:
-                return int(float(row.get(name) or 0))
-        except Exception:
-            return 0
-    return 0
-
-def pct(n, d):
-    return None if d <= 0 else round(n / d * 100, 1)
-
-def fmt_pct(v):
-    return "-" if v is None else f"{v:.1f}%"
-
-def yen(v):
+def _safe_int(v: Any, default: int = 0) -> int:
     try:
-        return f"{int(v):,}円"
+        if v is None or v == "":
+            return default
+        return int(float(str(v).replace(",", "")))
     except Exception:
-        return "0円"
+        return default
 
-def parse_by_mode(v):
-    if not v:
-        return {}
-    if isinstance(v, dict):
-        return v
-    if isinstance(v, str):
-        try:
-            obj = json.loads(v)
-            return obj if isinstance(obj, dict) else {}
-        except Exception:
-            return {}
-    return {}
 
-def get_daily_report():
-    url = f"{SUPABASE_URL}/rest/v1/v2_learning_daily_reports"
-    query = [
-        ("select", "*"),
-        ("report_date", f"eq.{TARGET_DATE}"),
-        ("selector_mode", f"eq.{SELECTOR_MODE}"),
-        ("limit", "1"),
+def _yen(v: int) -> str:
+    return f"{int(v):,}円"
+
+
+def _pct(num: int, den: int) -> str:
+    return "-" if den <= 0 else f"{num / den * 100:.1f}%"
+
+
+def _roi(ret: int, inv: int) -> str:
+    return "-" if inv <= 0 else f"{ret / inv * 100:.1f}%"
+
+
+def _month_start(d: str) -> str:
+    return d[:7] + "-01"
+
+
+def _month_next(d: str) -> str:
+    y, m = int(d[:4]), int(d[5:7])
+    return f"{y + 1:04d}-01-01" if m == 12 else f"{y:04d}-{m + 1:02d}-01"
+
+
+def _now_iso() -> str:
+    return datetime.now(JST).isoformat()
+
+
+def _require_settings() -> None:
+    if not os.getenv("DATABASE_URL"):
+        raise RuntimeError("DATABASE_URL が必要です。")
+    if not DRY_RUN and (not LINE_CHANNEL_ACCESS_TOKEN or not LINE_TO):
+        raise RuntimeError("LINE_CHANNEL_ACCESS_TOKEN と LINE_TO/LINE_USER_ID が必要です。")
+
+
+def _ensure_line_schema() -> None:
+    ddl = [
+        "create table if not exists v2_line_notifications (id bigserial primary key);",
+        "alter table v2_line_notifications add column if not exists race_date date;",
+        "alter table v2_line_notifications add column if not exists sent_at timestamptz;",
+        "alter table v2_line_notifications add column if not exists status text;",
+        "alter table v2_line_notifications add column if not exists line_to text;",
+        "alter table v2_line_notifications add column if not exists message_type text;",
+        "alter table v2_line_notifications add column if not exists message_text text;",
+        "alter table v2_line_notifications add column if not exists selector_mode text;",
+        "alter table v2_line_notifications add column if not exists line_response_status integer;",
+        "alter table v2_line_notifications add column if not exists line_response_body text;",
+        "alter table v2_line_notifications add column if not exists error_message text;",
+        "alter table v2_line_notifications add column if not exists raw jsonb;",
+        "alter table v2_line_notifications add column if not exists created_at timestamptz default now();",
+        "alter table v2_line_notifications add column if not exists updated_at timestamptz;",
+        "create index if not exists idx_v2_line_notifications_type_date on v2_line_notifications (message_type, race_date, status);",
     ]
-    r = requests.get(url, headers=HEADERS, params=query, timeout=HTTP_TIMEOUT)
-    if r.status_code >= 400:
-        raise RuntimeError(f"GET v2_learning_daily_reports failed {r.status_code}: {r.text[:800]}")
-    rows = r.json() or []
-    return rows[0] if rows else None
+    for sql in ddl:
+        execute(sql)
 
-def mode_lines(by_mode):
-    if not by_mode:
-        return "【ランク別】\nデータなし"
 
-    order = ["Aランク", "Bランク"]
-    names = [n for n in order if n in by_mode] + [n for n in sorted(by_mode.keys()) if n not in order]
-    lines = ["【ランク別】"]
-    for name in names:
-        m = by_mode.get(name) or {}
-        decisions = num(m, "decisions", "decision_count")
-        buy = num(m, "buy", "buy_count")
-        hit = num(m, "hit", "hit_count")
-        stake = num(m, "stake_yen", "stake")
-        ret = num(m, "return_yen", "return")
-        profit = num(m, "profit_yen", "profit")
-        lines.append(
-            f"{name}: 判定{decisions} / BUY{buy} / 的中{hit} / "
-            f"的中率{fmt_pct(pct(hit, buy))} / 回収率{fmt_pct(pct(ret, stake))} / 損益{yen(profit)}"
-        )
-    return "\n".join(lines)
+def _count(sql: str, params: tuple = ()) -> int:
+    row = fetch_one(sql, params)
+    return _safe_int(row.get("n") if row else 0)
 
-def no_report_message():
-    header = "【競艇AI 日次稼働レポート】"
-    if TEST_MODE:
-        header += "\n※テスト運用中・購入しない集計"
-    return "\n".join([
-        header,
+
+def _columns(table: str) -> set[str]:
+    rows = fetch_all(
+        """
+        select column_name from information_schema.columns
+        where table_schema='public' and table_name=%s;
+        """,
+        (table,),
+    )
+    return {str(r.get("column_name")) for r in rows}
+
+
+def _first_col(table: str, candidates: List[str]) -> Optional[str]:
+    cols = _columns(table)
+    for c in candidates:
+        if c in cols:
+            return c
+    return None
+
+
+def _table_exists(table: str) -> bool:
+    row = fetch_one(
+        """
+        select exists(
+          select 1 from information_schema.tables
+          where table_schema='public' and table_name=%s
+        ) as ok;
+        """,
+        (table,),
+    )
+    return bool(row and row.get("ok"))
+
+
+def _usage_guard() -> Optional[str]:
+    day_report = _count(
+        """
+        select count(*) as n from v2_line_notifications
+        where race_date=%s and status='sent' and message_type='daily_report';
+        """,
+        (TARGET_DATE,),
+    )
+    month_all = _count(
+        """
+        select count(*) as n from v2_line_notifications
+        where race_date >= %s and race_date < %s and status='sent';
+        """,
+        (_month_start(TARGET_DATE), _month_next(TARGET_DATE)),
+    )
+    if day_report >= REPORT_DAILY_LINE_LIMIT:
+        return f"daily_report_limit_reached {day_report}/{REPORT_DAILY_LINE_LIMIT}"
+    if month_all >= MONTHLY_LINE_LIMIT:
+        return f"monthly_limit_reached {month_all}/{MONTHLY_LINE_LIMIT}"
+    return None
+
+
+def _send_line(text: str) -> Dict[str, Any]:
+    if DRY_RUN:
+        return {"status_code": 200, "body": "DRY_RUN", "dry_run": True}
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}", "Content-Type": "application/json"}
+    payload = {"to": LINE_TO, "messages": [{"type": "text", "text": text[:4900]}]}
+    r = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=HTTP_TIMEOUT)
+    return {"status_code": r.status_code, "body": r.text[:1000], "dry_run": False}
+
+
+def _insert_report(text: str, status: str, resp: Dict[str, Any], error: str = "") -> None:
+    execute(
+        """
+        insert into v2_line_notifications
+          (race_date, sent_at, status, line_to, message_type, message_text,
+           selector_mode, line_response_status, line_response_body, error_message, raw, updated_at)
+        values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+        """,
+        (
+            TARGET_DATE,
+            _now_iso(),
+            status,
+            LINE_TO if not DRY_RUN else "DRY_RUN",
+            "daily_report",
+            text,
+            SELECTOR_MODE,
+            resp.get("status_code"),
+            resp.get("body"),
+            error,
+            Jsonb({"response": resp, "dry_run": DRY_RUN}),
+            _now_iso(),
+        ),
+    )
+
+
+def _result_ticket_payout(race_id: str) -> Tuple[str, int]:
+    if not race_id or not _table_exists("v2_results"):
+        return "", 0
+    ticket_col = _first_col("v2_results", ["trifecta_ticket", "sanrentan_ticket", "trifecta_result", "result_ticket", "ticket"])
+    payout_col = _first_col("v2_results", ["trifecta_payout_yen", "trifecta_payout", "payout_yen", "return_yen", "trifecta_return_yen"])
+    if not ticket_col:
+        return "", 0
+    payout_sql = f", {payout_col} as payout" if payout_col else ", 0 as payout"
+    row = fetch_one(f"select {ticket_col} as ticket {payout_sql} from v2_results where race_id=%s limit 1;", (race_id,))
+    if not row:
+        return "", 0
+    return str(row.get("ticket") or ""), _safe_int(row.get("payout"), 0)
+
+
+def _fetch_decisions() -> List[Dict[str, Any]]:
+    if not _table_exists("v2_realtime_decisions"):
+        return []
+    cols = _columns("v2_realtime_decisions")
+    where = ["race_date=%s"]
+    params: List[Any] = [TARGET_DATE]
+    if "selector_mode" in cols:
+        where.append("selector_mode=%s")
+        params.append(SELECTOR_MODE)
+    return fetch_all(f"select * from v2_realtime_decisions where {' and '.join(where)} order by decision_at asc nulls last;", tuple(params))
+
+
+def _summarize(decisions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    buy = [d for d in decisions if str(d.get("recommendation") or "").lower() == "buy"]
+    rank = defaultdict(lambda: {"decisions": 0, "buy": 0, "hit": 0, "investment": 0, "return": 0})
+    cache: Dict[str, Tuple[str, int]] = {}
+    hit = 0
+    ret = 0
+    for d in decisions:
+        label = str(d.get("mode_label") or d.get("mode_name") or d.get("rank_label") or "未分類")
+        rank[label]["decisions"] += 1
+        if str(d.get("recommendation") or "").lower() != "buy":
+            continue
+        rank[label]["buy"] += 1
+        rank[label]["investment"] += 100
+        rid, ticket = str(d.get("race_id") or ""), str(d.get("ticket") or "")
+        if rid not in cache:
+            cache[rid] = _result_ticket_payout(rid)
+        result_ticket, payout = cache.get(rid, ("", 0))
+        if ticket and result_ticket and ticket == result_ticket:
+            hit += 1
+            ret += payout
+            rank[label]["hit"] += 1
+            rank[label]["return"] += payout
+    inv = len(buy) * 100
+    return {"decisions": len(decisions), "buy": len(buy), "hit": hit, "investment": inv, "return": ret, "profit": ret - inv, "rank": rank}
+
+
+def _build_message(race_count: int, s: Dict[str, Any]) -> str:
+    lines = [
+        "【競艇AI 日次稼働レポート】",
+        "※テスト運用中・購入しない集計" if TEST_MODE else "※本番運用集計",
         TARGET_DATE,
         "",
-        "⚠️ 夜間学習レポートがまだ保存されていません。",
-        "boat-ai-nightly-learning のログを確認してください。",
-        "",
-        "確認ポイント:",
-        "保存結果件数",
-        "v2_learning_daily_reports saved",
-        "=== v26 夜間結果取得・学習集計終了 ===",
-    ])
-
-def build_message(row):
-    total_races = num(row, "total_races")
-    decisions = num(row, "decisions", "decision_count")
-    buy = num(row, "buy", "buy_count")
-    hit = num(row, "hit", "hit_count")
-    stake = num(row, "stake_yen", "stake")
-    ret = num(row, "return_yen", "return")
-    profit = num(row, "profit_yen", "profit")
-    by_mode = parse_by_mode(row.get("by_mode"))
-
-    header = "【競艇AI 日次稼働レポート】"
-    if TEST_MODE:
-        header += "\n※テスト運用中・購入しない集計"
-
-    buy_status = "本日は最終BUYなし" if buy == 0 else f"本日は最終BUY {buy}件"
-
-    return "\n".join([
-        header,
-        str(row.get("report_date") or TARGET_DATE),
-        "",
-        buy_status,
+        "本日は最終BUYなし" if s["buy"] <= 0 else f"本日は最終BUY {s['buy']}件",
         "データ取得・結果取得・学習集計は完了",
         "",
         "【日次成績】",
-        f"対象R: {total_races}",
-        f"直前判定: {decisions}件",
-        f"BUY: {buy}件",
-        f"的中: {hit}件",
-        f"的中率: {fmt_pct(pct(hit, buy))}",
-        f"投資: {yen(stake)}",
-        f"回収: {yen(ret)}",
-        f"損益: {yen(profit)}",
-        f"回収率: {fmt_pct(pct(ret, stake))}",
+        f"対象R: {race_count}",
+        f"直前判定: {s['decisions']}件",
+        f"BUY: {s['buy']}件",
+        f"的中: {s['hit']}件",
+        f"的中率: {_pct(s['hit'], s['buy'])}",
+        f"投資: {_yen(s['investment'])}",
+        f"回収: {_yen(s['return'])}",
+        f"損益: {_yen(s['profit'])}",
+        f"回収率: {_roi(s['return'], s['investment'])}",
         "",
-        mode_lines(by_mode),
-    ])
-
-def send_line(message):
-    if DRY_RUN:
-        print("--- daily status report message ---")
-        print(message)
-        return 0
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {"to": LINE_TO, "messages": [{"type": "text", "text": message}]}
-    r = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False), timeout=HTTP_TIMEOUT)
-    if r.status_code >= 400:
-        raise RuntimeError(f"LINE push failed {r.status_code}: {r.text[:800]}")
-    return r.status_code
-
-def main():
-    print(f"✅ v28_daily_status_report_line.py VERSION {VERSION}", flush=True)
-    print(f"TARGET_DATE={TARGET_DATE} SELECTOR_MODE={SELECTOR_MODE} DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE}", flush=True)
-    require_settings()
-    row = get_daily_report()
-    if row is None:
-        print("daily report row not found", flush=True)
-        msg = no_report_message()
+        "【ランク別】",
+    ]
+    if not s["rank"]:
+        lines.append("データなし")
     else:
-        print(
-            f"daily report found: total_races={num(row,'total_races')} decisions={num(row,'decisions','decision_count')} buy={num(row,'buy','buy_count')} hit={num(row,'hit','hit_count')}",
-            flush=True,
-        )
-        msg = build_message(row)
-    status = send_line(msg)
-    print(f"LINE daily status sent dry_run={DRY_RUN} response_status={status}", flush=True)
-    print("=== v28 日次稼働レポートLINE配信終了 ===", flush=True)
+        for label, r in sorted(s["rank"].items(), key=lambda kv: kv[0]):
+            lines.append(
+                f"{label}: 判定{r['decisions']} / BUY{r['buy']} / 的中{r['hit']} / "
+                f"的中率{_pct(r['hit'], r['buy'])} / 回収率{_roi(r['return'], r['investment'])} / "
+                f"損益{_yen(r['return'] - r['investment'])}"
+            )
+    if DRY_RUN:
+        lines += ["", "※DRY_RUN：LINE送信なし"]
+    return "\n".join(lines)[:4900]
+
+
+def main() -> None:
+    print("✅ v28_daily_status_report_line.py VERSION 2026-07-09 railway-postgres", flush=True)
+    print(f"TARGET_DATE={TARGET_DATE} SELECTOR_MODE={SELECTOR_MODE} DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} REPORT_DAILY_LINE_LIMIT={REPORT_DAILY_LINE_LIMIT} MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT}", flush=True)
+    _require_settings()
+    _ensure_line_schema()
+    race_count = _count("select count(*) as n from v2_races where race_date=%s;", (TARGET_DATE,)) if _table_exists("v2_races") else 0
+    decisions = _fetch_decisions()
+    summary = _summarize(decisions)
+    msg = _build_message(race_count, summary)
+    print("\n--- daily report message ---", flush=True)
+    print(msg, flush=True)
+    guard = None if DRY_RUN else _usage_guard()
+    if guard:
+        print(f"LINE送信上限ガード: {guard}", flush=True)
+        print("=== daily status report 終了 ===", flush=True)
+        return
+    resp = _send_line(msg)
+    ok = 200 <= int(resp.get("status_code", 0)) < 300
+    status = "dry_run" if DRY_RUN else ("sent" if ok else "failed")
+    _insert_report(msg, status, resp, "" if ok else str(resp))
+    if not ok:
+        raise RuntimeError(f"LINE送信失敗: {resp}")
+    print(f"LINE response status={resp.get('status_code')}", flush=True)
+    print("✅ daily report done", flush=True)
+    print("=== daily status report 終了 ===", flush=True)
+
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        import traceback
-        print("FATAL ERROR", flush=True)
-        traceback.print_exc()
-        raise
+    main()
