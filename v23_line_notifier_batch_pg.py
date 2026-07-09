@@ -5,10 +5,16 @@ v23_line_notifier_batch_pg.py
 Railway Postgres版。
 v22_realtime_decisions の BUY 判定だけを LINE Messaging API で通知します。
 
+2026-07-09 修正:
+- 最終BUY通知のLINE上限を仮候補通知と分離。
+- FINAL_IGNORE_DAILY_LIMIT=1 の場合、最終BUY通知は日次上限では止めず、月間上限のみ確認。
+- FINAL_DAILY_LINE_LIMIT は FINAL_IGNORE_DAILY_LIMIT=0 の場合だけ使用。
+- MONTHLY_LINE_LIMIT のデフォルトを150に変更。
+
 Railway Start Command:
     python -u v23_line_notifier_batch_pg.py
 
-通常は run_v23_pg.py から起動してください。
+通常は run_v23_pg.py / v25_final_realtime_pipeline_pg.py から起動してください。
 """
 
 from __future__ import annotations
@@ -45,8 +51,16 @@ DRY_RUN = os.getenv("DRY_RUN", "1").strip() in ("1", "true", "True", "yes", "YES
 MAX_SEND = int(os.getenv("MAX_SEND", "10"))
 BATCH_NOTIFY = os.getenv("BATCH_NOTIFY", "1").strip() not in ("0", "false", "False", "no", "NO")
 MAX_ITEMS_PER_MESSAGE = int(os.getenv("MAX_ITEMS_PER_MESSAGE", "6"))
-DAILY_LINE_LIMIT = int(os.getenv("DAILY_LINE_LIMIT", "3"))
-MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "180"))
+
+# final BUY通知は仮候補通知と上限を分離する。
+# FINAL_IGNORE_DAILY_LIMIT=1 なら、日次上限では止めず月間上限だけ確認する。
+FINAL_DAILY_LINE_LIMIT = int(os.getenv("FINAL_DAILY_LINE_LIMIT", os.getenv("DAILY_LINE_LIMIT", "5")))
+FINAL_IGNORE_DAILY_LIMIT = os.getenv("FINAL_IGNORE_DAILY_LIMIT", "1").strip() in ("1", "true", "True", "yes", "YES")
+MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "150"))
+
+# 互換表示用。内部の上限判定では FINAL_* を使用する。
+DAILY_LINE_LIMIT = FINAL_DAILY_LINE_LIMIT
+
 TEST_MODE = os.getenv("TEST_MODE", "1").strip() not in ("0", "false", "False", "no", "NO")
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "35"))
 
@@ -81,7 +95,8 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
 
 
 def _month_next(date_str: str) -> str:
-    y = int(date_str[:4]); m = int(date_str[5:7])
+    y = int(date_str[:4])
+    m = int(date_str[5:7])
     if m == 12:
         return f"{y + 1:04d}-01-01"
     return f"{y:04d}-{m + 1:02d}-01"
@@ -151,10 +166,15 @@ def count_sent_notifications() -> Dict[str, int]:
 
 def _usage_guard() -> Optional[str]:
     counts = count_sent_notifications()
-    if counts["day"] >= DAILY_LINE_LIMIT:
-        return f"daily_limit_reached {counts['day']}/{DAILY_LINE_LIMIT}"
+
+    # final BUY通知は重要度が高いので、デフォルトでは日次上限では止めない。
+    # 月間上限だけはLINE Developers側の上限保護として確認する。
+    if not FINAL_IGNORE_DAILY_LIMIT and counts["day"] >= FINAL_DAILY_LINE_LIMIT:
+        return f"final_daily_limit_reached {counts['day']}/{FINAL_DAILY_LINE_LIMIT}"
+
     if counts["month"] >= MONTHLY_LINE_LIMIT:
         return f"monthly_limit_reached {counts['month']}/{MONTHLY_LINE_LIMIT}"
+
     return None
 
 
@@ -347,7 +367,6 @@ def insert_notification(decision: Dict[str, Any], message_text: str, status: str
             str(decision.get("venue_id") or "").zfill(2),
             decision.get("race_no"),
             str(decision.get("id") or ""),
-            # 既存DBでは sent_at が NOT NULL の場合があるため、dry_run/failedでも処理時刻を入れる
             _now_iso(),
             status,
             LINE_TO if not DRY_RUN else "DRY_RUN",
@@ -388,15 +407,17 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-05 railway-postgres-fix4", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-09 final-limit", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
-        f"DAILY_LINE_LIMIT={DAILY_LINE_LIMIT} MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT} TEST_MODE={TEST_MODE}",
+        f"FINAL_DAILY_LINE_LIMIT={FINAL_DAILY_LINE_LIMIT} FINAL_IGNORE_DAILY_LIMIT={FINAL_IGNORE_DAILY_LIMIT} "
+        f"MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT} TEST_MODE={TEST_MODE}",
         flush=True,
     )
+
     # DRY_RUNではLINE送信しないため、送信上限ガードは通さない。
-    # 本送信時だけ日/月上限を確認する。
+    # 本送信時だけ月間上限、必要ならfinal日次上限を確認する。
     guard = None if DRY_RUN else _usage_guard()
     if guard:
         print(f"LINE送信上限ガード: {guard}", flush=True)
@@ -404,6 +425,9 @@ def main() -> None:
         return
     if DRY_RUN:
         print("DRY_RUNのためLINE送信上限ガードはスキップします。", flush=True)
+    elif FINAL_IGNORE_DAILY_LIMIT:
+        print("FINAL_IGNORE_DAILY_LIMIT=1 のためfinal BUYの日次上限ガードはスキップします。月間上限のみ確認します。", flush=True)
+
     decisions = fetch_buy_decisions()
     print(f"pending_buy_decisions={len(decisions)}", flush=True)
     if not decisions:
@@ -424,7 +448,7 @@ def main() -> None:
             resp = send_line_message(msg)
             ok = 200 <= int(resp.get("status_code", 0)) < 300
             status = "dry_run" if DRY_RUN else ("sent" if ok else "failed")
-            nid = insert_notification(decisions[0], msg, status, resp)
+            nid = insert_notification(decisions[0], msg, status, resp, batch=True)
             if ok and not DRY_RUN:
                 for d in decisions:
                     mark_decision_notified(str(d.get("id")), nid)
