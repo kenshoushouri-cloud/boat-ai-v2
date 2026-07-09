@@ -30,6 +30,7 @@ Railway Start Command:
 - v2_races.deadline_time / deadline_at 保存に対応。
 - race_noごとの締切時刻取得に対応。
 - オッズ取得ループ時に racelist / 出走表を二重取得しないよう修正。
+- BOATRACE公式場コードに合わせて VENUE_NAMES を修正。
 """
 
 from __future__ import annotations
@@ -87,10 +88,30 @@ SOURCE = os.getenv("REPAIR_SOURCE") or "repair_month_all_pg"
 JST = timezone(timedelta(hours=9))
 
 VENUE_NAMES = {
-    "01": "桐生", "02": "戸田", "03": "江戸川", "04": "平和島", "05": "多摩川", "06": "常滑",
-    "07": "蒲郡", "08": "津", "09": "三国", "10": "びわこ", "11": "住之江", "12": "尼崎",
-    "13": "鳴門", "14": "丸亀", "15": "児島", "16": "宮島", "17": "徳山", "18": "下関",
-    "19": "若松", "20": "芦屋", "21": "福岡", "22": "唐津", "23": "唐津", "24": "大村",
+    "01": "桐生",
+    "02": "戸田",
+    "03": "江戸川",
+    "04": "平和島",
+    "05": "多摩川",
+    "06": "浜名湖",
+    "07": "蒲郡",
+    "08": "常滑",
+    "09": "津",
+    "10": "三国",
+    "11": "びわこ",
+    "12": "住之江",
+    "13": "尼崎",
+    "14": "鳴門",
+    "15": "丸亀",
+    "16": "児島",
+    "17": "宮島",
+    "18": "徳山",
+    "19": "下関",
+    "20": "若松",
+    "21": "芦屋",
+    "22": "福岡",
+    "23": "唐津",
+    "24": "大村",
 }
 
 CLASS_MAP = {"B2": 1, "B1": 2, "A2": 3, "A1": 4}
@@ -186,7 +207,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready venue-map-fixed", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
