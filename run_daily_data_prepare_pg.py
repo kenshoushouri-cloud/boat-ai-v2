@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+run_daily_data_prepare_pg.py
+
+Railway Postgres版：当日レース・出走表・オッズ取得。
+repair_month_all_pg.py を安全に探索して実行する診断対応版です。
+
+Start Command:
+    python -u run_daily_data_prepare_pg.py
+"""
+
 from __future__ import annotations
 
 import os
@@ -8,57 +18,89 @@ from datetime import datetime, timedelta, timezone
 
 JST = timezone(timedelta(hours=9))
 
-print("✅ run_daily_data_prepare_pg.py", flush=True)
 
-target_date = os.getenv("TARGET_DATE")
-if not target_date:
-    target_date = datetime.now(JST).strftime("%Y-%m-%d")
-    os.environ["TARGET_DATE"] = target_date
+def _find_repair_script() -> Path:
+    """
+    Railwayコンテナ内で repair_month_all_pg.py を探す。
+    通常は /app/repair_month_all_pg.py にある想定。
+    見つからない場合は .venv を除外した診断ログを出す。
+    """
+    base_dir = Path(__file__).resolve().parent
+    cwd = Path.cwd()
 
-os.environ["REPAIR_START_DATE"] = target_date
-os.environ["REPAIR_END_DATE"] = target_date
-
-os.environ["REPAIR_DO_RACES"] = "1"
-os.environ["REPAIR_DO_RESULTS"] = "0"
-os.environ["REPAIR_DO_ODDS"] = "1"
-
-print(f"TARGET_DATE={target_date}", flush=True)
-print("Railway Postgres版：当日レース・出走表・オッズ取得を開始します。", flush=True)
-
-BASE_DIR = Path(__file__).resolve().parent
-CWD = Path.cwd()
-
-candidates = [
-    BASE_DIR / "repair_month_all_pg.py",
-    CWD / "repair_month_all_pg.py",
-    BASE_DIR.parent / "repair_month_all_pg.py",
-    Path("/app/repair_month_all_pg.py"),
-    Path("/app/app/repair_month_all_pg.py"),
-    Path("/app/boat-ai-v2/repair_month_all_pg.py"),
-]
-
-repair_path = None
-for p in candidates:
-    if p.exists():
-        repair_path = p
-        break
-
-if repair_path is None:
-    print("❌ repair_month_all_pg.py が見つかりません", flush=True)
     print(f"__file__={__file__}", flush=True)
-    print(f"BASE_DIR={BASE_DIR}", flush=True)
-    print(f"CWD={CWD}", flush=True)
+    print(f"BASE_DIR={base_dir}", flush=True)
+    print(f"CWD={cwd}", flush=True)
 
-    print("=== /app files sample ===", flush=True)
+    candidates = [
+        base_dir / "repair_month_all_pg.py",
+        cwd / "repair_month_all_pg.py",
+        Path("/app/repair_month_all_pg.py"),
+        Path("/app/app/repair_month_all_pg.py"),
+        Path("/app/boat-ai-v2/repair_month_all_pg.py"),
+        base_dir.parent / "repair_month_all_pg.py",
+    ]
+
+    print("=== repair candidates ===", flush=True)
+    for p in candidates:
+        print(f"{p} exists={p.exists()}", flush=True)
+        if p.exists():
+            return p
+
+    print("=== /app top-level ===", flush=True)
     app_root = Path("/app")
     if app_root.exists():
-        for p in sorted(app_root.rglob("*"))[:300]:
-            try:
+        for p in sorted(app_root.iterdir()):
+            print(str(p), flush=True)
+
+    print("=== /app python files top-level ===", flush=True)
+    if app_root.exists():
+        for p in sorted(app_root.glob("*.py")):
+            print(str(p), flush=True)
+
+    print("=== search repair_month_all_pg.py excluding .venv ===", flush=True)
+    found = []
+    if app_root.exists():
+        for p in sorted(app_root.rglob("repair_month_all_pg.py")):
+            if ".venv" not in p.parts:
                 print(str(p), flush=True)
-            except Exception:
-                pass
+                found.append(p)
+
+    if found:
+        return found[0]
 
     raise FileNotFoundError("repair_month_all_pg.py がRailwayコンテナ内に存在しません")
 
-print(f"✅ repair script found: {repair_path}", flush=True)
-runpy.run_path(str(repair_path), run_name="__main__")
+
+def main() -> None:
+    print("✅ run_daily_data_prepare_pg.py", flush=True)
+
+    target_date = os.getenv("TARGET_DATE")
+    if not target_date:
+        target_date = datetime.now(JST).strftime("%Y-%m-%d")
+        os.environ["TARGET_DATE"] = target_date
+
+    os.environ["REPAIR_START_DATE"] = target_date
+    os.environ["REPAIR_END_DATE"] = target_date
+
+    # 当日準備：レース・出走表・オッズ取得。結果は夜に別Serviceで取得。
+    os.environ["REPAIR_DO_RACES"] = "1"
+    os.environ["REPAIR_DO_RESULTS"] = "0"
+    os.environ["REPAIR_DO_ODDS"] = "1"
+
+    # 未設定時の安全なデフォルト。
+    os.environ.setdefault("REPAIR_WORKERS", os.getenv("WORKERS", "4"))
+    os.environ.setdefault("REPAIR_ODDS_WORKERS", os.getenv("ODDS_WORKERS", "2"))
+    os.environ.setdefault("REPAIR_SLEEP_SEC", os.getenv("SLEEP_SEC", "0.1"))
+
+    print(f"TARGET_DATE={target_date}", flush=True)
+    print("Railway Postgres版：当日レース・出走表・オッズ取得を開始します。", flush=True)
+
+    repair_path = _find_repair_script()
+    print(f"✅ repair script found: {repair_path}", flush=True)
+
+    runpy.run_path(str(repair_path), run_name="__main__")
+
+
+if __name__ == "__main__":
+    main()
