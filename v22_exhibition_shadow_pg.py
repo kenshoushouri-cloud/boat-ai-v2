@@ -33,7 +33,8 @@ import math
 import os
 import re
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, List
 
 from db_pg import execute, fetch_all, upsert_rows
@@ -92,6 +93,21 @@ def _rank_centered(rank: int) -> float:
         6: -1.0,
     }.get(rank, 0.0)
 
+
+
+def _json_safe(value: Any) -> Any:
+    """JSONB保存前にDecimal・日時などをJSON化可能な値へ変換する。"""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    return str(value)
 
 def _ensure_schema() -> None:
     ddl = [
@@ -230,7 +246,7 @@ def main() -> None:
 
     _ensure_schema()
 
-    print("✅ v22_exhibition_shadow_pg.py VERSION 2026-07-15 shadow-v1", flush=True)
+    print("✅ v22_exhibition_shadow_pg.py VERSION 2026-07-15 shadow-v2-json-safe", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SELECTOR_MODE={SELECTOR_MODE} "
@@ -403,12 +419,12 @@ def main() -> None:
             "head_lane": head_lane,
             "head_exhibition_rank": head_ex_rank,
             "shadow_version": "exhibition_time_rank_w020_v1",
-            "raw": {
+            "raw": _json_safe({
                 "baseline_prob_rank": baseline_rank,
                 "shadow_prob_rank": shadow_rank,
                 "head_exhibition": exhibition.get(head_lane, {}),
                 "production_decision_unchanged": True,
-            },
+            }),
             "updated_at": datetime.now(JST).isoformat(),
         })
 
