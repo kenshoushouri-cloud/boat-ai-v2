@@ -1,1043 +1,259 @@
 # -*- coding: utf-8 -*-
-"""
-v21_realtime_collector_pg.py
-
-Railway Postgres版。
-競艇AI v2 リアルタイム情報収集スクリプト。
-
-収集対象:
-- beforeinfo:
-  - 展示タイム
-  - 展示ST/スタート展示
-  - 展示進入
-  - チルト候補
-  - 天候/気温/水温/風速/風向/波高
-- odds3t:
-  - 直前3連単オッズ
-  - 人気順位
-  - 前回スナップショットとの差分
-
-保存先:
-- v2_realtime_exhibition_snapshots
-- v2_realtime_weather_snapshots
-- v2_realtime_entry_snapshots
-- v2_realtime_odds_snapshots
-
-Railway Start Command:
-    python v21_realtime_collector_pg.py
-
-任意Variables:
-    TARGET_DATE=YYYY-MM-DD
-    TARGET_RACE_ID=20260625_24_01
-    SNAPSHOT_LABEL=pre10|pre5|final_ab|manual
-    COLLECT_SCOPE=candidates|all
-    SELECTOR_MODE=ab
-    TARGET_VENUES=01,02,...,24
-    REALTIME_SLEEP_SEC=0.15
-"""
-
+"""Railway Postgres realtime collector with deadline window filter."""
 from __future__ import annotations
-
-import os
-import re
-import time
+import os,re,time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
-
+from datetime import date,datetime,timedelta,timezone
+from typing import Any,Dict,List,Optional,Tuple
 import requests
-
 try:
     from bs4 import BeautifulSoup
 except Exception:
-    BeautifulSoup = None
+    BeautifulSoup=None
+from db_pg import execute,fetch_all,upsert_rows
 
-from db_pg import execute, fetch_all, upsert_rows
+JST=timezone(timedelta(hours=9))
+TARGET_DATE=os.getenv('TARGET_DATE') or datetime.now(JST).strftime('%Y-%m-%d')
+TARGET_RACE_ID=os.getenv('TARGET_RACE_ID','').strip()
+SNAPSHOT_LABEL=os.getenv('SNAPSHOT_LABEL','manual').strip() or 'manual'
+COLLECT_SCOPE=os.getenv('COLLECT_SCOPE','candidates').strip().lower()
+SELECTOR_MODE=os.getenv('SELECTOR_MODE','ab').strip().lower()
+TARGET_VENUES=[v.strip().zfill(2) for v in os.getenv('TARGET_VENUES',','.join(f'{i:02d}' for i in range(1,25))).split(',') if v.strip()]
+REALTIME_SLEEP_SEC=float(os.getenv('REALTIME_SLEEP_SEC','0.15'))
+PARSE_ALLOW_PARTIAL=os.getenv('PARSE_ALLOW_PARTIAL','0').strip() in ('1','true','True','yes','YES')
+FINAL_DEADLINE_FILTER=os.getenv('FINAL_DEADLINE_FILTER','1').strip() not in ('0','false','False','no','NO')
+FINAL_WINDOW_BEFORE_MIN=max(0,int(os.getenv('FINAL_WINDOW_BEFORE_MIN','30')))
+FINAL_WINDOW_AFTER_MIN=max(0,int(os.getenv('FINAL_WINDOW_AFTER_MIN','0')))
+HTTP_TIMEOUT=int(os.getenv('HTTP_TIMEOUT','35'))
+RETRY_MAX=int(os.getenv('RETRY_MAX','2'))
+RETRY_SLEEP=float(os.getenv('RETRY_SLEEP','2.0'))
+BAD5_VENUES={'01','04','05','06','23'}
+IN_STRONG_VENUES={'12','15','18','21','24'}
+ROUGH_VENUES={'02','03','04','05','06'}
+OFFICIAL='https://www.boatrace.jp/owpc/pc/race'
+SESSION=requests.Session(); SESSION.headers.update({'User-Agent':'Mozilla/5.0 (compatible; boatrace-realtime-collector-pg/1.0)'})
 
-JST = timezone(timedelta(hours=9))
-
-TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
-TARGET_RACE_ID = os.getenv("TARGET_RACE_ID", "").strip()
-SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "manual").strip() or "manual"
-COLLECT_SCOPE = os.getenv("COLLECT_SCOPE", "candidates").strip().lower()
-SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip().lower()
-TARGET_VENUES = [
-    v.zfill(2)
-    for v in os.getenv("TARGET_VENUES", ",".join(f"{i:02d}" for i in range(1, 25))).split(",")
-    if v.strip()
-]
-REALTIME_SLEEP_SEC = float(os.getenv("REALTIME_SLEEP_SEC", "0.15"))
-PARSE_ALLOW_PARTIAL = os.getenv("PARSE_ALLOW_PARTIAL", "0").strip() in ("1", "true", "True", "yes", "YES")
-
-HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "35"))
-RETRY_MAX = int(os.getenv("RETRY_MAX", "2"))
-RETRY_SLEEP = float(os.getenv("RETRY_SLEEP", "2.0"))
-ODDS_PAGE_SIZE = int(os.getenv("ODDS_PAGE_SIZE", "1000"))
-
-BAD5_VENUES = {"01", "04", "05", "06", "23"}
-IN_STRONG_VENUES = {"12", "15", "18", "21", "24"}
-ROUGH_VENUES = {"02", "03", "04", "05", "06"}
-
-OFFICIAL = "https://www.boatrace.jp/owpc/pc/race"
-
-SESSION = requests.Session()
-SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; boatrace-realtime-collector-pg/1.0)"
-})
-
-
-# ============================================================
-# basic utils
-# ============================================================
-
-def _require_settings() -> None:
-    if not os.getenv("DATABASE_URL"):
-        raise RuntimeError("DATABASE_URL が必要です。")
-
-
-def _now_iso() -> str:
-    return datetime.now(JST).isoformat()
-
-
-def _yyyymmdd(date_str: str) -> str:
-    return date_str.replace("-", "")
-
-
-def _rid_prefix(date_str: str) -> str:
-    return date_str.replace("-", "")
-
-
-def _next_day(date_str: str) -> str:
-    d = datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)
-    return d.strftime("%Y-%m-%d")
-
-
-def _shift_day(date_str: str, days: int) -> str:
-    d = datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=days)
-    return d.strftime("%Y-%m-%d")
-
-
-def _norm_text(s: Any) -> str:
-    return re.sub(r"\s+", " ", str(s or "")).strip()
-
-
-def _norm_ticket(s: Any) -> str:
-    t = str(s or "").strip()
-    nums = re.findall(r"[1-6]", t)
-    if len(nums) >= 3:
-        return f"{nums[0]}-{nums[1]}-{nums[2]}"
-    return ""
-
-
-def _safe_int(v: Any, default: int = 0) -> int:
+def _require_settings():
+    if not os.getenv('DATABASE_URL'): raise RuntimeError('DATABASE_URL ãå¿è¦ã§ãã')
+def _now(): return datetime.now(JST)
+def _now_iso(): return _now().isoformat()
+def _yyyymmdd(s): return s.replace('-','')
+def _rid_prefix(s): return s.replace('-','')
+def _next_day(s): return (datetime.strptime(s,'%Y-%m-%d')+timedelta(days=1)).strftime('%Y-%m-%d')
+def _shift_day(s,n): return (datetime.strptime(s,'%Y-%m-%d')+timedelta(days=n)).strftime('%Y-%m-%d')
+def _norm_text(s): return re.sub(r'\s+',' ',str(s or '')).strip()
+def _norm_ticket(s):
+    a=re.findall(r'[1-6]',str(s or '')); return f'{a[0]}-{a[1]}-{a[2]}' if len(a)>=3 else ''
+def _safe_int(v,d=0):
+    try:return int(float(str(v).replace(',',''))) if v not in (None,'') else d
+    except:return d
+def _safe_float(v,d=0.0):
     try:
-        if v is None or v == "":
-            return default
-        return int(float(str(v).replace(",", "")))
-    except Exception:
-        return default
-
-
-def _safe_float(v: Any, default: float = 0.0) -> float:
-    try:
-        if v is None or v == "":
-            return default
-        s = str(v).replace(",", "").replace("F", "").replace("L", "").strip()
-        if s.startswith("."):
-            s = "0" + s
-        if s.startswith("-."):
-            s = s.replace("-.", "-0.", 1)
+        if v in (None,''): return d
+        s=str(v).replace(',','').replace('F','').replace('L','').strip()
+        if s.startswith('.'): s='0'+s
+        if s.startswith('-.'): s=s.replace('-.','-0.',1)
         return float(s)
-    except Exception:
-        return default
-
-
-def _official_url(kind: str, date_str: str, venue_id: str, race_no: int) -> str:
-    return f"{OFFICIAL}/{kind}?rno={int(race_no)}&jcd={venue_id.zfill(2)}&hd={_yyyymmdd(date_str)}"
-
-
-def _fetch(url: str) -> Optional[str]:
-    last = None
-    for attempt in range(RETRY_MAX + 1):
+    except:return d
+def _official_url(kind,date_str,venue_id,race_no): return f'{OFFICIAL}/{kind}?rno={int(race_no)}&jcd={venue_id.zfill(2)}&hd={_yyyymmdd(date_str)}'
+def _fetch(url):
+    last=None
+    for _ in range(RETRY_MAX+1):
         try:
-            r = SESSION.get(url, timeout=HTTP_TIMEOUT)
-            if r.status_code == 404:
-                return None
-            if not r.ok:
-                last = f"HTTP {r.status_code}: {r.text[:120]}"
-                time.sleep(RETRY_SLEEP)
-                continue
-            r.encoding = r.apparent_encoding or "utf-8"
-            return r.text
-        except Exception as e:
-            last = repr(e)
-            time.sleep(RETRY_SLEEP)
-    print(f"⚠️ fetch failed: {url} / {last}", flush=True)
+            r=SESSION.get(url,timeout=HTTP_TIMEOUT)
+            if r.status_code==404:return None
+            if not r.ok: last=f'HTTP {r.status_code}: {r.text[:120]}'; time.sleep(RETRY_SLEEP); continue
+            r.encoding=r.apparent_encoding or 'utf-8'; return r.text
+        except Exception as e: last=repr(e); time.sleep(RETRY_SLEEP)
+    print(f'â ï¸ fetch failed: {url} / {last}',flush=True); return None
+def _looks_no_data(html):
+    if not html:return True
+    t=_norm_text(re.sub(r'<[^>]+>',' ',html))
+    return 'ãã¼ã¿ãããã¾ãã' in t or 'éå¬ã¯ããã¾ãã' in t or 'è©²å½ãããã¼ã¿ã¯ããã¾ãã' in t or ('ãªããºã®æ´æ°' in t and len(t)<500)
+
+def _parse_deadline_at(r):
+    raw=r.get('deadline_at')
+    if isinstance(raw,datetime):
+        dt=raw if raw.tzinfo else raw.replace(tzinfo=JST); return dt.astimezone(JST)
+    if raw:
+        try:
+            dt=datetime.fromisoformat(str(raw).replace('Z','+00:00')); dt=dt if dt.tzinfo else dt.replace(tzinfo=JST); return dt.astimezone(JST)
+        except: pass
+    tm=str(r.get('deadline_time') or '').strip(); rd=r.get('race_date')
+    if tm and rd:
+        try:
+            d=rd.date() if isinstance(rd,datetime) else rd if isinstance(rd,date) else datetime.strptime(str(rd)[:10],'%Y-%m-%d').date()
+            h,m=map(int,tm.split(':')[:2]); return datetime(d.year,d.month,d.day,h,m,tzinfo=JST)
+        except:return None
     return None
 
+def _deadline_match(r,now):
+    dl=_parse_deadline_at(r)
+    if dl is None:return False,'deadline_missing'
+    start=dl-timedelta(minutes=FINAL_WINDOW_BEFORE_MIN); end=dl+timedelta(minutes=FINAL_WINDOW_AFTER_MIN)
+    if now<start:return False,'too_early'
+    if now>end:return False,'deadline_passed'
+    return True,'in_window'
 
-def _looks_no_data(html: Optional[str]) -> bool:
-    if not html:
-        return True
-    t = _norm_text(re.sub(r"<[^>]+>", " ", html))
-    return (
-        "データがありません" in t
-        or "開催はありません" in t
-        or "該当するデータはありません" in t
-        or ("オッズの更新" in t and len(t) < 500)
-    )
-
-
-# ============================================================
-# schema
-# ============================================================
-
-def _ensure_realtime_tables() -> None:
-    """
-    リアルタイム系テーブルのschemaを自動補正する。
-    既存テーブルが簡易schemaで作られていても、不足カラムを先に追加してから
-    unique indexを作るため、snapshot_label missingで落ちない。
-    """
-    ddl_list = [
-        "create table if not exists v2_realtime_weather_snapshots (id bigserial primary key);",
-        "create table if not exists v2_realtime_exhibition_snapshots (id bigserial primary key);",
-        "create table if not exists v2_realtime_entry_snapshots (id bigserial primary key);",
-        "create table if not exists v2_realtime_odds_snapshots (id bigserial primary key);",
-    ]
-
-    alter_list = [
-        # weather
-        "alter table v2_realtime_weather_snapshots add column if not exists race_id text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists race_date date;",
-        "alter table v2_realtime_weather_snapshots add column if not exists venue_id text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists venue_code text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists race_no integer;",
-        "alter table v2_realtime_weather_snapshots add column if not exists snapshot_label text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists snapshot_at timestamptz;",
-        "alter table v2_realtime_weather_snapshots add column if not exists source text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists weather text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists temperature_c numeric;",
-        "alter table v2_realtime_weather_snapshots add column if not exists water_temperature_c numeric;",
-        "alter table v2_realtime_weather_snapshots add column if not exists wind_speed_m numeric;",
-        "alter table v2_realtime_weather_snapshots add column if not exists wind_direction text;",
-        "alter table v2_realtime_weather_snapshots add column if not exists wave_height_cm numeric;",
-        "alter table v2_realtime_weather_snapshots add column if not exists raw jsonb;",
-        "alter table v2_realtime_weather_snapshots add column if not exists updated_at timestamptz;",
-
-        # exhibition
-        "alter table v2_realtime_exhibition_snapshots add column if not exists race_id text;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists race_date date;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists venue_id text;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists venue_code text;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists race_no integer;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists snapshot_label text;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists snapshot_at timestamptz;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists source text;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists lane integer;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_course integer;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time_rank integer;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists exhibition_time_diff numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing_rank integer;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists start_timing_diff numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists tilt numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists original_tilt numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists tilt_change numeric;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists raw jsonb;",
-        "alter table v2_realtime_exhibition_snapshots add column if not exists updated_at timestamptz;",
-
-        # entry
-        "alter table v2_realtime_entry_snapshots add column if not exists race_id text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists race_date date;",
-        "alter table v2_realtime_entry_snapshots add column if not exists venue_id text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists venue_code text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists race_no integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists snapshot_label text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists snapshot_at timestamptz;",
-        "alter table v2_realtime_entry_snapshots add column if not exists source text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists lane integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists racer_number integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists racer_name text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists racer_class text;",
-        "alter table v2_realtime_entry_snapshots add column if not exists original_course integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists exhibition_course integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists is_course_changed boolean;",
-        "alter table v2_realtime_entry_snapshots add column if not exists motor_no integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists boat_no integer;",
-        "alter table v2_realtime_entry_snapshots add column if not exists tilt numeric;",
-        "alter table v2_realtime_entry_snapshots add column if not exists raw jsonb;",
-        "alter table v2_realtime_entry_snapshots add column if not exists updated_at timestamptz;",
-
-        # odds
-        "alter table v2_realtime_odds_snapshots add column if not exists race_id text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists race_date date;",
-        "alter table v2_realtime_odds_snapshots add column if not exists venue_id text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists venue_code text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists race_no integer;",
-        "alter table v2_realtime_odds_snapshots add column if not exists snapshot_label text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists snapshot_at timestamptz;",
-        "alter table v2_realtime_odds_snapshots add column if not exists source text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists ticket text;",
-        "alter table v2_realtime_odds_snapshots add column if not exists odds numeric;",
-        "alter table v2_realtime_odds_snapshots add column if not exists market_rank integer;",
-        "alter table v2_realtime_odds_snapshots add column if not exists prev_odds numeric;",
-        "alter table v2_realtime_odds_snapshots add column if not exists odds_delta numeric;",
-        "alter table v2_realtime_odds_snapshots add column if not exists odds_delta_pct numeric;",
-        "alter table v2_realtime_odds_snapshots add column if not exists prev_market_rank integer;",
-        "alter table v2_realtime_odds_snapshots add column if not exists market_rank_delta integer;",
-        "alter table v2_realtime_odds_snapshots add column if not exists is_favorite boolean;",
-        "alter table v2_realtime_odds_snapshots add column if not exists is_odds_too_low boolean;",
-        "alter table v2_realtime_odds_snapshots add column if not exists is_odds_drift boolean;",
-        "alter table v2_realtime_odds_snapshots add column if not exists is_odds_steam boolean;",
-        "alter table v2_realtime_odds_snapshots add column if not exists raw jsonb;",
-        "alter table v2_realtime_odds_snapshots add column if not exists updated_at timestamptz;",
-
-        # base entry compatibility
-        "alter table v2_race_entries add column if not exists tilt numeric;",
-        "alter table v2_race_entries add column if not exists motor_no integer;",
-        "alter table v2_race_entries add column if not exists boat_no integer;",
-    ]
-
-    index_list = [
-        "create unique index if not exists uq_v2_rt_weather_race_label on v2_realtime_weather_snapshots (race_id, snapshot_label);",
-        "create unique index if not exists uq_v2_rt_exh_race_label_lane on v2_realtime_exhibition_snapshots (race_id, snapshot_label, lane);",
-        "create unique index if not exists uq_v2_rt_entry_race_label_lane on v2_realtime_entry_snapshots (race_id, snapshot_label, lane);",
-        "create unique index if not exists uq_v2_rt_odds_race_label_ticket on v2_realtime_odds_snapshots (race_id, snapshot_label, ticket);",
-    ]
-
-    for sql in ddl_list:
+def _ensure_realtime_tables():
+    tables=['v2_realtime_weather_snapshots','v2_realtime_exhibition_snapshots','v2_realtime_entry_snapshots','v2_realtime_odds_snapshots']
+    for t in tables: execute(f'create table if not exists {t} (id bigserial primary key);')
+    alters={
+      'v2_realtime_weather_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('weather','text'),('temperature_c','numeric'),('water_temperature_c','numeric'),('wind_speed_m','numeric'),('wind_direction','text'),('wave_height_cm','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
+      'v2_realtime_exhibition_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('lane','integer'),('exhibition_course','integer'),('exhibition_time','numeric'),('exhibition_time_rank','integer'),('exhibition_time_diff','numeric'),('start_timing','numeric'),('start_timing_rank','integer'),('start_timing_diff','numeric'),('tilt','numeric'),('original_tilt','numeric'),('tilt_change','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
+      'v2_realtime_entry_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('lane','integer'),('racer_number','integer'),('racer_name','text'),('racer_class','text'),('original_course','integer'),('exhibition_course','integer'),('is_course_changed','boolean'),('motor_no','integer'),('boat_no','integer'),('tilt','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
+      'v2_realtime_odds_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('ticket','text'),('odds','numeric'),('market_rank','integer'),('prev_odds','numeric'),('odds_delta','numeric'),('odds_delta_pct','numeric'),('prev_market_rank','integer'),('market_rank_delta','integer'),('is_favorite','boolean'),('is_odds_too_low','boolean'),('is_odds_drift','boolean'),('is_odds_steam','boolean'),('raw','jsonb'),('updated_at','timestamptz')]
+    }
+    for t,cols in alters.items():
+        for c,typ in cols: execute(f'alter table {t} add column if not exists {c} {typ};')
+    for sql in [
+      'alter table v2_race_entries add column if not exists tilt numeric;',
+      'alter table v2_race_entries add column if not exists motor_no integer;',
+      'alter table v2_race_entries add column if not exists boat_no integer;',
+      'create unique index if not exists uq_v2_rt_weather_race_label on v2_realtime_weather_snapshots (race_id,snapshot_label);',
+      'create unique index if not exists uq_v2_rt_exh_race_label_lane on v2_realtime_exhibition_snapshots (race_id,snapshot_label,lane);',
+      'create unique index if not exists uq_v2_rt_entry_race_label_lane on v2_realtime_entry_snapshots (race_id,snapshot_label,lane);',
+      'create unique index if not exists uq_v2_rt_odds_race_label_ticket on v2_realtime_odds_snapshots (race_id,snapshot_label,ticket);']:
         execute(sql)
-    for sql in alter_list:
-        execute(sql)
-    for sql in index_list:
-        execute(sql)
-
-
-def _upsert(table: str, rows: List[Dict[str, Any]], on_conflict: str, chunk_size: int = 500) -> int:
-    if not rows:
-        return 0
-    cols = [c.strip() for c in on_conflict.split(",") if c.strip()]
-    total = 0
-    for i in range(0, len(rows), chunk_size):
-        part = rows[i:i + chunk_size]
-        total += upsert_rows(table, part, cols)
+def _upsert(t,rows,conflict,chunk_size=500):
+    if not rows:return 0
+    cols=[x.strip() for x in conflict.split(',')]; total=0
+    for i in range(0,len(rows),chunk_size): total+=upsert_rows(t,rows[i:i+chunk_size],cols)
     return total
 
-
-def _ensure_base_entry_compat() -> None:
-    """v2_race_entries の旧schema差分を吸収する。"""
-    for sql in [
-        "alter table v2_race_entries add column if not exists tilt numeric;",
-        "alter table v2_race_entries add column if not exists motor_no integer;",
-        "alter table v2_race_entries add column if not exists boat_no integer;",
-    ]:
-        execute(sql)
-
-
-
-# ============================================================
-# parse official pages
-# ============================================================
-
-def _soup_text(html: str) -> str:
-    if BeautifulSoup is not None:
-        soup = BeautifulSoup(html, "html.parser")
-        return _norm_text(soup.get_text(" ", strip=True))
-    return _norm_text(re.sub(r"<[^>]+>", " ", html))
-
-
-def parse_weather(html: str) -> Dict[str, Any]:
-    text = _soup_text(html)
-    weather = None
-    for w in ["晴", "曇り", "くもり", "雨", "雪", "霧"]:
-        if w in text:
-            weather = w
-            break
-
-    def rx(pattern: str) -> Optional[float]:
-        m = re.search(pattern, text)
-        if not m:
-            return None
-        return _safe_float(m.group(1), None)
-
-    wind_direction = None
-    m = re.search(r"(北|北東|東|南東|南|南西|西|北西|向い風|追い風|右横風|左横風)", text)
-    if m:
-        wind_direction = m.group(1)
-
-    return {
-        "weather": weather,
-        "temperature_c": rx(r"気温\s*([0-9.]+)\s*℃"),
-        "water_temperature_c": rx(r"水温\s*([0-9.]+)\s*℃"),
-        "wind_speed_m": rx(r"風速\s*([0-9.]+)\s*m"),
-        "wind_direction": wind_direction,
-        "wave_height_cm": rx(r"波高\s*([0-9.]+)\s*cm"),
-        "raw_text": text[:2000],
-    }
-
-
-def _extract_table_rows(html: str) -> List[List[str]]:
-    rows: List[List[str]] = []
-    if BeautifulSoup is None:
-        return rows
-    soup = BeautifulSoup(html, "html.parser")
-    for tr in soup.find_all("tr"):
-        cells = [_norm_text(c.get_text(" ", strip=True)) for c in tr.find_all(["td", "th"])]
-        cells = [c for c in cells if c]
-        if cells:
-            rows.append(cells)
-    return rows
-
-
-def _find_lane_in_cells(cells: List[str]) -> Optional[int]:
-    for c in cells[:3]:
-        if re.fullmatch(r"[1-6]", c):
-            return int(c)
-    return None
-
-
-def _find_exhibition_course(cells: List[str], lane: int) -> int:
-    nums = []
-    for c in cells:
-        if re.fullmatch(r"[1-6]", c):
-            nums.append(int(c))
-    for n in nums:
-        if n != lane:
-            return n
-    return lane
-
-
-def _find_exhibition_time(cells: List[str]) -> Optional[float]:
-    for c in cells:
-        for m in re.findall(r"(?<!\d)(6\.\d{2}|7\.\d{2})(?!\d)", c):
-            v = _safe_float(m, 0.0)
-            if 6.0 <= v <= 8.5:
-                return v
-    return None
-
-
-def _find_start_timing(cells: List[str]) -> Optional[float]:
-    for c in cells:
-        m = re.search(r"([FL]?\.?\d{2,3})", c)
-        if not m:
-            continue
-        raw = m.group(1)
-        if re.match(r"^[67]\.", raw):
-            continue
-        v = _safe_float(raw, 999.0)
-        if 0.0 <= v <= 1.0:
-            return v
-    return None
-
-
-def _find_tilt(cells: List[str]) -> Optional[float]:
-    joined = " ".join(cells)
-    m = re.search(r"チルト\s*(-?[0-3](?:\.\d)?)", joined)
-    if m:
-        return _safe_float(m.group(1), None)
-    vals = []
-    for c in cells:
-        if re.fullmatch(r"-?0(?:\.0|\.5)?|[123](?:\.0)?", c):
-            vals.append(_safe_float(c, None))
-    if vals:
-        return vals[-1]
-    return None
-
-
-def _extract_exhibition_time_values(cells: List[str]) -> List[float]:
-    vals: List[float] = []
-    for c in cells:
-        for m in re.findall(r"(?<!\d)([67]\.\d{2})(?!\d)", c):
-            v = _safe_float(m, 0.0)
-            if 6.0 <= v <= 8.5:
-                vals.append(v)
-    return vals
-
-
-def _extract_start_values(cells: List[str]) -> List[float]:
-    vals: List[float] = []
-    joined = " ".join(cells)
-
-    if ("ST" not in joined.upper()) and ("スタート" not in joined) and ("S展示" not in joined):
-        if len(_extract_exhibition_time_values(cells)) >= 4:
-            return vals
-
-    for c in cells:
-        for m in re.findall(r"(?<!\d)([FL]?\.\d{2}|[FL]?0\.\d{2})(?!\d)", c, flags=re.IGNORECASE):
-            v = _safe_float(m, 999.0)
-            if 0.0 <= v <= 1.0:
-                vals.append(v)
-    return vals
-
-
-def _extract_tilt_values(cells: List[str]) -> List[float]:
-    joined = " ".join(cells)
-    if "チルト" not in joined and "tilt" not in joined.lower():
-        return []
-    vals: List[float] = []
-    for c in cells:
-        for m in re.findall(r"(?<!\d)(-?0(?:\.[05])?|[123](?:\.[05])?)(?!\d)", c):
-            v = _safe_float(m, 999.0)
-            if -1.0 <= v <= 3.0:
-                vals.append(v)
-    if len(vals) >= 6:
-        return vals[-6:]
-    return vals
-
-
-def _extract_course_values(cells: List[str]) -> List[int]:
-    joined = " ".join(cells)
-    if "進入" not in joined and "コース" not in joined:
-        return []
-    vals: List[int] = []
-    for c in cells:
-        if re.fullmatch(r"[1-6]", c):
-            vals.append(int(c))
-    if len(vals) >= 6:
-        return vals[-6:]
-    return vals
-
-
-def _rank_and_diff(rows: List[Dict[str, Any]], value_key: str, rank_key: str, diff_key: str, lower_is_better: bool = True) -> None:
-    vals = [(r["lane"], r.get(value_key)) for r in rows if r.get(value_key) is not None]
-    if not vals:
-        return
-    vals = sorted(vals, key=lambda x: x[1], reverse=not lower_is_better)
-    best = vals[0][1]
-    ranks = {lane: i + 1 for i, (lane, _) in enumerate(vals)}
+def _soup_text(html):
+    if BeautifulSoup is not None:return _norm_text(BeautifulSoup(html,'html.parser').get_text(' ',strip=True))
+    return _norm_text(re.sub(r'<[^>]+>',' ',html))
+def parse_weather(html):
+    text=_soup_text(html); weather=next((w for w in ['æ´','æã','ããã','é¨','éª','é§'] if w in text),None)
+    def rx(p):
+        m=re.search(p,text); return _safe_float(m.group(1),None) if m else None
+    m=re.search(r'(å|åæ±|æ±|åæ±|å|åè¥¿|è¥¿|åè¥¿|åãé¢¨|è¿½ãé¢¨|å³æ¨ªé¢¨|å·¦æ¨ªé¢¨)',text)
+    return {'weather':weather,'temperature_c':rx(r'æ°æ¸©\s*([0-9.]+)\s*â'),'water_temperature_c':rx(r'æ°´æ¸©\s*([0-9.]+)\s*â'),'wind_speed_m':rx(r'é¢¨é\s*([0-9.]+)\s*m'),'wind_direction':m.group(1) if m else None,'wave_height_cm':rx(r'æ³¢é«\s*([0-9.]+)\s*cm'),'raw_text':text[:2000]}
+def _extract_table_rows(html):
+    if BeautifulSoup is None:return []
+    out=[]
+    for tr in BeautifulSoup(html,'html.parser').find_all('tr'):
+        cells=[_norm_text(c.get_text(' ',strip=True)) for c in tr.find_all(['td','th'])]; cells=[c for c in cells if c]
+        if cells:out.append(cells)
+    return out
+def _rank_diff(rows,key,rk,dk):
+    vals=sorted([(r['lane'],r.get(key)) for r in rows if r.get(key) is not None],key=lambda x:x[1])
+    if not vals:return
+    best=vals[0][1]; ranks={lane:i+1 for i,(lane,_) in enumerate(vals)}
     for r in rows:
-        if r.get(value_key) is not None:
-            r[rank_key] = ranks.get(r["lane"])
-            r[diff_key] = round(float(r[value_key]) - float(best), 3)
-
-
-def parse_exhibition(html: str) -> List[Dict[str, Any]]:
-    rows = _extract_table_rows(html)
-
-    by_lane: Dict[int, Dict[str, Any]] = {
-        lane: {
-            "lane": lane,
-            "exhibition_course": lane,
-            "raw_cells": [],
-        }
-        for lane in range(1, 7)
-    }
-
-    found_times = False
-    found_st = False
-
-    for cells in rows:
-        joined = " ".join(cells)
-
-        times = _extract_exhibition_time_values(cells)
-        if len(times) >= 6 and (not found_times or "展示" in joined):
-            for lane, val in enumerate(times[:6], start=1):
-                by_lane[lane]["exhibition_time"] = val
-                by_lane[lane].setdefault("raw_cells", []).append(cells)
-            found_times = True
-            continue
-
-        sts = _extract_start_values(cells)
-        if len(sts) >= 6 and (not found_st or "ST" in joined.upper() or "スタート" in joined):
-            for lane, val in enumerate(sts[:6], start=1):
-                by_lane[lane]["start_timing"] = val
-                by_lane[lane].setdefault("raw_cells", []).append(cells)
-            found_st = True
-            continue
-
-        tilts = _extract_tilt_values(cells)
-        if len(tilts) >= 6:
-            for lane, val in enumerate(tilts[:6], start=1):
-                by_lane[lane]["tilt"] = val
-                by_lane[lane].setdefault("raw_cells", []).append(cells)
-            continue
-
-        courses = _extract_course_values(cells)
-        if len(courses) >= 6:
-            for lane, val in enumerate(courses[:6], start=1):
-                if 1 <= val <= 6:
-                    by_lane[lane]["exhibition_course"] = val
-                    by_lane[lane].setdefault("raw_cells", []).append(cells)
-            continue
-
-        lane = _find_lane_in_cells(cells)
-        if lane:
-            ex_time = _find_exhibition_time(cells)
-            st = _find_start_timing(cells)
-            tilt = _find_tilt(cells)
-            if ex_time is not None:
-                by_lane[lane]["exhibition_time"] = ex_time
-            if st is not None:
-                by_lane[lane]["start_timing"] = st
-            if tilt is not None:
-                by_lane[lane]["tilt"] = tilt
-            if ex_time is not None or st is not None or tilt is not None:
-                by_lane[lane]["exhibition_course"] = _find_exhibition_course(cells, lane)
-                by_lane[lane].setdefault("raw_cells", []).append(cells)
-
-    out: List[Dict[str, Any]] = []
-    for lane in range(1, 7):
-        r = by_lane[lane]
-        if (
-            r.get("exhibition_time") is not None
-            or r.get("start_timing") is not None
-            or r.get("tilt") is not None
-            or r.get("exhibition_course") != lane
-        ):
-            out.append(r)
-
-    if len(out) < 6 and not PARSE_ALLOW_PARTIAL:
-        return []
-
-    _rank_and_diff(out, "exhibition_time", "exhibition_time_rank", "exhibition_time_diff", lower_is_better=True)
-    _rank_and_diff(out, "start_timing", "start_timing_rank", "start_timing_diff", lower_is_better=True)
-
+        if r.get(key) is not None:r[rk]=ranks[r['lane']];r[dk]=round(float(r[key])-float(best),3)
+def parse_exhibition(html):
+    text=_soup_text(html); out=[]
+    # lane-oriented extraction from text; official page normally exposes six values per section
+    times=[_safe_float(x) for x in re.findall(r'(?<!\d)([67]\.\d{2})(?!\d)',text)]
+    sts=[_safe_float(x) for x in re.findall(r'(?<!\d)(?:F|L)?(0?\.\d{2})(?!\d)',text)]
+    if len(times)>=6:
+        times=times[:6]
+        for i in range(6): out.append({'lane':i+1,'exhibition_course':i+1,'exhibition_time':times[i],'start_timing':sts[i] if len(sts)>=6 else None,'raw_cells':[]})
+    else:
+        for cells in _extract_table_rows(html):
+            lane=next((int(c) for c in cells[:3] if re.fullmatch(r'[1-6]',c)),None)
+            if not lane:continue
+            joined=' '.join(cells); mt=re.search(r'(?<!\d)([67]\.\d{2})(?!\d)',joined); ms=re.search(r'(?<!\d)(?:F|L)?(0?\.\d{2})(?!\d)',joined)
+            if mt:out.append({'lane':lane,'exhibition_course':lane,'exhibition_time':_safe_float(mt.group(1)),'start_timing':_safe_float(ms.group(1),None) if ms else None,'raw_cells':[cells]})
+    by={r['lane']:r for r in out}; out=[by[i] for i in sorted(by)]
+    if len(out)<6 and not PARSE_ALLOW_PARTIAL:return []
+    _rank_diff(out,'exhibition_time','exhibition_time_rank','exhibition_time_diff'); _rank_diff(out,'start_timing','start_timing_rank','start_timing_diff')
+    return out
+def parse_odds3t(html):
+    if not html:return {}
+    text=_soup_text(html); out={}
+    for m in re.finditer(r'([1-6])\s*[-ï¼]\s*([1-6])\s*[-ï¼]\s*([1-6])\s+([0-9]{1,4}(?:\.[0-9])?)',text):
+        a,b,c,o=m.groups(); v=_safe_float(o)
+        if v>0:out[f'{a}-{b}-{c}']=v
     return out
 
-
-def parse_odds3t(html: str) -> Dict[str, float]:
-    if not html:
-        return {}
-    text = _soup_text(html)
-    odds: Dict[str, float] = {}
-
-    for m in re.finditer(r"([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])\s+([0-9]{1,4}(?:\.[0-9])?)", text):
-        a, b, c, o = m.groups()
-        t = f"{a}-{b}-{c}"
-        v = _safe_float(o, 0.0)
-        if v > 0:
-            odds[t] = v
-
-    if len(odds) < 80 and BeautifulSoup is not None:
-        rows = _extract_table_rows(html)
-        for cells in rows:
-            joined = " ".join(cells)
-            nums = re.findall(r"[1-6]", joined)
-            if len(nums) < 3:
-                continue
-            ticket = f"{nums[0]}-{nums[1]}-{nums[2]}"
-            vals = []
-            for c in cells:
-                for x in re.findall(r"(?<!\d)([0-9]{1,4}\.[0-9])(?!\d)", c):
-                    vals.append(_safe_float(x, 0.0))
-            if vals:
-                v = vals[-1]
-                if v > 0:
-                    odds[ticket] = v
-
-    return odds
-
-
-# ============================================================
-# DB data helpers
-# ============================================================
-
-def fetch_day_base(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, float]]]:
-    day_prefix = _rid_prefix(date_str)
-    next_prefix = _rid_prefix(_next_day(date_str))
-
-    races = fetch_all(
-        """
-        select *
-        from v2_races
-        where race_date = %s
-        order by venue_id asc, race_no asc;
-        """,
-        (date_str,),
-    )
-    races = [r for r in races if str(r.get("venue_id") or r.get("venue_code") or "").zfill(2) in TARGET_VENUES]
-    if TARGET_RACE_ID:
-        races = [r for r in races if str(r.get("race_id")) == TARGET_RACE_ID]
-
-    entries_rows = fetch_all(
-        """
-        select *
-        from v2_race_entries
-        where race_id >= %s and race_id < %s
-        order by race_id asc, lane asc;
-        """,
-        (day_prefix, next_prefix),
-    )
-    entries_by_race: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for e in entries_rows:
-        entries_by_race[str(e.get("race_id"))].append(e)
-
-    odds_rows = fetch_all(
-        """
-        select race_id,ticket,odds
-        from v2_odds_trifecta
-        where race_id >= %s and race_id < %s
-        order by race_id asc, ticket asc;
-        """,
-        (day_prefix, next_prefix),
-    )
-    odds_by_race: Dict[str, Dict[str, float]] = defaultdict(dict)
-    for o in odds_rows:
-        rid = str(o.get("race_id"))
-        t = _norm_ticket(o.get("ticket"))
-        v = _safe_float(o.get("odds"), 0.0)
-        if rid and t and v > 0:
-            odds_by_race[rid][t] = v
-
-    return races, entries_by_race, odds_by_race
-
-
-def _fetch_previous_odds(race_id: str, snapshot_label: str) -> Dict[str, Dict[str, Any]]:
-    rows = fetch_all(
-        """
-        select ticket,odds,market_rank,snapshot_at
-        from v2_realtime_odds_snapshots
-        where race_id = %s
-        order by snapshot_at desc nulls last
-        limit 240;
-        """,
-        (race_id,),
-    )
-    out = {}
+def fetch_day_base(ds):
+    p=_rid_prefix(ds); q=_rid_prefix(_next_day(ds))
+    races=fetch_all('select * from v2_races where race_date=%s order by venue_id,race_no;',(ds,)); races=[r for r in races if str(r.get('venue_id') or r.get('venue_code') or '').zfill(2) in TARGET_VENUES]
+    if TARGET_RACE_ID:races=[r for r in races if str(r.get('race_id'))==TARGET_RACE_ID]
+    er=fetch_all('select * from v2_race_entries where race_id >= %s and race_id < %s order by race_id,lane;',(p,q)); eb=defaultdict(list)
+    for e in er:eb[str(e.get('race_id'))].append(e)
+    oo=fetch_all('select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id < %s order by race_id,ticket;',(p,q)); ob=defaultdict(dict)
+    for o in oo:
+        t=_norm_ticket(o.get('ticket')); v=_safe_float(o.get('odds'))
+        if t and v>0:ob[str(o.get('race_id'))][t]=v
+    return races,eb,ob
+def _fetch_previous_odds(rid):
+    rows=fetch_all('select ticket,odds,market_rank,snapshot_at from v2_realtime_odds_snapshots where race_id=%s order by snapshot_at desc nulls last limit 240;',(rid,)); out={}
     for r in rows:
-        t = _norm_ticket(r.get("ticket"))
-        if t and t not in out:
-            out[t] = r
+        t=_norm_ticket(r.get('ticket'))
+        if t and t not in out:out[t]=r
     return out
-
-
-# ============================================================
-# candidate scope helpers
-# ============================================================
-
-def _infer_venue_style(venue_id: str) -> str:
-    v = str(venue_id).zfill(2)
-    if v in BAD5_VENUES:
-        return "bad5"
-    if v in ROUGH_VENUES:
-        return "rough"
-    if v in IN_STRONG_VENUES:
-        return "in_strong"
-    return "standard"
-
-
-def _event_day_by_venue(date_str: str) -> Dict[str, int]:
-    start = _shift_day(date_str, -10)
-    rows = fetch_all(
-        """
-        select race_id,race_date,venue_id,venue_code,race_no
-        from v2_races
-        where race_date >= %s and race_date <= %s
-        order by race_date asc, venue_id asc, race_no asc;
-        """,
-        (start, date_str),
-    )
-    dates_by_venue: Dict[str, List[str]] = defaultdict(list)
+def _infer_venue_style(v):
+    return 'bad5' if v in BAD5_VENUES else 'rough' if v in ROUGH_VENUES else 'in_strong' if v in IN_STRONG_VENUES else 'standard'
+def _event_day_by_venue(ds):
+    rows=fetch_all('select race_date,venue_id,venue_code from v2_races where race_date >= %s and race_date <= %s order by race_date,venue_id;',(_shift_day(ds,-10),ds)); dates=defaultdict(list)
     for r in rows:
-        d = str(r.get("race_date", ""))
-        if d > date_str:
-            continue
-        v = str(r.get("venue_id") or r.get("venue_code") or "").zfill(2)
-        if d and d not in dates_by_venue[v]:
-            dates_by_venue[v].append(d)
-
-    out = {}
-    for v, ds in dates_by_venue.items():
-        cur = 0
-        prev = ""
-        for d in sorted(ds):
-            if prev and d == _shift_day(prev, 1):
-                cur += 1
-            else:
-                cur = 1
-            prev = d
-            if d == date_str:
-                out[v] = cur
+        d=str(r.get('race_date'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2)
+        if d not in dates[v]:dates[v].append(d)
+    out={}
+    for v,arr in dates.items():
+        cur=0;prev=''
+        for d in sorted(arr):cur=cur+1 if prev and d==_shift_day(prev,1) else 1;prev=d;out[v]=cur if d==ds else out.get(v,cur)
     return out
+def _is_candidate_race(v,rno,day):
+    if 1<=rno<=9:return True
+    style=_infer_venue_style(v); venue_best=(style=='bad5' and 4<=rno<=9) or (style=='in_strong' and (1<=rno<=3 or 7<=rno<=9)); day_best=(day in (2,3) and 4<=rno<=9) or (day>=6 and (1<=rno<=3 or 7<=rno<=9)); return venue_best or day_best
 
+def save_weather(r,w):
+    v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2); row={'race_id':str(r.get('race_id')),'race_date':r.get('race_date'),'venue_id':v,'venue_code':v,'race_no':_safe_int(r.get('race_no')),'snapshot_label':SNAPSHOT_LABEL,'snapshot_at':_now_iso(),'source':'official_beforeinfo','weather':w.get('weather'),'temperature_c':w.get('temperature_c'),'water_temperature_c':w.get('water_temperature_c'),'wind_speed_m':w.get('wind_speed_m'),'wind_direction':w.get('wind_direction'),'wave_height_cm':w.get('wave_height_cm'),'raw':{'text':w.get('raw_text','')},'updated_at':_now_iso()}; return _upsert('v2_realtime_weather_snapshots',[row],'race_id,snapshot_label')
+def save_exhibition_and_entries(r,entries,exh):
+    rid=str(r.get('race_id'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2);rno=_safe_int(r.get('race_no'));eb={_safe_int(e.get('lane')):e for e in entries};xb={_safe_int(x.get('lane')):x for x in exh}; er=[];xr=[]
+    for lane in range(1,7):
+        e=eb.get(lane,{});x=xb.get(lane,{});course=x.get('exhibition_course');raw={'cells':x.get('raw_cells',[])}
+        er.append({'race_id':rid,'race_date':r.get('race_date'),'venue_id':v,'venue_code':v,'race_no':rno,'snapshot_label':SNAPSHOT_LABEL,'snapshot_at':_now_iso(),'source':'official_beforeinfo','lane':lane,'racer_number':e.get('racer_number'),'racer_name':e.get('racer_name'),'racer_class':str(e.get('racer_class')) if e.get('racer_class') is not None else None,'original_course':lane,'exhibition_course':course,'is_course_changed':bool(course and course!=lane),'motor_no':e.get('motor_no'),'boat_no':e.get('boat_no'),'tilt':x.get('tilt'),'raw':raw,'updated_at':_now_iso()})
+        if x:xr.append({'race_id':rid,'race_date':r.get('race_date'),'venue_id':v,'venue_code':v,'race_no':rno,'snapshot_label':SNAPSHOT_LABEL,'snapshot_at':_now_iso(),'source':'official_beforeinfo','lane':lane,'exhibition_course':course or lane,'exhibition_time':x.get('exhibition_time'),'exhibition_time_rank':x.get('exhibition_time_rank'),'exhibition_time_diff':x.get('exhibition_time_diff'),'start_timing':x.get('start_timing'),'start_timing_rank':x.get('start_timing_rank'),'start_timing_diff':x.get('start_timing_diff'),'tilt':x.get('tilt'),'original_tilt':_safe_float(e.get('tilt'),None),'tilt_change':None,'raw':raw,'updated_at':_now_iso()})
+    return _upsert('v2_realtime_exhibition_snapshots',xr,'race_id,snapshot_label,lane'),_upsert('v2_realtime_entry_snapshots',er,'race_id,snapshot_label,lane')
+def save_odds(r,odds,source):
+    rid=str(r.get('race_id'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2);prev=_fetch_previous_odds(rid); ranked=sorted(odds.items(),key=lambda x:x[1]); ranks={t:i+1 for i,(t,_) in enumerate(ranked)};rows=[]
+    for t,o in ranked:
+        p=prev.get(t,{});po=_safe_float(p.get('odds'),None) if p else None;pr=_safe_int(p.get('market_rank'),0) if p and p.get('market_rank') is not None else None;delta=round(o-po,2) if po else None;dp=round((o-po)/po,4) if po else None
+        rows.append({'race_id':rid,'race_date':r.get('race_date'),'venue_id':v,'venue_code':v,'race_no':_safe_int(r.get('race_no')),'snapshot_label':SNAPSHOT_LABEL,'snapshot_at':_now_iso(),'source':source,'ticket':t,'odds':o,'market_rank':ranks[t],'prev_odds':po,'odds_delta':delta,'odds_delta_pct':dp,'prev_market_rank':pr,'market_rank_delta':ranks[t]-pr if pr is not None else None,'is_favorite':ranks[t]==1,'is_odds_too_low':o<3,'is_odds_drift':bool(dp is not None and dp>=.15),'is_odds_steam':bool(dp is not None and dp<=-.15),'raw':{},'updated_at':_now_iso()})
+    return _upsert('v2_realtime_odds_snapshots',rows,'race_id,snapshot_label,ticket')
 
-def _is_candidate_race(venue_id: str, race_no: int, event_day_no: int) -> bool:
-    """
-    v22のab判定候補とv21収集対象を揃える。
-
-    v22のabには low_exR10_12_base が含まれるため、
-    1〜9Rは全場で候補化される可能性がある。
-    旧v21は venue_best/day_best だけを収集していたため、
-    22場4Rのような low_exR10_12_base 候補で
-    「直前オッズsnapshotなし」になっていた。
-    """
-    if 1 <= race_no <= 9:
-        return True
-
-    style = _infer_venue_style(venue_id)
-
-    venue_best = (
-        (style == "bad5" and 4 <= race_no <= 9)
-        or (style == "in_strong" and (1 <= race_no <= 3 or 7 <= race_no <= 9))
-    )
-
-    day_best = (
-        (event_day_no in (2, 3) and 4 <= race_no <= 9)
-        or (event_day_no >= 6 and (1 <= race_no <= 3 or 7 <= race_no <= 9))
-    )
-
-    return venue_best or day_best
-
-
-# ============================================================
-# save snapshots
-# ============================================================
-
-def save_weather(race: Dict[str, Any], weather: Dict[str, Any]) -> int:
-    rid = str(race.get("race_id"))
-    venue_id = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-    row = {
-        "race_id": rid,
-        "race_date": race.get("race_date"),
-        "venue_id": venue_id,
-        "venue_code": venue_id,
-        "race_no": _safe_int(race.get("race_no"), 0),
-        "snapshot_label": SNAPSHOT_LABEL,
-        "snapshot_at": _now_iso(),
-        "source": "official_beforeinfo",
-        "weather": weather.get("weather"),
-        "temperature_c": weather.get("temperature_c"),
-        "water_temperature_c": weather.get("water_temperature_c"),
-        "wind_speed_m": weather.get("wind_speed_m"),
-        "wind_direction": weather.get("wind_direction"),
-        "wave_height_cm": weather.get("wave_height_cm"),
-        "raw": {"text": weather.get("raw_text", "")},
-        "updated_at": _now_iso(),
-    }
-    return _upsert("v2_realtime_weather_snapshots", [row], "race_id,snapshot_label")
-
-
-def save_exhibition_and_entries(race: Dict[str, Any], entries: List[Dict[str, Any]], exh: List[Dict[str, Any]]) -> Tuple[int, int]:
-    rid = str(race.get("race_id"))
-    by_lane = {_safe_int(e.get("lane"), 0): e for e in entries}
-    parsed_by_lane = {_safe_int(r.get("lane"), 0): r for r in exh}
-    venue_id = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-    race_no = _safe_int(race.get("race_no"), 0)
-
-    exh_rows = []
-    entry_rows = []
-
-    for lane in range(1, 7):
-        e = by_lane.get(lane, {})
-        r = parsed_by_lane.get(lane, {})
-        original_tilt = _safe_float(e.get("tilt"), None)
-        tilt = r.get("tilt")
-        tilt_change = None
-        if tilt is not None and original_tilt is not None:
-            tilt_change = round(_safe_float(tilt, 0.0) - _safe_float(original_tilt, 0.0), 2)
-
-        course = r.get("exhibition_course")
-        raw = {"cells": r.get("raw_cells", [])}
-
-        entry_rows.append({
-            "race_id": rid,
-            "race_date": race.get("race_date"),
-            "venue_id": venue_id,
-            "venue_code": venue_id,
-            "race_no": race_no,
-            "snapshot_label": SNAPSHOT_LABEL,
-            "snapshot_at": _now_iso(),
-            "source": "official_beforeinfo",
-            "lane": lane,
-            "racer_number": e.get("racer_number"),
-            "racer_name": e.get("racer_name"),
-            "racer_class": str(e.get("racer_class")) if e.get("racer_class") is not None else None,
-            "original_course": lane,
-            "exhibition_course": course,
-            "is_course_changed": bool(course and course != lane),
-            "motor_no": e.get("motor_no"),
-            "boat_no": e.get("boat_no"),
-            "tilt": tilt,
-            "raw": raw,
-            "updated_at": _now_iso(),
-        })
-
-        if r:
-            exh_rows.append({
-                "race_id": rid,
-                "race_date": race.get("race_date"),
-                "venue_id": venue_id,
-                "venue_code": venue_id,
-                "race_no": race_no,
-                "snapshot_label": SNAPSHOT_LABEL,
-                "snapshot_at": _now_iso(),
-                "source": "official_beforeinfo",
-                "lane": lane,
-                "exhibition_course": course or lane,
-                "exhibition_time": r.get("exhibition_time"),
-                "exhibition_time_rank": r.get("exhibition_time_rank"),
-                "exhibition_time_diff": r.get("exhibition_time_diff"),
-                "start_timing": r.get("start_timing"),
-                "start_timing_rank": r.get("start_timing_rank"),
-                "start_timing_diff": r.get("start_timing_diff"),
-                "tilt": tilt,
-                "original_tilt": original_tilt,
-                "tilt_change": tilt_change,
-                "raw": raw,
-                "updated_at": _now_iso(),
-            })
-
-    c1 = _upsert("v2_realtime_exhibition_snapshots", exh_rows, "race_id,snapshot_label,lane")
-    c2 = _upsert("v2_realtime_entry_snapshots", entry_rows, "race_id,snapshot_label,lane")
-    return c1, c2
-
-
-def save_odds(race: Dict[str, Any], odds: Dict[str, float], source: str) -> int:
-    rid = str(race.get("race_id"))
-    venue_id = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-    race_no = _safe_int(race.get("race_no"), 0)
-
-    prev = _fetch_previous_odds(rid, SNAPSHOT_LABEL)
-
-    ranked = sorted(odds.items(), key=lambda x: x[1])
-    rank = {t: i + 1 for i, (t, _) in enumerate(ranked)}
-
-    rows = []
-    for t, o in ranked:
-        p = prev.get(t, {})
-        prev_o = _safe_float(p.get("odds"), None) if p else None
-        prev_rank = _safe_int(p.get("market_rank"), None) if p else None
-        delta = None
-        delta_pct = None
-        rank_delta = None
-        if prev_o is not None and prev_o > 0:
-            delta = round(float(o) - float(prev_o), 2)
-            delta_pct = round((float(o) - float(prev_o)) / float(prev_o), 4)
-        if prev_rank is not None:
-            rank_delta = rank[t] - prev_rank
-
-        rows.append({
-            "race_id": rid,
-            "race_date": race.get("race_date"),
-            "venue_id": venue_id,
-            "venue_code": venue_id,
-            "race_no": race_no,
-            "snapshot_label": SNAPSHOT_LABEL,
-            "snapshot_at": _now_iso(),
-            "source": source,
-            "ticket": t,
-            "odds": o,
-            "market_rank": rank[t],
-            "prev_odds": prev_o,
-            "odds_delta": delta,
-            "odds_delta_pct": delta_pct,
-            "prev_market_rank": prev_rank,
-            "market_rank_delta": rank_delta,
-            "is_favorite": rank[t] == 1,
-            "is_odds_too_low": o < 3.0,
-            "is_odds_drift": bool(delta_pct is not None and delta_pct >= 0.15),
-            "is_odds_steam": bool(delta_pct is not None and delta_pct <= -0.15),
-            "raw": {},
-            "updated_at": _now_iso(),
-        })
-
-    return _upsert("v2_realtime_odds_snapshots", rows, "race_id,snapshot_label,ticket", chunk_size=500)
-
-
-# ============================================================
-# main
-# ============================================================
-
-def main() -> None:
-    _require_settings()
-    _ensure_realtime_tables()
-
-    print("✅ v21_realtime_collector_pg.py VERSION 2026-07-05 railway-postgres-fix5-scope-fix2", flush=True)
-    print(
-        f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
-        f"SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} "
-        f"PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}",
-        flush=True,
-    )
-
-    races, entries_by_race, base_odds_by_race = fetch_day_base(TARGET_DATE)
-    event_days = _event_day_by_venue(TARGET_DATE)
-
-    target_races = []
-    for race in races:
-        rid = str(race.get("race_id"))
-        venue_id = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-        race_no = _safe_int(race.get("race_no"), 0)
-        if TARGET_RACE_ID and rid != TARGET_RACE_ID:
-            continue
-        if COLLECT_SCOPE == "candidates":
-            if not _is_candidate_race(venue_id, race_no, event_days.get(venue_id, 1)):
-                continue
-        target_races.append(race)
-
-    print(f"races={len(races)} target_races={len(target_races)}", flush=True)
-
-    saved_weather = 0
-    saved_exh = 0
-    saved_entry = 0
-    saved_odds = 0
-    no_beforeinfo = 0
-    no_exhibition = 0
-    no_odds = 0
-
-    for idx, race in enumerate(target_races, start=1):
-        rid = str(race.get("race_id"))
-        venue_id = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-        race_no = _safe_int(race.get("race_no"), 0)
-
-        before_url = _official_url("beforeinfo", TARGET_DATE, venue_id, race_no)
-        before_html = _fetch(before_url)
-        exh: List[Dict[str, Any]] = []
-
-        if _looks_no_data(before_html):
-            no_beforeinfo += 1
-            c1, c2 = save_exhibition_and_entries(race, entries_by_race.get(rid, []), [])
-            saved_exh += c1
-            saved_entry += c2
+def main():
+    _require_settings();_ensure_realtime_tables();now=_now()
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 deadline-window-filter',flush=True)
+    print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
+    print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
+    races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
+    for r in races:
+        rid=str(r.get('race_id'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2);rno=_safe_int(r.get('race_no'))
+        if TARGET_RACE_ID and rid!=TARGET_RACE_ID:continue
+        if COLLECT_SCOPE=='candidates' and not _is_candidate_race(v,rno,days.get(v,1)):continue
+        scope.append(r)
+    use_filter=FINAL_DEADLINE_FILTER and not TARGET_RACE_ID; target=[];miss=early=passed=0
+    for r in scope:
+        if not use_filter:target.append(r);continue
+        ok,why=_deadline_match(r,now)
+        if ok:target.append(r)
+        elif why=='deadline_missing':miss+=1
+        elif why=='too_early':early+=1
+        else:passed+=1
+    print(f'races={len(races)} scope_races={len(scope)} target_races={len(target)}',flush=True)
+    print(f'deadline_filter_used={use_filter} skipped_deadline_missing={miss} skipped_too_early={early} skipped_deadline_passed={passed}',flush=True)
+    for r in target[:20]:
+        dl=_parse_deadline_at(r);print(f"  {r.get('race_id')} deadline={dl.isoformat() if dl else '-'}",flush=True)
+    sw=sx=se=so=nb=ne=no=0
+    for i,r in enumerate(target,1):
+        rid=str(r.get('race_id'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2);rno=_safe_int(r.get('race_no'));bh=_fetch(_official_url('beforeinfo',TARGET_DATE,v,rno));ex=[]
+        if _looks_no_data(bh):nb+=1;c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),[]);sx+=c1;se+=c2
         else:
-            weather = parse_weather(before_html or "")
-            saved_weather += save_weather(race, weather)
-
-            exh = parse_exhibition(before_html or "")
-            if not exh:
-                no_exhibition += 1
-            c1, c2 = save_exhibition_and_entries(race, entries_by_race.get(rid, []), exh)
-            saved_exh += c1
-            saved_entry += c2
-
-        odds_url = _official_url("odds3t", TARGET_DATE, venue_id, race_no)
-        odds_html = _fetch(odds_url)
-        odds = parse_odds3t(odds_html or "") if odds_html else {}
-        source = "official_odds3t"
-
-        if len(odds) < 80:
-            fallback = base_odds_by_race.get(rid, {})
-            if fallback:
-                odds = fallback
-                source = "v2_odds_trifecta_fallback"
-
-        if odds:
-            saved_odds += save_odds(race, odds, source)
-        else:
-            no_odds += 1
-
-        print(
-            f"[{idx}/{len(target_races)}] {rid} before={'ok' if before_html else 'ng'} "
-            f"exh_rows={len(exh) if before_html and not _looks_no_data(before_html) else 0} "
-            f"odds={len(odds)} source={source if odds else '-'}",
-            flush=True,
-        )
-
-        if REALTIME_SLEEP_SEC > 0:
-            time.sleep(REALTIME_SLEEP_SEC)
-
-    print("\n=== v21 PG realtime collection summary ===", flush=True)
-    print(f"target_races: {len(target_races)}", flush=True)
-    print(f"saved_weather: {saved_weather}", flush=True)
-    print(f"saved_exhibition_rows: {saved_exh}", flush=True)
-    print(f"saved_entry_rows: {saved_entry}", flush=True)
-    print(f"saved_odds_rows: {saved_odds}", flush=True)
-    print(f"no_beforeinfo: {no_beforeinfo}", flush=True)
-    print(f"no_exhibition_complete: {no_exhibition}", flush=True)
-    print(f"no_odds: {no_odds}", flush=True)
-    print("=== v21 PG リアルタイム収集終了 ===", flush=True)
-
-
-if __name__ == "__main__":
-    main()
+            sw+=save_weather(r,parse_weather(bh or ''));ex=parse_exhibition(bh or '');ne+=int(not ex);c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),ex);sx+=c1;se+=c2
+        oh=_fetch(_official_url('odds3t',TARGET_DATE,v,rno));od=parse_odds3t(oh or '') if oh else {};src='official_odds3t'
+        if len(od)<80 and base_odds.get(rid):od=base_odds[rid];src='v2_odds_trifecta_fallback'
+        if od:so+=save_odds(r,od,src)
+        else:no+=1
+        print(f'[{i}/{len(target)}] {rid} before={"ok" if bh else "ng"} exh_rows={len(ex)} odds={len(od)} source={src if od else "-"}',flush=True)
+        if REALTIME_SLEEP_SEC>0:time.sleep(REALTIME_SLEEP_SEC)
+    print('\n=== v21 PG realtime collection summary ===',flush=True)
+    print(f'scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}',flush=True)
+    print('=== v21 PG ãªã¢ã«ã¿ã¤ã åéçµäº ===',flush=True)
+if __name__=='__main__':main()
