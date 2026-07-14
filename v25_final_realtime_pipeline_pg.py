@@ -2,21 +2,9 @@
 """
 v25_final_realtime_pipeline_pg.py
 
-Railway Postgres版。
-直前収集 → 直前判定 → LINE最終通知 を一括実行します。
-購入処理はありません。TEST_MODE=1ならLINE本文にも「購入しない」と明記します。
+直前収集 → 本番判定 → 展示shadow保存 → LINE最終通知を一括実行します。
 
-Railway Start Command:
-    python v25_final_realtime_pipeline_pg.py
-
-任意Variables:
-    TARGET_DATE=YYYY-MM-DD
-    SNAPSHOT_LABEL=final_ab
-    DECISION_LABEL=final_ab
-    SELECTOR_MODE=ab
-    REQUIRE_EXHIBITION=0
-    TEST_MODE=1
-    DRY_RUN=0
+展示shadowは本番BUY/WATCH/SKIPやLINE通知対象を変更しません。
 """
 
 from __future__ import annotations
@@ -35,6 +23,9 @@ SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip() or "ab"
 REQUIRE_EXHIBITION = os.getenv("REQUIRE_EXHIBITION", "0").strip()
 TEST_MODE = os.getenv("TEST_MODE", "1").strip()
 DRY_RUN = os.getenv("DRY_RUN", "0").strip()
+RUN_EXHIBITION_SHADOW = os.getenv(
+    "RUN_EXHIBITION_SHADOW", "1"
+).strip() not in ("0", "false", "False", "no", "NO")
 
 
 def _require_settings() -> None:
@@ -60,6 +51,8 @@ def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
                 "REQUIRE_EXHIBITION",
                 "TEST_MODE",
                 "DRY_RUN",
+                "RUN_EXHIBITION_SHADOW",
+                "EXHIBITION_SHADOW_WEIGHT",
             ]
         },
         flush=True,
@@ -74,10 +67,15 @@ def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
 def main() -> None:
     _require_settings()
 
-    print("✅ v25_final_realtime_pipeline_pg.py VERSION 2026-07-05 railway-postgres", flush=True)
+    print(
+        "✅ v25_final_realtime_pipeline_pg.py "
+        "VERSION 2026-07-15 exhibition-shadow",
+        flush=True,
+    )
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
-        f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE}",
+        f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
+        f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW}",
         flush=True,
     )
     print("購入処理はありません。LINE通知のみです。", flush=True)
@@ -94,6 +92,20 @@ def main() -> None:
 
     _run([sys.executable, "v21_realtime_collector_pg.py"], common)
     _run([sys.executable, "v22_realtime_decision_engine_pg.py"], common)
+
+    if RUN_EXHIBITION_SHADOW:
+        _run(
+            [sys.executable, "v22_exhibition_shadow_pg.py"],
+            {
+                **common,
+                "EXHIBITION_SHADOW_WEIGHT": os.getenv(
+                    "EXHIBITION_SHADOW_WEIGHT", "0.20"
+                ),
+            },
+        )
+    else:
+        print("展示shadowはRUN_EXHIBITION_SHADOW=0のためスキップします。", flush=True)
+
     _run([sys.executable, "v23_line_notifier_batch_pg.py"], common)
 
     print("\n=== v25 PG final realtime pipeline 完了 ===", flush=True)
