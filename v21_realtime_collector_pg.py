@@ -4,6 +4,7 @@ from __future__ import annotations
 import os,re,time
 from collections import defaultdict
 from datetime import date,datetime,timedelta,timezone
+from pathlib import Path
 from typing import Any,Dict,List,Optional,Tuple
 import requests
 try:
@@ -24,6 +25,7 @@ PARSE_ALLOW_PARTIAL=os.getenv('PARSE_ALLOW_PARTIAL','0').strip() in ('1','true',
 FINAL_DEADLINE_FILTER=os.getenv('FINAL_DEADLINE_FILTER','1').strip() not in ('0','false','False','no','NO')
 FINAL_WINDOW_BEFORE_MIN=max(0,int(os.getenv('FINAL_WINDOW_BEFORE_MIN','30')))
 FINAL_WINDOW_AFTER_MIN=max(0,int(os.getenv('FINAL_WINDOW_AFTER_MIN','0')))
+TARGET_RACE_IDS_FILE=os.getenv('TARGET_RACE_IDS_FILE','/tmp/v21_target_race_ids.txt').strip() or '/tmp/v21_target_race_ids.txt'
 HTTP_TIMEOUT=int(os.getenv('HTTP_TIMEOUT','35'))
 RETRY_MAX=int(os.getenv('RETRY_MAX','2'))
 RETRY_SLEEP=float(os.getenv('RETRY_SLEEP','2.0'))
@@ -220,7 +222,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 deadline-window-filter',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 deadline-window-target-ids',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
@@ -239,6 +241,12 @@ def main():
         else:passed+=1
     print(f'races={len(races)} scope_races={len(scope)} target_races={len(target)}',flush=True)
     print(f'deadline_filter_used={use_filter} skipped_deadline_missing={miss} skipped_too_early={early} skipped_deadline_passed={passed}',flush=True)
+    target_ids=[str(r.get('race_id')) for r in target if r.get('race_id')]
+    try:
+        Path(TARGET_RACE_IDS_FILE).write_text(','.join(target_ids),encoding='utf-8')
+        print(f'TARGET_RACE_IDS_FILE={TARGET_RACE_IDS_FILE} written={len(target_ids)}',flush=True)
+    except Exception as e:
+        raise RuntimeError(f'TARGET_RACE_IDS_FILEã®æ¸ãè¾¼ã¿ã«å¤±æãã¾ãã: {e}') from e
     for r in target[:20]:
         dl=_parse_deadline_at(r);print(f"  {r.get('race_id')} deadline={dl.isoformat() if dl else '-'}",flush=True)
     sw=sx=se=so=nb=ne=no=0
