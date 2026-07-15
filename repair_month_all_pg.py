@@ -33,8 +33,8 @@ Railway Start Command:
 - BOATRACE公式場コードに合わせて VENUE_NAMES を修正。
 
 2026-07-15 修正:
-- racelistの各rnoページから、そのページ自身の締切予定時刻を取得。
-- race_no番目の時刻を選ぶ処理を廃止し、全Rに1R時刻が入る問題を修正。
+- racelist上部の1R～12R締切予定時刻一覧からrace_no番目を取得。
+- rno別ページでも一覧先頭が1R時刻のため、最初の時刻を返す誤りを修正。
 """
 
 from __future__ import annotations
@@ -211,7 +211,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-current-race-fix", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-list-index-fix", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -285,14 +285,15 @@ def parse_deadline_time(
     race_no: Optional[int] = None,
 ) -> Optional[str]:
     """
-    BOAT RACE公式racelistページから、
-    URLで指定した当該レースの締切予定時刻 HH:MM を取得する。
+    BOAT RACE公式racelistページ上部の
+    1R～12R「締切予定時刻」一覧から、race_no番目の時刻を取得する。
 
-    racelist?rno=2 のページなら2R、
-    racelist?rno=3 のページなら3Rの締切時刻が表示されるため、
-    race_no番目の時刻を選ぶ処理は行わない。
+    例:
+        レース 1R 2R ... 12R
+        締切予定時刻 08:46 09:12 ... 14:13
 
-    race_no引数は既存呼び出しとの互換性のため残すが、判定には使用しない。
+    rno=2のページでも一覧の先頭は1Rの08:46なので、
+    最初の時刻を返してはいけない。
     """
     if not html:
         return None
@@ -304,28 +305,47 @@ def parse_deadline_time(
             hour, minute = value.split(":")
             hour_i = int(hour)
             minute_i = int(minute)
-
             if not (0 <= hour_i <= 23 and 0 <= minute_i <= 59):
                 return None
-
             return f"{hour_i:02d}:{minute_i:02d}"
         except Exception:
             return None
 
-    patterns = [
-        r"締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"締切予定\s*(\d{1,2}:\d{2})",
-        r"締切時刻\s*(\d{1,2}:\d{2})",
-        r"締切.{0,30}?(\d{1,2}:\d{2})",
-    ]
+    # 「締切予定時刻」以降に並ぶ時刻一覧を取得する。
+    anchors = (
+        "締切予定時刻",
+        "投票締切予定時刻",
+        "締切予定",
+    )
 
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            value = fmt(match.group(1))
-            if value:
-                return value
+    for anchor in anchors:
+        pos = text.find(anchor)
+        if pos < 0:
+            continue
+
+        # 一覧は見出し直後にあり、通常12時刻。
+        segment = text[pos + len(anchor): pos + len(anchor) + 500]
+        raw_times = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", segment)
+        times = [x for x in (fmt(v) for v in raw_times) if x]
+
+        if race_no is not None and 1 <= int(race_no) <= len(times):
+            return times[int(race_no) - 1]
+
+        if race_no is None and times:
+            return times[0]
+
+    # 保険: ページ全体で「レース 1R...12R 締切予定時刻 時刻一覧」を探す。
+    m = re.search(
+        r"締切予定時刻\s*((?:\d{1,2}:\d{2}\s*){1,12})",
+        text,
+    )
+    if m:
+        raw_times = re.findall(r"\d{1,2}:\d{2}", m.group(1))
+        times = [x for x in (fmt(v) for v in raw_times) if x]
+        if race_no is not None and 1 <= int(race_no) <= len(times):
+            return times[int(race_no) - 1]
+        if race_no is None and times:
+            return times[0]
 
     return None
 
@@ -779,7 +799,7 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if _looks_no_race(html):
                 return RaceResult(race_id=rid, ok=False, no_race=True, error="no_race")
 
-            deadline_time = parse_deadline_time(html or "")
+            deadline_time = parse_deadline_time(html or "", race_no)
             deadline_at = make_deadline_at(date_str, deadline_time)
 
             race_row = {
