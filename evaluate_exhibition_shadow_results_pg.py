@@ -171,7 +171,7 @@ def main() -> None:
 
     print(
         "✅ evaluate_exhibition_shadow_results_pg.py "
-        "VERSION 2026-07-15 nightly-shadow-eval-v1",
+        "VERSION 2026-07-15 nightly-shadow-eval-v2-race-id-prefix",
         flush=True,
     )
     print(
@@ -193,20 +193,30 @@ def main() -> None:
         (TARGET_DATE, SNAPSHOT_LABEL, SELECTOR_MODE),
     )
 
+    day_prefix = TARGET_DATE.replace("-", "")
+    next_prefix = (
+        datetime.strptime(TARGET_DATE, "%Y-%m-%d") + timedelta(days=1)
+    ).strftime("%Y%m%d")
+
     result_rows = fetch_all(
         """
         select *
         from v2_results
-        where race_date=%s
+        where race_id >= %s
+          and race_id < %s
         order by race_id;
         """,
-        (TARGET_DATE,),
+        (day_prefix, next_prefix),
     )
     results_by_race = {
         str(row.get("race_id")): row
         for row in result_rows
         if row.get("race_id")
     }
+
+    result_race_date_null = sum(
+        1 for row in result_rows if row.get("race_date") is None
+    )
 
     save_rows: List[Dict[str, Any]] = []
     skipped_no_result = 0
@@ -289,6 +299,11 @@ def main() -> None:
     print(
         f"shadow_rows={len(shadow_rows)} results={len(result_rows)} "
         f"evaluated={len(save_rows)} saved={saved}",
+        flush=True,
+    )
+    print(
+        f"result_race_date_null={result_race_date_null}/{len(result_rows)} "
+        "(race_id prefixで取得)",
         flush=True,
     )
     print(
