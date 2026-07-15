@@ -211,7 +211,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-list-index-fix", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-15 result-metadata-fix", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -829,7 +829,15 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if not _looks_no_race(html):
                 res_row = parse_result(html or "")
                 res_row["race_id"] = rid
-                result_saved = upsert_rows("v2_results", [res_row], "race_id", chunk_size=1)
+                res_row["race_date"] = date_str
+                res_row["venue_code"] = venue_id
+                res_row["race_no"] = int(race_no)
+                result_saved = upsert_rows(
+                    "v2_results",
+                    [res_row],
+                    "race_id",
+                    chunk_size=1,
+                )
 
         if do_odds and DO_ODDS:
             url = _official_url("odds3t", date_str, venue_id, race_no)
