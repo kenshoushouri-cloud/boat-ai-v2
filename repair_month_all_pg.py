@@ -76,6 +76,12 @@ REPAIR_RACE_NOS = [
     if x.strip()
 ]
 
+REPAIR_RACE_IDS = [
+    x.strip()
+    for x in os.getenv("REPAIR_RACE_IDS", "").split(",")
+    if x.strip()
+]
+
 DO_RACES = (os.getenv("REPAIR_DO_RACES") or os.getenv("DO_RACES") or "1") == "1"
 DO_RESULTS = (os.getenv("REPAIR_DO_RESULTS") or os.getenv("DO_RESULTS") or "1") == "1"
 DO_ODDS = (os.getenv("REPAIR_DO_ODDS") or os.getenv("DO_ODDS") or "1") == "1"
@@ -211,7 +217,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-15 result-metadata-fix", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-15 exact-race-id-targets", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -874,7 +880,28 @@ def main() -> None:
     venues = REPAIR_VENUES
     race_nos = REPAIR_RACE_NOS
 
-    tasks = [(d, v, r) for d in dates for v in venues for r in race_nos]
+    if REPAIR_RACE_IDS:
+        tasks = []
+        invalid_race_ids = []
+        for rid in REPAIR_RACE_IDS:
+            m = re.fullmatch(r"(\d{8})_(\d{2})_(\d{2})", rid)
+            if not m:
+                invalid_race_ids.append(rid)
+                continue
+            yyyymmdd, venue_id, race_no_s = m.groups()
+            date_str = datetime.strptime(yyyymmdd, "%Y%m%d").strftime("%Y-%m-%d")
+            tasks.append((date_str, venue_id, int(race_no_s)))
+
+        if invalid_race_ids:
+            raise ValueError(
+                "REPAIR_RACE_IDS に不正なrace_idがあります: "
+                + ",".join(invalid_race_ids[:20])
+            )
+
+        # 重複除去し、日付・場・R順に固定
+        tasks = sorted(set(tasks), key=lambda x: (x[0], x[1], x[2]))
+    else:
+        tasks = [(d, v, r) for d in dates for v in venues for r in race_nos]
 
     print("=== 全場・全R 月次補修開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
@@ -882,6 +909,21 @@ def main() -> None:
     print(f"race_nos: {','.join(map(str, race_nos))}", flush=True)
     print(f"DO_RACES={DO_RACES} DO_RESULTS={DO_RESULTS} DO_ODDS={DO_ODDS}", flush=True)
     print(f"WORKERS={WORKERS} ODDS_WORKERS={ODDS_WORKERS} SLEEP_SEC={SLEEP_SEC}", flush=True)
+    if REPAIR_RACE_IDS:
+        print(
+            f"exact_race_id_targets: {len(tasks)} "
+            f"(REPAIR_RACE_IDS enabled)",
+            flush=True,
+        )
+        if tasks:
+            print(
+                "target sample: "
+                + ", ".join(
+                    _race_id(d, v, r)
+                    for d, v, r in tasks[:12]
+                ),
+                flush=True,
+            )
     print(f"task_count: {len(tasks)}", flush=True)
 
     total_race_saved = 0
