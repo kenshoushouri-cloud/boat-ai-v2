@@ -301,7 +301,40 @@ def parse_beforeinfo_extra(html, entries):
         if prev_r:
             row["previous_race_no"] = int(previous_r_text)
 
-        # ã©ãã«è¡ãæ¤ç´¢
+        # å¬å¼HTMLã®æ¨æº4è¡æ§é ãæåªåã§ç´æ¥èª­ãã
+        # row1 = ['é²å¥', '6']
+        if len(row_cells) >= 2:
+            direct_course_row = [norm(x) for x in row_cells[1]]
+            if (
+                len(direct_course_row) >= 2
+                and "é²å¥" in direct_course_row[0]
+            ):
+                try:
+                    course_value = int(
+                        re.sub(r"[^0-9]", "", direct_course_row[-1])
+                    )
+                except Exception:
+                    course_value = 0
+                if 1 <= course_value <= 6:
+                    row["previous_course"] = course_value
+
+        # row3 = ['çé ', '5']
+        if len(row_cells) >= 4:
+            direct_finish_row = [norm(x) for x in row_cells[3]]
+            if (
+                len(direct_finish_row) >= 2
+                and "çé " in direct_finish_row[0]
+            ):
+                try:
+                    finish_value = int(
+                        re.sub(r"[^0-9]", "", direct_finish_row[-1])
+                    )
+                except Exception:
+                    finish_value = 0
+                if 1 <= finish_value <= 6:
+                    row["previous_finish"] = finish_value
+
+        # ã©ãã«è¡ãæ¤ç´¢ï¼ãã¼ã¸æ§é å·®ã¸ã®ä¿éºï¼
         for cells in row_cells[1:]:
             normalized = [norm(x) for x in cells]
             joined = " | ".join(normalized)
@@ -507,7 +540,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4c-safe-int',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4d-direct-index',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
