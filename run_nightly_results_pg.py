@@ -33,6 +33,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
+from db_pg import fetch_all
+
 JST = timezone(timedelta(hours=9))
 
 RUN_EXHIBITION_SHADOW_EVAL = os.getenv(
@@ -131,10 +133,28 @@ def _run_stage(
     return True
 
 
+
+def _fetch_target_race_ids(target_date: str) -> list[str]:
+    """当日v2_racesに存在する開催レースだけを取得する。"""
+    rows = fetch_all(
+        """
+        select race_id
+        from v2_races
+        where race_date = %s
+        order by venue_id, race_no;
+        """,
+        (target_date,),
+    )
+    return [
+        str(row.get("race_id"))
+        for row in rows
+        if row.get("race_id")
+    ]
+
 def main() -> None:
     print(
         "✅ run_nightly_results_pg.py "
-        "VERSION 2026-07-15 grouped-stage-logs",
+        "VERSION 2026-07-15 grouped-logs-exact-races",
         flush=True,
     )
 
@@ -163,10 +183,30 @@ def main() -> None:
         "UNIT_YEN": os.getenv("UNIT_YEN", "100"),
     }
 
+    target_race_ids = _fetch_target_race_ids(target_date)
+    print(
+        f"nightly_target_races={len(target_race_ids)} "
+        "(v2_races当日開催分のみ)",
+        flush=True,
+    )
+    if target_race_ids:
+        print(
+            "nightly target sample: "
+            + ", ".join(target_race_ids[:12]),
+            flush=True,
+        )
+
+    if not target_race_ids:
+        print(
+            "当日のv2_racesが0件のため、結果取得をスキップします。",
+            flush=True,
+        )
+
     repair_env = {
         **common_env,
         "REPAIR_START_DATE": target_date,
         "REPAIR_END_DATE": target_date,
+        "REPAIR_RACE_IDS": ",".join(target_race_ids),
         "REPAIR_DO_RACES": "0",
         "REPAIR_DO_RESULTS": "1",
         "REPAIR_DO_ODDS": "0",
@@ -184,13 +224,16 @@ def main() -> None:
         ),
     }
 
-    _run_stage(
-        stage_no=1,
-        stage_name="当日結果取得",
-        script_path=base_dir / "repair_month_all_pg.py",
-        env=repair_env,
-        strict=True,
-    )
+    if target_race_ids:
+        _run_stage(
+            stage_no=1,
+            stage_name="当日結果取得",
+            script_path=base_dir / "repair_month_all_pg.py",
+            env=repair_env,
+            strict=True,
+        )
+    else:
+        print("STAGE 1 SKIPPED: 当日開催レースなし", flush=True)
 
     if RUN_EXHIBITION_SHADOW_EVAL:
         _run_stage(
