@@ -301,38 +301,33 @@ def parse_beforeinfo_extra(html, entries):
         if prev_r:
             row["previous_race_no"] = int(previous_r_text)
 
-        # å¬å¼HTMLã®æ¨æº4è¡æ§é ãæåªåã§ç´æ¥èª­ãã
+        # åèµ°Rãããå ´åãå¬å¼æ¨æº4è¡æ§é ãç¡æ¡ä»¶ã§ç´æ¥èª­ãã
+        # è¡ã®å®æ¸¬ä¾:
         # row1 = ['é²å¥', '6']
-        if len(row_cells) >= 2:
-            direct_course_row = [norm(x) for x in row_cells[1]]
-            if (
-                len(direct_course_row) >= 2
-                and "é²å¥" in direct_course_row[0]
-            ):
-                try:
-                    course_value = int(
-                        re.sub(r"[^0-9]", "", direct_course_row[-1])
-                    )
-                except Exception:
-                    course_value = 0
-                if 1 <= course_value <= 6:
-                    row["previous_course"] = course_value
-
+        # row2 = ['0.0', 'ST', '.13']
         # row3 = ['çé ', '5']
-        if len(row_cells) >= 4:
-            direct_finish_row = [norm(x) for x in row_cells[3]]
-            if (
-                len(direct_finish_row) >= 2
-                and "çé " in direct_finish_row[0]
-            ):
-                try:
-                    finish_value = int(
-                        re.sub(r"[^0-9]", "", direct_finish_row[-1])
-                    )
-                except Exception:
-                    finish_value = 0
-                if 1 <= finish_value <= 6:
-                    row["previous_finish"] = finish_value
+        if row.get("previous_race_no") is not None:
+            if len(row_cells) >= 2 and len(row_cells[1]) >= 2:
+                raw_course = str(row_cells[1][-1])
+                digits = "".join(
+                    ch for ch in unicodedata.normalize("NFKC", raw_course)
+                    if ch.isdigit()
+                )
+                if digits:
+                    course_value = int(digits)
+                    if 1 <= course_value <= 6:
+                        row["previous_course"] = course_value
+
+            if len(row_cells) >= 4 and len(row_cells[3]) >= 2:
+                raw_finish = str(row_cells[3][-1])
+                digits = "".join(
+                    ch for ch in unicodedata.normalize("NFKC", raw_finish)
+                    if ch.isdigit()
+                )
+                if digits:
+                    finish_value = int(digits)
+                    if 1 <= finish_value <= 6:
+                        row["previous_finish"] = finish_value
 
         # ã©ãã«è¡ãæ¤ç´¢ï¼ãã¼ã¸æ§é å·®ã¸ã®ä¿éºï¼
         for cells in row_cells[1:]:
@@ -540,7 +535,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4d-direct-index',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4e-forced-standard',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
