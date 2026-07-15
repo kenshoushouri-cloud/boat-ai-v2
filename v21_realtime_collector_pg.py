@@ -314,10 +314,12 @@ def parse_beforeinfo_extra(html, entries):
         # row1: é²å¥ / å¤
         if len(rows) >= 2:
             r1 = rows[1]
-            if r1 and "é²å¥" in r1[0] and len(r1) >= 2:
-                course_match = re.search(r"[1-6]", r1[-1])
-                if course_match:
-                    row["previous_course"] = int(course_match.group(0))
+            if r1 and any("é²å¥" in cell for cell in r1) and len(r1) >= 2:
+                for value in reversed(r1):
+                    course_match = re.search(r"(?<!\d)([1-6])(?!\d)", _zen_to_han(value))
+                    if course_match:
+                        row["previous_course"] = int(course_match.group(1))
+                        break
 
         # row2: èª¿æ´éé / ST / å¤
         if len(rows) >= 3:
@@ -338,10 +340,12 @@ def parse_beforeinfo_extra(html, entries):
         # row3: çé  / å¤
         if len(rows) >= 4:
             r3 = rows[3]
-            if r3 and "çé " in r3[0] and len(r3) >= 2:
-                finish_match = re.search(r"[1-6]", r3[-1])
-                if finish_match:
-                    row["previous_finish"] = int(finish_match.group(0))
+            if r3 and any("çé " in cell for cell in r3) and len(r3) >= 2:
+                for value in reversed(r3):
+                    finish_match = re.search(r"(?<!\d)([1-6])(?!\d)", _zen_to_han(value))
+                    if finish_match:
+                        row["previous_finish"] = int(finish_match.group(1))
+                        break
 
     # HTMLæ§é å·®ã¸ã®ä¿éº: ä½éã ãã¯å¾æ¥ã®tableè¡æ¢ç´¢ãæ®ãã
     if len(parsed_lanes) < 6:
@@ -386,7 +390,21 @@ def parse_beforeinfo_extra(html, entries):
         )
     )
 
-    return race_condition, [by_lane[lane] for lane in range(1, 7)]
+    racer_rows = [by_lane[lane] for lane in range(1, 7)]
+
+    print(
+        "beforeinfo extra parsed: "
+        f"weight={sum(r.get('weight_kg') is not None for r in racer_rows)}/6 "
+        f"adjustment={sum(r.get('adjustment_weight_kg') is not None for r in racer_rows)}/6 "
+        f"prev_r={sum(r.get('previous_race_no') is not None for r in racer_rows)}/6 "
+        f"prev_course={sum(r.get('previous_course') is not None for r in racer_rows)}/6 "
+        f"prev_st={sum(r.get('previous_st') is not None for r in racer_rows)}/6 "
+        f"prev_finish={sum(r.get('previous_finish') is not None for r in racer_rows)}/6 "
+        f"parts={sum(bool(r.get('parts_replacements')) for r in racer_rows)}/6",
+        flush=True,
+    )
+
+    return race_condition, racer_rows
 
 def save_beforeinfo_extra(race, entries, race_condition, racer_conditions):
     rid = str(race.get("race_id"))
@@ -504,7 +522,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v2',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v3-prev-complete',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
