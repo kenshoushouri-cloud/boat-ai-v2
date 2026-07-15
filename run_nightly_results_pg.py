@@ -34,6 +34,10 @@ RUN_EXHIBITION_SHADOW_EVAL = os.getenv(
     "RUN_EXHIBITION_SHADOW_EVAL", "1"
 ).strip() not in ("0", "false", "False", "no", "NO")
 
+RUN_EXHIBITION_SHADOW_REPORT = os.getenv(
+    "RUN_EXHIBITION_SHADOW_REPORT", "1"
+).strip() not in ("0", "false", "False", "no", "NO")
+
 SHADOW_EVAL_STRICT = os.getenv(
     "SHADOW_EVAL_STRICT", "0"
 ).strip() in ("1", "true", "True", "yes", "YES")
@@ -42,7 +46,7 @@ SHADOW_EVAL_STRICT = os.getenv(
 def main() -> None:
     print(
         "✅ run_nightly_results_pg.py "
-        "VERSION 2026-07-15 exhibition-shadow-eval",
+        "VERSION 2026-07-15 exhibition-shadow-eval-report",
         flush=True,
     )
 
@@ -72,6 +76,7 @@ def main() -> None:
     print(f"TARGET_DATE={target_date}", flush=True)
     print(
         f"RUN_EXHIBITION_SHADOW_EVAL={RUN_EXHIBITION_SHADOW_EVAL} "
+        f"RUN_EXHIBITION_SHADOW_REPORT={RUN_EXHIBITION_SHADOW_REPORT} "
         f"SHADOW_EVAL_STRICT={SHADOW_EVAL_STRICT}",
         flush=True,
     )
@@ -135,7 +140,37 @@ def main() -> None:
             flush=True,
         )
 
-    print("=== nightly results + shadow evaluation 終了 ===", flush=True)
+    if RUN_EXHIBITION_SHADOW_REPORT:
+        report_path = base_dir / "report_exhibition_shadow_performance_pg.py"
+        if not report_path.exists():
+            message = (
+                "report_exhibition_shadow_performance_pg.py "
+                f"が見つかりません: {report_path}"
+            )
+            if SHADOW_EVAL_STRICT:
+                raise FileNotFoundError(message)
+            print(f"⚠️ {message}", flush=True)
+        else:
+            print("\n=== 展示shadow累積レポート開始 ===", flush=True)
+            try:
+                runpy.run_path(str(report_path), run_name="__main__")
+            except Exception as exc:
+                print(
+                    f"⚠️ 展示shadow累積レポートエラー: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                traceback.print_exc()
+                if SHADOW_EVAL_STRICT:
+                    raise
+    else:
+        print(
+            "展示shadow累積レポートは"
+            "RUN_EXHIBITION_SHADOW_REPORT=0のためスキップします。",
+            flush=True,
+        )
+
+    print("=== nightly results + shadow evaluation/report 終了 ===", flush=True)
 
 
 if __name__ == "__main__":
