@@ -308,8 +308,9 @@ def parse_beforeinfo_extra(html, entries):
 
             if any("é²å¥" in x for x in normalized):
                 for value in reversed(normalized):
-                    if re.fullmatch(r"[1-6]", value):
-                        row["previous_course"] = int(value)
+                    course_value = _safe_int(value, 0)
+                    if 1 <= course_value <= 6:
+                        row["previous_course"] = course_value
                         break
 
             if any(x.upper() == "ST" for x in normalized):
@@ -340,8 +341,9 @@ def parse_beforeinfo_extra(html, entries):
 
             if any("çé " in x for x in normalized):
                 for value in reversed(normalized):
-                    if re.fullmatch(r"[1-6]", value):
-                        row["previous_finish"] = int(value)
+                    finish_value = _safe_int(value, 0)
+                    if 1 <= finish_value <= 6:
+                        row["previous_finish"] = finish_value
                         break
 
         if row.get("previous_race_no") is not None:
@@ -505,7 +507,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4b-direct-rows',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4c-safe-int',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
