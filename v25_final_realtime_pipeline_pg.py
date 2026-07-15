@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
 
@@ -26,6 +27,7 @@ DRY_RUN = os.getenv("DRY_RUN", "0").strip()
 RUN_EXHIBITION_SHADOW = os.getenv(
     "RUN_EXHIBITION_SHADOW", "1"
 ).strip() not in ("0", "false", "False", "no", "NO")
+TARGET_RACE_IDS_FILE = os.getenv("TARGET_RACE_IDS_FILE", "/tmp/v21_target_race_ids.txt").strip() or "/tmp/v21_target_race_ids.txt"
 
 
 def _require_settings() -> None:
@@ -69,7 +71,7 @@ def main() -> None:
 
     print(
         "✅ v25_final_realtime_pipeline_pg.py "
-        "VERSION 2026-07-15 exhibition-shadow",
+        "VERSION 2026-07-15 targeted-final-shadow",
         flush=True,
     )
     print(
@@ -90,14 +92,27 @@ def main() -> None:
         "DRY_RUN": DRY_RUN,
     }
 
-    _run([sys.executable, "v21_realtime_collector_pg.py"], common)
-    _run([sys.executable, "v22_realtime_decision_engine_pg.py"], common)
+    target_file = Path(TARGET_RACE_IDS_FILE)
+    target_file.write_text("", encoding="utf-8")
+
+    _run(
+        [sys.executable, "v21_realtime_collector_pg.py"],
+        {**common, "TARGET_RACE_IDS_FILE": TARGET_RACE_IDS_FILE},
+    )
+
+    target_race_ids = target_file.read_text(encoding="utf-8").strip() if target_file.exists() else ""
+    target_count = len([x for x in target_race_ids.split(",") if x.strip()])
+    print(f"TARGET_RACE_IDS loaded: {target_count} races", flush=True)
+
+    targeted_common = {**common, "TARGET_RACE_IDS": target_race_ids}
+
+    _run([sys.executable, "run_v22_targeted_pg.py"], targeted_common)
 
     if RUN_EXHIBITION_SHADOW:
         _run(
             [sys.executable, "v22_exhibition_shadow_pg.py"],
             {
-                **common,
+                **targeted_common,
                 "EXHIBITION_SHADOW_WEIGHT": os.getenv(
                     "EXHIBITION_SHADOW_WEIGHT", "0.20"
                 ),
@@ -106,7 +121,7 @@ def main() -> None:
     else:
         print("展示shadowはRUN_EXHIBITION_SHADOW=0のためスキップします。", flush=True)
 
-    _run([sys.executable, "v23_line_notifier_batch_pg.py"], common)
+    _run([sys.executable, "v23_line_notifier_batch_pg.py"], targeted_common)
 
     print("\n=== v25 PG final realtime pipeline 完了 ===", flush=True)
 
