@@ -184,11 +184,26 @@ PART_KEYWORDS = [
 
 def parse_beforeinfo_extra(html, entries):
     """
-    ç´åæå ±ãããä»å¾ã®shadowæ¤è¨¼ç¨è¿½å ç¹å¾´éãæ½åºããã
-    HTMLæ§é å¤æ´ã«åãããã¼ãã«è¡ã¨å¨æãã­ã¹ãã®ä¸¡æ¹ãä½¿ç¨ããã
+    ç´åæå ±ããè¿½å ç¹å¾´éãæ½åºããã
+
+    BOAT RACEå¬å¼ã®é¸æå¥ç´åæå ±ã¯ãåèãã¨ã«
+    tbody.is-fs12 ã®4è¡æ§æã«ãªã£ã¦ããã
+
+    row0:
+      æ  / åç / é¸æ / ä½é / å±ç¤º / ãã«ã /
+      ãã­ãã© / é¨åäº¤æ / R / åèµ°Rå¤
+    row1:
+      é²å¥ / åèµ°é²å¥å¤
+    row2:
+      èª¿æ´éé / ST / åèµ°STå¤
+    row3:
+      çé  / åèµ°çé å¤
+
+    åèµ°ããªãå ´åãå³å´ã®å¤ã¯ç©ºæ¬ã«ãªãã
     """
+    soup = BeautifulSoup(html, "html.parser")
     text = _soup_text(html)
-    table_rows = _extract_table_rows(html)
+
     entry_by_lane = {
         _safe_int(e.get("lane")): e
         for e in entries
@@ -209,9 +224,7 @@ def parse_beforeinfo_extra(html, entries):
             or "æ°ãã©" in text
             or "ãã­ãã©äº¤æ" in text
         ),
-        "parts_replacement_count": sum(
-            1 for keyword in PART_KEYWORDS if keyword in text
-        ),
+        "parts_replacement_count": 0,
         "raw_text": text[:5000],
     }
 
@@ -232,90 +245,148 @@ def parse_beforeinfo_extra(html, entries):
         for lane in range(1, 7)
     }
 
-    for cells in table_rows:
-        joined = " ".join(cells)
+    def direct_cells(tr):
+        return [
+            _norm_text(cell.get_text(" ", strip=True))
+            for cell in tr.find_all(["th", "td"], recursive=False)
+        ]
+
+    parsed_lanes = set()
+
+    for tbody in soup.select("tbody.is-fs12"):
+        trs = tbody.find_all("tr", recursive=False)
+        if not trs:
+            continue
+
+        rows = [direct_cells(tr) for tr in trs]
+        rows = [r for r in rows if r]
+        if not rows:
+            continue
+
+        main = rows[0]
+        if not main:
+            continue
+
         lane = None
-        for cell in cells[:4]:
-            if re.fullmatch(r"[1-6]", cell):
-                lane = int(cell)
+        for value in main[:2]:
+            if re.fullmatch(r"[1-6]", value or ""):
+                lane = int(value)
                 break
         if lane is None:
             continue
 
+        parsed_lanes.add(lane)
         row = by_lane[lane]
-        row["raw_cells"].append(cells)
+        row["raw_cells"] = rows
 
-        # å½æ¥ä½éãå¹´é½¢/ä½éã®è¤åè¡¨ç¤ºã§ã¯æå¾ã®kgå¤ãæ¡ç¨ããã
-        weights = [
-            _safe_float(x, None)
-            for x in re.findall(r"(?<!\d)(\d{2}(?:\.\d)?)\s*kg", joined, flags=re.I)
-        ]
-        weights = [x for x in weights if x is not None and 35 <= x <= 80]
-        if weights:
-            row["weight_kg"] = weights[-1]
+        # row0: æ ,åç,é¸æ,ä½é,å±ç¤º,ãã«ã,ãã­ãã©,é¨åäº¤æ,R,åèµ°R
+        if len(main) >= 4:
+            weights = re.findall(
+                r"(?<!\d)(\d{2}(?:\.\d)?)\s*kg",
+                main[3],
+                flags=re.I,
+            )
+            if weights:
+                weight = _safe_float(weights[-1], None)
+                if weight is not None and 35 <= weight <= 80:
+                    row["weight_kg"] = weight
 
-        m_adj = re.search(
-            r"(?:èª¿æ´éé|èª¿æ´)\s*[:ï¼]?\s*(\d+(?:\.\d+)?)\s*kg",
-            joined,
-            flags=re.I,
-        )
-        if m_adj:
-            row["adjustment_weight_kg"] = _safe_float(m_adj.group(1), None)
+        propeller_text = main[6] if len(main) >= 7 else ""
+        parts_text = main[7] if len(main) >= 8 else ""
+        previous_r_text = main[9] if len(main) >= 10 else ""
 
         row["is_new_propeller"] = bool(
-            "æ°ãã­ãã©" in joined
-            or "æ°ãã©" in joined
-            or "ãã­ãã©äº¤æ" in joined
+            "æ°ãã­ãã©" in propeller_text
+            or "æ°ãã©" in propeller_text
+            or "ãã­ãã©äº¤æ" in propeller_text
         )
 
         parts = []
         for keyword in PART_KEYWORDS:
-            if keyword in joined and keyword not in parts:
+            if keyword in parts_text and keyword not in parts:
                 parts.append(keyword)
         row["parts_replacements"] = parts
 
-        # åèµ°æ¬ãåãè¡ã«ãããã¼ã¸å½¢å¼ã¸ã®å¯¾å¿ã
-        m_prev_r = re.search(r"åèµ°.*?(\d{1,2})\s*R", joined)
-        if m_prev_r:
-            row["previous_race_no"] = _safe_int(m_prev_r.group(1), None)
+        prev_r = re.search(r"\d{1,2}", previous_r_text)
+        if prev_r:
+            row["previous_race_no"] = _safe_int(prev_r.group(0), None)
 
-        m_prev_course = re.search(
-            r"(?:åèµ°.*?|é²å¥)\s*([1-6])(?:ã³ã¼ã¹)?",
-            joined,
-        )
-        if m_prev_course:
-            row["previous_course"] = _safe_int(m_prev_course.group(1), None)
+        # row1: é²å¥ / å¤
+        if len(rows) >= 2:
+            r1 = rows[1]
+            if r1 and "é²å¥" in r1[0] and len(r1) >= 2:
+                course_match = re.search(r"[1-6]", r1[-1])
+                if course_match:
+                    row["previous_course"] = int(course_match.group(0))
 
-        m_prev_st = re.search(
-            r"(?:åèµ°.*?|ST)\s*([FL]?\.\d{2}|0\.\d{2})",
-            joined,
-            flags=re.I,
-        )
-        if m_prev_st:
-            row["previous_st"] = _safe_float(m_prev_st.group(1), None)
+        # row2: èª¿æ´éé / ST / å¤
+        if len(rows) >= 3:
+            r2 = rows[2]
 
-        m_prev_finish = re.search(
-            r"(?:åèµ°.*?|çé )\s*([1-6])\s*ç",
-            joined,
-        )
-        if m_prev_finish:
-            row["previous_finish"] = _safe_int(m_prev_finish.group(1), None)
+            if r2:
+                adjustment = _safe_float(r2[0], None)
+                if adjustment is not None and 0 <= adjustment <= 10:
+                    row["adjustment_weight_kg"] = adjustment
 
-    # å¨æãããèçª + ä½éãã®åç´ä¸¦ã³ãä¿éºæ½åºã
-    if not any(r.get("weight_kg") is not None for r in by_lane.values()):
-        candidates = re.findall(
-            r"(?:^|\s)([1-6])\s+.*?(\d{2}(?:\.\d)?)\s*kg",
-            text,
-            flags=re.I,
+            if len(r2) >= 3 and "ST" in r2[1].upper():
+                st_text = r2[-1]
+                if st_text:
+                    st_value = _safe_float(st_text, None)
+                    if st_value is not None and -1 <= st_value <= 1:
+                        row["previous_st"] = st_value
+
+        # row3: çé  / å¤
+        if len(rows) >= 4:
+            r3 = rows[3]
+            if r3 and "çé " in r3[0] and len(r3) >= 2:
+                finish_match = re.search(r"[1-6]", r3[-1])
+                if finish_match:
+                    row["previous_finish"] = int(finish_match.group(0))
+
+    # HTMLæ§é å·®ã¸ã®ä¿éº: ä½éã ãã¯å¾æ¥ã®tableè¡æ¢ç´¢ãæ®ãã
+    if len(parsed_lanes) < 6:
+        for cells in _extract_table_rows(html):
+            lane = None
+            for value in cells[:4]:
+                if re.fullmatch(r"[1-6]", value or ""):
+                    lane = int(value)
+                    break
+            if lane is None:
+                continue
+
+            row = by_lane[lane]
+            joined = " ".join(cells)
+
+            if row["weight_kg"] is None:
+                weights = [
+                    _safe_float(x, None)
+                    for x in re.findall(
+                        r"(?<!\d)(\d{2}(?:\.\d)?)\s*kg",
+                        joined,
+                        flags=re.I,
+                    )
+                ]
+                weights = [
+                    x for x in weights
+                    if x is not None and 35 <= x <= 80
+                ]
+                if weights:
+                    row["weight_kg"] = weights[-1]
+
+    total_parts = sum(
+        len(row.get("parts_replacements", []))
+        for row in by_lane.values()
+    )
+    race_condition["parts_replacement_count"] = total_parts
+    race_condition["has_new_propeller"] = bool(
+        race_condition["has_new_propeller"]
+        or any(
+            row.get("is_new_propeller")
+            for row in by_lane.values()
         )
-        for lane_s, weight_s in candidates[:6]:
-            lane = int(lane_s)
-            weight = _safe_float(weight_s, None)
-            if weight is not None and 35 <= weight <= 80:
-                by_lane[lane]["weight_kg"] = weight
+    )
 
     return race_condition, [by_lane[lane] for lane in range(1, 7)]
-
 
 def save_beforeinfo_extra(race, entries, race_condition, racer_conditions):
     rid = str(race.get("race_id"))
@@ -433,7 +504,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-shadow-v1',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v2',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
