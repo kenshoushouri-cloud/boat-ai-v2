@@ -2,6 +2,7 @@
 """Railway Postgres realtime collector with deadline window filter."""
 from __future__ import annotations
 import os,re,time
+import unicodedata
 from collections import defaultdict
 from datetime import date,datetime,timedelta,timezone
 from pathlib import Path
@@ -492,7 +493,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4-label-scan',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4a-unicodedata-fix',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
