@@ -33,6 +33,30 @@ SHADOW_REPORT_DAYS = max(1, int(os.getenv("SHADOW_REPORT_DAYS", "30")))
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
 SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip().lower() or "ab"
 
+SHADOW_READY_MIN_ROWS = max(
+    1,
+    int(os.getenv("SHADOW_READY_MIN_ROWS", "300")),
+)
+SHADOW_READY_MIN_BASE_CANDIDATES = max(
+    1,
+    int(os.getenv("SHADOW_READY_MIN_BASE_CANDIDATES", "20")),
+)
+SHADOW_READY_MIN_SHADOW_CANDIDATES = max(
+    1,
+    int(os.getenv("SHADOW_READY_MIN_SHADOW_CANDIDATES", "20")),
+)
+SHADOW_READY_MIN_ADDED = max(
+    1,
+    int(os.getenv("SHADOW_READY_MIN_ADDED", "10")),
+)
+SHADOW_READY_MIN_REMOVED = max(
+    1,
+    int(os.getenv("SHADOW_READY_MIN_REMOVED", "10")),
+)
+SHADOW_READY_MAX_ROI_DROP_PT = float(
+    os.getenv("SHADOW_READY_MAX_ROI_DROP_PT", "0.0")
+)
+
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
@@ -93,13 +117,23 @@ def main() -> None:
 
     print(
         "✅ report_exhibition_shadow_performance_pg.py "
-        "VERSION 2026-07-15 cumulative-shadow-report-v1",
+        "VERSION 2026-07-15 cumulative-shadow-report-v2-readiness",
         flush=True,
     )
     print(
         f"PERIOD={start_date}..{end_date} "
         f"SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SELECTOR_MODE={SELECTOR_MODE}",
+        flush=True,
+    )
+    print(
+        "READINESS_THRESHOLDS "
+        f"rows>={SHADOW_READY_MIN_ROWS} "
+        f"base_candidates>={SHADOW_READY_MIN_BASE_CANDIDATES} "
+        f"shadow_candidates>={SHADOW_READY_MIN_SHADOW_CANDIDATES} "
+        f"added>={SHADOW_READY_MIN_ADDED} "
+        f"removed>={SHADOW_READY_MIN_REMOVED} "
+        f"max_roi_drop={SHADOW_READY_MAX_ROI_DROP_PT:.2f}pt",
         flush=True,
     )
     print("読み取り専用です。本番判定・LINE通知は変更しません。", flush=True)
@@ -134,14 +168,22 @@ def main() -> None:
     )
 
     print("CANDIDATE CHANGES", flush=True)
+    change_counts: Dict[str, int] = {}
+    change_hits: Dict[str, int] = {}
     for change in ("added", "removed", "kept", "none"):
-        part = [r for r in rows if str(r.get("candidate_change") or "none") == change]
+        part = [
+            r
+            for r in rows
+            if str(r.get("candidate_change") or "none") == change
+        ]
         hits = sum(1 for r in part if bool(r.get("ticket_hit")))
         payout_sum = sum(
             _safe_int(r.get("trifecta_payout_yen"))
             for r in part
             if bool(r.get("ticket_hit"))
         )
+        change_counts[change] = len(part)
+        change_hits[change] = hits
         print(
             f"  {change}: rows={len(part)} "
             f"ticket_hits={hits} hit_payout_sum={payout_sum}",
@@ -174,6 +216,53 @@ def main() -> None:
             f"  {d}: rows={len(part)} "
             f"base_candidates={int(b['candidates'])} base_profit={int(b['profit'])} "
             f"shadow_candidates={int(s['candidates'])} shadow_profit={int(s['profit'])}",
+            flush=True,
+        )
+
+    roi_diff = shadow["roi"] - baseline["roi"]
+
+    readiness_checks = {
+        "evaluated_rows": len(rows) >= SHADOW_READY_MIN_ROWS,
+        "baseline_candidates": (
+            baseline["candidates"] >= SHADOW_READY_MIN_BASE_CANDIDATES
+        ),
+        "shadow_candidates": (
+            shadow["candidates"] >= SHADOW_READY_MIN_SHADOW_CANDIDATES
+        ),
+        "added_samples": (
+            change_counts.get("added", 0) >= SHADOW_READY_MIN_ADDED
+        ),
+        "removed_samples": (
+            change_counts.get("removed", 0) >= SHADOW_READY_MIN_REMOVED
+        ),
+        "roi_not_worse": roi_diff >= -SHADOW_READY_MAX_ROI_DROP_PT,
+    }
+
+    ready = all(readiness_checks.values())
+
+    print("READINESS ASSESSMENT", flush=True)
+    for name, passed in readiness_checks.items():
+        print(
+            f"  {name}: {'PASS' if passed else 'WAIT'}",
+            flush=True,
+        )
+
+    if ready:
+        print(
+            "READINESS=READY_FOR_MANUAL_REVIEW "
+            "展示補正の本番採用可否を手動検討できる水準です。"
+            "自動反映はしません。",
+            flush=True,
+        )
+    else:
+        waiting = [
+            name
+            for name, passed in readiness_checks.items()
+            if not passed
+        ]
+        print(
+            "READINESS=COLLECTING "
+            f"未達項目={','.join(waiting)}",
             flush=True,
         )
 
