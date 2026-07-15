@@ -26,14 +26,15 @@ Railway Start Command:
 - Railway Python Service側に DATABASE_URL が必要です。
 - 最初は REPAIR_RACE_NOS=1 / REPAIR_DO_ODDS=0 で小さくテストしてください。
 
-2026-07-14 修正:
-- 出走表解析を数字列の固定位置方式からHTMLセル単位方式へ変更。
-- 今節成績の数字を艇番境界と誤認する不具合を修正。
-- 6艇未満、番号0、同一レース内のモーター/ボート番号重複を安全に除外。
-
 2026-07-09 修正:
 - v2_races.deadline_time / deadline_at 保存に対応。
+- race_noごとの締切時刻取得に対応。
 - オッズ取得ループ時に racelist / 出走表を二重取得しないよう修正。
+- BOATRACE公式場コードに合わせて VENUE_NAMES を修正。
+
+2026-07-15 修正:
+- racelistの各rnoページから、そのページ自身の締切予定時刻を取得。
+- race_no番目の時刻を選ぶ処理を廃止し、全Rに1R時刻が入る問題を修正。
 """
 
 from __future__ import annotations
@@ -91,10 +92,30 @@ SOURCE = os.getenv("REPAIR_SOURCE") or "repair_month_all_pg"
 JST = timezone(timedelta(hours=9))
 
 VENUE_NAMES = {
-    "01": "桐生", "02": "戸田", "03": "江戸川", "04": "平和島", "05": "多摩川", "06": "常滑",
-    "07": "蒲郡", "08": "津", "09": "三国", "10": "びわこ", "11": "住之江", "12": "尼崎",
-    "13": "鳴門", "14": "丸亀", "15": "児島", "16": "宮島", "17": "徳山", "18": "下関",
-    "19": "若松", "20": "芦屋", "21": "福岡", "22": "唐津", "23": "唐津", "24": "大村",
+    "01": "桐生",
+    "02": "戸田",
+    "03": "江戸川",
+    "04": "平和島",
+    "05": "多摩川",
+    "06": "浜名湖",
+    "07": "蒲郡",
+    "08": "常滑",
+    "09": "津",
+    "10": "三国",
+    "11": "びわこ",
+    "12": "住之江",
+    "13": "尼崎",
+    "14": "鳴門",
+    "15": "丸亀",
+    "16": "児島",
+    "17": "宮島",
+    "18": "徳山",
+    "19": "下関",
+    "20": "若松",
+    "21": "芦屋",
+    "22": "福岡",
+    "23": "唐津",
+    "24": "大村",
 }
 
 CLASS_MAP = {"B2": 1, "B1": 2, "A2": 3, "A1": 4}
@@ -190,7 +211,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-current-race-fix", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -259,35 +280,52 @@ def _zen_to_han(s: str) -> str:
     return str(s or "").translate(trans)
 
 
-def parse_deadline_time(html: str) -> Optional[str]:
+def parse_deadline_time(
+    html: str,
+    race_no: Optional[int] = None,
+) -> Optional[str]:
     """
-    BOAT RACE公式の racelist ページから締切予定時刻 HH:MM を取得する。
-    取れない場合は None。
+    BOAT RACE公式racelistページから、
+    URLで指定した当該レースの締切予定時刻 HH:MM を取得する。
+
+    racelist?rno=2 のページなら2R、
+    racelist?rno=3 のページなら3Rの締切時刻が表示されるため、
+    race_no番目の時刻を選ぶ処理は行わない。
+
+    race_no引数は既存呼び出しとの互換性のため残すが、判定には使用しない。
     """
+    if not html:
+        return None
+
     text = _zen_to_han(_html_text(html))
+
+    def fmt(value: str) -> Optional[str]:
+        try:
+            hour, minute = value.split(":")
+            hour_i = int(hour)
+            minute_i = int(minute)
+
+            if not (0 <= hour_i <= 23 and 0 <= minute_i <= 59):
+                return None
+
+            return f"{hour_i:02d}:{minute_i:02d}"
+        except Exception:
+            return None
 
     patterns = [
         r"締切予定時刻\s*(\d{1,2}:\d{2})",
+        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
         r"締切予定\s*(\d{1,2}:\d{2})",
         r"締切時刻\s*(\d{1,2}:\d{2})",
-        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"発売締切\s*(\d{1,2}:\d{2})",
-        r"締切\s*(\d{1,2}:\d{2})",
+        r"締切.{0,30}?(\d{1,2}:\d{2})",
     ]
 
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            hhmm = m.group(1)
-            h, mi = hhmm.split(":")
-            return f"{int(h):02d}:{int(mi):02d}"
-
-    # 念のため、締切という語の近くにある時刻を拾う。
-    m = re.search(r"締切.{0,20}?(\d{1,2}:\d{2})", text)
-    if m:
-        hhmm = m.group(1)
-        h, mi = hhmm.split(":")
-        return f"{int(h):02d}:{int(mi):02d}"
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = fmt(match.group(1))
+            if value:
+                return value
 
     return None
 
@@ -318,72 +356,99 @@ def _num_token(v: str) -> Optional[float]:
 
 def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
+    raw_lines = []
+    for line in soup.get_text("\n", strip=True).splitlines():
+        line = _clean_text(_zen_to_han(line))
+        if line:
+            raw_lines.append(line)
+
+    body_start = 0
+    for i, line in enumerate(raw_lines):
+        if "写真 登録番号/級別" in line or "登録番号/級別" in line:
+            body_start = i
+            break
+
+    body_end = len(raw_lines)
+    for i in range(body_start + 1, len(raw_lines)):
+        if raw_lines[i] in ("今節成績", "モーター・ボート変更時は赤で表示されます。", "PAGE TOP"):
+            body_end = i
+            break
+
+    lines = raw_lines[body_start:body_end]
+
+    lane_positions: List[Tuple[int, int]] = []
+    for i, line in enumerate(lines):
+        if not re.fullmatch(r"[1-6]", line):
+            continue
+        look = " ".join(lines[i:i+8])
+        if re.search(r"\b\d{4}\s*/\s*(A1|A2|B1|B2)\b", look):
+            lane_positions.append((int(line), i))
+
     entries: Dict[int, Dict[str, Any]] = {}
 
-    def nums(cell: str) -> List[str]:
-        return re.findall(r"-?\d+(?:\.\d+)?", _zen_to_han(cell or ""))
+    for idx, (lane, pos) in enumerate(lane_positions):
+        next_pos = lane_positions[idx + 1][1] if idx + 1 < len(lane_positions) else len(lines)
+        seg_lines = lines[pos:next_pos]
+        seg = " ".join(seg_lines)
 
-    def parse_rate_triplet(cell: str) -> Tuple[Optional[float], Optional[float], Optional[float]]:
-        xs = nums(cell)
-        return (
-            _num_token(xs[0]) if len(xs) > 0 else None,
-            _num_token(xs[1]) if len(xs) > 1 else None,
-            _num_token(xs[2]) if len(xs) > 2 else None,
-        )
-
-    def parse_no_rate_triplet(cell: str) -> Tuple[Optional[int], Optional[float], Optional[float]]:
-        xs = nums(cell)
-        return (
-            _to_int(xs[0]) if len(xs) > 0 else None,
-            _num_token(xs[1]) if len(xs) > 1 else None,
-            _num_token(xs[2]) if len(xs) > 2 else None,
-        )
-
-    for tr in soup.find_all("tr"):
-        cells = [
-            _clean_text(_zen_to_han(td.get_text(" ", strip=True)))
-            for td in tr.find_all(["td", "th"])
-        ]
-        if len(cells) < 8:
+        m_no = re.search(r"\b(\d{4})\s*/\s*(A1|A2|B1|B2)\b", seg)
+        if not m_no:
             continue
 
-        lane = _to_int(cells[0])
-        if lane is None or not (1 <= lane <= 6):
-            continue
-
-        profile = cells[2]
-        m_profile = re.search(r"\b(\d{4})\s*/\s*(A1|A2|B1|B2)\b", profile)
-        if not m_profile:
-            continue
-
-        racer_number = int(m_profile.group(1))
-        racer_class_text = m_profile.group(2)
+        racer_number = int(m_no.group(1))
+        racer_class_text = m_no.group(2)
         racer_class = CLASS_MAP.get(racer_class_text)
 
-        after = profile[m_profile.end():].strip()
         racer_name = None
-        m_name = re.search(r"([一-龥々ぁ-んァ-ヶー]+\s+[一-龥々ぁ-んァ-ヶー]+)", after)
-        if m_name:
-            racer_name = _clean_text(m_name.group(1))[:40]
+        reg_line_index = None
+        for j, line in enumerate(seg_lines):
+            if re.search(r"\b\d{4}\s*/\s*(A1|A2|B1|B2)\b", line):
+                reg_line_index = j
+                break
+
+        if reg_line_index is not None:
+            for cand in seg_lines[reg_line_index + 1: reg_line_index + 5]:
+                if re.search(r"[一-龥ぁ-んァ-ヶー]", cand) and "/" not in cand and not re.search(r"\d", cand):
+                    racer_name = cand[:40]
+                    break
 
         branch = None
         origin = None
-        m_branch = re.search(r"([一-龥ぁ-んァ-ヶー]+)\s*/\s*([一-龥ぁ-んァ-ヶー]+)", after)
-        if m_branch:
-            branch = m_branch.group(1)[:20]
-            origin = m_branch.group(2)[:20]
+        if reg_line_index is not None:
+            for cand in seg_lines[reg_line_index + 1: reg_line_index + 8]:
+                if "/" in cand and re.search(r"[一-龥ぁ-んァ-ヶー]", cand):
+                    parts = [p.strip() for p in cand.split("/", 1)]
+                    if len(parts) == 2:
+                        branch, origin = parts[0][:20], parts[1][:20]
+                    break
 
-        flst = cells[3]
-        m_f = re.search(r"\bF\s*(\d+)\b", flst)
-        m_l = re.search(r"\bL\s*(\d+)\b", flst)
-        m_st = re.search(r"(?<!\d)(0\.\d{2})(?!\d)", flst)
+        f_count = None
+        l_count = None
+        m_f = re.search(r"\bF\s*(\d+)\b", seg)
+        m_l = re.search(r"\bL\s*(\d+)\b", seg)
+        if m_f:
+            f_count = int(m_f.group(1))
+        if m_l:
+            l_count = int(m_l.group(1))
 
-        national_win, national_2, national_3 = parse_rate_triplet(cells[4])
-        local_win, local_2, local_3 = parse_rate_triplet(cells[5])
-        motor_no, motor_2, motor_3 = parse_no_rate_triplet(cells[6])
-        boat_no, boat_2, boat_3 = parse_no_rate_triplet(cells[7])
+        nums = re.findall(r"\d+\.\d+|\d+", seg)
+        avg_idx = None
+        for k, tok in enumerate(nums):
+            if re.fullmatch(r"0\.\d{2}", tok):
+                avg_idx = k
+                break
 
-        entries[lane] = {
+        seq = nums[avg_idx:] if avg_idx is not None else []
+
+        def fseq(n: int) -> Optional[float]:
+            return _num_token(seq[n]) if len(seq) > n else None
+
+        def iseq(n: int) -> Optional[int]:
+            if len(seq) <= n:
+                return None
+            return _to_int(seq[n])
+
+        row: Dict[str, Any] = {
             "race_id": race_id,
             "lane": lane,
             "course": lane,
@@ -393,70 +458,59 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
             "racer_class_text": racer_class_text,
             "branch": branch,
             "origin": origin,
-            "f_count": int(m_f.group(1)) if m_f else None,
-            "l_count": int(m_l.group(1)) if m_l else None,
-            "avg_st": _num_token(m_st.group(1)) if m_st else None,
-            "national_win_rate": national_win,
-            "national_place2_rate": national_2,
-            "national_place3_rate": national_3,
-            "local_win_rate": local_win,
-            "local_place2_rate": local_2,
-            "local_place3_rate": local_3,
-            "motor_no": motor_no,
-            "motor_place2_rate": motor_2,
-            "motor_place3_rate": motor_3,
-            "boat_no": boat_no,
-            "boat_place2_rate": boat_2,
-            "boat_place3_rate": boat_3,
+            "f_count": f_count,
+            "l_count": l_count,
+            "avg_st": fseq(0),
+            "national_win_rate": fseq(1),
+            "national_place2_rate": fseq(2),
+            "national_place3_rate": fseq(3),
+            "local_win_rate": fseq(4),
+            "local_place2_rate": fseq(5),
+            "local_place3_rate": fseq(6),
+            "motor_no": iseq(7),
+            "motor_place2_rate": fseq(8),
+            "motor_place3_rate": fseq(9),
+            "boat_no": iseq(10),
+            "boat_place2_rate": fseq(11),
+            "boat_place3_rate": fseq(12),
             "recent_form": [],
             "updated_at": _now_iso(),
         }
+        entries[lane] = row
+
+    if len(entries) < 6:
+        for tr in soup.find_all("tr"):
+            cells = [_clean_text(_zen_to_han(td.get_text(" ", strip=True))) for td in tr.find_all(["td", "th"])]
+            if len(cells) < 2:
+                continue
+            row_text = " ".join(cells)
+            lane = None
+            for c in cells[:3]:
+                if re.fullmatch(r"[1-6]", c):
+                    lane = int(c)
+                    break
+            if lane is None or lane in entries:
+                continue
+            m_no = re.search(r"\b(\d{4})\s*/?\s*(A1|A2|B1|B2)?\b", row_text)
+            if not m_no:
+                continue
+            cls = m_no.group(2)
+            entries[lane] = {
+                "race_id": race_id,
+                "lane": lane,
+                "course": lane,
+                "racer_number": int(m_no.group(1)),
+                "racer_class": CLASS_MAP.get(cls) if cls else None,
+                "racer_class_text": cls,
+                "recent_form": [],
+                "updated_at": _now_iso(),
+            }
 
     valid_entries = [
-        entries[lane]
-        for lane in range(1, 7)
-        if lane in entries and entries[lane].get("racer_number")
+        entries[k]
+        for k in sorted(entries)
+        if entries[k].get("racer_number")
     ]
-
-    if len(valid_entries) != 6:
-        print(f"⚠️ parse_entries incomplete race_id={race_id} rows={len(valid_entries)}", flush=True)
-        return []
-
-    for key, rate_keys in (
-        ("motor_no", ("motor_place2_rate", "motor_place3_rate")),
-        ("boat_no", ("boat_place2_rate", "boat_place3_rate")),
-    ):
-        seen: Dict[int, List[int]] = {}
-        for row in valid_entries:
-            no = _to_int(row.get(key))
-            if no is None or no <= 0:
-                row[key] = None
-                for rk in rate_keys:
-                    row[rk] = None
-                continue
-            seen.setdefault(no, []).append(int(row["lane"]))
-
-        duplicates = {no: lanes for no, lanes in seen.items() if len(lanes) > 1}
-        if duplicates:
-            print(f"⚠️ duplicate {key} race_id={race_id} duplicates={duplicates}", flush=True)
-            dup_nos = set(duplicates)
-            for row in valid_entries:
-                if _to_int(row.get(key)) in dup_nos:
-                    row[key] = None
-                    for rk in rate_keys:
-                        row[rk] = None
-
-    for row in valid_entries:
-        for rk in (
-            "national_place2_rate", "national_place3_rate",
-            "local_place2_rate", "local_place3_rate",
-            "motor_place2_rate", "motor_place3_rate",
-            "boat_place2_rate", "boat_place3_rate",
-        ):
-            v = _num_token(row.get(rk))
-            if v is None or not (0.0 <= v <= 100.0):
-                row[rk] = None
-
     return valid_entries
 
 
