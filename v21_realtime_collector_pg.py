@@ -98,13 +98,15 @@ def _deadline_match(r,now):
     return True,'in_window'
 
 def _ensure_realtime_tables():
-    tables=['v2_realtime_weather_snapshots','v2_realtime_exhibition_snapshots','v2_realtime_entry_snapshots','v2_realtime_odds_snapshots']
+    tables=['v2_realtime_weather_snapshots','v2_realtime_exhibition_snapshots','v2_realtime_entry_snapshots','v2_realtime_odds_snapshots','v2_realtime_race_condition_snapshots','v2_realtime_racer_condition_snapshots']
     for t in tables: execute(f'create table if not exists {t} (id bigserial primary key);')
     alters={
       'v2_realtime_weather_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('weather','text'),('temperature_c','numeric'),('water_temperature_c','numeric'),('wind_speed_m','numeric'),('wind_direction','text'),('wave_height_cm','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
       'v2_realtime_exhibition_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('lane','integer'),('exhibition_course','integer'),('exhibition_time','numeric'),('exhibition_time_rank','integer'),('exhibition_time_diff','numeric'),('start_timing','numeric'),('start_timing_rank','integer'),('start_timing_diff','numeric'),('tilt','numeric'),('original_tilt','numeric'),('tilt_change','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
       'v2_realtime_entry_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('lane','integer'),('racer_number','integer'),('racer_name','text'),('racer_class','text'),('original_course','integer'),('exhibition_course','integer'),('is_course_changed','boolean'),('motor_no','integer'),('boat_no','integer'),('tilt','numeric'),('raw','jsonb'),('updated_at','timestamptz')],
-      'v2_realtime_odds_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('ticket','text'),('odds','numeric'),('market_rank','integer'),('prev_odds','numeric'),('odds_delta','numeric'),('odds_delta_pct','numeric'),('prev_market_rank','integer'),('market_rank_delta','integer'),('is_favorite','boolean'),('is_odds_too_low','boolean'),('is_odds_drift','boolean'),('is_odds_steam','boolean'),('raw','jsonb'),('updated_at','timestamptz')]
+      'v2_realtime_odds_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('ticket','text'),('odds','numeric'),('market_rank','integer'),('prev_odds','numeric'),('odds_delta','numeric'),('odds_delta_pct','numeric'),('prev_market_rank','integer'),('market_rank_delta','integer'),('is_favorite','boolean'),('is_odds_too_low','boolean'),('is_odds_drift','boolean'),('is_odds_steam','boolean'),('raw','jsonb'),('updated_at','timestamptz')],
+      'v2_realtime_race_condition_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('is_stabilizer_used','boolean'),('is_fixed_entry','boolean'),('race_distance_m','integer'),('has_new_propeller','boolean'),('parts_replacement_count','integer'),('raw','jsonb'),('updated_at','timestamptz')],
+      'v2_realtime_racer_condition_snapshots': [('race_id','text'),('race_date','date'),('venue_id','text'),('venue_code','text'),('race_no','integer'),('snapshot_label','text'),('snapshot_at','timestamptz'),('source','text'),('lane','integer'),('racer_number','integer'),('weight_kg','numeric'),('adjustment_weight_kg','numeric'),('is_new_propeller','boolean'),('parts_replacements','jsonb'),('previous_race_no','integer'),('previous_course','integer'),('previous_st','numeric'),('previous_finish','integer'),('raw','jsonb'),('updated_at','timestamptz')]
     }
     for t,cols in alters.items():
         for c,typ in cols: execute(f'alter table {t} add column if not exists {c} {typ};')
@@ -115,7 +117,9 @@ def _ensure_realtime_tables():
       'create unique index if not exists uq_v2_rt_weather_race_label on v2_realtime_weather_snapshots (race_id,snapshot_label);',
       'create unique index if not exists uq_v2_rt_exh_race_label_lane on v2_realtime_exhibition_snapshots (race_id,snapshot_label,lane);',
       'create unique index if not exists uq_v2_rt_entry_race_label_lane on v2_realtime_entry_snapshots (race_id,snapshot_label,lane);',
-      'create unique index if not exists uq_v2_rt_odds_race_label_ticket on v2_realtime_odds_snapshots (race_id,snapshot_label,ticket);']:
+      'create unique index if not exists uq_v2_rt_odds_race_label_ticket on v2_realtime_odds_snapshots (race_id,snapshot_label,ticket);',
+      'create unique index if not exists uq_v2_rt_race_condition on v2_realtime_race_condition_snapshots (race_id,snapshot_label);',
+      'create unique index if not exists uq_v2_rt_racer_condition on v2_realtime_racer_condition_snapshots (race_id,snapshot_label,lane);']:
         execute(sql)
 def _upsert(t,rows,conflict,chunk_size=500):
     if not rows:return 0
@@ -171,6 +175,213 @@ def parse_odds3t(html):
         if v>0:out[f'{a}-{b}-{c}']=v
     return out
 
+PART_KEYWORDS = [
+    "ãã¹ãã³", "ãªã³ã°", "é»æ°ä¸å¼", "ã­ã£ãªã¢ããã¼",
+    "ã®ã¤ã±ã¼ã¹", "ã¯ã©ã³ã¯ã·ã£ãã", "ã·ãªã³ã",
+    "ã­ã£ãã¬ã¿", "ã­ã£ãã¬ã¿ã¼", "ãã­ãã©",
+]
+
+
+def parse_beforeinfo_extra(html, entries):
+    """
+    ç´åæå ±ãããä»å¾ã®shadowæ¤è¨¼ç¨è¿½å ç¹å¾´éãæ½åºããã
+    HTMLæ§é å¤æ´ã«åãããã¼ãã«è¡ã¨å¨æãã­ã¹ãã®ä¸¡æ¹ãä½¿ç¨ããã
+    """
+    text = _soup_text(html)
+    table_rows = _extract_table_rows(html)
+    entry_by_lane = {
+        _safe_int(e.get("lane")): e
+        for e in entries
+        if 1 <= _safe_int(e.get("lane")) <= 6
+    }
+
+    distance_m = None
+    m = re.search(r"(?<!\d)(1200|1800)\s*m", text, flags=re.I)
+    if m:
+        distance_m = _safe_int(m.group(1), None)
+
+    race_condition = {
+        "is_stabilizer_used": "å®å®æ¿" in text,
+        "is_fixed_entry": "é²å¥åºå®" in text,
+        "race_distance_m": distance_m,
+        "has_new_propeller": (
+            "æ°ãã­ãã©" in text
+            or "æ°ãã©" in text
+            or "ãã­ãã©äº¤æ" in text
+        ),
+        "parts_replacement_count": sum(
+            1 for keyword in PART_KEYWORDS if keyword in text
+        ),
+        "raw_text": text[:5000],
+    }
+
+    by_lane = {
+        lane: {
+            "lane": lane,
+            "racer_number": entry_by_lane.get(lane, {}).get("racer_number"),
+            "weight_kg": None,
+            "adjustment_weight_kg": None,
+            "is_new_propeller": False,
+            "parts_replacements": [],
+            "previous_race_no": None,
+            "previous_course": None,
+            "previous_st": None,
+            "previous_finish": None,
+            "raw_cells": [],
+        }
+        for lane in range(1, 7)
+    }
+
+    for cells in table_rows:
+        joined = " ".join(cells)
+        lane = None
+        for cell in cells[:4]:
+            if re.fullmatch(r"[1-6]", cell):
+                lane = int(cell)
+                break
+        if lane is None:
+            continue
+
+        row = by_lane[lane]
+        row["raw_cells"].append(cells)
+
+        # å½æ¥ä½éãå¹´é½¢/ä½éã®è¤åè¡¨ç¤ºã§ã¯æå¾ã®kgå¤ãæ¡ç¨ããã
+        weights = [
+            _safe_float(x, None)
+            for x in re.findall(r"(?<!\d)(\d{2}(?:\.\d)?)\s*kg", joined, flags=re.I)
+        ]
+        weights = [x for x in weights if x is not None and 35 <= x <= 80]
+        if weights:
+            row["weight_kg"] = weights[-1]
+
+        m_adj = re.search(
+            r"(?:èª¿æ´éé|èª¿æ´)\s*[:ï¼]?\s*(\d+(?:\.\d+)?)\s*kg",
+            joined,
+            flags=re.I,
+        )
+        if m_adj:
+            row["adjustment_weight_kg"] = _safe_float(m_adj.group(1), None)
+
+        row["is_new_propeller"] = bool(
+            "æ°ãã­ãã©" in joined
+            or "æ°ãã©" in joined
+            or "ãã­ãã©äº¤æ" in joined
+        )
+
+        parts = []
+        for keyword in PART_KEYWORDS:
+            if keyword in joined and keyword not in parts:
+                parts.append(keyword)
+        row["parts_replacements"] = parts
+
+        # åèµ°æ¬ãåãè¡ã«ãããã¼ã¸å½¢å¼ã¸ã®å¯¾å¿ã
+        m_prev_r = re.search(r"åèµ°.*?(\d{1,2})\s*R", joined)
+        if m_prev_r:
+            row["previous_race_no"] = _safe_int(m_prev_r.group(1), None)
+
+        m_prev_course = re.search(
+            r"(?:åèµ°.*?|é²å¥)\s*([1-6])(?:ã³ã¼ã¹)?",
+            joined,
+        )
+        if m_prev_course:
+            row["previous_course"] = _safe_int(m_prev_course.group(1), None)
+
+        m_prev_st = re.search(
+            r"(?:åèµ°.*?|ST)\s*([FL]?\.\d{2}|0\.\d{2})",
+            joined,
+            flags=re.I,
+        )
+        if m_prev_st:
+            row["previous_st"] = _safe_float(m_prev_st.group(1), None)
+
+        m_prev_finish = re.search(
+            r"(?:åèµ°.*?|çé )\s*([1-6])\s*ç",
+            joined,
+        )
+        if m_prev_finish:
+            row["previous_finish"] = _safe_int(m_prev_finish.group(1), None)
+
+    # å¨æãããèçª + ä½éãã®åç´ä¸¦ã³ãä¿éºæ½åºã
+    if not any(r.get("weight_kg") is not None for r in by_lane.values()):
+        candidates = re.findall(
+            r"(?:^|\s)([1-6])\s+.*?(\d{2}(?:\.\d)?)\s*kg",
+            text,
+            flags=re.I,
+        )
+        for lane_s, weight_s in candidates[:6]:
+            lane = int(lane_s)
+            weight = _safe_float(weight_s, None)
+            if weight is not None and 35 <= weight <= 80:
+                by_lane[lane]["weight_kg"] = weight
+
+    return race_condition, [by_lane[lane] for lane in range(1, 7)]
+
+
+def save_beforeinfo_extra(race, entries, race_condition, racer_conditions):
+    rid = str(race.get("race_id"))
+    venue_id = str(
+        race.get("venue_id") or race.get("venue_code") or ""
+    ).zfill(2)
+    race_no = _safe_int(race.get("race_no"))
+    now_iso = _now_iso()
+
+    race_row = {
+        "race_id": rid,
+        "race_date": race.get("race_date"),
+        "venue_id": venue_id,
+        "venue_code": venue_id,
+        "race_no": race_no,
+        "snapshot_label": SNAPSHOT_LABEL,
+        "snapshot_at": now_iso,
+        "source": "official_beforeinfo",
+        "is_stabilizer_used": race_condition.get("is_stabilizer_used"),
+        "is_fixed_entry": race_condition.get("is_fixed_entry"),
+        "race_distance_m": race_condition.get("race_distance_m"),
+        "has_new_propeller": race_condition.get("has_new_propeller"),
+        "parts_replacement_count": race_condition.get(
+            "parts_replacement_count"
+        ),
+        "raw": {"text": race_condition.get("raw_text", "")},
+        "updated_at": now_iso,
+    }
+
+    racer_rows = []
+    for row in racer_conditions:
+        racer_rows.append({
+            "race_id": rid,
+            "race_date": race.get("race_date"),
+            "venue_id": venue_id,
+            "venue_code": venue_id,
+            "race_no": race_no,
+            "snapshot_label": SNAPSHOT_LABEL,
+            "snapshot_at": now_iso,
+            "source": "official_beforeinfo",
+            "lane": row.get("lane"),
+            "racer_number": row.get("racer_number"),
+            "weight_kg": row.get("weight_kg"),
+            "adjustment_weight_kg": row.get("adjustment_weight_kg"),
+            "is_new_propeller": row.get("is_new_propeller"),
+            "parts_replacements": row.get("parts_replacements", []),
+            "previous_race_no": row.get("previous_race_no"),
+            "previous_course": row.get("previous_course"),
+            "previous_st": row.get("previous_st"),
+            "previous_finish": row.get("previous_finish"),
+            "raw": {"cells": row.get("raw_cells", [])},
+            "updated_at": now_iso,
+        })
+
+    saved_race = _upsert(
+        "v2_realtime_race_condition_snapshots",
+        [race_row],
+        "race_id,snapshot_label",
+    )
+    saved_racers = _upsert(
+        "v2_realtime_racer_condition_snapshots",
+        racer_rows,
+        "race_id,snapshot_label,lane",
+    )
+    return saved_race, saved_racers
+
 def fetch_day_base(ds):
     p=_rid_prefix(ds); q=_rid_prefix(_next_day(ds))
     races=fetch_all('select * from v2_races where race_date=%s order by venue_id,race_no;',(ds,)); races=[r for r in races if str(r.get('venue_id') or r.get('venue_code') or '').zfill(2) in TARGET_VENUES]
@@ -222,7 +433,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 deadline-window-target-ids',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-shadow-v1',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
@@ -249,12 +460,29 @@ def main():
         raise RuntimeError(f'TARGET_RACE_IDS_FILEã®æ¸ãè¾¼ã¿ã«å¤±æãã¾ãã: {e}') from e
     for r in target[:20]:
         dl=_parse_deadline_at(r);print(f"  {r.get('race_id')} deadline={dl.isoformat() if dl else '-'}",flush=True)
-    sw=sx=se=so=nb=ne=no=0
+    sw=sx=se=so=src_cond=splayer_cond=nb=ne=no=0
     for i,r in enumerate(target,1):
         rid=str(r.get('race_id'));v=str(r.get('venue_id') or r.get('venue_code') or '').zfill(2);rno=_safe_int(r.get('race_no'));bh=_fetch(_official_url('beforeinfo',TARGET_DATE,v,rno));ex=[]
         if _looks_no_data(bh):nb+=1;c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),[]);sx+=c1;se+=c2
         else:
-            sw+=save_weather(r,parse_weather(bh or ''));ex=parse_exhibition(bh or '');ne+=int(not ex);c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),ex);sx+=c1;se+=c2
+            sw+=save_weather(r,parse_weather(bh or ''))
+            ex=parse_exhibition(bh or '')
+            ne+=int(not ex)
+            c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),ex)
+            sx+=c1
+            se+=c2
+            race_cond,racer_cond=parse_beforeinfo_extra(
+                bh or '',
+                entries_by.get(rid,[]),
+            )
+            c3,c4=save_beforeinfo_extra(
+                r,
+                entries_by.get(rid,[]),
+                race_cond,
+                racer_cond,
+            )
+            src_cond+=c3
+            splayer_cond+=c4
         oh=_fetch(_official_url('odds3t',TARGET_DATE,v,rno));od=parse_odds3t(oh or '') if oh else {};src='official_odds3t'
         if len(od)<80 and base_odds.get(rid):od=base_odds[rid];src='v2_odds_trifecta_fallback'
         if od:so+=save_odds(r,od,src)
@@ -262,6 +490,6 @@ def main():
         print(f'[{i}/{len(target)}] {rid} before={"ok" if bh else "ng"} exh_rows={len(ex)} odds={len(od)} source={src if od else "-"}',flush=True)
         if REALTIME_SLEEP_SEC>0:time.sleep(REALTIME_SLEEP_SEC)
     print('\n=== v21 PG realtime collection summary ===',flush=True)
-    print(f'scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}',flush=True)
+    print(f'scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_race_condition_rows: {src_cond}\nsaved_racer_condition_rows: {splayer_cond}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}',flush=True)
     print('=== v21 PG ãªã¢ã«ã¿ã¤ã åéçµäº ===',flush=True)
 if __name__=='__main__':main()
