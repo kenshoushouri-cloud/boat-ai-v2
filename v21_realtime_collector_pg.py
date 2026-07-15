@@ -247,8 +247,9 @@ def parse_beforeinfo_extra(html, entries):
         ]
 
     for tbody in soup.select("tbody.is-fs12"):
-        # malformed HTMLå¯¾ç­ã§recursive=Falseã«éå®ããªã
-        trs = tbody.find_all("tr")
+        # å¬å¼HTMLã¯BeautifulSoupä¸ã§4ã¤ã®ç´ä¸trã«è£æ­£ãããã
+        # nestedæ¤ç´¢ããã¨è¦ªrowåã®è¦ç´ ãæ··ãããããç´ä¸ã ããèª­ãã
+        trs = tbody.find_all("tr", recursive=False)
         if not trs:
             continue
 
@@ -342,6 +343,17 @@ def parse_beforeinfo_extra(html, entries):
                     if re.fullmatch(r"[1-6]", value):
                         row["previous_finish"] = int(value)
                         break
+
+        if row.get("previous_race_no") is not None:
+            print(
+                f"beforeinfo previous lane={lane} "
+                f"rows={row_cells} "
+                f"parsed=R{row.get('previous_race_no')} "
+                f"course={row.get('previous_course')} "
+                f"st={row.get('previous_st')} "
+                f"finish={row.get('previous_finish')}",
+                flush=True,
+            )
 
         # èª¿æ´ééãã©ãã«è¡ã§åããªãå ´åãSTè¡ã®åé ­ã»ã«ãåç¢ºèª
         if row["adjustment_weight_kg"] is None:
@@ -493,7 +505,7 @@ def save_odds(r,odds,source):
 
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4a-unicodedata-fix',flush=True)
+    print('â v21_realtime_collector_pg.py VERSION 2026-07-15 beforeinfo-extra-tbody-v4b-direct-rows',flush=True)
     print(f'TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or "-"} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}',flush=True)
     print(f'FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}',flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE); days=_event_day_by_venue(TARGET_DATE); scope=[]
