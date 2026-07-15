@@ -217,7 +217,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-15 exact-race-id-targets", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-12-list-v2", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -291,70 +291,111 @@ def parse_deadline_time(
     race_no: Optional[int] = None,
 ) -> Optional[str]:
     """
-    BOAT RACE公式racelistページ上部の
-    1R～12R「締切予定時刻」一覧から、race_no番目の時刻を取得する。
+    BOAT RACE公式racelistページ上部の1R～12R締切一覧から、
+    race_noに対応する時刻を返す。
 
-    例:
-        レース 1R 2R ... 12R
-        締切予定時刻 08:46 09:12 ... 14:13
+    公式ページ例:
+      レース 1R 2R ... 12R
+      締切予定時刻 17:41 18:08 ... 22:41
 
-    rno=2のページでも一覧の先頭は1Rの08:46なので、
-    最初の時刻を返してはいけない。
+    重要:
+    - 各racelistページには1R～12Rすべての時刻が載る。
+    - ページ内最初の時刻を返すと、全Rが1R時刻になる。
+    - 必ず race_no - 1 の位置を返す。
     """
     if not html:
         return None
 
-    text = _zen_to_han(_html_text(html))
+    try:
+        target_index = int(race_no) - 1 if race_no is not None else 0
+    except Exception:
+        target_index = 0
 
-    def fmt(value: str) -> Optional[str]:
+    if not 0 <= target_index <= 11:
+        return None
+
+    def normalize_hhmm(value: str) -> Optional[str]:
         try:
-            hour, minute = value.split(":")
-            hour_i = int(hour)
-            minute_i = int(minute)
-            if not (0 <= hour_i <= 23 and 0 <= minute_i <= 59):
+            hour_s, minute_s = value.split(":")
+            hour = int(hour_s)
+            minute = int(minute_s)
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 return None
-            return f"{hour_i:02d}:{minute_i:02d}"
+            return f"{hour:02d}:{minute:02d}"
         except Exception:
             return None
 
-    # 「締切予定時刻」以降に並ぶ時刻一覧を取得する。
-    anchors = (
-        "締切予定時刻",
-        "投票締切予定時刻",
-        "締切予定",
+    soup = BeautifulSoup(html, "html.parser")
+
+    # 1. DOM上で「締切予定時刻」を含む要素と近傍を優先する。
+    anchor_node = soup.find(
+        lambda tag: (
+            getattr(tag, "name", None)
+            and "締切予定時刻" in _zen_to_han(
+                tag.get_text(" ", strip=True)
+            )
+        )
     )
 
-    for anchor in anchors:
-        pos = text.find(anchor)
-        if pos < 0:
+    candidate_texts: List[str] = []
+    if anchor_node is not None:
+        candidate_texts.append(
+            _zen_to_han(anchor_node.get_text(" ", strip=True))
+        )
+
+        parent = anchor_node.parent
+        for _ in range(4):
+            if parent is None:
+                break
+            candidate_texts.append(
+                _zen_to_han(parent.get_text(" ", strip=True))
+            )
+            parent = parent.parent
+
+        # 同じ親配下の後続要素も保険として見る。
+        for sibling in list(anchor_node.next_siblings)[:8]:
+            try:
+                txt = sibling.get_text(" ", strip=True)
+            except Exception:
+                txt = str(sibling or "")
+            if txt:
+                candidate_texts.append(_zen_to_han(txt))
+
+    # 2. ページ全文も最後の保険として加える。
+    full_text = _zen_to_han(soup.get_text(" ", strip=True))
+    candidate_texts.append(full_text)
+
+    for text in candidate_texts:
+        anchor_pos = text.find("締切予定時刻")
+        if anchor_pos < 0:
             continue
 
-        # 一覧は見出し直後にあり、通常12時刻。
-        segment = text[pos + len(anchor): pos + len(anchor) + 500]
-        raw_times = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", segment)
-        times = [x for x in (fmt(v) for v in raw_times) if x]
+        # 締切見出し以降を十分長めに取り、最初の最大12時刻を使う。
+        segment = text[anchor_pos + len("締切予定時刻"): anchor_pos + 1200]
+        raw_times = re.findall(
+            r"(?<!\d)(\d{1,2}:\d{2})(?!\d)",
+            segment,
+        )
+        times = [
+            value
+            for value in (
+                normalize_hhmm(raw)
+                for raw in raw_times
+            )
+            if value is not None
+        ]
 
-        if race_no is not None and 1 <= int(race_no) <= len(times):
-            return times[int(race_no) - 1]
+        # 時刻以外が後ろに続くことがあるため、先頭12個に限定。
+        times = times[:12]
 
-        if race_no is None and times:
-            return times[0]
+        if len(times) >= 12:
+            return times[target_index]
 
-    # 保険: ページ全体で「レース 1R...12R 締切予定時刻 時刻一覧」を探す。
-    m = re.search(
-        r"締切予定時刻\s*((?:\d{1,2}:\d{2}\s*){1,12})",
-        text,
-    )
-    if m:
-        raw_times = re.findall(r"\d{1,2}:\d{2}", m.group(1))
-        times = [x for x in (fmt(v) for v in raw_times) if x]
-        if race_no is not None and 1 <= int(race_no) <= len(times):
-            return times[int(race_no) - 1]
-        if race_no is None and times:
-            return times[0]
+        # 対象Rまで揃っていれば、12個未満でも採用。
+        if len(times) > target_index:
+            return times[target_index]
 
     return None
-
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
     """
@@ -807,6 +848,12 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
 
             deadline_time = parse_deadline_time(html or "", race_no)
             deadline_at = make_deadline_at(date_str, deadline_time)
+
+            if race_no in (1, 2, 3, 10, 11, 12):
+                print(
+                    f"deadline parsed: {rid} -> {deadline_time}",
+                    flush=True,
+                )
 
             race_row = {
                 "race_id": rid,
