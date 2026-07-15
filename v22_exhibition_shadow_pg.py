@@ -46,6 +46,7 @@ SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
 SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip().lower() or "ab"
 EXHIBITION_SHADOW_WEIGHT = float(os.getenv("EXHIBITION_SHADOW_WEIGHT", "0.20"))
 MIN_ODDS_ROWS = int(os.getenv("MIN_ODDS_ROWS", "100"))
+TARGET_RACE_IDS = {x.strip() for x in os.getenv("TARGET_RACE_IDS", "").split(",") if x.strip()}
 PROB_TEMP = float(os.getenv("PROB_TEMP", "2.20"))
 
 CLASS_WEIGHT = {1: 0.15, 2: 0.55, 3: 1.15, 4: 1.55}
@@ -246,7 +247,7 @@ def main() -> None:
 
     _ensure_schema()
 
-    print("✅ v22_exhibition_shadow_pg.py VERSION 2026-07-15 shadow-v2-json-safe", flush=True)
+    print("✅ v22_exhibition_shadow_pg.py VERSION 2026-07-15 shadow-v3-target-race-ids", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"SELECTOR_MODE={SELECTOR_MODE} "
@@ -255,6 +256,11 @@ def main() -> None:
     )
     print("本番判定・LINE通知は変更しません。", flush=True)
 
+    if not TARGET_RACE_IDS:
+        print("今回の締切ウィンドウ対象は0件です。shadow保存を終了します。", flush=True)
+        return
+    print(f"TARGET_RACE_IDS enabled: {len(TARGET_RACE_IDS)} races", flush=True)
+
     races = fetch_all(
         """
         select race_id, race_date,
@@ -262,22 +268,20 @@ def main() -> None:
                race_no
         from v2_races
         where race_date=%s
+          and race_id = any(%s)
         order by venue_id, race_no;
         """,
-        (TARGET_DATE,),
+        (TARGET_DATE, list(TARGET_RACE_IDS)),
     )
 
     entries_rows = fetch_all(
         """
         select *
         from v2_race_entries
-        where race_id >= %s and race_id < %s
+        where race_id = any(%s)
         order by race_id, lane;
         """,
-        (
-            TARGET_DATE.replace("-", ""),
-            (datetime.strptime(TARGET_DATE, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y%m%d"),
-        ),
+        (list(TARGET_RACE_IDS),),
     )
 
     exhibition_rows = fetch_all(
@@ -286,9 +290,10 @@ def main() -> None:
                exhibition_time, exhibition_time_diff
         from v2_realtime_exhibition_snapshots
         where race_date=%s and snapshot_label=%s
+          and race_id = any(%s)
         order by race_id, lane;
         """,
-        (TARGET_DATE, SNAPSHOT_LABEL),
+        (TARGET_DATE, SNAPSHOT_LABEL, list(TARGET_RACE_IDS)),
     )
 
     odds_rows = fetch_all(
@@ -296,9 +301,10 @@ def main() -> None:
         select race_id, ticket, odds, market_rank
         from v2_realtime_odds_snapshots
         where race_date=%s and snapshot_label=%s
+          and race_id = any(%s)
         order by race_id, market_rank nulls last, odds;
         """,
-        (TARGET_DATE, SNAPSHOT_LABEL),
+        (TARGET_DATE, SNAPSHOT_LABEL, list(TARGET_RACE_IDS)),
     )
 
     entries_by_race: Dict[str, List[Dict[str, Any]]] = {}
