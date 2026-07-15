@@ -10,13 +10,13 @@ TARGET_LANE = int(os.getenv("TARGET_LANE", "1"))
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "35"))
 
 def _norm(v: Any) -> str:
-    return re.sub(r"\\s+", " ", unicodedata.normalize("NFKC", str(v or ""))).strip()
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(v or ""))).strip()
 
 def main() -> None:
-    print("✅ debug_beforeinfo_lane_html_pg.py VERSION 2026-07-15 lane-outer-html-v1", flush=True)
+    print("✅ debug_beforeinfo_lane_html_pg.py VERSION 2026-07-15 lane-outer-html-v2-regex-fix", flush=True)
     print("読み取り専用です。", flush=True)
 
-    m = re.fullmatch(r"(\\d{8})_(\\d{2})_(\\d{2})", TARGET_RACE_ID)
+    m = re.fullmatch(r"(\d{8})_(\d{2})_(\d{2})", TARGET_RACE_ID)
     if not m:
         raise RuntimeError("TARGET_RACE_ID形式が不正です")
     ymd, venue_id, race_no_s = m.groups()
