@@ -24,6 +24,10 @@ VENUES=[x.strip().zfill(2) for x in os.getenv("BACKFILL_VENUES",",".join(f"{i:02
 OFFICIAL="https://www.boatrace.jp/owpc/pc/race"
 _thread_local=threading.local()
 
+def _norm_text(s):
+    return re.sub(r'\s+', ' ', str(s or '')).strip()
+
+
 def _safe_int(v, d=0):
     try:
         return int(float(str(v).replace(',', ''))) if v not in (None, '') else d
@@ -275,7 +279,7 @@ def _flush(race_rows, racer_rows):
     return a, b
 
 def main():
-    print("â backfill_beforeinfo_history_pg.py VERSION 2026-07-16 january-safety-v1", flush=True)
+    print("â backfill_beforeinfo_history_pg.py VERSION 2026-07-16 january-safety-v2-norm-text-fix", flush=True)
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL ãå¿è¦ã§ãã")
     if not START_DATE or not END_DATE:
