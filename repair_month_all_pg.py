@@ -28,13 +28,7 @@ Railway Start Command:
 
 2026-07-09 修正:
 - v2_races.deadline_time / deadline_at 保存に対応。
-- race_noごとの締切時刻取得に対応。
 - オッズ取得ループ時に racelist / 出走表を二重取得しないよう修正。
-- BOATRACE公式場コードに合わせて VENUE_NAMES を修正。
-
-2026-07-15 修正:
-- racelist上部の1R～12R締切予定時刻一覧からrace_no番目を取得。
-- rno別ページでも一覧先頭が1R時刻のため、最初の時刻を返す誤りを修正。
 """
 
 from __future__ import annotations
@@ -76,12 +70,6 @@ REPAIR_RACE_NOS = [
     if x.strip()
 ]
 
-REPAIR_RACE_IDS = [
-    x.strip()
-    for x in os.getenv("REPAIR_RACE_IDS", "").split(",")
-    if x.strip()
-]
-
 DO_RACES = (os.getenv("REPAIR_DO_RACES") or os.getenv("DO_RACES") or "1") == "1"
 DO_RESULTS = (os.getenv("REPAIR_DO_RESULTS") or os.getenv("DO_RESULTS") or "1") == "1"
 DO_ODDS = (os.getenv("REPAIR_DO_ODDS") or os.getenv("DO_ODDS") or "1") == "1"
@@ -98,30 +86,10 @@ SOURCE = os.getenv("REPAIR_SOURCE") or "repair_month_all_pg"
 JST = timezone(timedelta(hours=9))
 
 VENUE_NAMES = {
-    "01": "桐生",
-    "02": "戸田",
-    "03": "江戸川",
-    "04": "平和島",
-    "05": "多摩川",
-    "06": "浜名湖",
-    "07": "蒲郡",
-    "08": "常滑",
-    "09": "津",
-    "10": "三国",
-    "11": "びわこ",
-    "12": "住之江",
-    "13": "尼崎",
-    "14": "鳴門",
-    "15": "丸亀",
-    "16": "児島",
-    "17": "宮島",
-    "18": "徳山",
-    "19": "下関",
-    "20": "若松",
-    "21": "芦屋",
-    "22": "福岡",
-    "23": "唐津",
-    "24": "大村",
+    "01": "桐生", "02": "戸田", "03": "江戸川", "04": "平和島", "05": "多摩川", "06": "常滑",
+    "07": "蒲郡", "08": "津", "09": "三国", "10": "びわこ", "11": "住之江", "12": "尼崎",
+    "13": "鳴門", "14": "丸亀", "15": "児島", "16": "宮島", "17": "徳山", "18": "下関",
+    "19": "若松", "20": "芦屋", "21": "福岡", "22": "唐津", "23": "唐津", "24": "大村",
 }
 
 CLASS_MAP = {"B2": 1, "B1": 2, "A2": 3, "A1": 4}
@@ -217,7 +185,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-15 deadline-12-list-v2", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -286,116 +254,38 @@ def _zen_to_han(s: str) -> str:
     return str(s or "").translate(trans)
 
 
-def parse_deadline_time(
-    html: str,
-    race_no: Optional[int] = None,
-) -> Optional[str]:
+def parse_deadline_time(html: str) -> Optional[str]:
     """
-    BOAT RACE公式racelistページ上部の1R～12R締切一覧から、
-    race_noに対応する時刻を返す。
-
-    公式ページ例:
-      レース 1R 2R ... 12R
-      締切予定時刻 17:41 18:08 ... 22:41
-
-    重要:
-    - 各racelistページには1R～12Rすべての時刻が載る。
-    - ページ内最初の時刻を返すと、全Rが1R時刻になる。
-    - 必ず race_no - 1 の位置を返す。
+    BOAT RACE公式の racelist ページから締切予定時刻 HH:MM を取得する。
+    取れない場合は None。
     """
-    if not html:
-        return None
+    text = _zen_to_han(_html_text(html))
 
-    try:
-        target_index = int(race_no) - 1 if race_no is not None else 0
-    except Exception:
-        target_index = 0
+    patterns = [
+        r"締切予定時刻\s*(\d{1,2}:\d{2})",
+        r"締切予定\s*(\d{1,2}:\d{2})",
+        r"締切時刻\s*(\d{1,2}:\d{2})",
+        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
+        r"発売締切\s*(\d{1,2}:\d{2})",
+        r"締切\s*(\d{1,2}:\d{2})",
+    ]
 
-    if not 0 <= target_index <= 11:
-        return None
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            hhmm = m.group(1)
+            h, mi = hhmm.split(":")
+            return f"{int(h):02d}:{int(mi):02d}"
 
-    def normalize_hhmm(value: str) -> Optional[str]:
-        try:
-            hour_s, minute_s = value.split(":")
-            hour = int(hour_s)
-            minute = int(minute_s)
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                return None
-            return f"{hour:02d}:{minute:02d}"
-        except Exception:
-            return None
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    # 1. DOM上で「締切予定時刻」を含む要素と近傍を優先する。
-    anchor_node = soup.find(
-        lambda tag: (
-            getattr(tag, "name", None)
-            and "締切予定時刻" in _zen_to_han(
-                tag.get_text(" ", strip=True)
-            )
-        )
-    )
-
-    candidate_texts: List[str] = []
-    if anchor_node is not None:
-        candidate_texts.append(
-            _zen_to_han(anchor_node.get_text(" ", strip=True))
-        )
-
-        parent = anchor_node.parent
-        for _ in range(4):
-            if parent is None:
-                break
-            candidate_texts.append(
-                _zen_to_han(parent.get_text(" ", strip=True))
-            )
-            parent = parent.parent
-
-        # 同じ親配下の後続要素も保険として見る。
-        for sibling in list(anchor_node.next_siblings)[:8]:
-            try:
-                txt = sibling.get_text(" ", strip=True)
-            except Exception:
-                txt = str(sibling or "")
-            if txt:
-                candidate_texts.append(_zen_to_han(txt))
-
-    # 2. ページ全文も最後の保険として加える。
-    full_text = _zen_to_han(soup.get_text(" ", strip=True))
-    candidate_texts.append(full_text)
-
-    for text in candidate_texts:
-        anchor_pos = text.find("締切予定時刻")
-        if anchor_pos < 0:
-            continue
-
-        # 締切見出し以降を十分長めに取り、最初の最大12時刻を使う。
-        segment = text[anchor_pos + len("締切予定時刻"): anchor_pos + 1200]
-        raw_times = re.findall(
-            r"(?<!\d)(\d{1,2}:\d{2})(?!\d)",
-            segment,
-        )
-        times = [
-            value
-            for value in (
-                normalize_hhmm(raw)
-                for raw in raw_times
-            )
-            if value is not None
-        ]
-
-        # 時刻以外が後ろに続くことがあるため、先頭12個に限定。
-        times = times[:12]
-
-        if len(times) >= 12:
-            return times[target_index]
-
-        # 対象Rまで揃っていれば、12個未満でも採用。
-        if len(times) > target_index:
-            return times[target_index]
+    # 念のため、締切という語の近くにある時刻を拾う。
+    m = re.search(r"締切.{0,20}?(\d{1,2}:\d{2})", text)
+    if m:
+        hhmm = m.group(1)
+        h, mi = hhmm.split(":")
+        return f"{int(h):02d}:{int(mi):02d}"
 
     return None
+
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
     """
@@ -582,6 +472,7 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
 
 
 def parse_result(html: str) -> Dict[str, Any]:
+    """公式結果HTMLを解析し、中止・3連単不成立・解析失敗を区別する。"""
     soup = BeautifulSoup(html, "html.parser")
     text = _html_text(html)
 
@@ -592,6 +483,49 @@ def parse_result(html: str) -> Dict[str, Any]:
         "fetched_at": _now_iso(),
     }
 
+    # 結果ページ自体が存在しない、または結果データがない場合。
+    no_result_words = [
+        "データがありません",
+        "レース結果がありません",
+        "該当するデータはありません",
+        "レース情報がありません",
+    ]
+    if any(word in text for word in no_result_words):
+        result["result_status"] = "no_result_page"
+        result["race_status"] = "no_result_page"
+        result["trifecta_payout_yen"] = 0
+        return result
+
+    # 開催・レース中止、打切り、取止めを通常の解析失敗と分離する。
+    cancelled_words = [
+        "レース中止",
+        "開催中止",
+        "中止となりました",
+        "中止になりました",
+        "以降中止",
+        "打ち切り",
+        "打切り",
+        "取り止め",
+        "取止め",
+    ]
+    if any(word in text for word in cancelled_words):
+        result["result_status"] = "cancelled"
+        result["race_status"] = "cancelled"
+        result["trifecta_payout_yen"] = 0
+        return result
+
+    # 3連単が不成立・返還の場合は、着順推測を行わない。
+    trifecta_invalid_patterns = [
+        r"3\s*連\s*単.{0,40}不成立",
+        r"3\s*連\s*単.{0,40}返還",
+        r"不成立.{0,40}3\s*連\s*単",
+    ]
+    if any(re.search(pattern, text) for pattern in trifecta_invalid_patterns):
+        result["result_status"] = "trifecta_invalid"
+        result["race_status"] = "official"
+        result["trifecta_payout_yen"] = 0
+        return result
+
     finish: Dict[int, int] = {}
     for tr in soup.find_all("tr"):
         cells = [_clean_text(td.get_text(" ", strip=True)) for td in tr.find_all(["td", "th"])]
@@ -600,13 +534,15 @@ def parse_result(html: str) -> Dict[str, Any]:
         rank = _to_int(cells[0])
         lane = _to_int(cells[1])
         if rank and lane and 1 <= rank <= 6 and 1 <= lane <= 6:
-            finish[rank] = lane
+            # 同じ艇番を複数着として採用しない。
+            if lane not in finish.values():
+                finish[rank] = lane
 
     if len(finish) < 3:
         for m in re.finditer(r"(?:^|\s)([1-6])\s+([1-6])\s+", text):
             rank = int(m.group(1))
             lane = int(m.group(2))
-            if rank not in finish and 1 <= lane <= 6:
+            if rank not in finish and lane not in finish.values():
                 finish[rank] = lane
             if len(finish) >= 6:
                 break
@@ -616,24 +552,42 @@ def parse_result(html: str) -> Dict[str, Any]:
         if rank in finish:
             result[key] = finish[rank]
 
-    m_tri = re.search(r"3\s*連\s*単\s*([1-6])\s*[-－]?\s*([1-6])\s*[-－]?\s*([1-6])\s*[¥￥]?\s*([\d,]+)\s*円?", text)
+    # 3連単表示を最優先する。艇番は3艇すべて異なる場合だけ採用する。
+    m_tri = re.search(
+        r"3\s*連\s*単\s*([1-6])\s*[-－]?\s*([1-6])\s*[-－]?\s*([1-6])"
+        r"\s*[¥￥]?\s*([\d,]+)\s*円?",
+        text,
+    )
     if m_tri:
-        result["first_lane"] = int(m_tri.group(1))
-        result["second_lane"] = int(m_tri.group(2))
-        result["third_lane"] = int(m_tri.group(3))
-        result["trifecta_payout_yen"] = int(m_tri.group(4).replace(",", ""))
+        lanes = [int(m_tri.group(i)) for i in (1, 2, 3)]
+        if len(set(lanes)) == 3:
+            result["first_lane"], result["second_lane"], result["third_lane"] = lanes
+            result["trifecta_ticket"] = f"{lanes[0]}-{lanes[1]}-{lanes[2]}"
+            result["trifecta_payout_yen"] = int(m_tri.group(4).replace(",", ""))
     else:
         m_pay = re.search(r"3\s*連\s*単.*?[¥￥]?\s*([\d,]{2,})\s*円", text)
         if m_pay:
             result["trifecta_payout_yen"] = int(m_pay.group(1).replace(",", ""))
 
-    if "first_lane" not in result or "second_lane" not in result or "third_lane" not in result:
-        result["result_status"] = "parse_incomplete"
-        result["race_status"] = "parse_incomplete"
+    top3 = [result.get("first_lane"), result.get("second_lane"), result.get("third_lane")]
+    valid_top3 = all(isinstance(x, int) and 1 <= x <= 6 for x in top3) and len(set(top3)) == 3
+    valid_payout = int(result.get("trifecta_payout_yen") or 0) > 0
+
+    if valid_top3 and valid_payout:
+        result["result_status"] = "official"
+        result["race_status"] = "official"
+        result.setdefault("trifecta_ticket", f"{top3[0]}-{top3[1]}-{top3[2]}")
+    else:
+        # HTMLは取得できたが、通常結果・中止・不成立のどれにも分類できない。
+        result["result_status"] = "parse_error"
+        result["race_status"] = "parse_error"
         result.setdefault("trifecta_payout_yen", 0)
+        # 誤った途中着順をDBへ残さない。
+        for key in keys:
+            result.pop(key, None)
+        result.pop("trifecta_ticket", None)
 
     return result
-
 
 def parse_odds3t(html: str, race_id: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
@@ -846,14 +800,8 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if _looks_no_race(html):
                 return RaceResult(race_id=rid, ok=False, no_race=True, error="no_race")
 
-            deadline_time = parse_deadline_time(html or "", race_no)
+            deadline_time = parse_deadline_time(html or "")
             deadline_at = make_deadline_at(date_str, deadline_time)
-
-            if race_no in (1, 2, 3, 10, 11, 12):
-                print(
-                    f"deadline parsed: {rid} -> {deadline_time}",
-                    flush=True,
-                )
 
             race_row = {
                 "race_id": rid,
@@ -882,15 +830,7 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if not _looks_no_race(html):
                 res_row = parse_result(html or "")
                 res_row["race_id"] = rid
-                res_row["race_date"] = date_str
-                res_row["venue_code"] = venue_id
-                res_row["race_no"] = int(race_no)
-                result_saved = upsert_rows(
-                    "v2_results",
-                    [res_row],
-                    "race_id",
-                    chunk_size=1,
-                )
+                result_saved = upsert_rows("v2_results", [res_row], "race_id", chunk_size=1)
 
         if do_odds and DO_ODDS:
             url = _official_url("odds3t", date_str, venue_id, race_no)
@@ -927,28 +867,7 @@ def main() -> None:
     venues = REPAIR_VENUES
     race_nos = REPAIR_RACE_NOS
 
-    if REPAIR_RACE_IDS:
-        tasks = []
-        invalid_race_ids = []
-        for rid in REPAIR_RACE_IDS:
-            m = re.fullmatch(r"(\d{8})_(\d{2})_(\d{2})", rid)
-            if not m:
-                invalid_race_ids.append(rid)
-                continue
-            yyyymmdd, venue_id, race_no_s = m.groups()
-            date_str = datetime.strptime(yyyymmdd, "%Y%m%d").strftime("%Y-%m-%d")
-            tasks.append((date_str, venue_id, int(race_no_s)))
-
-        if invalid_race_ids:
-            raise ValueError(
-                "REPAIR_RACE_IDS に不正なrace_idがあります: "
-                + ",".join(invalid_race_ids[:20])
-            )
-
-        # 重複除去し、日付・場・R順に固定
-        tasks = sorted(set(tasks), key=lambda x: (x[0], x[1], x[2]))
-    else:
-        tasks = [(d, v, r) for d in dates for v in venues for r in race_nos]
+    tasks = [(d, v, r) for d in dates for v in venues for r in race_nos]
 
     print("=== 全場・全R 月次補修開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
@@ -956,21 +875,6 @@ def main() -> None:
     print(f"race_nos: {','.join(map(str, race_nos))}", flush=True)
     print(f"DO_RACES={DO_RACES} DO_RESULTS={DO_RESULTS} DO_ODDS={DO_ODDS}", flush=True)
     print(f"WORKERS={WORKERS} ODDS_WORKERS={ODDS_WORKERS} SLEEP_SEC={SLEEP_SEC}", flush=True)
-    if REPAIR_RACE_IDS:
-        print(
-            f"exact_race_id_targets: {len(tasks)} "
-            f"(REPAIR_RACE_IDS enabled)",
-            flush=True,
-        )
-        if tasks:
-            print(
-                "target sample: "
-                + ", ".join(
-                    _race_id(d, v, r)
-                    for d, v, r in tasks[:12]
-                ),
-                flush=True,
-            )
     print(f"task_count: {len(tasks)}", flush=True)
 
     total_race_saved = 0
