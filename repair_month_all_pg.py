@@ -476,14 +476,22 @@ def parse_result(html: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     text = _html_text(html)
 
-    result: Dict[str, Any] = {
-        "result_status": "official",
-        "race_status": "official",
-        "source": SOURCE,
-        "fetched_at": _now_iso(),
-    }
+    keys = ["first_lane", "second_lane", "third_lane", "fourth_lane", "fifth_lane", "sixth_lane"]
 
-    # 結果ページ自体が存在しない、または結果データがない場合。
+    def empty_result(result_status: str, race_status: str) -> Dict[str, Any]:
+        # UPSERT時に過去の誤解析値を確実にNULLへ戻すため、列を省略しない。
+        row: Dict[str, Any] = {
+            "result_status": result_status,
+            "race_status": race_status,
+            "trifecta_ticket": None,
+            "trifecta_payout_yen": 0,
+            "source": SOURCE,
+            "fetched_at": _now_iso(),
+        }
+        for key in keys:
+            row[key] = None
+        return row
+
     no_result_words = [
         "データがありません",
         "レース結果がありません",
@@ -491,12 +499,8 @@ def parse_result(html: str) -> Dict[str, Any]:
         "レース情報がありません",
     ]
     if any(word in text for word in no_result_words):
-        result["result_status"] = "no_result_page"
-        result["race_status"] = "no_result_page"
-        result["trifecta_payout_yen"] = 0
-        return result
+        return empty_result("no_result_page", "no_result_page")
 
-    # 開催・レース中止、打切り、取止めを通常の解析失敗と分離する。
     cancelled_words = [
         "レース中止",
         "開催中止",
@@ -509,23 +513,41 @@ def parse_result(html: str) -> Dict[str, Any]:
         "取止め",
     ]
     if any(word in text for word in cancelled_words):
-        result["result_status"] = "cancelled"
-        result["race_status"] = "cancelled"
-        result["trifecta_payout_yen"] = 0
-        return result
+        return empty_result("cancelled", "cancelled")
 
-    # 3連単が不成立・返還の場合は、着順推測を行わない。
-    trifecta_invalid_patterns = [
-        r"3\s*連\s*単.{0,40}不成立",
-        r"3\s*連\s*単.{0,40}返還",
-        r"不成立.{0,40}3\s*連\s*単",
-    ]
-    if any(re.search(pattern, text) for pattern in trifecta_invalid_patterns):
-        result["result_status"] = "trifecta_invalid"
-        result["race_status"] = "official"
-        result["trifecta_payout_yen"] = 0
-        return result
+    result: Dict[str, Any] = {
+        "result_status": "official",
+        "race_status": "official",
+        "source": SOURCE,
+        "fetched_at": _now_iso(),
+    }
 
+    # 先に3連単の正常払戻を解析する。
+    # 正常レースでもページ下部に「返還」欄があるため、返還文字だけを先に見ると誤分類する。
+    m_tri = re.search(
+        r"3\s*連\s*単\s*([1-6])\s*[-－ー]?\s*([1-6])\s*[-－ー]?\s*([1-6])"
+        r"\s*[¥￥]?\s*([\d,]+)\s*円?",
+        text,
+    )
+    if m_tri:
+        lanes = [int(m_tri.group(i)) for i in (1, 2, 3)]
+        payout = int(m_tri.group(4).replace(",", ""))
+        if len(set(lanes)) == 3 and payout > 0:
+            result["first_lane"], result["second_lane"], result["third_lane"] = lanes
+            result["trifecta_ticket"] = f"{lanes[0]}-{lanes[1]}-{lanes[2]}"
+            result["trifecta_payout_yen"] = payout
+
+    # 正常な3連単払戻を取得できなかった場合だけ、不成立・全返還を判定する。
+    if int(result.get("trifecta_payout_yen") or 0) <= 0:
+        trifecta_invalid_patterns = [
+            r"3\s*連\s*単.{0,30}不成立",
+            r"3\s*連\s*単.{0,30}(?:全額)?返還",
+            r"不成立.{0,30}3\s*連\s*単",
+        ]
+        if any(re.search(pattern, text) for pattern in trifecta_invalid_patterns):
+            return empty_result("trifecta_invalid", "official")
+
+    # 着順表を解析する。3連単から上位3艇を取得済みでも4～6着を補完する。
     finish: Dict[int, int] = {}
     for tr in soup.find_all("tr"):
         cells = [_clean_text(td.get_text(" ", strip=True)) for td in tr.find_all(["td", "th"])]
@@ -533,41 +555,13 @@ def parse_result(html: str) -> Dict[str, Any]:
             continue
         rank = _to_int(cells[0])
         lane = _to_int(cells[1])
-        if rank and lane and 1 <= rank <= 6 and 1 <= lane <= 6:
-            # 同じ艇番を複数着として採用しない。
-            if lane not in finish.values():
-                finish[rank] = lane
+        if rank and lane and 1 <= rank <= 6 and 1 <= lane <= 6 and lane not in finish.values():
+            finish[rank] = lane
 
-    if len(finish) < 3:
-        for m in re.finditer(r"(?:^|\s)([1-6])\s+([1-6])\s+", text):
-            rank = int(m.group(1))
-            lane = int(m.group(2))
-            if rank not in finish and lane not in finish.values():
-                finish[rank] = lane
-            if len(finish) >= 6:
-                break
-
-    keys = ["first_lane", "second_lane", "third_lane", "fourth_lane", "fifth_lane", "sixth_lane"]
     for rank, key in enumerate(keys, start=1):
         if rank in finish:
-            result[key] = finish[rank]
-
-    # 3連単表示を最優先する。艇番は3艇すべて異なる場合だけ採用する。
-    m_tri = re.search(
-        r"3\s*連\s*単\s*([1-6])\s*[-－]?\s*([1-6])\s*[-－]?\s*([1-6])"
-        r"\s*[¥￥]?\s*([\d,]+)\s*円?",
-        text,
-    )
-    if m_tri:
-        lanes = [int(m_tri.group(i)) for i in (1, 2, 3)]
-        if len(set(lanes)) == 3:
-            result["first_lane"], result["second_lane"], result["third_lane"] = lanes
-            result["trifecta_ticket"] = f"{lanes[0]}-{lanes[1]}-{lanes[2]}"
-            result["trifecta_payout_yen"] = int(m_tri.group(4).replace(",", ""))
-    else:
-        m_pay = re.search(r"3\s*連\s*単.*?[¥￥]?\s*([\d,]{2,})\s*円", text)
-        if m_pay:
-            result["trifecta_payout_yen"] = int(m_pay.group(1).replace(",", ""))
+            # 3連単の上位3艇を優先する。
+            result.setdefault(key, finish[rank])
 
     top3 = [result.get("first_lane"), result.get("second_lane"), result.get("third_lane")]
     valid_top3 = all(isinstance(x, int) and 1 <= x <= 6 for x in top3) and len(set(top3)) == 3
@@ -577,17 +571,9 @@ def parse_result(html: str) -> Dict[str, Any]:
         result["result_status"] = "official"
         result["race_status"] = "official"
         result.setdefault("trifecta_ticket", f"{top3[0]}-{top3[1]}-{top3[2]}")
-    else:
-        # HTMLは取得できたが、通常結果・中止・不成立のどれにも分類できない。
-        result["result_status"] = "parse_error"
-        result["race_status"] = "parse_error"
-        result.setdefault("trifecta_payout_yen", 0)
-        # 誤った途中着順をDBへ残さない。
-        for key in keys:
-            result.pop(key, None)
-        result.pop("trifecta_ticket", None)
+        return result
 
-    return result
+    return empty_result("parse_error", "parse_error")
 
 def parse_odds3t(html: str, race_id: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
