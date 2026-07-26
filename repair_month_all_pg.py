@@ -185,7 +185,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # ============================================================
 
 def _require_settings() -> None:
-    print("✅ repair_month_all_pg.py VERSION 2026-07-09 deadline-window-ready", flush=True)
+    print("✅ repair_month_all_pg.py VERSION 2026-07-26 result-status-v3-race-date-fixed", flush=True)
     print("✅ SETTINGS CHECK", flush=True)
     print(f"DATABASE_URL: {'OK' if bool(os.getenv('DATABASE_URL')) else 'MISSING'}", flush=True)
     if not os.getenv("DATABASE_URL"):
@@ -816,6 +816,10 @@ def process_race(date_str: str, venue_id: str, race_no: int, do_odds: bool = Fal
             if not _looks_no_race(html):
                 res_row = parse_result(html or "")
                 res_row["race_id"] = rid
+                # v2_results.race_date を必ず保存する。
+                # DO_RACES=0 / DO_RESULTS=1 の結果のみ補修では v2_races を更新しないため、
+                # ここで入れないと新規月の v2_results.race_date が NULL になる。
+                res_row["race_date"] = date_str
                 result_saved = upsert_rows("v2_results", [res_row], "race_id", chunk_size=1)
 
         if do_odds and DO_ODDS:
