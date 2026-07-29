@@ -1,92 +1,47 @@
 # -*- coding: utf-8 -*-
-"""
-run_odds_window_pg.py
-
-Railway Postgres版：締切時刻ウィンドウ内のレースだけ、3連単オッズを再取得します。
-
-想定用途:
-- 早朝枠: WINDOW_NAME=morning または WINDOW_START=08:30 WINDOW_END=10:15
-- 昼間枠: WINDOW_NAME=day     または WINDOW_START=09:45 WINDOW_END=15:00
-- 後半枠: WINDOW_NAME=night   または WINDOW_START=14:45 WINDOW_ENDなし
-
-Start Command:
-    python -u run_odds_window_pg.py
-
-主な環境変数:
-    TARGET_DATE=2026-07-09          # 未指定ならJST当日
-    WINDOW_NAME=morning|day|night   # 任意。WINDOW_START/ENDが優先
-    WINDOW_START=08:30
-    WINDOW_END=10:15                # 後半枠は空でもOK
-    WINDOW_WORKERS=2
-    WINDOW_SKIP_FULL_ODDS=0         # 1なら既に120通り揃っているレースはスキップ
-"""
-
 from __future__ import annotations
 
 import os
-import runpy
+import time
 import importlib
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
-
-
-# ============================================================
-# Window settings
-# ============================================================
-
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
     "day": ("09:45", "15:00"),
     "night": ("14:45", None),
 }
 
-
 def _today_jst() -> str:
     return datetime.now(JST).strftime("%Y-%m-%d")
 
-
 def _resolve_window() -> Tuple[str, Optional[str], str]:
     name = (os.getenv("WINDOW_NAME") or "").strip().lower()
-
     start = (os.getenv("WINDOW_START") or "").strip()
     end = (os.getenv("WINDOW_END") or "").strip()
-
     if not start:
         if name in WINDOW_PRESETS:
             start, default_end = WINDOW_PRESETS[name]
             if not end:
                 end = default_end or ""
         else:
-            # 安全側デフォルト: 早朝枠
             name = "morning"
             start, default_end = WINDOW_PRESETS[name]
             end = default_end or ""
-
     if not name:
         name = f"{start}-{end or 'end'}"
-
     return start, (end or None), name
 
-
 def _normalize_date(v: Any) -> str:
-    if v is None:
-        return ""
-    return str(v)[:10]
-
-
-# ============================================================
-# DB helpers
-# ============================================================
+    return "" if v is None else str(v)[:10]
 
 def _connect():
     url = os.getenv("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL が未設定です")
-
+        raise RuntimeError("DATABASE_URL ãæªè¨­å®ã§ã")
     try:
         import psycopg  # type: ignore
         return psycopg.connect(url)
@@ -94,203 +49,213 @@ def _connect():
         import psycopg2  # type: ignore
         return psycopg2.connect(url)
 
-
 def _fetch_dicts(sql: str, params: Tuple[Any, ...]) -> List[Dict[str, Any]]:
     conn = _connect()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
-            cols = []
-            for d in cur.description:
-                cols.append(getattr(d, "name", None) or d[0])
+            cols = [getattr(d, "name", None) or d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in rows]
     finally:
         conn.close()
 
-
 def select_window_races(target_date: str, start: str, end: Optional[str]) -> List[Dict[str, Any]]:
-    """
-    v2_races.deadline_time を使い、指定ウィンドウのレースだけ取得する。
-    deadline_time は HH:MM 形式のため、文字列比較で時刻順に比較できる。
-    """
     if end:
         if start <= end:
-            sql = """
-                select
-                    race_id,
-                    race_date::text as race_date,
-                    venue_code,
-                    venue_name,
-                    race_no,
-                    deadline_time,
-                    deadline_at
-                from v2_races
-                where race_date = %s
-                  and deadline_time is not null
-                  and deadline_time >= %s
-                  and deadline_time < %s
-                order by deadline_time, venue_code, race_no
-            """
+            sql = '''
+                SELECT race_id, race_date::text AS race_date, venue_code,
+                       venue_name, race_no, deadline_time, deadline_at
+                FROM v2_races
+                WHERE race_date = %s
+                  AND deadline_time IS NOT NULL
+                  AND deadline_time >= %s
+                  AND deadline_time < %s
+                ORDER BY deadline_time, venue_code, race_no
+            '''
             params = (target_date, start, end)
         else:
-            # 日跨ぎウィンドウ用。今回の運用では通常使わない。
-            sql = """
-                select
-                    race_id,
-                    race_date::text as race_date,
-                    venue_code,
-                    venue_name,
-                    race_no,
-                    deadline_time,
-                    deadline_at
-                from v2_races
-                where race_date = %s
-                  and deadline_time is not null
-                  and (deadline_time >= %s or deadline_time < %s)
-                order by deadline_time, venue_code, race_no
-            """
+            sql = '''
+                SELECT race_id, race_date::text AS race_date, venue_code,
+                       venue_name, race_no, deadline_time, deadline_at
+                FROM v2_races
+                WHERE race_date = %s
+                  AND deadline_time IS NOT NULL
+                  AND (deadline_time >= %s OR deadline_time < %s)
+                ORDER BY deadline_time, venue_code, race_no
+            '''
             params = (target_date, start, end)
     else:
-        sql = """
-            select
-                race_id,
-                race_date::text as race_date,
-                venue_code,
-                venue_name,
-                race_no,
-                deadline_time,
-                deadline_at
-            from v2_races
-            where race_date = %s
-              and deadline_time is not null
-              and deadline_time >= %s
-            order by deadline_time, venue_code, race_no
-        """
+        sql = '''
+            SELECT race_id, race_date::text AS race_date, venue_code,
+                   venue_name, race_no, deadline_time, deadline_at
+            FROM v2_races
+            WHERE race_date = %s
+              AND deadline_time IS NOT NULL
+              AND deadline_time >= %s
+            ORDER BY deadline_time, venue_code, race_no
+        '''
         params = (target_date, start)
-
     return _fetch_dicts(sql, params)
 
-
-def select_odds_counts(race_ids: List[str]) -> Dict[str, int]:
+def select_valid_odds_counts(race_ids: List[str]) -> Dict[str, int]:
     if not race_ids:
         return {}
-
-    sql = """
-        select race_id, count(*)::int as odds_rows
-        from v2_odds_trifecta
-        where race_id = any(%s)
-        group by race_id
-    """
-
-    # psycopg2/psycopgともPostgres配列としてlistを渡せる想定。
+    valid_condition = '''
+        ticket ~ '^[1-6]-[1-6]-[1-6]$'
+        AND split_part(ticket, '-', 1) <> split_part(ticket, '-', 2)
+        AND split_part(ticket, '-', 1) <> split_part(ticket, '-', 3)
+        AND split_part(ticket, '-', 2) <> split_part(ticket, '-', 3)
+    '''
+    sql = f'''
+        SELECT race_id, COUNT(DISTINCT ticket)::int AS valid_odds_rows
+        FROM v2_odds_trifecta
+        WHERE race_id = ANY(%s)
+          AND {valid_condition}
+        GROUP BY race_id
+    '''
     try:
         rows = _fetch_dicts(sql, (race_ids,))
-        return {str(r["race_id"]): int(r["odds_rows"]) for r in rows}
     except Exception:
-        # ドライバ差異の保険。IN句に展開する。
         placeholders = ",".join(["%s"] * len(race_ids))
-        sql2 = f"""
-            select race_id, count(*)::int as odds_rows
-            from v2_odds_trifecta
-            where race_id in ({placeholders})
-            group by race_id
-        """
-        rows = _fetch_dicts(sql2, tuple(race_ids))
-        return {str(r["race_id"]): int(r["odds_rows"]) for r in rows}
+        sql = f'''
+            SELECT race_id, COUNT(DISTINCT ticket)::int AS valid_odds_rows
+            FROM v2_odds_trifecta
+            WHERE race_id IN ({placeholders})
+              AND {valid_condition}
+            GROUP BY race_id
+        '''
+        rows = _fetch_dicts(sql, tuple(race_ids))
+    return {str(r["race_id"]): int(r["valid_odds_rows"]) for r in rows}
 
-
-# ============================================================
-# Main
-# ============================================================
+def _run_fetch_batch(repair, races: List[Dict[str, Any]], workers: int, label: str):
+    total_saved = 0
+    success = 0
+    failed = []
+    if not races:
+        return success, failed, total_saved
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+        futures = {}
+        for r in races:
+            fut = ex.submit(
+                repair.process_race,
+                _normalize_date(r["race_date"]),
+                str(r["venue_code"]).zfill(2),
+                int(r["race_no"]),
+                True,
+            )
+            futures[fut] = r
+        for idx, fut in enumerate(as_completed(futures), start=1):
+            r = futures[fut]
+            try:
+                rr = fut.result()
+            except Exception as exc:
+                failed.append((str(r["race_id"]), repr(exc)))
+                continue
+            if rr.ok:
+                success += 1
+                total_saved += int(rr.odds_saved or 0)
+            else:
+                failed.append((str(rr.race_id), str(rr.error)))
+            if idx % 20 == 0 or idx == len(futures):
+                print(
+                    f"progress {label}: {idx}/{len(futures)} "
+                    f"success={success} failed={len(failed)} saved_rows={total_saved}",
+                    flush=True,
+                )
+    return success, failed, total_saved
 
 def main() -> None:
-    print("✅ run_odds_window_pg.py", flush=True)
-
+    print("â run_odds_window_pg.py VERSION 2026-07-29-quality-guard", flush=True)
     target_date = os.getenv("TARGET_DATE") or _today_jst()
     window_start, window_end, window_name = _resolve_window()
+    workers = int(os.getenv("WINDOW_WORKERS") or os.getenv("ODDS_WORKERS") or "2")
+    max_retries = max(0, int(os.getenv("WINDOW_ODDS_RETRIES", "2")))
+    retry_wait = max(0.0, float(os.getenv("WINDOW_ODDS_RETRY_WAIT_SEC", "30")))
 
     print(f"TARGET_DATE={target_date}", flush=True)
     print(f"WINDOW_NAME={window_name}", flush=True)
     print(f"WINDOW_START={window_start}", flush=True)
     print(f"WINDOW_END={window_end or ''}", flush=True)
+    print(f"WINDOW_WORKERS={workers}", flush=True)
+    print(f"WINDOW_ODDS_RETRIES={max_retries}", flush=True)
+    print(f"WINDOW_ODDS_RETRY_WAIT_SEC={retry_wait}", flush=True)
     print(f"DATABASE_URL={'OK' if os.getenv('DATABASE_URL') else 'MISSING'}", flush=True)
 
-    races = select_window_races(target_date, window_start, window_end)
-    print(f"target_races={len(races)}", flush=True)
-
-    if races:
-        print("target sample:", flush=True)
-        for r in races[:20]:
-            print(
-                f"  {r['race_id']} {r.get('venue_name') or ''} {r.get('race_no')}R deadline={r.get('deadline_time')}",
-                flush=True,
-            )
-
-    if not races:
-        print("対象レースなし。終了します。", flush=True)
+    all_races = select_window_races(target_date, window_start, window_end)
+    print(f"target_races={len(all_races)}", flush=True)
+    if not all_races:
+        print("å¯¾è±¡ã¬ã¼ã¹ãªããçµäºãã¾ãã", flush=True)
         return
 
-    skip_full = (os.getenv("WINDOW_SKIP_FULL_ODDS") or "0") == "1"
-    race_ids = [str(r["race_id"]) for r in races]
-
-    if skip_full:
-        odds_counts = select_odds_counts(race_ids)
+    races = all_races
+    if (os.getenv("WINDOW_SKIP_FULL_ODDS") or "0") == "1":
+        counts = select_valid_odds_counts([str(r["race_id"]) for r in races])
         before = len(races)
-        races = [r for r in races if int(odds_counts.get(str(r["race_id"]), 0)) < 120]
+        races = [r for r in races if counts.get(str(r["race_id"]), 0) < 120]
         print(f"skip_full_odds=1 before={before} after={len(races)}", flush=True)
         if not races:
-            print("全対象レースのオッズが120通り揃っています。終了します。", flush=True)
+            print("å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¹ãª3é£å120éããæã£ã¦ãã¾ãã", flush=True)
             return
 
-    # repair_month_all_pg.py を odds-only で使う。
-    # import時に環境変数を読むため、必ずimport前にセットする。
     os.environ["REPAIR_DO_RACES"] = "0"
     os.environ["REPAIR_DO_RESULTS"] = "0"
     os.environ["REPAIR_DO_ODDS"] = "1"
     os.environ.setdefault("REPAIR_SLEEP_SEC", os.getenv("SLEEP_SEC", "0.1"))
-    os.environ.setdefault("REPAIR_ODDS_WORKERS", os.getenv("WINDOW_WORKERS", "2"))
-
+    os.environ.setdefault("REPAIR_ODDS_WORKERS", str(workers))
     repair = importlib.import_module("repair_month_all_pg")
 
-    workers = int(os.getenv("WINDOW_WORKERS") or os.getenv("ODDS_WORKERS") or "2")
-    total_odds_saved = 0
-    success = 0
-    failed = []
+    total_success = 0
+    total_saved = 0
+    all_failed = []
 
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-        futures = {}
-        for r in races:
-            date_str = _normalize_date(r["race_date"])
-            venue_code = str(r["venue_code"]).zfill(2)
-            race_no = int(r["race_no"])
-            futures[ex.submit(repair.process_race, date_str, venue_code, race_no, True)] = r
+    success, failed, saved = _run_fetch_batch(repair, races, workers, "initial")
+    total_success += success
+    total_saved += saved
+    all_failed.extend(failed)
 
-        for idx, fut in enumerate(as_completed(futures), start=1):
-            rr = fut.result()
-            if rr.ok:
-                success += 1
-                total_odds_saved += int(rr.odds_saved or 0)
-            else:
-                failed.append(rr)
+    pending = races
+    for retry_no in range(1, max_retries + 1):
+        counts = select_valid_odds_counts([str(r["race_id"]) for r in pending])
+        pending = [r for r in pending if counts.get(str(r["race_id"]), 0) < 120]
+        if not pending:
+            print(f"retry_check={retry_no}: å¨ã¬ã¼ã¹120éãå®äº", flush=True)
+            break
+        print(f"retry_check={retry_no}: incomplete_races={len(pending)}", flush=True)
+        for r in pending[:30]:
+            rid = str(r["race_id"])
+            print(f"  {rid} valid_tickets={counts.get(rid, 0)}", flush=True)
+        if retry_wait > 0:
+            print(f"retry_wait={retry_wait} sec", flush=True)
+            time.sleep(retry_wait)
+        success, failed, saved = _run_fetch_batch(repair, pending, workers, f"retry-{retry_no}")
+        total_success += success
+        total_saved += saved
+        all_failed.extend(failed)
 
-            if idx % 20 == 0 or idx == len(futures):
-                print(
-                    f"progress odds-window: {idx}/{len(futures)} success={success} failed={len(failed)} odds_rows={total_odds_saved}",
-                    flush=True,
-                )
+    final_counts = select_valid_odds_counts([str(r["race_id"]) for r in all_races])
+    incomplete = [
+        (str(r["race_id"]), final_counts.get(str(r["race_id"]), 0))
+        for r in all_races
+        if final_counts.get(str(r["race_id"]), 0) < 120
+    ]
 
     print("=== odds window finished ===", flush=True)
-    print(f"target_races={len(races)}", flush=True)
-    print(f"success={success}", flush=True)
-    print(f"failed={len(failed)}", flush=True)
-    print(f"saved_odds_rows={total_odds_saved}", flush=True)
+    print(f"target_races={len(all_races)}", flush=True)
+    print(f"fetch_success_total={total_success}", flush=True)
+    print(f"fetch_failed_total={len(all_failed)}", flush=True)
+    print(f"saved_odds_rows_total={total_saved}", flush=True)
+    print(f"complete_120={len(all_races) - len(incomplete)}", flush=True)
+    print(f"incomplete={len(incomplete)}", flush=True)
 
-    if failed:
+    if incomplete:
+        print("incomplete sample:", flush=True)
+        for race_id, count in incomplete[:50]:
+            print(f"  {race_id} valid_tickets={count}", flush=True)
+    if all_failed:
         print("failed sample:", flush=True)
-        for rr in failed[:50]:
-            print(f"  {rr.race_id} {rr.error}", flush=True)
-
+        for race_id, error in all_failed[:50]:
+            print(f"  {race_id} {error}", flush=True)
 
 if __name__ == "__main__":
     main()
