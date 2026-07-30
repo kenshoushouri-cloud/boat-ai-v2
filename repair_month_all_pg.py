@@ -221,7 +221,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 def _require_settings() -> None:
     print(
         "✅ repair_month_all_pg.py VERSION 2026-07-30 "
-        "deadline-table-v2",
+        "deadline-text-v3",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -331,56 +331,81 @@ def _normalize_hhmm(value: str) -> Optional[str]:
 
 def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
     """
-    公式ページ上部の「締切予定時刻」行から、
-    race_noに対応する時刻を直接取得する。
+    公式ページ本文に並ぶ1R～12Rの締切予定時刻から、
+    race_no番目の時刻を取得する。
     """
-    if not 1 <= int(race_no) <= 12:
+    try:
+        race_no = int(race_no)
+    except (TypeError, ValueError):
         return None
 
-    soup = BeautifulSoup(html, "html.parser")
+    if not 1 <= race_no <= 12:
+        return None
 
-    # 「締切予定時刻」を含む表の行から、race_no番目の時刻を取得
-    for tr in soup.find_all("tr"):
-        cells = [
-            _clean_text(_zen_to_han(cell.get_text(" ", strip=True)))
-            for cell in tr.find_all(["th", "td"])
-        ]
+    soup = BeautifulSoup(html or "", "html.parser")
 
-        if not cells:
-            continue
-
-        if not any("締切予定時刻" in cell for cell in cells):
-            continue
-
-        times: List[str] = []
-
-        for cell in cells:
-            times.extend(
-                re.findall(r"\b\d{1,2}:\d{2}\b", cell)
-            )
-
-        if len(times) >= int(race_no):
-            return _normalize_hhmm(times[int(race_no) - 1])
-
-    # HTML構造が崩れている場合のフォールバック
-    full_text = _clean_text(
-        _zen_to_han(soup.get_text(" ", strip=True))
+    # 改行を維持した本文
+    text = _zen_to_han(
+        soup.get_text("\n", strip=True)
     )
 
-    marker_pos = full_text.find("締切予定時刻")
+    # 「締切予定時刻」より後ろだけを対象にする
+    marker = "締切予定時刻"
+    marker_pos = text.find(marker)
 
     if marker_pos >= 0:
-        after_marker = full_text[marker_pos : marker_pos + 400]
+        deadline_area = text[
+            marker_pos + len(marker):
+            marker_pos + len(marker) + 500
+        ]
 
         times = re.findall(
-            r"\b\d{1,2}:\d{2}\b",
-            after_marker,
+            r"(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)",
+            deadline_area,
         )
 
-        if len(times) >= int(race_no):
-            return _normalize_hhmm(
-                times[int(race_no) - 1]
-            )
+        normalized_times: List[str] = []
+
+        for value in times:
+            normalized = _normalize_hhmm(value)
+
+            if (
+                normalized
+                and normalized not in normalized_times
+            ):
+                normalized_times.append(normalized)
+
+        if len(normalized_times) >= race_no:
+            return normalized_times[race_no - 1]
+
+    # HTMLそのものからの最終フォールバック
+    raw_html = _zen_to_han(html or "")
+    marker_pos = raw_html.find(marker)
+
+    if marker_pos >= 0:
+        deadline_area = raw_html[
+            marker_pos:
+            marker_pos + 3000
+        ]
+
+        times = re.findall(
+            r"(?<!\d)([0-2]?\d:[0-5]\d)(?!\d)",
+            deadline_area,
+        )
+
+        normalized_times: List[str] = []
+
+        for value in times:
+            normalized = _normalize_hhmm(value)
+
+            if (
+                normalized
+                and normalized not in normalized_times
+            ):
+                normalized_times.append(normalized)
+
+        if len(normalized_times) >= race_no:
+            return normalized_times[race_no - 1]
 
     return None
 
