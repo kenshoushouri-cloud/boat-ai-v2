@@ -221,7 +221,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 def _require_settings() -> None:
     print(
         "✅ repair_month_all_pg.py VERSION 2026-07-30 "
-        "venue-deadline-odds-final-v1",
+        "deadline-table-v2",,
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -331,77 +331,58 @@ def _normalize_hhmm(value: str) -> Optional[str]:
 
 def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
     """
-    対象race_noの締切予定時刻を優先して取得する。
-
-    公式ページのHTML構造変更に備え、
-    1. 対象Rを含む行・ブロック
-    2. 対象R近傍の本文
-    3. 締切語の近傍
-    の順でフォールバックする。
+    公式ページ上部の「締切予定時刻」行から、
+    race_noに対応する時刻を直接取得する。
     """
+    if not 1 <= int(race_no) <= 12:
+        return None
+
     soup = BeautifulSoup(html, "html.parser")
-    target_patterns = [
-        rf"(?:第\s*)?{int(race_no)}\s*R\b",
-        rf"\bR\s*{int(race_no)}\b",
-    ]
 
-    deadline_patterns = [
-        r"締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"締切予定\s*(\d{1,2}:\d{2})",
-        r"締切時刻\s*(\d{1,2}:\d{2})",
-        r"投票締切予定時刻\s*(\d{1,2}:\d{2})",
-        r"発売締切\s*(\d{1,2}:\d{2})",
-        r"締切\s*(\d{1,2}:\d{2})",
-    ]
+    # 「締切予定時刻」を含む表の行から、race_no番目の時刻を取得
+    for tr in soup.find_all("tr"):
+        cells = [
+            _clean_text(_zen_to_han(cell.get_text(" ", strip=True)))
+            for cell in tr.find_all(["th", "td"])
+        ]
 
-    # 表の1行や明確なブロック内で、対象Rと時刻が同居している箇所を優先。
-    for node in soup.find_all(["tr", "li", "section", "div"]):
-        text = _clean_text(_zen_to_han(node.get_text(" ", strip=True)))
-        if not text:
-            continue
-        if not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in target_patterns):
+        if not cells:
             continue
 
-        for pattern in deadline_patterns:
-            match = re.search(pattern, text)
-            if match:
-                normalized = _normalize_hhmm(match.group(1))
-                if normalized:
-                    return normalized
-
-        # 対象Rを含む行では、締切語がなくても妥当な時刻を最後の候補として使う。
-        times = re.findall(r"\b(\d{1,2}:\d{2})\b", text)
-        for value in reversed(times):
-            normalized = _normalize_hhmm(value)
-            if normalized:
-                return normalized
-
-    full_text = _clean_text(_zen_to_han(soup.get_text(" ", strip=True)))
-
-    # 対象Rの直後300文字以内を探索。
-    for target_pattern in target_patterns:
-        target_match = re.search(target_pattern, full_text, flags=re.IGNORECASE)
-        if not target_match:
+        if not any("締切予定時刻" in cell for cell in cells):
             continue
 
-        nearby = full_text[target_match.start() : target_match.start() + 300]
-        for pattern in deadline_patterns:
-            match = re.search(pattern, nearby)
-            if match:
-                normalized = _normalize_hhmm(match.group(1))
-                if normalized:
-                    return normalized
+        times: List[str] = []
 
-    # URLでrno指定された単一レースページ向けの最終フォールバック。
-    for pattern in deadline_patterns:
-        match = re.search(pattern, full_text)
-        if match:
-            normalized = _normalize_hhmm(match.group(1))
-            if normalized:
-                return normalized
+        for cell in cells:
+            times.extend(
+                re.findall(r"\b\d{1,2}:\d{2}\b", cell)
+            )
 
-    match = re.search(r"締切.{0,30}?(\d{1,2}:\d{2})", full_text)
-    return _normalize_hhmm(match.group(1)) if match else None
+        if len(times) >= int(race_no):
+            return _normalize_hhmm(times[int(race_no) - 1])
+
+    # HTML構造が崩れている場合のフォールバック
+    full_text = _clean_text(
+        _zen_to_han(soup.get_text(" ", strip=True))
+    )
+
+    marker_pos = full_text.find("締切予定時刻")
+
+    if marker_pos >= 0:
+        after_marker = full_text[marker_pos : marker_pos + 400]
+
+        times = re.findall(
+            r"\b\d{1,2}:\d{2}\b",
+            after_marker,
+        )
+
+        if len(times) >= int(race_no):
+            return _normalize_hhmm(
+                times[int(race_no) - 1]
+            )
+
+    return None
 
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
