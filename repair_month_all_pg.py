@@ -42,7 +42,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import requests
 from bs4 import BeautifulSoup
 
-from db_pg import upsert_rows as pg_upsert_rows
+from db_pg import (
+    replace_rows_atomic,
+    upsert_rows as pg_upsert_rows,
+)
 
 
 # ============================================================
@@ -215,13 +218,48 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 
 # ============================================================
+# Final odds validation
+# ============================================================
+
+EXPECTED_FINAL_ODDS_TICKETS = {
+    f"{a}-{b}-{c}"
+    for a, b, c in itertools.permutations([1, 2, 3, 4, 5, 6], 3)
+}
+
+
+def validate_final_odds_snapshot(odds: List[Dict[str, Any]]) -> tuple[bool, str]:
+    actual_tickets = [str(row.get("ticket", "")) for row in odds]
+    unique_tickets = set(actual_tickets)
+    missing_tickets = EXPECTED_FINAL_ODDS_TICKETS - unique_tickets
+    unexpected_tickets = unique_tickets - EXPECTED_FINAL_ODDS_TICKETS
+    duplicate_count = len(actual_tickets) - len(unique_tickets)
+
+    valid = (
+        len(odds) == 120
+        and len(unique_tickets) == 120
+        and duplicate_count == 0
+        and not missing_tickets
+        and not unexpected_tickets
+    )
+
+    detail = (
+        f"parsed_rows={len(odds)} "
+        f"unique_tickets={len(unique_tickets)} "
+        f"duplicates={duplicate_count} "
+        f"missing={len(missing_tickets)} "
+        f"unexpected={len(unexpected_tickets)}"
+    )
+    return valid, detail
+
+
+# ============================================================
 # Railway PostgreSQL
 # ============================================================
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-07-30 "
-        "venue-deadline-odds-final-v1",
+        "✅ repair_month_all_pg.py VERSION 2026-07-31 "
+        "venue-deadline-odds-final-atomic-v3",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -1001,12 +1039,38 @@ def process_race(
             if not _looks_no_race(html):
                 odds = parse_odds3t(html or "", race_id)
                 if odds:
-                    odds_saved = upsert_rows(
-                        "v2_odds_trifecta",
-                        odds,
-                        "race_id,ticket",
-                        chunk_size=300,
-                    )
+                    if ODDS_IS_FINAL:
+                        is_valid, validation_detail = validate_final_odds_snapshot(odds)
+                        if not is_valid:
+                            print(
+                                f"⚠️ FINAL_ODDS_REJECTED race_id={race_id} "
+                                f"{validation_detail}",
+                                flush=True,
+                            )
+                            return RaceResult(
+                                race_id=race_id,
+                                ok=False,
+                                error=f"final_odds_incomplete:{validation_detail}",
+                            )
+
+                        print(
+                            f"✅ FINAL_ODDS_ATOMIC_REPLACE race_id={race_id} "
+                            f"rows={len(odds)}",
+                            flush=True,
+                        )
+                        odds_saved = replace_rows_atomic(
+                            table="v2_odds_trifecta",
+                            rows=odds,
+                            delete_where={"race_id": race_id},
+                            expected_count=120,
+                        )
+                    else:
+                        odds_saved = upsert_rows(
+                            "v2_odds_trifecta",
+                            odds,
+                            "race_id,ticket",
+                            chunk_size=300,
+                        )
 
         if SLEEP_SEC > 0:
             time.sleep(SLEEP_SEC)
