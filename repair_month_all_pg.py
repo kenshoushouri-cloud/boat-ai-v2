@@ -322,7 +322,7 @@ def validate_final_odds_snapshot(
 def _require_settings() -> None:
     print(
         "✅ repair_month_all_pg.py VERSION 2026-07-31 "
-        "venue-deadline-odds-final-dynamic-v4",
+        "venue-deadline-table-index-v5",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -432,20 +432,64 @@ def _normalize_hhmm(value: str) -> Optional[str]:
 
 def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
     """
-    対象race_noの締切予定時刻を優先して取得する。
+    公式racelistページ上部の「締切予定時刻」一覧から、
+    race_no番目の時刻を取得する。
 
-    公式ページのHTML構造変更に備え、
-    1. 対象Rを含む行・ブロック
-    2. 対象R近傍の本文
-    3. 締切語の近傍
-    の順でフォールバックする。
+    例:
+        レース        1R  2R ... 12R
+        締切予定時刻  10:35 10:58 ... 16:24
+
+    親div全体を検索すると1Rの時刻を全レースへ誤適用するため、
+    まず締切予定時刻の表行だけを解析する。
     """
     soup = BeautifulSoup(html, "html.parser")
-    target_patterns = [
-        rf"(?:第\s*)?{int(race_no)}\s*R\b",
-        rf"\bR\s*{int(race_no)}\b",
-    ]
+    race_no = int(race_no)
 
+    if not 1 <= race_no <= 12:
+        return None
+
+    # 1. 現行公式ページの表構造を最優先。
+    for tr in soup.find_all("tr"):
+        cells = [
+            _clean_text(_zen_to_han(cell.get_text(" ", strip=True)))
+            for cell in tr.find_all(["th", "td"])
+        ]
+        if not cells:
+            continue
+
+        row_text = " ".join(cells)
+        if "締切予定時刻" not in row_text:
+            continue
+
+        times: List[str] = []
+        for cell_text in cells:
+            for value in re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", cell_text):
+                normalized = _normalize_hhmm(value)
+                if normalized:
+                    times.append(normalized)
+
+        if len(times) >= race_no:
+            return times[race_no - 1]
+
+    # 2. 表が崩れていても「締切予定時刻」以降に12時刻並ぶ場合。
+    full_text = _clean_text(_zen_to_han(soup.get_text(" ", strip=True)))
+    marker_match = re.search(r"締切予定時刻", full_text)
+    if marker_match:
+        after_marker = full_text[marker_match.end() : marker_match.end() + 300]
+        times = []
+        for value in re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", after_marker):
+            normalized = _normalize_hhmm(value)
+            if normalized:
+                times.append(normalized)
+
+        if len(times) >= race_no:
+            return times[race_no - 1]
+
+        # 単一レースページで時刻が1件だけなら、その値を使用。
+        if len(times) == 1:
+            return times[0]
+
+    # 3. 最終フォールバック。ただし候補が1件だけの場合に限定。
     deadline_patterns = [
         r"締切予定時刻\s*(\d{1,2}:\d{2})",
         r"締切予定\s*(\d{1,2}:\d{2})",
@@ -455,55 +499,14 @@ def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
         r"締切\s*(\d{1,2}:\d{2})",
     ]
 
-    # 表の1行や明確なブロック内で、対象Rと時刻が同居している箇所を優先。
-    for node in soup.find_all(["tr", "li", "section", "div"]):
-        text = _clean_text(_zen_to_han(node.get_text(" ", strip=True)))
-        if not text:
-            continue
-        if not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in target_patterns):
-            continue
-
-        for pattern in deadline_patterns:
-            match = re.search(pattern, text)
-            if match:
-                normalized = _normalize_hhmm(match.group(1))
-                if normalized:
-                    return normalized
-
-        # 対象Rを含む行では、締切語がなくても妥当な時刻を最後の候補として使う。
-        times = re.findall(r"\b(\d{1,2}:\d{2})\b", text)
-        for value in reversed(times):
-            normalized = _normalize_hhmm(value)
-            if normalized:
-                return normalized
-
-    full_text = _clean_text(_zen_to_han(soup.get_text(" ", strip=True)))
-
-    # 対象Rの直後300文字以内を探索。
-    for target_pattern in target_patterns:
-        target_match = re.search(target_pattern, full_text, flags=re.IGNORECASE)
-        if not target_match:
-            continue
-
-        nearby = full_text[target_match.start() : target_match.start() + 300]
-        for pattern in deadline_patterns:
-            match = re.search(pattern, nearby)
-            if match:
-                normalized = _normalize_hhmm(match.group(1))
-                if normalized:
-                    return normalized
-
-    # URLでrno指定された単一レースページ向けの最終フォールバック。
+    candidates: List[str] = []
     for pattern in deadline_patterns:
-        match = re.search(pattern, full_text)
-        if match:
+        for match in re.finditer(pattern, full_text):
             normalized = _normalize_hhmm(match.group(1))
-            if normalized:
-                return normalized
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
 
-    match = re.search(r"締切.{0,30}?(\d{1,2}:\d{2})", full_text)
-    return _normalize_hhmm(match.group(1)) if match else None
-
+    return candidates[0] if len(candidates) == 1 else None
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
     if not deadline_time:
