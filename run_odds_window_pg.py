@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import itertools
 import time
 import importlib
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-07-31-window-dynamic-ticket-count-v3"
+VERSION = "2026-07-31-window-dynamic-ticket-count-v3.1"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
