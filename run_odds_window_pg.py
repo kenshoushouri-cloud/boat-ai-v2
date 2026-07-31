@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-07-31-window-nonfinal-guard-v2"
+VERSION = "2026-07-31-window-dynamic-ticket-count-v3"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
@@ -146,30 +146,91 @@ def select_window_races(
     return _fetch_dicts(query, params)
 
 
-def select_valid_odds_counts(
+ALL_LANES = {1, 2, 3, 4, 5, 6}
+
+
+def _expected_ticket_set(active_lanes: set[int]) -> set[str]:
+    return {
+        f"{a}-{b}-{c}"
+        for a, b, c in itertools.permutations(sorted(active_lanes), 3)
+    }
+
+
+def _evaluate_ticket_snapshot(tickets: List[str]) -> Dict[str, Any]:
+    """
+    DBã«ä¿å­æ¸ã¿ã®ä¸é£åticketéåãè©ä¾¡ããã
+
+    6è=120ã5è=60ã4è=24éããè¨±å¯ãããã
+    ä»¶æ°ã ãã§ã¯ãªããæå¹èéåã®å¨é åã¨å®å¨ä¸è´ããå ´åã®ã¿
+    complete=True ã¨ããã
+    """
+    normalized = [str(ticket or "").strip() for ticket in tickets]
+    unique_tickets = set(normalized)
+    duplicate_count = len(normalized) - len(unique_tickets)
+
+    active_lanes: set[int] = set()
+    malformed_count = 0
+
+    for ticket in unique_tickets:
+        parts = ticket.split("-")
+        if len(parts) != 3 or any(not part.isdigit() for part in parts):
+            malformed_count += 1
+            continue
+
+        lanes = [int(part) for part in parts]
+        if (
+            any(lane not in ALL_LANES for lane in lanes)
+            or len(set(lanes)) != 3
+        ):
+            malformed_count += 1
+            continue
+
+        active_lanes.update(lanes)
+
+    lane_count_valid = 4 <= len(active_lanes) <= 6
+    expected_tickets = (
+        _expected_ticket_set(active_lanes)
+        if lane_count_valid
+        else set()
+    )
+    missing_count = len(expected_tickets - unique_tickets)
+    unexpected_count = len(unique_tickets - expected_tickets)
+    expected_count = len(expected_tickets)
+
+    complete = (
+        lane_count_valid
+        and malformed_count == 0
+        and duplicate_count == 0
+        and len(normalized) == expected_count
+        and len(unique_tickets) == expected_count
+        and missing_count == 0
+        and unexpected_count == 0
+    )
+
+    return {
+        "valid_tickets": len(unique_tickets),
+        "active_lanes": sorted(active_lanes),
+        "scratched_lanes": sorted(ALL_LANES - active_lanes),
+        "expected_count": expected_count,
+        "complete": complete,
+        "duplicates": duplicate_count,
+        "malformed": malformed_count,
+        "missing": missing_count,
+        "unexpected": unexpected_count,
+    }
+
+
+def select_odds_statuses(
     race_ids: List[str],
-) -> Dict[str, int]:
+) -> Dict[str, Dict[str, Any]]:
     if not race_ids:
         return {}
 
-    valid_condition = """
-        ticket ~ '^[1-6]-[1-6]-[1-6]$'
-        AND split_part(ticket, '-', 1)
-            <> split_part(ticket, '-', 2)
-        AND split_part(ticket, '-', 1)
-            <> split_part(ticket, '-', 3)
-        AND split_part(ticket, '-', 2)
-            <> split_part(ticket, '-', 3)
-    """
-
-    query = f"""
-        SELECT
-            race_id,
-            COUNT(DISTINCT ticket)::int AS valid_odds_rows
+    query = """
+        SELECT race_id, ticket
         FROM v2_odds_trifecta
         WHERE race_id = ANY(%s)
-          AND {valid_condition}
-        GROUP BY race_id
+        ORDER BY race_id, ticket
     """
 
     try:
@@ -177,21 +238,26 @@ def select_valid_odds_counts(
     except Exception:
         placeholders = ",".join(["%s"] * len(race_ids))
         query = f"""
-            SELECT
-                race_id,
-                COUNT(DISTINCT ticket)::int AS valid_odds_rows
+            SELECT race_id, ticket
             FROM v2_odds_trifecta
             WHERE race_id IN ({placeholders})
-              AND {valid_condition}
-            GROUP BY race_id
+            ORDER BY race_id, ticket
         """
         rows = _fetch_dicts(query, tuple(race_ids))
 
-    return {
-        str(row["race_id"]): int(row["valid_odds_rows"])
-        for row in rows
+    grouped: Dict[str, List[str]] = {
+        str(race_id): []
+        for race_id in race_ids
     }
+    for row in rows:
+        grouped.setdefault(str(row["race_id"]), []).append(
+            str(row.get("ticket") or "")
+        )
 
+    return {
+        race_id: _evaluate_ticket_snapshot(tickets)
+        for race_id, tickets in grouped.items()
+    }
 
 def _run_fetch_batch(
     repair,
@@ -330,14 +396,14 @@ def main() -> None:
     races = all_races
 
     if (os.getenv("WINDOW_SKIP_FULL_ODDS") or "0") == "1":
-        counts = select_valid_odds_counts(
+        statuses = select_odds_statuses(
             [str(race["race_id"]) for race in races]
         )
         before = len(races)
         races = [
             race
             for race in races
-            if counts.get(str(race["race_id"]), 0) < 120
+            if not statuses.get(str(race["race_id"]), {}).get("complete", False)
         ]
 
         print(
@@ -349,7 +415,7 @@ def main() -> None:
 
         if not races:
             print(
-                "å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¹ãªä¸é£å120éãã"
+                "å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¾ãããä¸é£åã®å¨çµã¿åããã"
                 "æã£ã¦ãã¾ãã",
                 flush=True,
             )
@@ -386,19 +452,19 @@ def main() -> None:
     pending = races
 
     for retry_no in range(1, max_retries + 1):
-        counts = select_valid_odds_counts(
+        statuses = select_odds_statuses(
             [str(race["race_id"]) for race in pending]
         )
         pending = [
             race
             for race in pending
-            if counts.get(str(race["race_id"]), 0) < 120
+            if not statuses.get(str(race["race_id"]), {}).get("complete", False)
         ]
 
         if not pending:
             print(
                 f"retry_check={retry_no}: "
-                "å¨ã¬ã¼ã¹120éãå®äº",
+                "å¨ã¬ã¼ã¹æå¾çµã¿åããå®äº",
                 flush=True,
             )
             break
@@ -411,9 +477,14 @@ def main() -> None:
 
         for race in pending[:30]:
             race_id = str(race["race_id"])
+            status = statuses.get(race_id, {})
             print(
                 f"  {race_id} "
-                f"valid_tickets={counts.get(race_id, 0)}",
+                f"valid_tickets={status.get('valid_tickets', 0)} "
+                f"expected_count={status.get('expected_count', 0)} "
+                f"active_lanes={status.get('active_lanes', [])} "
+                f"missing={status.get('missing', 0)} "
+                f"unexpected={status.get('unexpected', 0)}",
                 flush=True,
             )
 
@@ -434,16 +505,19 @@ def main() -> None:
         total_saved += saved
         all_failed.extend(failed)
 
-    final_counts = select_valid_odds_counts(
+    final_statuses = select_odds_statuses(
         [str(race["race_id"]) for race in all_races]
     )
     incomplete = [
         (
             str(race["race_id"]),
-            final_counts.get(str(race["race_id"]), 0),
+            final_statuses.get(str(race["race_id"]), {}),
         )
         for race in all_races
-        if final_counts.get(str(race["race_id"]), 0) < 120
+        if not final_statuses.get(
+            str(race["race_id"]),
+            {},
+        ).get("complete", False)
     ]
 
     print("=== odds window finished ===", flush=True)
@@ -461,16 +535,24 @@ def main() -> None:
         flush=True,
     )
     print(
-        f"complete_120={len(all_races) - len(incomplete)}",
+        f"complete_expected={len(all_races) - len(incomplete)}",
         flush=True,
     )
     print(f"incomplete={len(incomplete)}", flush=True)
 
     if incomplete:
         print("incomplete sample:", flush=True)
-        for race_id, count in incomplete[:50]:
+        for race_id, status in incomplete[:50]:
             print(
-                f"  {race_id} valid_tickets={count}",
+                f"  {race_id} "
+                f"valid_tickets={status.get('valid_tickets', 0)} "
+                f"expected_count={status.get('expected_count', 0)} "
+                f"active_lanes={status.get('active_lanes', [])} "
+                f"scratched_lanes={status.get('scratched_lanes', [])} "
+                f"duplicates={status.get('duplicates', 0)} "
+                f"malformed={status.get('malformed', 0)} "
+                f"missing={status.get('missing', 0)} "
+                f"unexpected={status.get('unexpected', 0)}",
                 flush=True,
             )
 
