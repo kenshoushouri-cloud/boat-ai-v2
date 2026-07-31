@@ -221,35 +221,98 @@ def _looks_no_race(html: Optional[str]) -> bool:
 # Final odds validation
 # ============================================================
 
-EXPECTED_FINAL_ODDS_TICKETS = {
-    f"{a}-{b}-{c}"
-    for a, b, c in itertools.permutations([1, 2, 3, 4, 5, 6], 3)
-}
+ALL_LANES = {1, 2, 3, 4, 5, 6}
 
 
-def validate_final_odds_snapshot(odds: List[Dict[str, Any]]) -> tuple[bool, str]:
-    actual_tickets = [str(row.get("ticket", "")) for row in odds]
+def _ticket_set_for_lanes(active_lanes: set[int]) -> set[str]:
+    return {
+        f"{a}-{b}-{c}"
+        for a, b, c in itertools.permutations(sorted(active_lanes), 3)
+    }
+
+
+def validate_final_odds_snapshot(
+    odds: List[Dict[str, Any]],
+) -> tuple[bool, str, int, List[int]]:
+    """
+    確定オッズの完全性を検証する。
+
+    6艇立てだけでなく、出走取消後の5艇立て・4艇立ても許可する。
+    ただし、単に件数が60件や24件なら正常とするのではなく、
+    取得されたticket全体が、特定の有効艇集合の全順列と完全一致する
+    場合だけ正常とする。
+
+    例:
+    - 1～6号艇の全順列: 120通り
+    - 3号艇取消で {1,2,4,5,6} の全順列: 60通り
+    - 2艇取消で4艇の全順列: 24通り
+
+    3件だけ、118件、取消前後の混在などは必ず拒否する。
+    """
+    actual_tickets = [str(row.get("ticket", "")).strip() for row in odds]
     unique_tickets = set(actual_tickets)
-    missing_tickets = EXPECTED_FINAL_ODDS_TICKETS - unique_tickets
-    unexpected_tickets = unique_tickets - EXPECTED_FINAL_ODDS_TICKETS
     duplicate_count = len(actual_tickets) - len(unique_tickets)
 
+    parsed_lanes: set[int] = set()
+    malformed_count = 0
+
+    for ticket in unique_tickets:
+        parts = ticket.split("-")
+        if (
+            len(parts) != 3
+            or any(not part.isdigit() for part in parts)
+        ):
+            malformed_count += 1
+            continue
+
+        lanes = [int(part) for part in parts]
+        if (
+            any(lane not in ALL_LANES for lane in lanes)
+            or len(set(lanes)) != 3
+        ):
+            malformed_count += 1
+            continue
+
+        parsed_lanes.update(lanes)
+
+    active_lanes = sorted(parsed_lanes)
+    active_lane_set = set(active_lanes)
+
+    # 三連単として成立し、かつ通常運用で想定する4～6艇だけを許可。
+    lane_count_valid = 4 <= len(active_lanes) <= 6
+    expected_tickets = (
+        _ticket_set_for_lanes(active_lane_set)
+        if lane_count_valid
+        else set()
+    )
+    missing_tickets = expected_tickets - unique_tickets
+    unexpected_tickets = unique_tickets - expected_tickets
+    expected_count = len(expected_tickets)
+
     valid = (
-        len(odds) == 120
-        and len(unique_tickets) == 120
+        lane_count_valid
+        and malformed_count == 0
         and duplicate_count == 0
+        and len(odds) == expected_count
+        and len(unique_tickets) == expected_count
         and not missing_tickets
         and not unexpected_tickets
     )
 
+    scratched_lanes = sorted(ALL_LANES - active_lane_set)
+
     detail = (
         f"parsed_rows={len(odds)} "
         f"unique_tickets={len(unique_tickets)} "
+        f"active_lanes={active_lanes} "
+        f"scratched_lanes={scratched_lanes} "
+        f"expected_count={expected_count} "
         f"duplicates={duplicate_count} "
+        f"malformed={malformed_count} "
         f"missing={len(missing_tickets)} "
         f"unexpected={len(unexpected_tickets)}"
     )
-    return valid, detail
+    return valid, detail, expected_count, active_lanes
 
 
 # ============================================================
@@ -259,7 +322,7 @@ def validate_final_odds_snapshot(odds: List[Dict[str, Any]]) -> tuple[bool, str]
 def _require_settings() -> None:
     print(
         "✅ repair_month_all_pg.py VERSION 2026-07-31 "
-        "venue-deadline-odds-final-atomic-v3",
+        "venue-deadline-odds-final-dynamic-v4",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -1040,7 +1103,12 @@ def process_race(
                 odds = parse_odds3t(html or "", race_id)
                 if odds:
                     if ODDS_IS_FINAL:
-                        is_valid, validation_detail = validate_final_odds_snapshot(odds)
+                        (
+                            is_valid,
+                            validation_detail,
+                            expected_count,
+                            active_lanes,
+                        ) = validate_final_odds_snapshot(odds)
                         if not is_valid:
                             print(
                                 f"⚠️ FINAL_ODDS_REJECTED race_id={race_id} "
@@ -1055,14 +1123,16 @@ def process_race(
 
                         print(
                             f"✅ FINAL_ODDS_ATOMIC_REPLACE race_id={race_id} "
-                            f"rows={len(odds)}",
+                            f"rows={len(odds)} "
+                            f"expected_count={expected_count} "
+                            f"active_lanes={active_lanes}",
                             flush=True,
                         )
                         odds_saved = replace_rows_atomic(
                             table="v2_odds_trifecta",
                             rows=odds,
                             delete_where={"race_id": race_id},
-                            expected_count=120,
+                            expected_count=expected_count,
                         )
                     else:
                         odds_saved = upsert_rows(
