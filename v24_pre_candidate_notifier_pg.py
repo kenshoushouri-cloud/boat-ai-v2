@@ -80,6 +80,20 @@ DAILY_LINE_LIMIT = int(os.getenv("DAILY_LINE_LIMIT", "3"))
 MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "100"))
 EVENT_DAY_LOOKBACK = int(os.getenv("EVENT_DAY_LOOKBACK", "10"))
 
+
+def _parse_target_race_ids() -> set[str]:
+    raw = (os.getenv("TARGET_RACE_IDS") or "").strip()
+    if not raw:
+        return set()
+    return {
+        value.strip()
+        for value in re.split(r"[,\s]+", raw)
+        if value.strip()
+    }
+
+
+TARGET_RACE_ID_SET = _parse_target_race_ids()
+
 CLASS_WEIGHT = {1: 0.15, 2: 0.55, 3: 1.15, 4: 1.55}
 VENUE_COURSE_BIAS = {
     "01": {1: 2.762, 2: 2.747, 3: 3.385, 4: 4.070, 5: 3.537, 6: 2.343},
@@ -295,6 +309,12 @@ def _fetch_live_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str,
         r for r in races
         if str(r.get("venue_id") or r.get("venue_code") or "").zfill(2) in TARGET_VENUES
     ]
+
+    if TARGET_RACE_ID_SET:
+        races = [
+            r for r in races
+            if str(r.get("race_id") or "") in TARGET_RACE_ID_SET
+        ]
 
     entries_rows = fetch_all(
         """
@@ -1055,13 +1075,17 @@ def main() -> None:
     _require_settings()
     _ensure_line_notification_columns()
 
-    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-31 dynamic-odds-completeness-v2", flush=True)
+    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-31 dynamic-odds-target-filter-v2.1", flush=True)
     print("=== v24 PG 仮買い目LINE通知開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} PRE_SESSION={PRE_SESSION} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} ODDS_READY_MODE=dynamic_exact_120_60_24",
         flush=True,
     )
+    if TARGET_RACE_ID_SET:
+        print(f"TARGET_RACE_IDS enabled: {len(TARGET_RACE_ID_SET)} races", flush=True)
+    else:
+        print("TARGET_RACE_IDS disabled", flush=True)
 
     guard = _usage_guard()
     if guard:
