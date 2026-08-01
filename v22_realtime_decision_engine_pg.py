@@ -12,6 +12,7 @@ Railway Start Command:
 """
 from __future__ import annotations
 
+import itertools
 import math
 import os
 import re
@@ -106,6 +107,95 @@ def _norm_ticket(ticket: Any) -> str:
     s = unicodedata.normalize("NFKC", str(ticket))
     nums = re.findall(r"[1-6]", s)
     return f"{nums[0]}-{nums[1]}-{nums[2]}" if len(nums) >= 3 else s.strip()
+
+
+ALL_LANES = {1, 2, 3, 4, 5, 6}
+
+
+def _expected_ticket_set(active_lanes: set[int]) -> set[str]:
+    return {
+        f"{a}-{b}-{c}"
+        for a, b, c in itertools.permutations(sorted(active_lanes), 3)
+    }
+
+
+def _evaluate_odds_snapshot(odds: Dict[str, float]) -> Dict[str, Any]:
+    """
+    6艇120通り・5艇60通り・4艇24通りの完全一致を判定する。
+
+    件数だけではなく、ticket集合が特定の有効艇集合の全順列と
+    完全一致した場合だけreadyとする。119件、取消前後混在、
+    malformed ticketはすべてnot ready。
+    """
+    valid_tickets: set[str] = set()
+    malformed = 0
+
+    for raw_ticket, raw_odds in (odds or {}).items():
+        ticket = _norm_ticket(raw_ticket)
+        parts = ticket.split("-")
+        if (
+            len(parts) != 3
+            or any(not part.isdigit() for part in parts)
+        ):
+            malformed += 1
+            continue
+
+        lanes = [int(part) for part in parts]
+        if (
+            any(lane not in ALL_LANES for lane in lanes)
+            or len(set(lanes)) != 3
+            or _safe_float(raw_odds, 0.0) <= 0
+        ):
+            malformed += 1
+            continue
+
+        valid_tickets.add(ticket)
+
+    active_lanes = sorted({
+        lane
+        for ticket in valid_tickets
+        for lane in map(int, ticket.split("-"))
+    })
+    active_lane_set = set(active_lanes)
+    lane_count_valid = 4 <= len(active_lanes) <= 6
+    expected = (
+        _expected_ticket_set(active_lane_set)
+        if lane_count_valid
+        else set()
+    )
+    missing = expected - valid_tickets
+    unexpected = valid_tickets - expected
+    expected_count = len(expected)
+    ready = (
+        lane_count_valid
+        and malformed == 0
+        and len(valid_tickets) == expected_count
+        and not missing
+        and not unexpected
+    )
+
+    return {
+        "ready": ready,
+        "valid_tickets": len(valid_tickets),
+        "active_lanes": active_lanes,
+        "scratched_lanes": sorted(ALL_LANES - active_lane_set),
+        "expected_count": expected_count,
+        "malformed": malformed,
+        "missing": len(missing),
+        "unexpected": len(unexpected),
+    }
+
+
+def _odds_status_text(status: Dict[str, Any]) -> str:
+    return (
+        f"valid_tickets={status['valid_tickets']} "
+        f"active_lanes={status['active_lanes']} "
+        f"scratched_lanes={status['scratched_lanes']} "
+        f"expected_count={status['expected_count']} "
+        f"malformed={status['malformed']} "
+        f"missing={status['missing']} "
+        f"unexpected={status['unexpected']}"
+    )
 
 
 def _norm_text(s: Any) -> str:
@@ -494,19 +584,33 @@ def _lane_raw_strength(entry: Dict[str, Any], lane: int, venue_id: str) -> float
 
 def _rank_candidates(entries: List[Dict[str, Any]], venue_id: str, odds: Dict[str, float]) -> List[Dict[str, Any]]:
     by = _entry_by_lane(entries)
-    raw = {lane: _lane_raw_strength(by[lane], lane, venue_id) for lane in range(1, 7)}
-    weights = {lane: math.exp(raw[lane] / PROB_TEMP) for lane in range(1, 7)}
+    status = _evaluate_odds_snapshot(odds)
+    active_lanes = [
+        lane for lane in status["active_lanes"]
+        if lane in by
+    ]
+    if len(active_lanes) < 4:
+        return []
+
+    raw = {
+        lane: _lane_raw_strength(by[lane], lane, venue_id)
+        for lane in active_lanes
+    }
+    weights = {
+        lane: math.exp(raw[lane] / PROB_TEMP)
+        for lane in active_lanes
+    }
     total = sum(weights.values())
     rows: List[Dict[str, Any]] = []
-    for a in range(1, 7):
+    for a in active_lanes:
         pa = weights[a] / total
         total_b = total - weights[a]
-        for b in range(1, 7):
+        for b in active_lanes:
             if b == a:
                 continue
             pb = weights[b] / total_b
             total_c = total_b - weights[b]
-            for c in range(1, 7):
+            for c in active_lanes:
                 if c == a or c == b:
                     continue
                 ticket = f"{a}-{b}-{c}"
@@ -688,9 +792,9 @@ def _save_decisions(rows: List[Dict[str, Any]]) -> int:
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v22_realtime_decision_engine_pg.py VERSION 2026-07-05 railway-postgres-short1", flush=True)
+    print("✅ v22_realtime_decision_engine_pg.py VERSION 2026-08-01 dynamic-odds-completeness-v2", flush=True)
     print("=== v22 PG 直前判定エンジン開始 ===", flush=True)
-    print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} REQUIRE_EXHIBITION={REQUIRE_EXHIBITION} MIN_ODDS_ROWS={MIN_ODDS_ROWS}", flush=True)
+    print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} REQUIRE_EXHIBITION={REQUIRE_EXHIBITION} ODDS_READY_MODE=dynamic_exact_120_60_24", flush=True)
 
     strategy_names = _selector_strategy_names(SELECTOR_MODE)
     strategies = [s for s in STRATEGIES if s[0] in strategy_names]
@@ -714,12 +818,42 @@ def main() -> None:
         entries = entries_by_race.get(rid, [])
         base_odds = odds_by_race.get(rid, {})
         rt_odds = _rt_odds_dict(rt_odds_by.get(rid, {}))
-        odds = rt_odds if len(rt_odds) >= MIN_ODDS_ROWS and len(rt_odds) >= len(base_odds) else base_odds
 
-        if len(_entry_by_lane(entries)) != 6:
-            skipped_not_ready += 1; skipped_entries += 1; continue
-        if len(odds) < MIN_ODDS_ROWS:
-            skipped_not_ready += 1; skipped_odds += 1; continue
+        rt_status = _evaluate_odds_snapshot(rt_odds)
+        base_status = _evaluate_odds_snapshot(base_odds)
+
+        # 直前snapshotが完全なら最優先。未完成なら完全なbaseへフォールバック。
+        if rt_status["ready"]:
+            odds = rt_odds
+            odds_status = rt_status
+            odds_source = "realtime"
+        elif base_status["ready"]:
+            odds = base_odds
+            odds_status = base_status
+            odds_source = "base_fallback"
+        else:
+            skipped_not_ready += 1
+            skipped_odds += 1
+            print(
+                f"ODDS_NOT_READY race_id={rid} "
+                f"rt=({_odds_status_text(rt_status)}) "
+                f"base=({_odds_status_text(base_status)})",
+                flush=True,
+            )
+            continue
+
+        entry_lanes = set(_entry_by_lane(entries))
+        required_lanes = set(odds_status["active_lanes"])
+        if not required_lanes.issubset(entry_lanes):
+            skipped_not_ready += 1
+            skipped_entries += 1
+            print(
+                f"ENTRIES_NOT_READY race_id={rid} "
+                f"required_lanes={sorted(required_lanes)} "
+                f"entry_lanes={sorted(entry_lanes)}",
+                flush=True,
+            )
+            continue
         ready_races += 1
 
         meta = _metadata_text(race)
@@ -751,6 +885,9 @@ def main() -> None:
                     "prob_rank": _safe_int(b.get("prob_rank"), 999), "market_rank": _safe_int(b.get("market_rank"), 999),
                     "prob": _safe_float(b.get("prob"), 0.0), "raw_ev": _safe_float(b.get("raw_ev"), 0.0),
                     "priority": _safe_float(b.get("select_priority"), 0.0), "modes": [], "entries": _format_entries(entries),
+                    "odds_source": odds_source,
+                    "active_lanes": odds_status["active_lanes"],
+                    "expected_odds_count": odds_status["expected_count"],
                 })
                 rec["modes"].append(st_name)
                 rec["priority"] = max(rec["priority"], _safe_float(b.get("select_priority"), 0.0))
@@ -774,7 +911,7 @@ def main() -> None:
         row = {
             "race_id": rid, "race_date": TARGET_DATE, "venue_id": venue_id, "venue_code": venue_id, "race_no": cand.get("race_no"),
             "decision_label": DECISION_LABEL, "decision_at": datetime.now(JST).isoformat(),
-            "selector_version": "v22_realtime_decision_engine_pg_short1", "selector_mode": SELECTOR_MODE,
+            "selector_version": "v22_realtime_decision_engine_pg_dynamic_odds_v2", "selector_mode": SELECTOR_MODE,
             "mode_name": mode_name, "mode_label": cand.get("mode_label"), "ticket": ticket,
             "odds": judge["odds"], "prob": cand.get("prob"), "prob_rank": cand.get("prob_rank"),
             "market_rank": judge["market_rank"], "raw_ev": cand.get("raw_ev"), "base_score": cand.get("priority"),
