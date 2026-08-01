@@ -42,10 +42,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import requests
 from bs4 import BeautifulSoup
 
-from db_pg import (
-    replace_rows_atomic,
-    upsert_rows as pg_upsert_rows,
-)
+from db_pg import upsert_rows as pg_upsert_rows
 
 
 # ============================================================
@@ -218,111 +215,13 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 
 # ============================================================
-# Final odds validation
-# ============================================================
-
-ALL_LANES = {1, 2, 3, 4, 5, 6}
-
-
-def _ticket_set_for_lanes(active_lanes: set[int]) -> set[str]:
-    return {
-        f"{a}-{b}-{c}"
-        for a, b, c in itertools.permutations(sorted(active_lanes), 3)
-    }
-
-
-def validate_final_odds_snapshot(
-    odds: List[Dict[str, Any]],
-) -> tuple[bool, str, int, List[int]]:
-    """
-    確定オッズの完全性を検証する。
-
-    6艇立てだけでなく、出走取消後の5艇立て・4艇立ても許可する。
-    ただし、単に件数が60件や24件なら正常とするのではなく、
-    取得されたticket全体が、特定の有効艇集合の全順列と完全一致する
-    場合だけ正常とする。
-
-    例:
-    - 1～6号艇の全順列: 120通り
-    - 3号艇取消で {1,2,4,5,6} の全順列: 60通り
-    - 2艇取消で4艇の全順列: 24通り
-
-    3件だけ、118件、取消前後の混在などは必ず拒否する。
-    """
-    actual_tickets = [str(row.get("ticket", "")).strip() for row in odds]
-    unique_tickets = set(actual_tickets)
-    duplicate_count = len(actual_tickets) - len(unique_tickets)
-
-    parsed_lanes: set[int] = set()
-    malformed_count = 0
-
-    for ticket in unique_tickets:
-        parts = ticket.split("-")
-        if (
-            len(parts) != 3
-            or any(not part.isdigit() for part in parts)
-        ):
-            malformed_count += 1
-            continue
-
-        lanes = [int(part) for part in parts]
-        if (
-            any(lane not in ALL_LANES for lane in lanes)
-            or len(set(lanes)) != 3
-        ):
-            malformed_count += 1
-            continue
-
-        parsed_lanes.update(lanes)
-
-    active_lanes = sorted(parsed_lanes)
-    active_lane_set = set(active_lanes)
-
-    # 三連単として成立し、かつ通常運用で想定する4～6艇だけを許可。
-    lane_count_valid = 4 <= len(active_lanes) <= 6
-    expected_tickets = (
-        _ticket_set_for_lanes(active_lane_set)
-        if lane_count_valid
-        else set()
-    )
-    missing_tickets = expected_tickets - unique_tickets
-    unexpected_tickets = unique_tickets - expected_tickets
-    expected_count = len(expected_tickets)
-
-    valid = (
-        lane_count_valid
-        and malformed_count == 0
-        and duplicate_count == 0
-        and len(odds) == expected_count
-        and len(unique_tickets) == expected_count
-        and not missing_tickets
-        and not unexpected_tickets
-    )
-
-    scratched_lanes = sorted(ALL_LANES - active_lane_set)
-
-    detail = (
-        f"parsed_rows={len(odds)} "
-        f"unique_tickets={len(unique_tickets)} "
-        f"active_lanes={active_lanes} "
-        f"scratched_lanes={scratched_lanes} "
-        f"expected_count={expected_count} "
-        f"duplicates={duplicate_count} "
-        f"malformed={malformed_count} "
-        f"missing={len(missing_tickets)} "
-        f"unexpected={len(unexpected_tickets)}"
-    )
-    return valid, detail, expected_count, active_lanes
-
-
-# ============================================================
 # Railway PostgreSQL
 # ============================================================
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-07-31 "
-        "venue-deadline-table-index-v5",
+        "✅ repair_month_all_pg.py VERSION 2026-07-30 "
+        "venue-deadline-odds-final-v1",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -432,64 +331,20 @@ def _normalize_hhmm(value: str) -> Optional[str]:
 
 def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
     """
-    公式racelistページ上部の「締切予定時刻」一覧から、
-    race_no番目の時刻を取得する。
+    対象race_noの締切予定時刻を優先して取得する。
 
-    例:
-        レース        1R  2R ... 12R
-        締切予定時刻  10:35 10:58 ... 16:24
-
-    親div全体を検索すると1Rの時刻を全レースへ誤適用するため、
-    まず締切予定時刻の表行だけを解析する。
+    公式ページのHTML構造変更に備え、
+    1. 対象Rを含む行・ブロック
+    2. 対象R近傍の本文
+    3. 締切語の近傍
+    の順でフォールバックする。
     """
     soup = BeautifulSoup(html, "html.parser")
-    race_no = int(race_no)
+    target_patterns = [
+        rf"(?:第\s*)?{int(race_no)}\s*R\b",
+        rf"\bR\s*{int(race_no)}\b",
+    ]
 
-    if not 1 <= race_no <= 12:
-        return None
-
-    # 1. 現行公式ページの表構造を最優先。
-    for tr in soup.find_all("tr"):
-        cells = [
-            _clean_text(_zen_to_han(cell.get_text(" ", strip=True)))
-            for cell in tr.find_all(["th", "td"])
-        ]
-        if not cells:
-            continue
-
-        row_text = " ".join(cells)
-        if "締切予定時刻" not in row_text:
-            continue
-
-        times: List[str] = []
-        for cell_text in cells:
-            for value in re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", cell_text):
-                normalized = _normalize_hhmm(value)
-                if normalized:
-                    times.append(normalized)
-
-        if len(times) >= race_no:
-            return times[race_no - 1]
-
-    # 2. 表が崩れていても「締切予定時刻」以降に12時刻並ぶ場合。
-    full_text = _clean_text(_zen_to_han(soup.get_text(" ", strip=True)))
-    marker_match = re.search(r"締切予定時刻", full_text)
-    if marker_match:
-        after_marker = full_text[marker_match.end() : marker_match.end() + 300]
-        times = []
-        for value in re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", after_marker):
-            normalized = _normalize_hhmm(value)
-            if normalized:
-                times.append(normalized)
-
-        if len(times) >= race_no:
-            return times[race_no - 1]
-
-        # 単一レースページで時刻が1件だけなら、その値を使用。
-        if len(times) == 1:
-            return times[0]
-
-    # 3. 最終フォールバック。ただし候補が1件だけの場合に限定。
     deadline_patterns = [
         r"締切予定時刻\s*(\d{1,2}:\d{2})",
         r"締切予定\s*(\d{1,2}:\d{2})",
@@ -499,14 +354,55 @@ def parse_deadline_time(html: str, race_no: int) -> Optional[str]:
         r"締切\s*(\d{1,2}:\d{2})",
     ]
 
-    candidates: List[str] = []
-    for pattern in deadline_patterns:
-        for match in re.finditer(pattern, full_text):
-            normalized = _normalize_hhmm(match.group(1))
-            if normalized and normalized not in candidates:
-                candidates.append(normalized)
+    # 表の1行や明確なブロック内で、対象Rと時刻が同居している箇所を優先。
+    for node in soup.find_all(["tr", "li", "section", "div"]):
+        text = _clean_text(_zen_to_han(node.get_text(" ", strip=True)))
+        if not text:
+            continue
+        if not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in target_patterns):
+            continue
 
-    return candidates[0] if len(candidates) == 1 else None
+        for pattern in deadline_patterns:
+            match = re.search(pattern, text)
+            if match:
+                normalized = _normalize_hhmm(match.group(1))
+                if normalized:
+                    return normalized
+
+        # 対象Rを含む行では、締切語がなくても妥当な時刻を最後の候補として使う。
+        times = re.findall(r"\b(\d{1,2}:\d{2})\b", text)
+        for value in reversed(times):
+            normalized = _normalize_hhmm(value)
+            if normalized:
+                return normalized
+
+    full_text = _clean_text(_zen_to_han(soup.get_text(" ", strip=True)))
+
+    # 対象Rの直後300文字以内を探索。
+    for target_pattern in target_patterns:
+        target_match = re.search(target_pattern, full_text, flags=re.IGNORECASE)
+        if not target_match:
+            continue
+
+        nearby = full_text[target_match.start() : target_match.start() + 300]
+        for pattern in deadline_patterns:
+            match = re.search(pattern, nearby)
+            if match:
+                normalized = _normalize_hhmm(match.group(1))
+                if normalized:
+                    return normalized
+
+    # URLでrno指定された単一レースページ向けの最終フォールバック。
+    for pattern in deadline_patterns:
+        match = re.search(pattern, full_text)
+        if match:
+            normalized = _normalize_hhmm(match.group(1))
+            if normalized:
+                return normalized
+
+    match = re.search(r"締切.{0,30}?(\d{1,2}:\d{2})", full_text)
+    return _normalize_hhmm(match.group(1)) if match else None
+
 
 def make_deadline_at(date_str: str, deadline_time: Optional[str]) -> Optional[str]:
     if not deadline_time:
@@ -1105,45 +1001,12 @@ def process_race(
             if not _looks_no_race(html):
                 odds = parse_odds3t(html or "", race_id)
                 if odds:
-                    if ODDS_IS_FINAL:
-                        (
-                            is_valid,
-                            validation_detail,
-                            expected_count,
-                            active_lanes,
-                        ) = validate_final_odds_snapshot(odds)
-                        if not is_valid:
-                            print(
-                                f"⚠️ FINAL_ODDS_REJECTED race_id={race_id} "
-                                f"{validation_detail}",
-                                flush=True,
-                            )
-                            return RaceResult(
-                                race_id=race_id,
-                                ok=False,
-                                error=f"final_odds_incomplete:{validation_detail}",
-                            )
-
-                        print(
-                            f"✅ FINAL_ODDS_ATOMIC_REPLACE race_id={race_id} "
-                            f"rows={len(odds)} "
-                            f"expected_count={expected_count} "
-                            f"active_lanes={active_lanes}",
-                            flush=True,
-                        )
-                        odds_saved = replace_rows_atomic(
-                            table="v2_odds_trifecta",
-                            rows=odds,
-                            delete_where={"race_id": race_id},
-                            expected_count=expected_count,
-                        )
-                    else:
-                        odds_saved = upsert_rows(
-                            "v2_odds_trifecta",
-                            odds,
-                            "race_id,ticket",
-                            chunk_size=300,
-                        )
+                    odds_saved = upsert_rows(
+                        "v2_odds_trifecta",
+                        odds,
+                        "race_id,ticket",
+                        chunk_size=300,
+                    )
 
         if SLEEP_SEC > 0:
             time.sleep(SLEEP_SEC)
