@@ -16,6 +16,7 @@ Railway PostgreSQL版・完全差し替え用。
     REPAIR_END_DATE=2026-07-30
     REPAIR_VENUES=01,02,...,24
     REPAIR_RACE_NOS=1,2,...,12
+    REPAIR_RACE_IDS=20260801_01_01,20260801_01_02,...
     REPAIR_DO_RACES=1
     REPAIR_DO_RESULTS=0
     REPAIR_DO_ODDS=1
@@ -72,6 +73,12 @@ REPAIR_RACE_NOS = [
         or os.getenv("RACE_NOS")
         or ",".join(DEFAULT_RACE_NOS)
     ).split(",")
+    if x.strip()
+]
+
+REPAIR_RACE_IDS = [
+    x.strip()
+    for x in os.getenv("REPAIR_RACE_IDS", "").split(",")
     if x.strip()
 ]
 
@@ -140,6 +147,30 @@ def _now_iso() -> str:
 
 def _race_id(date_str: str, venue_id: str, race_no: int) -> str:
     return f"{date_str.replace('-', '')}_{venue_id.zfill(2)}_{int(race_no):02d}"
+
+
+def _parse_race_id(race_id: str) -> Optional[Tuple[str, str, int]]:
+    """YYYYMMDD_VV_RR形式のrace_idを(date, venue, race_no)へ変換する。"""
+    match = re.fullmatch(
+        r"(\d{4})(\d{2})(\d{2})_(\d{2})_(\d{2})",
+        str(race_id or "").strip(),
+    )
+    if not match:
+        return None
+
+    date_str = f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+    venue_id = match.group(4)
+    race_no = int(match.group(5))
+
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+    if venue_id not in ALL_VENUES or not 1 <= race_no <= 12:
+        return None
+
+    return date_str, venue_id, race_no
 
 
 def _yyyymmdd(date_str: str) -> str:
@@ -220,7 +251,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-08-01 race-ids-v6 "
+        "✅ repair_month_all_pg.py VERSION 2026-08-01 race-ids-v7 "
         "venue-deadline-odds-final-v1",
         flush=True,
     )
@@ -1036,13 +1067,45 @@ def main() -> None:
     _require_settings()
     ensure_venues()
 
-    dates = list(_daterange(START_DATE, END_DATE))
-    tasks = [
-        (date_str, venue_id, race_no)
-        for date_str in dates
-        for venue_id in REPAIR_VENUES
-        for race_no in REPAIR_RACE_NOS
-    ]
+    if REPAIR_RACE_IDS:
+        parsed_tasks: List[Tuple[str, str, int]] = []
+        invalid_race_ids: List[str] = []
+
+        for race_id in REPAIR_RACE_IDS:
+            parsed = _parse_race_id(race_id)
+            if parsed is None:
+                invalid_race_ids.append(race_id)
+            else:
+                parsed_tasks.append(parsed)
+
+        # 重複race_idを除外し、実行順を安定させる。
+        tasks = sorted(set(parsed_tasks))
+
+        print(
+            "REPAIR_RACE_IDS enabled: "
+            f"requested={len(REPAIR_RACE_IDS)} "
+            f"valid_tasks={len(tasks)} "
+            f"invalid={len(invalid_race_ids)}",
+            flush=True,
+        )
+
+        if invalid_race_ids:
+            print("invalid REPAIR_RACE_IDS sample:", flush=True)
+            for race_id in invalid_race_ids[:20]:
+                print(f"  {race_id}", flush=True)
+
+        if not tasks:
+            raise RuntimeError(
+                "REPAIR_RACE_IDSは設定されていますが、有効なrace_idがありません。"
+            )
+    else:
+        dates = list(_daterange(START_DATE, END_DATE))
+        tasks = [
+            (date_str, venue_id, race_no)
+            for date_str in dates
+            for venue_id in REPAIR_VENUES
+            for race_no in REPAIR_RACE_NOS
+        ]
 
     print("=== 全場・全R 月次補修開始 ===", flush=True)
     print(f"期間: {START_DATE} -> {END_DATE}", flush=True)
