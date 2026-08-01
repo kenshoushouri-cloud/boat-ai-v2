@@ -7,7 +7,7 @@ Railway Start Command:
     python run_daily_status_report.py
 
 Cron Schedule:
-    45 14 * * *
+    50 14 * * *
 
 JSTでは毎日23:45です。
 """
