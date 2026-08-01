@@ -6,17 +6,27 @@ Railway Postgres版：当日結果取得。
 各処理を子プロセスとして順番に実行し、ログを処理単位でまとめて表示します。
 
 処理順:
-1. repair_month_all_pg.py       当日結果取得
-2. evaluate_exhibition_shadow_results_pg.py
-3. report_exhibition_shadow_performance_pg.py
+1. repair_month_all_pg.py
+   当日結果取得
+2. evaluate_candidate_filter_shadow_results_pg.py
+   候補フィルターShadow当日結果評価
+3. evaluate_exhibition_shadow_results_pg.py
+   展示Shadow当日結果評価
+4. report_exhibition_shadow_performance_pg.py
+   展示Shadow累積レポート
 
 Start Command:
     python -u run_nightly_results_pg.py
 
 任意Variables:
+    RUN_CANDIDATE_SHADOW_EVAL=1
+    CANDIDATE_SHADOW_EVAL_ENABLED=1
+    CANDIDATE_SHADOW_EVAL_REEVALUATE=0
+
     RUN_EXHIBITION_SHADOW_EVAL=1
     RUN_EXHIBITION_SHADOW_REPORT=1
     SHADOW_EVAL_STRICT=0
+
     SNAPSHOT_LABEL=final_ab
     SELECTOR_MODE=ab
     UNIT_YEN=100
@@ -37,17 +47,40 @@ from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
 
-RUN_EXHIBITION_SHADOW_EVAL = os.getenv(
-    "RUN_EXHIBITION_SHADOW_EVAL", "1"
-).strip() not in ("0", "false", "False", "no", "NO")
 
-RUN_EXHIBITION_SHADOW_REPORT = os.getenv(
-    "RUN_EXHIBITION_SHADOW_REPORT", "1"
-).strip() not in ("0", "false", "False", "no", "NO")
+def _env_flag(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+RUN_CANDIDATE_SHADOW_EVAL = _env_flag(
+    "RUN_CANDIDATE_SHADOW_EVAL",
+    "1",
+)
+
+RUN_EXHIBITION_SHADOW_EVAL = _env_flag(
+    "RUN_EXHIBITION_SHADOW_EVAL",
+    "1",
+)
+
+RUN_EXHIBITION_SHADOW_REPORT = _env_flag(
+    "RUN_EXHIBITION_SHADOW_REPORT",
+    "1",
+)
 
 SHADOW_EVAL_STRICT = os.getenv(
-    "SHADOW_EVAL_STRICT", "0"
-).strip() in ("1", "true", "True", "yes", "YES")
+    "SHADOW_EVAL_STRICT",
+    "0",
+).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def _now_jst() -> str:
@@ -77,11 +110,18 @@ def _run_stage(
     print("=" * 80, flush=True)
 
     if not script_path.exists():
-        message = f"{script_path.name} が見つかりません: {script_path}"
+        message = (
+            f"{script_path.name} が見つかりません: "
+            f"{script_path}"
+        )
         if strict:
             raise FileNotFoundError(message)
+
         print(f"⚠️ {message}", flush=True)
-        print(f"STAGE {stage_no} SKIPPED: {stage_name}", flush=True)
+        print(
+            f"STAGE {stage_no} SKIPPED: {stage_name}",
+            flush=True,
+        )
         return False
 
     child_env = os.environ.copy()
@@ -89,6 +129,7 @@ def _run_stage(
     child_env["PYTHONUNBUFFERED"] = "1"
 
     started = time.monotonic()
+
     result = subprocess.run(
         [sys.executable, "-u", str(script_path)],
         cwd=str(script_path.parent),
@@ -97,24 +138,29 @@ def _run_stage(
         capture_output=True,
         check=False,
     )
+
     elapsed = time.monotonic() - started
 
     print(
         f"--- STAGE {stage_no} OUTPUT: {stage_name} ---",
         flush=True,
     )
+
     if result.stdout:
         print(result.stdout.rstrip(), flush=True)
+
     if result.stderr:
         print(
-            f"--- STAGE {stage_no} STDERR: {stage_name} ---",
+            f"--- STAGE {stage_no} STDERR: "
+            f"{stage_name} ---",
             flush=True,
         )
         print(result.stderr.rstrip(), flush=True)
 
     print(
         f"STAGE {stage_no} END: {stage_name} "
-        f"returncode={result.returncode} elapsed={elapsed:.1f}s "
+        f"returncode={result.returncode} "
+        f"elapsed={elapsed:.1f}s "
         f"at {_now_jst()}",
         flush=True,
     )
@@ -125,17 +171,20 @@ def _run_stage(
             f"{stage_name} が失敗しました。"
             f"returncode={result.returncode}"
         )
+
         if strict:
             raise RuntimeError(message)
+
         print(f"⚠️ {message}", flush=True)
         return False
 
     return True
 
 
-
 def _fetch_target_race_ids(target_date: str) -> list[str]:
-    """当日v2_racesに存在する開催レースだけを取得する。"""
+    """
+    当日のv2_racesに存在する開催レースだけを取得する。
+    """
     rows = fetch_all(
         """
         select race_id
@@ -145,16 +194,18 @@ def _fetch_target_race_ids(target_date: str) -> list[str]:
         """,
         (target_date,),
     )
+
     return [
         str(row.get("race_id"))
         for row in rows
         if row.get("race_id")
     ]
 
+
 def main() -> None:
     print(
         "✅ run_nightly_results_pg.py "
-        "VERSION 2026-07-15 grouped-logs-exact-races",
+        "VERSION 2026-08-01 candidate-shadow-stage-v1",
         flush=True,
     )
 
@@ -164,8 +215,12 @@ def main() -> None:
 
     print(f"TARGET_DATE={target_date}", flush=True)
     print(
-        f"RUN_EXHIBITION_SHADOW_EVAL={RUN_EXHIBITION_SHADOW_EVAL} "
-        f"RUN_EXHIBITION_SHADOW_REPORT={RUN_EXHIBITION_SHADOW_REPORT} "
+        f"RUN_CANDIDATE_SHADOW_EVAL="
+        f"{RUN_CANDIDATE_SHADOW_EVAL} "
+        f"RUN_EXHIBITION_SHADOW_EVAL="
+        f"{RUN_EXHIBITION_SHADOW_EVAL} "
+        f"RUN_EXHIBITION_SHADOW_REPORT="
+        f"{RUN_EXHIBITION_SHADOW_REPORT} "
         f"SHADOW_EVAL_STRICT={SHADOW_EVAL_STRICT}",
         flush=True,
     )
@@ -178,27 +233,38 @@ def main() -> None:
 
     common_env = {
         "TARGET_DATE": target_date,
-        "SNAPSHOT_LABEL": os.getenv("SNAPSHOT_LABEL", "final_ab"),
-        "SELECTOR_MODE": os.getenv("SELECTOR_MODE", "ab"),
-        "UNIT_YEN": os.getenv("UNIT_YEN", "100"),
+        "SNAPSHOT_LABEL": os.getenv(
+            "SNAPSHOT_LABEL",
+            "final_ab",
+        ),
+        "SELECTOR_MODE": os.getenv(
+            "SELECTOR_MODE",
+            "ab",
+        ),
+        "UNIT_YEN": os.getenv(
+            "UNIT_YEN",
+            "100",
+        ),
     }
 
     target_race_ids = _fetch_target_race_ids(target_date)
+
     print(
         f"nightly_target_races={len(target_race_ids)} "
         "(v2_races当日開催分のみ)",
         flush=True,
     )
+
     if target_race_ids:
         print(
             "nightly target sample: "
             + ", ".join(target_race_ids[:12]),
             flush=True,
         )
-
-    if not target_race_ids:
+    else:
         print(
-            "当日のv2_racesが0件のため、結果取得をスキップします。",
+            "当日のv2_racesが0件のため、"
+            "結果取得をスキップします。",
             flush=True,
         )
 
@@ -224,21 +290,65 @@ def main() -> None:
         ),
     }
 
+    # --------------------------------------------------------
+    # STAGE 1: 当日結果取得
+    # --------------------------------------------------------
     if target_race_ids:
         _run_stage(
             stage_no=1,
             stage_name="当日結果取得",
-            script_path=base_dir / "repair_month_all_pg.py",
+            script_path=(
+                base_dir / "repair_month_all_pg.py"
+            ),
             env=repair_env,
             strict=True,
         )
     else:
-        print("STAGE 1 SKIPPED: 当日開催レースなし", flush=True)
+        print(
+            "STAGE 1 SKIPPED: 当日開催レースなし",
+            flush=True,
+        )
 
-    if RUN_EXHIBITION_SHADOW_EVAL:
+    # --------------------------------------------------------
+    # STAGE 2: 候補フィルターShadow当日結果評価
+    # --------------------------------------------------------
+    if RUN_CANDIDATE_SHADOW_EVAL:
+        candidate_shadow_env = {
+            **common_env,
+            "CANDIDATE_SHADOW_EVAL_ENABLED": os.getenv(
+                "CANDIDATE_SHADOW_EVAL_ENABLED",
+                "1",
+            ),
+            "CANDIDATE_SHADOW_EVAL_REEVALUATE": os.getenv(
+                "CANDIDATE_SHADOW_EVAL_REEVALUATE",
+                "0",
+            ),
+        }
+
         _run_stage(
             stage_no=2,
-            stage_name="展示shadow当日結果評価",
+            stage_name="候補フィルターShadow当日結果評価",
+            script_path=(
+                base_dir
+                / "evaluate_candidate_filter_shadow_results_pg.py"
+            ),
+            env=candidate_shadow_env,
+            strict=False,
+        )
+    else:
+        print(
+            "STAGE 2 SKIPPED: "
+            "RUN_CANDIDATE_SHADOW_EVAL=0",
+            flush=True,
+        )
+
+    # --------------------------------------------------------
+    # STAGE 3: 展示Shadow当日結果評価
+    # --------------------------------------------------------
+    if RUN_EXHIBITION_SHADOW_EVAL:
+        _run_stage(
+            stage_no=3,
+            stage_name="展示Shadow当日結果評価",
             script_path=(
                 base_dir
                 / "evaluate_exhibition_shadow_results_pg.py"
@@ -248,11 +358,14 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 2 SKIPPED: "
+            "STAGE 3 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_EVAL=0",
             flush=True,
         )
 
+    # --------------------------------------------------------
+    # STAGE 4: 展示Shadow累積レポート
+    # --------------------------------------------------------
     if RUN_EXHIBITION_SHADOW_REPORT:
         report_env = {
             **common_env,
@@ -287,8 +400,8 @@ def main() -> None:
         }
 
         _run_stage(
-            stage_no=3,
-            stage_name="展示shadow累積レポート",
+            stage_no=4,
+            stage_name="展示Shadow累積レポート",
             script_path=(
                 base_dir
                 / "report_exhibition_shadow_performance_pg.py"
@@ -298,14 +411,15 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 3 SKIPPED: "
+            "STAGE 4 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_REPORT=0",
             flush=True,
         )
 
     print("", flush=True)
     print(
-        "=== nightly results + shadow evaluation/report 完了 ===",
+        "=== nightly results + candidate/exhibition "
+        "shadow evaluation/report 完了 ===",
         flush=True,
     )
 
