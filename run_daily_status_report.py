@@ -9,7 +9,7 @@ Railway Start Command:
 Cron Schedule:
     50 14 * * *
 
-JSTでは毎日23:45です。
+JSTでは毎日23:50です。
 """
 
 import os
