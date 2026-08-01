@@ -7,9 +7,9 @@ Railway Start Command:
     python run_monthly_performance_report.py
 
 Cron Schedule:
-    10 15 1 * *
+    0 0 1 * *
 
-JSTでは毎月2日 0:10です。
+JSTでは毎月1日 9:00です。
 """
 
 import os
