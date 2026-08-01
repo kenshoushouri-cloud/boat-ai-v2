@@ -220,7 +220,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-07-30 "
+        "✅ repair_month_all_pg.py VERSION 2026-08-01 race-ids-v6 "
         "venue-deadline-odds-final-v1",
         flush=True,
     )
