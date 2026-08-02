@@ -6,7 +6,7 @@ collect_candidate_filter_shadow_pg.py
 v24_pre_candidate_notifier_pg.py と同じ確率計算を利用し、
 有望ルールに一致した買い目を専用テーブルへ保存します。
 
-VERSION 2026-08-02 latest-selection-v2
+VERSION 2026-08-02 latest-selection-v2.1-json-safe
 
 重要:
 - LINE通知しません。
@@ -324,7 +324,7 @@ def _select_one(
 def main() -> None:
     print(
         "✅ collect_candidate_filter_shadow_pg.py "
-        "VERSION 2026-08-02 latest-selection-v2",
+        "VERSION 2026-08-02 latest-selection-v2.1-json-safe",
         flush=True,
     )
     print(
@@ -442,7 +442,14 @@ def main() -> None:
                     "evaluation_note": None,
                     "updated_at": now_iso,
                     "raw": {
-                        "rule": rule,
+                        "rule": {
+                            **{
+                                key: value
+                                for key, value in rule.items()
+                                if key != "race_nos"
+                            },
+                            "race_nos": sorted(rule["race_nos"]),
+                        },
                         "window_name": WINDOW_NAME,
                         "selector_source": "v24_probability_model",
                         "selection_policy": "latest_by_race_rule",
