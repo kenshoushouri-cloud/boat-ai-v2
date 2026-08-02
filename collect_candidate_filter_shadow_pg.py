@@ -6,7 +6,7 @@ collect_candidate_filter_shadow_pg.py
 v24_pre_candidate_notifier_pg.py と同じ確率計算を利用し、
 有望ルールに一致した買い目を専用テーブルへ保存します。
 
-VERSION 2026-08-02 latest-selection-v2.1-json-safe
+VERSION 2026-08-03 rule-toggle-v2.2
 
 重要:
 - LINE通知しません。
@@ -31,6 +31,8 @@ Variables:
 任意:
     CANDIDATE_SHADOW_ENABLED=1
     CANDIDATE_SHADOW_REQUIRE_COMPLETE_ODDS=1
+    CANDIDATE_SHADOW_RULES=S01,S02,S03,S04,S05
+    CANDIDATE_SHADOW_DISABLED_RULES=
 """
 from __future__ import annotations
 
@@ -61,6 +63,27 @@ REQUIRE_COMPLETE_ODDS = (
     .lower()
     in {"1", "true", "yes", "on"}
 )
+
+
+def _parse_rule_ids(raw: str) -> set[str]:
+    return {
+        value.strip().upper()
+        for value in re.split(r"[,\s]+", raw or "")
+        if value.strip()
+    }
+
+
+RULES_ENV_RAW = os.getenv(
+    "CANDIDATE_SHADOW_RULES",
+    "S01,S02,S03,S04,S05",
+)
+DISABLED_RULES_ENV_RAW = os.getenv(
+    "CANDIDATE_SHADOW_DISABLED_RULES",
+    "",
+)
+
+REQUESTED_RULE_IDS = _parse_rule_ids(RULES_ENV_RAW)
+DISABLED_RULE_IDS = _parse_rule_ids(DISABLED_RULES_ENV_RAW)
 
 RULES = [
     {
@@ -118,6 +141,20 @@ RULES = [
         "event_category": "all_ladies",
         "select_mode": "prob",
     },
+]
+
+
+ALL_RULE_IDS = {str(rule["rule_id"]).upper() for rule in RULES}
+UNKNOWN_REQUESTED_RULE_IDS = sorted(REQUESTED_RULE_IDS - ALL_RULE_IDS)
+UNKNOWN_DISABLED_RULE_IDS = sorted(DISABLED_RULE_IDS - ALL_RULE_IDS)
+
+ACTIVE_RULE_IDS = (
+    ALL_RULE_IDS if not REQUESTED_RULE_IDS else REQUESTED_RULE_IDS & ALL_RULE_IDS
+) - DISABLED_RULE_IDS
+
+ACTIVE_RULES = [
+    rule for rule in RULES
+    if str(rule["rule_id"]).upper() in ACTIVE_RULE_IDS
 ]
 
 
@@ -324,7 +361,7 @@ def _select_one(
 def main() -> None:
     print(
         "✅ collect_candidate_filter_shadow_pg.py "
-        "VERSION 2026-08-02 latest-selection-v2.1-json-safe",
+        "VERSION 2026-08-03 rule-toggle-v2.2",
         flush=True,
     )
     print(
@@ -333,6 +370,23 @@ def main() -> None:
         flush=True,
     )
     print(
+        "ACTIVE_RULES="
+        + (",".join(sorted(ACTIVE_RULE_IDS)) if ACTIVE_RULE_IDS else "(none)"),
+        flush=True,
+    )
+    if UNKNOWN_REQUESTED_RULE_IDS:
+        print(
+            "⚠️ unknown requested rules: "
+            + ",".join(UNKNOWN_REQUESTED_RULE_IDS),
+            flush=True,
+        )
+    if UNKNOWN_DISABLED_RULE_IDS:
+        print(
+            "⚠️ unknown disabled rules: "
+            + ",".join(UNKNOWN_DISABLED_RULE_IDS),
+            flush=True,
+        )
+    print(
         "同一race_id・rule_idは最新1件へ更新。"
         "LINE通知・本番判定・購入処理は変更しません。",
         flush=True,
@@ -340,6 +394,10 @@ def main() -> None:
 
     if not ENABLED:
         print("CANDIDATE_SHADOW_ENABLED=0 のためスキップします。", flush=True)
+        return
+
+    if not ACTIVE_RULES:
+        print("有効なShadowルールが0件のためスキップします。", flush=True)
         return
 
     if not os.getenv("DATABASE_URL"):
@@ -353,7 +411,7 @@ def main() -> None:
     ready_races = 0
     skipped_entries = 0
     skipped_odds = 0
-    matched_by_rule = {rule["rule_id"]: 0 for rule in RULES}
+    matched_by_rule = {rule["rule_id"]: 0 for rule in ACTIVE_RULES}
     now_iso = datetime.now(JST).isoformat()
 
     for race in races:
@@ -388,7 +446,7 @@ def main() -> None:
         event_day_no = event_day_by_venue.get(venue_id, 1)
         ranked = v24._rank_candidates(entries, venue_id, odds)
 
-        for rule in RULES:
+        for rule in ACTIVE_RULES:
             if race_no not in rule["race_nos"]:
                 continue
             if (
@@ -453,6 +511,7 @@ def main() -> None:
                         "window_name": WINDOW_NAME,
                         "selector_source": "v24_probability_model",
                         "selection_policy": "latest_by_race_rule",
+                        "active_rule_ids": sorted(ACTIVE_RULE_IDS),
                     },
                 }
             )
