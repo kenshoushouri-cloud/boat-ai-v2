@@ -6,12 +6,12 @@ import itertools
 import time
 import importlib
 from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-07-31-window-dynamic-ticket-count-v3.1"
+VERSION = "2026-08-08-window-progress-timeout-v3.2"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
@@ -265,7 +265,18 @@ def _run_fetch_batch(
     races: List[Dict[str, Any]],
     workers: int,
     label: str,
+    heartbeat_sec: float,
+    warn_sec: float,
 ):
+    """
+    åRå®äºãã¨ã«é²æãè¡¨ç¤ºããã
+
+    ThreadPoolExecutorèªä½ã§ã¯å®è¡ä¸­Futureãå®å¨ã«å¼·å¶çµäºã§ããªãããã
+    å®HTTPã¿ã¤ã ã¢ã¦ãã¯ repair_month_all_pg.py ã® HTTP_TIMEOUT /
+    HTTP_MAX_RETRIES ãWINDOWå´ããå¶éããã
+    ããã§ã¯heartbeatã§ãæ­¢ã¾ã£ã¦è¦ãããç¶æãé²ãã
+    é·æéå¦çä¸­ã®race_idãå¯è¦åããã
+    """
     total_saved = 0
     success = 0
     failed: List[Tuple[str, str]] = []
@@ -273,8 +284,12 @@ def _run_fetch_batch(
     if not races:
         return success, failed, total_saved
 
+    started_at = time.monotonic()
+    future_started: Dict[Any, float] = {}
+    warned: set[Any] = set()
+
     with ThreadPoolExecutor(max_workers=max(1, workers)) as executor:
-        futures = {}
+        futures: Dict[Any, Dict[str, Any]] = {}
 
         for race in races:
             future = executor.submit(
@@ -285,45 +300,115 @@ def _run_fetch_batch(
                 True,
             )
             futures[future] = race
+            future_started[future] = time.monotonic()
 
-        for index, future in enumerate(
-            as_completed(futures),
-            start=1,
-        ):
-            race = futures[future]
+        pending = set(futures)
+        completed_count = 0
 
-            try:
-                result = future.result()
-            except Exception as exc:
-                failed.append(
+        while pending:
+            done, still_pending = wait(
+                pending,
+                timeout=max(1.0, heartbeat_sec),
+                return_when=FIRST_COMPLETED,
+            )
+
+            if not done:
+                now = time.monotonic()
+                longest = sorted(
                     (
-                        str(race["race_id"]),
-                        repr(exc),
-                    )
+                        (
+                            now - future_started[future],
+                            str(futures[future]["race_id"]),
+                        )
+                        for future in still_pending
+                    ),
+                    reverse=True,
                 )
-                continue
-
-            if result.ok:
-                success += 1
-                total_saved += int(result.odds_saved or 0)
-            else:
-                failed.append(
-                    (
-                        str(result.race_id),
-                        str(result.error),
-                    )
+                sample = ", ".join(
+                    f"{race_id}:{elapsed:.0f}s"
+                    for elapsed, race_id in longest[:5]
                 )
-
-            if index % 20 == 0 or index == len(futures):
                 print(
-                    f"progress {label}: "
-                    f"{index}/{len(futures)} "
-                    f"success={success} "
-                    f"failed={len(failed)} "
-                    f"saved_rows={total_saved}",
+                    f"heartbeat {label}: "
+                    f"completed={completed_count}/{len(futures)} "
+                    f"pending={len(still_pending)} "
+                    f"longest=[{sample}]",
                     flush=True,
                 )
 
+                for future in still_pending:
+                    elapsed = now - future_started[future]
+                    if elapsed >= warn_sec and future not in warned:
+                        warned.add(future)
+                        race_id = str(futures[future]["race_id"])
+                        print(
+                            f"â ï¸ SLOW_RACE {label} "
+                            f"race_id={race_id} elapsed={elapsed:.1f}s",
+                            flush=True,
+                        )
+
+                pending = still_pending
+                continue
+
+            for future in done:
+                race = futures[future]
+                race_id = str(race["race_id"])
+                completed_count += 1
+                elapsed = time.monotonic() - future_started[future]
+                saved_rows = 0
+                status = "OK"
+                error_text = ""
+
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    status = "EXCEPTION"
+                    error_text = repr(exc)
+                    failed.append((race_id, error_text))
+                else:
+                    if result.ok:
+                        success += 1
+                        saved_rows = int(result.odds_saved or 0)
+                        total_saved += saved_rows
+                    else:
+                        status = "FAILED"
+                        error_text = str(result.error)
+                        failed.append(
+                            (
+                                str(result.race_id),
+                                error_text,
+                            )
+                        )
+
+                print(
+                    f"progress {label}: "
+                    f"{completed_count}/{len(futures)} "
+                    f"race_id={race_id} "
+                    f"status={status} "
+                    f"elapsed={elapsed:.1f}s "
+                    f"saved_rows={saved_rows} "
+                    f"success={success} "
+                    f"failed={len(failed)} "
+                    f"saved_total={total_saved}",
+                    flush=True,
+                )
+
+                if error_text:
+                    print(
+                        f"  error race_id={race_id} {error_text}",
+                        flush=True,
+                    )
+
+            pending = still_pending
+
+    batch_elapsed = time.monotonic() - started_at
+    print(
+        f"batch_done {label}: "
+        f"races={len(races)} success={success} "
+        f"failed={len(failed)} saved_rows={total_saved} "
+        f"elapsed={batch_elapsed:.1f}s",
+        flush=True,
+    )
     return success, failed, total_saved
 
 
@@ -350,6 +435,29 @@ def main() -> None:
         float(os.getenv("WINDOW_ODDS_RETRY_WAIT_SEC", "30")),
     )
 
+    heartbeat_sec = max(
+        1.0,
+        float(os.getenv("WINDOW_ODDS_HEARTBEAT_SEC", "15")),
+    )
+    race_warn_sec = max(
+        heartbeat_sec,
+        float(os.getenv("WINDOW_ODDS_RACE_WARN_SEC", "45")),
+    )
+    window_http_timeout = max(
+        5,
+        int(os.getenv("WINDOW_HTTP_TIMEOUT", "20")),
+    )
+    window_http_max_retries = max(
+        0,
+        int(os.getenv("WINDOW_HTTP_MAX_RETRIES", "1")),
+    )
+
+    # repair_month_all_pg.py ãimportããåã«HTTPå¶éãåºå®ããã
+    # 1HTTPãªã¯ã¨ã¹ããé·æéã¶ãä¸ããã®ãé²ãã
+    # å¤å´ã®WINDOW_ODDS_RETRIESã§ä¸è¶³ã¬ã¼ã¹ãååå¾ããã
+    os.environ["HTTP_TIMEOUT"] = str(window_http_timeout)
+    os.environ["HTTP_MAX_RETRIES"] = str(window_http_max_retries)
+
     # æ å¥åå¾ã¯ç· ååã®äºåãªããºåå¾å¦çã
     # Railwayå´ã«å¤ã ODDS_IS_FINAL=1 ãæ®ã£ã¦ãã¦ãã
     # èª¤ã£ã¦ç¢ºå®ãªããºã¨ãã¦ä¿å­ããªãããå¿ã0ã¸åºå®ããã
@@ -363,6 +471,22 @@ def main() -> None:
     print(f"WINDOW_ODDS_RETRIES={max_retries}", flush=True)
     print(
         f"WINDOW_ODDS_RETRY_WAIT_SEC={retry_wait}",
+        flush=True,
+    )
+    print(
+        f"WINDOW_ODDS_HEARTBEAT_SEC={heartbeat_sec}",
+        flush=True,
+    )
+    print(
+        f"WINDOW_ODDS_RACE_WARN_SEC={race_warn_sec}",
+        flush=True,
+    )
+    print(
+        f"WINDOW_HTTP_TIMEOUT={window_http_timeout}",
+        flush=True,
+    )
+    print(
+        f"WINDOW_HTTP_MAX_RETRIES={window_http_max_retries}",
         flush=True,
     )
     print(
@@ -445,6 +569,8 @@ def main() -> None:
         races,
         workers,
         "initial",
+        heartbeat_sec,
+        race_warn_sec,
     )
     total_success += success
     total_saved += saved
@@ -501,6 +627,8 @@ def main() -> None:
             pending,
             workers,
             f"retry-{retry_no}",
+            heartbeat_sec,
+            race_warn_sec,
         )
         total_success += success
         total_saved += saved
