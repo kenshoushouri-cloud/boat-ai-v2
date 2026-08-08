@@ -35,6 +35,40 @@ from db_pg import execute, fetch_all, fetch_one
 
 JST = timezone(timedelta(hours=9))
 
+VENUE_NAMES = {
+    "01": "桐生",
+    "02": "戸田",
+    "03": "江戸川",
+    "04": "平和島",
+    "05": "多摩川",
+    "06": "浜名湖",
+    "07": "蒲郡",
+    "08": "常滑",
+    "09": "津",
+    "10": "三国",
+    "11": "びわこ",
+    "12": "住之江",
+    "13": "尼崎",
+    "14": "鳴門",
+    "15": "丸亀",
+    "16": "児島",
+    "17": "宮島",
+    "18": "徳山",
+    "19": "下関",
+    "20": "若松",
+    "21": "芦屋",
+    "22": "福岡",
+    "23": "唐津",
+    "24": "大村",
+}
+
+
+def _venue_display(venue_id: object) -> str:
+    code = str(venue_id or "").zfill(2)
+    name = VENUE_NAMES.get(code)
+    return f"{name}（{code}）" if name else f"{code}場"
+
+
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_TO = (
     os.getenv("LINE_TO")
@@ -275,7 +309,7 @@ def build_message(d: Dict[str, Any]) -> str:
 
     lines = [
         "【競艇AI テストBUY通知・購入しない】" if TEST_MODE else "【競艇AI BUY通知】",
-        f"{TARGET_DATE} {venue_id}場 {race_no}R",
+        f"{TARGET_DATE} {_venue_display(venue_id)} {race_no}R",
         f"買い目: {ticket}",
         f"オッズ: {odds:.1f}倍 / 想定回収: {expected}円",
         f"モード: {mode_label}",
@@ -311,7 +345,7 @@ def build_batch_message(decisions: List[Dict[str, Any]]) -> str:
         rt_score = _safe_float(d.get("realtime_score"), 0.0)
         pos = _reasons_text(d.get("positive_reasons"))
         neg = _reasons_text(d.get("negative_reasons"))
-        lines.append(f"{idx}. {venue_id}場{race_no}R {ticket} / {odds:.1f}倍")
+        lines.append(f"{idx}. {_venue_display(venue_id)} {race_no}R {ticket} / {odds:.1f}倍")
         lines.append(f"   {mode_label} / score={rt_score:g}")
         if pos:
             lines.append(f"   + {pos}")
@@ -407,7 +441,7 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-07-09 final-limit", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-08-08 venue-name-display-v1", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
