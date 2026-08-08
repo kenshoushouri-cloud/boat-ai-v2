@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 
@@ -67,6 +68,20 @@ def _venue_display(venue_id: object) -> str:
     code = str(venue_id or "").zfill(2)
     name = VENUE_NAMES.get(code)
     return f"{name}（{code}）" if name else f"{code}場"
+
+
+def _parse_target_race_ids() -> set[str]:
+    raw = (os.getenv("TARGET_RACE_IDS") or "").strip()
+    if not raw:
+        return set()
+    return {
+        value.strip()
+        for value in re.split(r"[,\s]+", raw)
+        if value.strip()
+    }
+
+
+TARGET_RACE_ID_SET = _parse_target_race_ids()
 
 
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
@@ -261,6 +276,27 @@ def fetch_buy_decisions() -> List[Dict[str, Any]]:
         """,
         (TARGET_DATE, DECISION_LABEL, SELECTOR_MODE, MAX_SEND * 3),
     )
+    # v25 targeted pipelineから渡された今回の締切ウィンドウ対象だけを通知対象にする。
+    # TARGET_RACE_IDSが空の場合は「今回対象0件」と解釈し、過去の未通知BUYを送らない。
+    if "TARGET_RACE_IDS" in os.environ:
+        if not TARGET_RACE_ID_SET:
+            print(
+                "TARGET_RACE_IDS is empty: 今回の締切ウィンドウ対象0件のため、"
+                "過去の未通知BUYは送信しません。",
+                flush=True,
+            )
+            return []
+        before_target_filter = len(rows)
+        rows = [
+            row for row in rows
+            if str(row.get("race_id") or "") in TARGET_RACE_ID_SET
+        ]
+        print(
+            f"TARGET_RACE_IDS filter: before={before_target_filter} "
+            f"after={len(rows)} targets={len(TARGET_RACE_ID_SET)}",
+            flush=True,
+        )
+
     sent_keys = _already_sent_keys_for_date()
     if DRY_RUN:
         print("DRY_RUNのため重複通知チェックはスキップします。", flush=True)
@@ -441,7 +477,7 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-08-08 venue-name-display-v1", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-08-08 venue-name-target-scope-v2", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
@@ -449,6 +485,13 @@ def main() -> None:
         f"MONTHLY_LINE_LIMIT={MONTHLY_LINE_LIMIT} TEST_MODE={TEST_MODE}",
         flush=True,
     )
+    if "TARGET_RACE_IDS" in os.environ:
+        print(
+            f"TARGET_RACE_IDS scope enabled: {len(TARGET_RACE_ID_SET)} races",
+            flush=True,
+        )
+    else:
+        print("TARGET_RACE_IDS scope disabled", flush=True)
 
     # DRY_RUNではLINE送信しないため、送信上限ガードは通さない。
     # 本送信時だけ月間上限、必要ならfinal日次上限を確認する。
