@@ -24,7 +24,6 @@ Railway Start Command:
 
 from __future__ import annotations
 
-import itertools
 import json
 import math
 import os
@@ -67,6 +66,40 @@ HTTP_TIMEOUT = int(RUN_CONFIG["http_timeout"])
 BAD_VENUES = tuple(str(v).zfill(2) for v in RUN_CONFIG["bad_venues"])
 
 JST = timezone(timedelta(hours=9))
+
+VENUE_NAMES = {
+    "01": "桐生",
+    "02": "戸田",
+    "03": "江戸川",
+    "04": "平和島",
+    "05": "多摩川",
+    "06": "浜名湖",
+    "07": "蒲郡",
+    "08": "常滑",
+    "09": "津",
+    "10": "三国",
+    "11": "びわこ",
+    "12": "住之江",
+    "13": "尼崎",
+    "14": "鳴門",
+    "15": "丸亀",
+    "16": "児島",
+    "17": "宮島",
+    "18": "徳山",
+    "19": "下関",
+    "20": "若松",
+    "21": "芦屋",
+    "22": "福岡",
+    "23": "唐津",
+    "24": "大村",
+}
+
+
+def _venue_display(venue_id: object) -> str:
+    code = str(venue_id or "").zfill(2)
+    name = VENUE_NAMES.get(code)
+    return f"{name}（{code}）" if name else f"{code}場"
+
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SELECTOR_MODE = os.getenv("SELECTOR_MODE", "balanced").strip().lower()
 PRE_SESSION = os.getenv("PRE_SESSION", "day").strip().lower()
@@ -79,20 +112,6 @@ MIN_ODDS_ROWS = int(os.getenv("MIN_ODDS_ROWS", "100"))
 DAILY_LINE_LIMIT = int(os.getenv("DAILY_LINE_LIMIT", "3"))
 MONTHLY_LINE_LIMIT = int(os.getenv("MONTHLY_LINE_LIMIT", "100"))
 EVENT_DAY_LOOKBACK = int(os.getenv("EVENT_DAY_LOOKBACK", "10"))
-
-
-def _parse_target_race_ids() -> set[str]:
-    raw = (os.getenv("TARGET_RACE_IDS") or "").strip()
-    if not raw:
-        return set()
-    return {
-        value.strip()
-        for value in re.split(r"[,\s]+", raw)
-        if value.strip()
-    }
-
-
-TARGET_RACE_ID_SET = _parse_target_race_ids()
 
 CLASS_WEIGHT = {1: 0.15, 2: 0.55, 3: 1.15, 4: 1.55}
 VENUE_COURSE_BIAS = {
@@ -182,62 +201,6 @@ def _norm_ticket(ticket: Any) -> str:
     return s.strip()
 
 
-ALL_LANES = {1, 2, 3, 4, 5, 6}
-
-
-def _ticket_set_for_lanes(active_lanes: set[int]) -> set[str]:
-    return {
-        f"{a}-{b}-{c}"
-        for a, b, c in itertools.permutations(sorted(active_lanes), 3)
-    }
-
-
-def _validate_odds_snapshot(odds: Dict[str, float]) -> Tuple[bool, str]:
-    """
-    三連単オッズが6艇120通り、5艇60通り、4艇24通りの
-    いずれかの完全な順列集合と一致する場合だけ準備完了とする。
-    """
-    actual_tickets = set(odds.keys())
-    parsed_lanes: set[int] = set()
-    malformed = 0
-
-    for ticket in actual_tickets:
-        parts = str(ticket).split("-")
-        if len(parts) != 3 or any(not part.isdigit() for part in parts):
-            malformed += 1
-            continue
-
-        lanes = [int(part) for part in parts]
-        if any(lane not in ALL_LANES for lane in lanes) or len(set(lanes)) != 3:
-            malformed += 1
-            continue
-        parsed_lanes.update(lanes)
-
-    active_lanes = set(parsed_lanes)
-    lane_count_valid = 4 <= len(active_lanes) <= 6
-    expected_tickets = (
-        _ticket_set_for_lanes(active_lanes) if lane_count_valid else set()
-    )
-    missing = expected_tickets - actual_tickets
-    unexpected = actual_tickets - expected_tickets
-
-    valid = (
-        lane_count_valid
-        and malformed == 0
-        and actual_tickets == expected_tickets
-    )
-
-    detail = (
-        f"valid_tickets={len(actual_tickets)} "
-        f"active_lanes={sorted(active_lanes)} "
-        f"expected_count={len(expected_tickets)} "
-        f"malformed={malformed} "
-        f"missing={len(missing)} "
-        f"unexpected={len(unexpected)}"
-    )
-    return valid, detail
-
-
 def _normalize_jp_text(s: Any) -> str:
     if s is None:
         return ""
@@ -309,12 +272,6 @@ def _fetch_live_day_rows(date_str: str) -> Tuple[List[Dict[str, Any]], Dict[str,
         r for r in races
         if str(r.get("venue_id") or r.get("venue_code") or "").zfill(2) in TARGET_VENUES
     ]
-
-    if TARGET_RACE_ID_SET:
-        races = [
-            r for r in races
-            if str(r.get("race_id") or "") in TARGET_RACE_ID_SET
-        ]
 
     entries_rows = fetch_all(
         """
@@ -992,7 +949,7 @@ def _build_pre_message(selected: List[Dict[str, Any]]) -> str:
     ]
 
     for i, r in enumerate(selected[:MAX_ITEMS_PER_MESSAGE], start=1):
-        lines.append(f"{i}. {r['venue_id']}場{r['race_no']}R {r['ticket']} / {r['odds']:.1f}倍")
+        lines.append(f"{i}. {_venue_display(r['venue_id'])} {r['race_no']}R {r['ticket']} / {r['odds']:.1f}倍")
         lines.append(f"   {r['mode_label']} / prob_rank={r['prob_rank']} market_rank={r['market_rank']}")
         lines.append(f"   {r['racegrp']} / venue={r['venue_style']} / cat={r['event_category']}")
         if r.get("race_title"):
@@ -1075,17 +1032,13 @@ def main() -> None:
     _require_settings()
     _ensure_line_notification_columns()
 
-    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-07-31 dynamic-odds-target-filter-v2.1", flush=True)
+    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-08-08 venue-name-display-v1", flush=True)
     print("=== v24 PG 仮買い目LINE通知開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} PRE_SESSION={PRE_SESSION} SELECTOR_MODE={SELECTOR_MODE} "
-        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} ODDS_READY_MODE=dynamic_exact_120_60_24",
+        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} MIN_ODDS_ROWS={MIN_ODDS_ROWS}",
         flush=True,
     )
-    if TARGET_RACE_ID_SET:
-        print(f"TARGET_RACE_IDS enabled: {len(TARGET_RACE_ID_SET)} races", flush=True)
-    else:
-        print("TARGET_RACE_IDS disabled", flush=True)
 
     guard = _usage_guard()
     if guard:
@@ -1125,14 +1078,9 @@ def main() -> None:
             skipped_not_ready += 1
             skipped_entries += 1
             continue
-        odds_ready, odds_detail = _validate_odds_snapshot(odds)
-        if not odds_ready:
+        if len(odds) < MIN_ODDS_ROWS:
             skipped_not_ready += 1
             skipped_odds += 1
-            print(
-                f"ODDS_NOT_READY race_id={rid} {odds_detail}",
-                flush=True,
-            )
             continue
         ready_races += 1
 
