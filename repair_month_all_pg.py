@@ -251,7 +251,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-08-01 race-ids-v7 "
+        "✅ repair_month_all_pg.py VERSION 2026-08-10 historical-fast-v8 "
         "venue-deadline-odds-final-v1",
         flush=True,
     )
@@ -1010,7 +1010,7 @@ def process_race(
                     chunk_size=20,
                 )
 
-        if DO_RESULTS:
+        if DO_RESULTS and not do_odds:
             url = _official_url("raceresult", date_str, venue_id, race_no)
             html = _fetch(url)
 
@@ -1133,6 +1133,7 @@ def main() -> None:
     success = 0
     no_race = 0
     failed: List[RaceResult] = []
+    active_tasks: List[Tuple[str, str, int]] = []
 
     with ThreadPoolExecutor(max_workers=max(1, WORKERS)) as executor:
         futures = {
@@ -1149,6 +1150,7 @@ def main() -> None:
                 total_race_saved += result.race_saved
                 total_entries_saved += result.entries_saved
                 total_result_saved += result.result_saved
+                active_tasks.append(futures[future])
             elif result.no_race:
                 no_race += 1
             else:
@@ -1166,30 +1168,51 @@ def main() -> None:
     odds_failed: List[RaceResult] = []
 
     if DO_ODDS:
-        with ThreadPoolExecutor(max_workers=max(1, ODDS_WORKERS)) as executor:
-            futures = {
-                executor.submit(process_race, date_str, venue_id, race_no, True):
-                (date_str, venue_id, race_no)
-                for date_str, venue_id, race_no in tasks
-            }
+        # 月次バックフィルでDO_RACES=1の場合、第1段階で存在確認できた
+        # 開催レースだけをオッズ取得対象にする。
+        # 非開催レースへのodds3tアクセスを省き、公式サイトへの不要アクセスと
+        # 実行時間を大幅に減らす。
+        if DO_RACES:
+            odds_tasks = sorted(set(active_tasks))
+            print(
+                f"odds_target_filter: before={len(tasks)} "
+                f"after={len(odds_tasks)} skipped_no_race={len(tasks) - len(odds_tasks)}",
+                flush=True,
+            )
+        else:
+            odds_tasks = tasks
+            print(
+                f"odds_target_filter: DO_RACES=False -> all_tasks={len(odds_tasks)}",
+                flush=True,
+            )
 
-            for idx, future in enumerate(as_completed(futures), start=1):
-                result = future.result()
+        if odds_tasks:
+            with ThreadPoolExecutor(max_workers=max(1, ODDS_WORKERS)) as executor:
+                futures = {
+                    executor.submit(process_race, date_str, venue_id, race_no, True):
+                    (date_str, venue_id, race_no)
+                    for date_str, venue_id, race_no in odds_tasks
+                }
 
-                if result.ok:
-                    odds_success += 1
-                    total_odds_saved += result.odds_saved
-                elif not result.no_race:
-                    odds_failed.append(result)
+                for idx, future in enumerate(as_completed(futures), start=1):
+                    result = future.result()
 
-                if idx % 100 == 0 or idx == len(tasks):
-                    print(
-                        f"progress odds: {idx}/{len(tasks)} "
-                        f"odds_success={odds_success} "
-                        f"odds_failed={len(odds_failed)} "
-                        f"odds_rows={total_odds_saved}",
-                        flush=True,
-                    )
+                    if result.ok:
+                        odds_success += 1
+                        total_odds_saved += result.odds_saved
+                    elif not result.no_race:
+                        odds_failed.append(result)
+
+                    if idx % 100 == 0 or idx == len(odds_tasks):
+                        print(
+                            f"progress odds: {idx}/{len(odds_tasks)} "
+                            f"odds_success={odds_success} "
+                            f"odds_failed={len(odds_failed)} "
+                            f"odds_rows={total_odds_saved}",
+                            flush=True,
+                        )
+        else:
+            print("odds_targets=0 のためオッズ取得をスキップします。", flush=True)
 
     print(f"保存レース件数: {total_race_saved}", flush=True)
     print(f"保存出走表件数: {total_entries_saved}", flush=True)
