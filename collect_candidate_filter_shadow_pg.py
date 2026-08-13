@@ -6,7 +6,7 @@ collect_candidate_filter_shadow_pg.py
 v24_pre_candidate_notifier_pg.py と同じ確率計算を利用し、
 有望ルールに一致した買い目を専用テーブルへ保存します。
 
-VERSION 2026-08-03 rule-toggle-v2.2
+VERSION 2026-08-13 phase4-shadow-v2.3
 
 重要:
 - LINE通知しません。
@@ -140,6 +140,28 @@ RULES = [
         "venue_style": "ALL",
         "event_category": "all_ladies",
         "select_mode": "prob",
+    },
+    {
+        "rule_id": "N01",
+        "description": "Phase4 A_STABLE pr11-25 mr2-5 odds3-6 R07-12 EV",
+        "pr_min": 11, "pr_max": 25,
+        "mr_min": 2, "mr_max": 5,
+        "odds_min": 3.0, "odds_max": 6.0,
+        "race_nos": set(range(7, 13)),
+        "venue_style": "ALL",
+        "event_category": "ALL",
+        "select_mode": "ev",
+    },
+    {
+        "rule_id": "N02",
+        "description": "Phase4 B_PROFIT pr11-20 mr2-5 odds3-6 R07-10 EV",
+        "pr_min": 11, "pr_max": 20,
+        "mr_min": 2, "mr_max": 5,
+        "odds_min": 3.0, "odds_max": 6.0,
+        "race_nos": set(range(7, 11)),
+        "venue_style": "ALL",
+        "event_category": "ALL",
+        "select_mode": "ev",
     },
 ]
 
@@ -361,7 +383,7 @@ def _select_one(
 def main() -> None:
     print(
         "✅ collect_candidate_filter_shadow_pg.py "
-        "VERSION 2026-08-03 rule-toggle-v2.2",
+        "VERSION 2026-08-13 phase4-shadow-v2.3",
         flush=True,
     )
     print(
