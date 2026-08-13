@@ -2,27 +2,29 @@
 """
 backfill_historical_beforeinfo_pg.py
 
-BOAT RACE公式の過去beforeinfoを取得し、
-過去の展示・気象・レース状態・選手状態をRailway Postgresへ補修する。
+Historical beforeinfo backfill for Railway Postgres.
 
-初回テスト推奨:
+VERSION:
+    2026-08-13 historical-beforeinfo-backfill-v2-parallel
+
+方針:
+- BOAT RACE公式 beforeinfo のHTTP取得＋parseを並列化
+- DB保存はメインスレッドでbulk upsert
+- LINE通知なし
+- 本番候補判定なし
+- 購入処理なし
+- snapshot_label=historical
+- race_id + snapshot_label (+ lane) でupsert
+- 再実行可能
+
+初回テスト:
     HIST_START_DATE=2025-07-01
     HIST_END_DATE=2025-07-01
+    HIST_WORKERS=4
 
-保存先:
-    v2_realtime_weather_snapshots
-    v2_realtime_exhibition_snapshots
-    v2_realtime_race_condition_snapshots
-    v2_realtime_racer_condition_snapshots
-
-特徴:
-- LINE通知なし
-- 候補判定なし
-- 購入処理なし
-- historical専用snapshot_label
-- upsert対応
-- 再実行可能
-- 既存v21 parserを可能な限り利用
+月次:
+    HIST_START_DATE=2025-07-01
+    HIST_END_DATE=2025-07-31
 """
 
 from __future__ import annotations
@@ -32,8 +34,9 @@ import re
 import time
 import unicodedata
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from db_pg import fetch_all, upsert_rows
 import v21_realtime_collector_pg as v21
@@ -44,7 +47,7 @@ except Exception:
     BeautifulSoup = None
 
 
-VERSION = "2026-08-13 historical-beforeinfo-backfill-v1"
+VERSION = "2026-08-13 historical-beforeinfo-backfill-v2-parallel"
 
 START_DATE = os.getenv(
     "HIST_START_DATE",
@@ -61,9 +64,17 @@ SNAPSHOT_LABEL = os.getenv(
     "historical",
 ).strip() or "historical"
 
+WORKERS = max(
+    1,
+    min(
+        8,
+        int(os.getenv("HIST_WORKERS", "4")),
+    ),
+)
+
 SLEEP_SEC = max(
     0.0,
-    float(os.getenv("HIST_SLEEP_SEC", "0.15")),
+    float(os.getenv("HIST_SLEEP_SEC", "0.05")),
 )
 
 MAX_RACES = max(
@@ -71,13 +82,25 @@ MAX_RACES = max(
     int(os.getenv("HIST_MAX_RACES", "0")),
 )
 
+BULK_RACES = max(
+    10,
+    int(os.getenv("HIST_BULK_RACES", "50")),
+)
+
 REQUIRE_SIX_EXHIBITION = (
-    os.getenv("HIST_REQUIRE_SIX_EXHIBITION", "1")
+    os.getenv(
+        "HIST_REQUIRE_SIX_EXHIBITION",
+        "1",
+    )
     .strip()
     .lower()
     in ("1", "true", "yes")
 )
 
+
+# ---------------------------------------------------------
+# Utility
+# ---------------------------------------------------------
 
 def norm(s: Any) -> str:
     return re.sub(
@@ -126,6 +149,40 @@ def safe_float(v: Any):
     except Exception:
         return None
 
+
+def now_iso() -> str:
+    return v21._now_iso()
+
+
+def daterange(
+    start_date: str,
+    end_date: str,
+):
+    start = datetime.strptime(
+        start_date,
+        "%Y-%m-%d",
+    ).date()
+
+    end = datetime.strptime(
+        end_date,
+        "%Y-%m-%d",
+    ).date()
+
+    if end < start:
+        raise ValueError(
+            "HIST_END_DATE must be >= HIST_START_DATE"
+        )
+
+    d = start
+
+    while d <= end:
+        yield d.strftime("%Y-%m-%d")
+        d += timedelta(days=1)
+
+
+# ---------------------------------------------------------
+# Weather parser v2
+# ---------------------------------------------------------
 
 def parse_weather_v2(
     html: str,
@@ -199,54 +256,49 @@ def parse_weather_v2(
     }
 
 
-def daterange(
-    start_date: str,
-    end_date: str,
-):
-    start = datetime.strptime(
-        start_date,
-        "%Y-%m-%d",
-    ).date()
+# ---------------------------------------------------------
+# DB helpers
+# ---------------------------------------------------------
 
-    end = datetime.strptime(
-        end_date,
-        "%Y-%m-%d",
-    ).date()
-
-    if end < start:
-        raise ValueError(
-            "HIST_END_DATE must be >= HIST_START_DATE"
-        )
-
-    d = start
-
-    while d <= end:
-        yield d.strftime("%Y-%m-%d")
-        d += timedelta(days=1)
-
-
-def upsert(
+def bulk_upsert(
     table: str,
     rows: List[Dict[str, Any]],
     conflict_cols: List[str],
+    chunk_size: int = 500,
 ) -> int:
 
     if not rows:
         return 0
 
-    return upsert_rows(
-        table,
-        rows,
-        conflict_cols,
-    )
+    total = 0
+
+    for i in range(
+        0,
+        len(rows),
+        chunk_size,
+    ):
+        chunk = rows[
+            i:i + chunk_size
+        ]
+
+        total += upsert_rows(
+            table,
+            chunk,
+            conflict_cols,
+        )
+
+    return total
 
 
 def load_entries(
     race_ids: List[str],
 ):
-    if not race_ids:
-        return defaultdict(list)
+    out = defaultdict(list)
 
+    if not race_ids:
+        return out
+
+    # 1日最大数百Rなのでまとめて取得可能
     placeholders = ",".join(
         ["%s"] * len(race_ids)
     )
@@ -261,8 +313,6 @@ def load_entries(
         tuple(race_ids),
     )
 
-    out = defaultdict(list)
-
     for row in rows:
         out[
             str(row.get("race_id") or "")
@@ -271,12 +321,14 @@ def load_entries(
     return out
 
 
-def save_weather(
+# ---------------------------------------------------------
+# Row builders
+# ---------------------------------------------------------
+
+def build_weather_row(
     race: Dict[str, Any],
     weather: Dict[str, Any],
-) -> int:
-
-    now = v21._now_iso()
+) -> Dict[str, Any]:
 
     venue = str(
         race.get("venue_id")
@@ -284,7 +336,9 @@ def save_weather(
         or ""
     ).zfill(2)
 
-    row = {
+    now = now_iso()
+
+    return {
         "race_id": str(race["race_id"]),
         "race_date": race.get("race_date"),
         "venue_id": venue,
@@ -320,24 +374,12 @@ def save_weather(
         "updated_at": now,
     }
 
-    return upsert(
-        "v2_realtime_weather_snapshots",
-        [row],
-        [
-            "race_id",
-            "snapshot_label",
-        ],
-    )
 
-
-def save_exhibition(
+def build_exhibition_rows(
     race: Dict[str, Any],
     entries: List[Dict[str, Any]],
     exhibition: List[Dict[str, Any]],
-) -> int:
-
-    if not exhibition:
-        return 0
+) -> List[Dict[str, Any]]:
 
     rid = str(race["race_id"])
 
@@ -372,8 +414,6 @@ def save_exhibition(
             {},
         )
 
-        now = v21._now_iso()
-
         original_tilt = safe_float(
             entry.get("tilt")
         )
@@ -392,6 +432,8 @@ def save_exhibition(
                 tilt - original_tilt,
                 3,
             )
+
+        now = now_iso()
 
         rows.append({
             "race_id": rid,
@@ -441,22 +483,17 @@ def save_exhibition(
             "updated_at": now,
         })
 
-    return upsert(
-        "v2_realtime_exhibition_snapshots",
-        rows,
-        [
-            "race_id",
-            "snapshot_label",
-            "lane",
-        ],
-    )
+    return rows
 
 
-def save_conditions(
+def build_condition_rows(
     race: Dict[str, Any],
     race_condition: Dict[str, Any],
     players: List[Dict[str, Any]],
-) -> tuple[int, int]:
+) -> Tuple[
+    Dict[str, Any],
+    List[Dict[str, Any]],
+]:
 
     rid = str(race["race_id"])
 
@@ -470,7 +507,7 @@ def save_conditions(
         race.get("race_no") or 0
     )
 
-    now = v21._now_iso()
+    now = now_iso()
 
     race_row = {
         "race_id": rid,
@@ -581,18 +618,156 @@ def save_conditions(
             "updated_at": now,
         })
 
-    n1 = upsert(
-        "v2_realtime_race_condition_snapshots",
-        [race_row],
+    return race_row, player_rows
+
+
+# ---------------------------------------------------------
+# Worker
+# ---------------------------------------------------------
+
+def fetch_and_parse(
+    date_str: str,
+    race: Dict[str, Any],
+    entries: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+
+    rid = str(race["race_id"])
+
+    venue = str(
+        race.get("venue_id")
+        or race.get("venue_code")
+        or ""
+    ).zfill(2)
+
+    race_no = int(
+        race.get("race_no") or 0
+    )
+
+    try:
+
+        url = v21._official_url(
+            "beforeinfo",
+            date_str,
+            venue,
+            race_no,
+        )
+
+        html = v21._fetch(url)
+
+        if not html:
+            return {
+                "race_id": rid,
+                "status": "FETCH_FAILED",
+            }
+
+        weather = parse_weather_v2(
+            html
+        )
+
+        exhibition = (
+            v21.parse_exhibition(
+                html
+            )
+        )
+
+        race_condition, players = (
+            v21.parse_beforeinfo_extra(
+                html,
+                entries,
+            )
+        )
+
+        weather_row = build_weather_row(
+            race,
+            weather,
+        )
+
+        exhibition_rows = []
+
+        exhibition_complete = (
+            len(exhibition) == 6
+        )
+
+        if (
+            not REQUIRE_SIX_EXHIBITION
+            or exhibition_complete
+        ):
+            exhibition_rows = (
+                build_exhibition_rows(
+                    race,
+                    entries,
+                    exhibition,
+                )
+            )
+
+        race_row, player_rows = (
+            build_condition_rows(
+                race,
+                race_condition,
+                players,
+            )
+        )
+
+        if SLEEP_SEC > 0:
+            time.sleep(
+                SLEEP_SEC
+            )
+
+        return {
+            "race_id": rid,
+            "status": "OK",
+            "weather_row": weather_row,
+            "exhibition_rows": (
+                exhibition_rows
+            ),
+            "exhibition_count": len(
+                exhibition
+            ),
+            "exhibition_complete": (
+                exhibition_complete
+            ),
+            "race_condition_row": (
+                race_row
+            ),
+            "racer_condition_rows": (
+                player_rows
+            ),
+        }
+
+    except Exception as exc:
+
+        return {
+            "race_id": rid,
+            "status": "ERROR",
+            "error": (
+                f"{type(exc).__name__}: "
+                f"{exc}"
+            ),
+        }
+
+
+# ---------------------------------------------------------
+# Flush
+# ---------------------------------------------------------
+
+def flush_buffers(
+    buffers: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, int]:
+
+    saved = defaultdict(int)
+
+    saved["weather_rows"] = bulk_upsert(
+        "v2_realtime_weather_snapshots",
+        buffers["weather"],
         [
             "race_id",
             "snapshot_label",
         ],
     )
 
-    n2 = upsert(
-        "v2_realtime_racer_condition_snapshots",
-        player_rows,
+    saved["exhibition_rows"] = bulk_upsert(
+        "v2_realtime_exhibition_snapshots",
+        buffers["exhibition"],
         [
             "race_id",
             "snapshot_label",
@@ -600,12 +775,42 @@ def save_conditions(
         ],
     )
 
-    return n1, n2
+    saved["race_condition_rows"] = (
+        bulk_upsert(
+            "v2_realtime_race_condition_snapshots",
+            buffers["race_condition"],
+            [
+                "race_id",
+                "snapshot_label",
+            ],
+        )
+    )
 
+    saved["racer_condition_rows"] = (
+        bulk_upsert(
+            "v2_realtime_racer_condition_snapshots",
+            buffers["racer_condition"],
+            [
+                "race_id",
+                "snapshot_label",
+                "lane",
+            ],
+        )
+    )
+
+    for key in buffers:
+        buffers[key].clear()
+
+    return saved
+
+
+# ---------------------------------------------------------
+# Day processing
+# ---------------------------------------------------------
 
 def process_date(
     date_str: str,
-    total_summary: Dict[str, int],
+    total: Dict[str, int],
 ) -> None:
 
     races = fetch_all(
@@ -629,12 +834,15 @@ def process_date(
         races = races[:MAX_RACES]
 
     print(
-        f"\n=== {date_str} races={len(races)} ===",
+        f"\n=== {date_str} "
+        f"races={len(races)} ===",
         flush=True,
     )
 
     if not races:
-        total_summary["dates_no_races"] += 1
+        total[
+            "dates_no_races"
+        ] += 1
         return
 
     race_ids = [
@@ -648,158 +856,232 @@ def process_date(
 
     day = defaultdict(int)
 
-    for i, race in enumerate(
-        races,
-        1,
-    ):
+    buffers = {
+        "weather": [],
+        "exhibition": [],
+        "race_condition": [],
+        "racer_condition": [],
+    }
 
-        rid = str(
-            race["race_id"]
-        )
+    completed_since_flush = 0
 
-        venue = str(
-            race.get("venue_id")
-            or race.get("venue_code")
-            or ""
-        ).zfill(2)
+    started = time.monotonic()
 
-        race_no = int(
-            race.get("race_no") or 0
-        )
+    with ThreadPoolExecutor(
+        max_workers=WORKERS
+    ) as executor:
 
-        total_summary["races"] += 1
-        day["races"] += 1
+        futures = {}
 
-        try:
-            url = v21._official_url(
-                "beforeinfo",
-                date_str,
-                venue,
-                race_no,
+        for race in races:
+
+            rid = str(
+                race["race_id"]
             )
 
-            html = v21._fetch(url)
+            future = executor.submit(
+                fetch_and_parse,
+                date_str,
+                race,
+                entries_by.get(
+                    rid,
+                    [],
+                ),
+            )
 
-            if not html:
-                day["fetch_failed"] += 1
-                total_summary[
+            futures[future] = rid
+
+        completed = 0
+
+        for future in as_completed(
+            futures
+        ):
+
+            completed += 1
+            completed_since_flush += 1
+
+            rid = futures[future]
+
+            try:
+                result = future.result()
+
+            except Exception as exc:
+                result = {
+                    "race_id": rid,
+                    "status": "ERROR",
+                    "error": (
+                        f"{type(exc).__name__}: "
+                        f"{exc}"
+                    ),
+                }
+
+            day["races"] += 1
+            total["races"] += 1
+
+            status = result.get(
+                "status"
+            )
+
+            if status == "FETCH_FAILED":
+
+                day[
+                    "fetch_failed"
+                ] += 1
+
+                total[
                     "fetch_failed"
                 ] += 1
 
                 print(
-                    f"[{i}/{len(races)}] "
+                    f"[{completed}/{len(races)}] "
                     f"{rid} FETCH_FAILED",
                     flush=True,
                 )
-                continue
 
-            day["http_ok"] += 1
-            total_summary["http_ok"] += 1
+            elif status == "ERROR":
 
-            weather = parse_weather_v2(
-                html
-            )
+                day["errors"] += 1
+                total["errors"] += 1
 
-            exhibition = (
-                v21.parse_exhibition(
-                    html
+                print(
+                    f"[{completed}/{len(races)}] "
+                    f"{rid} ERROR "
+                    f"{result.get('error')}",
+                    flush=True,
                 )
-            )
 
-            race_condition, players = (
-                v21.parse_beforeinfo_extra(
-                    html,
-                    entries_by.get(
-                        rid,
-                        [],
-                    ),
+            else:
+
+                day["http_ok"] += 1
+                total["http_ok"] += 1
+
+                buffers[
+                    "weather"
+                ].append(
+                    result[
+                        "weather_row"
+                    ]
                 )
-            )
 
-            nw = save_weather(
-                race,
-                weather,
-            )
+                buffers[
+                    "exhibition"
+                ].extend(
+                    result[
+                        "exhibition_rows"
+                    ]
+                )
+
+                buffers[
+                    "race_condition"
+                ].append(
+                    result[
+                        "race_condition_row"
+                    ]
+                )
+
+                buffers[
+                    "racer_condition"
+                ].extend(
+                    result[
+                        "racer_condition_rows"
+                    ]
+                )
+
+                if not result.get(
+                    "exhibition_complete"
+                ):
+                    day[
+                        "exhibition_incomplete"
+                    ] += 1
+
+                    total[
+                        "exhibition_incomplete"
+                    ] += 1
+
+                if (
+                    completed <= 10
+                    or completed % 25 == 0
+                    or completed == len(races)
+                ):
+                    elapsed = (
+                        time.monotonic()
+                        - started
+                    )
+
+                    print(
+                        f"progress "
+                        f"{completed}/{len(races)} "
+                        f"race_id={rid} "
+                        f"exhibition="
+                        f"{result.get('exhibition_count')}/6 "
+                        f"elapsed={elapsed:.1f}s",
+                        flush=True,
+                    )
 
             if (
-                REQUIRE_SIX_EXHIBITION
-                and len(exhibition) != 6
+                completed_since_flush
+                >= BULK_RACES
             ):
-                nx = 0
-                day[
-                    "exhibition_incomplete"
-                ] += 1
-                total_summary[
-                    "exhibition_incomplete"
-                ] += 1
-            else:
-                nx = save_exhibition(
-                    race,
-                    entries_by.get(
-                        rid,
-                        [],
-                    ),
-                    exhibition,
+
+                saved = flush_buffers(
+                    buffers
                 )
 
-            nr, np = save_conditions(
-                race,
-                race_condition,
-                players,
-            )
+                for key, value in (
+                    saved.items()
+                ):
+                    day[key] += value
+                    total[key] += value
 
-            day["weather_rows"] += nw
-            day["exhibition_rows"] += nx
-            day["race_condition_rows"] += nr
-            day["racer_condition_rows"] += np
+                completed_since_flush = 0
 
-            total_summary[
-                "weather_rows"
-            ] += nw
+                print(
+                    f"bulk_flush "
+                    f"completed={completed}/"
+                    f"{len(races)} "
+                    f"weather="
+                    f"{saved['weather_rows']} "
+                    f"exhibition="
+                    f"{saved['exhibition_rows']} "
+                    f"race_condition="
+                    f"{saved['race_condition_rows']} "
+                    f"racer_condition="
+                    f"{saved['racer_condition_rows']}",
+                    flush=True,
+                )
 
-            total_summary[
-                "exhibition_rows"
-            ] += nx
+    # 残りを保存
+    if any(
+        buffers[key]
+        for key in buffers
+    ):
+        saved = flush_buffers(
+            buffers
+        )
 
-            total_summary[
-                "race_condition_rows"
-            ] += nr
+        for key, value in (
+            saved.items()
+        ):
+            day[key] += value
+            total[key] += value
 
-            total_summary[
-                "racer_condition_rows"
-            ] += np
+        print(
+            f"final_flush "
+            f"weather="
+            f"{saved['weather_rows']} "
+            f"exhibition="
+            f"{saved['exhibition_rows']} "
+            f"race_condition="
+            f"{saved['race_condition_rows']} "
+            f"racer_condition="
+            f"{saved['racer_condition_rows']}",
+            flush=True,
+        )
 
-            print(
-                f"[{i}/{len(races)}] "
-                f"{rid} "
-                f"before=OK "
-                f"weather={nw} "
-                f"exhibition={len(exhibition)}/6 "
-                f"saved_exhibition={nx} "
-                f"race_condition={nr} "
-                f"racer_condition={np}",
-                flush=True,
-            )
-
-        except Exception as exc:
-
-            day["errors"] += 1
-            total_summary[
-                "errors"
-            ] += 1
-
-            print(
-                f"[{i}/{len(races)}] "
-                f"{rid} ERROR "
-                f"{type(exc).__name__}: "
-                f"{exc}",
-                flush=True,
-            )
-
-        if SLEEP_SEC > 0:
-            time.sleep(
-                SLEEP_SEC
-            )
+    elapsed = (
+        time.monotonic()
+        - started
+    )
 
     print(
         f"--- {date_str} summary ---",
@@ -822,6 +1104,22 @@ def process_date(
             flush=True,
         )
 
+    print(
+        f"elapsed_sec={elapsed:.1f}",
+        flush=True,
+    )
+
+    if elapsed > 0:
+        print(
+            f"races_per_sec="
+            f"{len(races) / elapsed:.2f}",
+            flush=True,
+        )
+
+
+# ---------------------------------------------------------
+# Main
+# ---------------------------------------------------------
 
 def main() -> None:
 
@@ -854,6 +1152,16 @@ def main() -> None:
     )
 
     print(
+        f"HIST_WORKERS={WORKERS}",
+        flush=True,
+    )
+
+    print(
+        f"HIST_BULK_RACES={BULK_RACES}",
+        flush=True,
+    )
+
+    print(
         f"HIST_SLEEP_SEC={SLEEP_SEC}",
         flush=True,
     )
@@ -864,16 +1172,25 @@ def main() -> None:
     )
 
     print(
-        "LINE通知・候補判定・購入処理なし。",
+        f"HIST_REQUIRE_SIX_EXHIBITION="
+        f"{REQUIRE_SIX_EXHIBITION}",
         flush=True,
     )
 
     print(
-        "historical snapshotとしてDBへupsertします。",
+        "HTTP取得・parseのみ並列。"
+        "DB保存はbulk upsert。",
+        flush=True,
+    )
+
+    print(
+        "LINE通知・候補判定・購入処理なし。",
         flush=True,
     )
 
     total = defaultdict(int)
+
+    started = time.monotonic()
 
     for date_str in daterange(
         START_DATE,
@@ -883,6 +1200,11 @@ def main() -> None:
             date_str,
             total,
         )
+
+    elapsed = (
+        time.monotonic()
+        - started
+    )
 
     print(
         "\n=== historical beforeinfo "
@@ -904,6 +1226,18 @@ def main() -> None:
     ):
         print(
             f"{key}={total[key]}",
+            flush=True,
+        )
+
+    print(
+        f"elapsed_sec={elapsed:.1f}",
+        flush=True,
+    )
+
+    if elapsed > 0:
+        print(
+            f"races_per_sec="
+            f"{total['races'] / elapsed:.2f}",
             flush=True,
         )
 
