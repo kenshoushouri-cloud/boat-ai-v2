@@ -17,6 +17,7 @@ TARGET_DATE=os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 TARGET_RACE_ID=os.getenv("TARGET_RACE_ID","").strip()
 SNAPSHOT_LABEL=os.getenv("SNAPSHOT_LABEL","manual").strip() or "manual"
 COLLECT_SCOPE=os.getenv("COLLECT_SCOPE","candidates").strip().lower()
+TARGET_ID_SCOPE=os.getenv("TARGET_ID_SCOPE","same").strip().lower()
 TARGET_VENUES=[v.strip().zfill(2) for v in os.getenv("TARGET_VENUES",",".join(f"{i:02d}" for i in range(1,25))).split(",") if v.strip()]
 REALTIME_SLEEP_SEC=float(os.getenv("REALTIME_SLEEP_SEC","0.15"))
 PARSE_ALLOW_PARTIAL=os.getenv("PARSE_ALLOW_PARTIAL","0").strip() in ("1","true","True","yes","YES")
@@ -296,8 +297,8 @@ def save_odds(r,odds,source):
     return _upsert("v2_realtime_odds_snapshots",rows,"race_id,snapshot_label,ticket")
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print("â v21_realtime_collector_pg.py VERSION 2026-07-30 ticket-validation-v1",flush=True)
-    print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}",flush=True)
+    print("â v21_realtime_collector_pg.py VERSION 2026-08-15 collect-all-target-candidates-v2",flush=True)
+    print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_ID_SCOPE={TARGET_ID_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}",flush=True)
     print(f"FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}",flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE);days=_event_day_by_venue(TARGET_DATE);scope=[]
     for r in races:
@@ -315,7 +316,32 @@ def main():
         else:passed+=1
     print(f"races={len(races)} scope_races={len(scope)} target_races={len(target)}",flush=True)
     print(f"deadline_filter_used={use_filter} skipped_deadline_missing={miss} skipped_too_early={early} skipped_deadline_passed={passed}",flush=True)
-    target_ids=[str(r.get("race_id")) for r in target if r.get("race_id")]
+    # åéå¯¾è±¡(target)ã¨ãå¾æ®µã®æ¬çªå¤å®ã¸æ¸¡ãrace_idãåé¢ããã
+    # COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates ã«ããã¨ã
+    # ç· ååã®å¨ã¬ã¼ã¹ã®ç´åæå ±ãä¿å­ãã¤ã¤ãå¾æ¥ã®åè£ã¬ã¼ã¹ã ãã
+    # TARGET_RACE_IDS_FILEã¸åºåã§ããã
+    if TARGET_RACE_ID:
+        target_id_rows = target
+    elif TARGET_ID_SCOPE in ("candidates", "candidate"):
+        target_id_rows = []
+        for r in target:
+            v=str(r.get("venue_id") or r.get("venue_code") or "").zfill(2)
+            rno=_safe_int(r.get("race_no"))
+            if _is_candidate_race(v,rno,days.get(v,1)):
+                target_id_rows.append(r)
+    elif TARGET_ID_SCOPE in ("none", "off", "disabled"):
+        target_id_rows = []
+    else:
+        # same / all: å¾æ¥äºæãåéå¯¾è±¡ããã®ã¾ã¾åºåããã
+        target_id_rows = target
+
+    target_ids=[str(r.get("race_id")) for r in target_id_rows if r.get("race_id")]
+    print(
+        f"collection_target_races={len(target)} "
+        f"decision_target_races={len(target_ids)} "
+        f"TARGET_ID_SCOPE={TARGET_ID_SCOPE}",
+        flush=True,
+    )
     try:
         Path(TARGET_RACE_IDS_FILE).write_text(",".join(target_ids),encoding="utf-8")
         print(f"TARGET_RACE_IDS_FILE={TARGET_RACE_IDS_FILE} written={len(target_ids)}",flush=True)
