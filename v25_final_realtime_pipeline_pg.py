@@ -28,6 +28,8 @@ RUN_EXHIBITION_SHADOW = os.getenv(
     "RUN_EXHIBITION_SHADOW", "1"
 ).strip() not in ("0", "false", "False", "no", "NO")
 TARGET_RACE_IDS_FILE = os.getenv("TARGET_RACE_IDS_FILE", "/tmp/v21_target_race_ids.txt").strip() or "/tmp/v21_target_race_ids.txt"
+COLLECTION_RACE_IDS_FILE = os.getenv("COLLECTION_RACE_IDS_FILE", "/tmp/v21_collection_race_ids.txt").strip() or "/tmp/v21_collection_race_ids.txt"
+RUN_N02_WINDLT4_SHADOW = os.getenv("RUN_N02_WINDLT4_SHADOW", "1").strip() not in ("0","false","False","no","NO")
 
 
 def _require_settings() -> None:
@@ -71,13 +73,14 @@ def main() -> None:
 
     print(
         "✅ v25_final_realtime_pipeline_pg.py "
-        "VERSION 2026-07-15 targeted-final-shadow",
+        "VERSION 2026-08-16 targeted-final-shadow+n02-windlt4",
         flush=True,
     )
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
-        f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW}",
+        f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW} "
+        f"RUN_N02_WINDLT4_SHADOW={RUN_N02_WINDLT4_SHADOW}",
         flush=True,
     )
     print("購入処理はありません。LINE通知のみです。", flush=True)
@@ -93,16 +96,37 @@ def main() -> None:
     }
 
     target_file = Path(TARGET_RACE_IDS_FILE)
+    collection_file = Path(COLLECTION_RACE_IDS_FILE)
     target_file.write_text("", encoding="utf-8")
+    collection_file.write_text("", encoding="utf-8")
 
     _run(
         [sys.executable, "v21_realtime_collector_pg.py"],
-        {**common, "TARGET_RACE_IDS_FILE": TARGET_RACE_IDS_FILE},
+        {
+            **common,
+            "TARGET_RACE_IDS_FILE": TARGET_RACE_IDS_FILE,
+            "COLLECTION_RACE_IDS_FILE": COLLECTION_RACE_IDS_FILE,
+        },
     )
 
     target_race_ids = target_file.read_text(encoding="utf-8").strip() if target_file.exists() else ""
+    collection_race_ids = collection_file.read_text(encoding="utf-8").strip() if collection_file.exists() else ""
+
     target_count = len([x for x in target_race_ids.split(",") if x.strip()])
-    print(f"TARGET_RACE_IDS loaded: {target_count} races", flush=True)
+    collection_count = len([x for x in collection_race_ids.split(",") if x.strip()])
+    print(
+        f"TARGET_RACE_IDS loaded: {target_count} races / "
+        f"COLLECTION_RACE_IDS loaded: {collection_count} races",
+        flush=True,
+    )
+
+    if RUN_N02_WINDLT4_SHADOW:
+        _run(
+            [sys.executable, "collect_n02_windlt4_final_shadow_pg.py"],
+            {**common, "COLLECTION_RACE_IDS": collection_race_ids},
+        )
+    else:
+        print("N02_WIND_LT4 shadowはRUN_N02_WINDLT4_SHADOW=0のためスキップします。", flush=True)
 
     targeted_common = {**common, "TARGET_RACE_IDS": target_race_ids}
 
