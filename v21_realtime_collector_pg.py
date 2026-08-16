@@ -25,6 +25,7 @@ FINAL_DEADLINE_FILTER=os.getenv("FINAL_DEADLINE_FILTER","1").strip() not in ("0"
 FINAL_WINDOW_BEFORE_MIN=max(0,int(os.getenv("FINAL_WINDOW_BEFORE_MIN","30")))
 FINAL_WINDOW_AFTER_MIN=max(0,int(os.getenv("FINAL_WINDOW_AFTER_MIN","0")))
 TARGET_RACE_IDS_FILE=os.getenv("TARGET_RACE_IDS_FILE","/tmp/v21_target_race_ids.txt").strip() or "/tmp/v21_target_race_ids.txt"
+COLLECTION_RACE_IDS_FILE=os.getenv("COLLECTION_RACE_IDS_FILE","/tmp/v21_collection_race_ids.txt").strip() or "/tmp/v21_collection_race_ids.txt"
 HTTP_TIMEOUT=int(os.getenv("HTTP_TIMEOUT","35")); RETRY_MAX=int(os.getenv("RETRY_MAX","2")); RETRY_SLEEP=float(os.getenv("RETRY_SLEEP","2.0"))
 BAD5_VENUES={"01","04","05","06","23"}; IN_STRONG_VENUES={"12","15","18","21","24"}; ROUGH_VENUES={"02","03","04","05","06"}
 OFFICIAL="https://www.boatrace.jp/owpc/pc/race"
@@ -297,7 +298,7 @@ def save_odds(r,odds,source):
     return _upsert("v2_realtime_odds_snapshots",rows,"race_id,snapshot_label,ticket")
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print("â v21_realtime_collector_pg.py VERSION 2026-08-15 collect-all-target-candidates-v2",flush=True)
+    print("â v21_realtime_collector_pg.py VERSION 2026-08-16 collect-all-dual-target-files-v3",flush=True)
     print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_ID_SCOPE={TARGET_ID_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}",flush=True)
     print(f"FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}",flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE);days=_event_day_by_venue(TARGET_DATE);scope=[]
@@ -335,13 +336,25 @@ def main():
         # same / all: å¾æ¥äºæãåéå¯¾è±¡ããã®ã¾ã¾åºåããã
         target_id_rows = target
 
+    collection_ids=[str(r.get("race_id")) for r in target if r.get("race_id")]
     target_ids=[str(r.get("race_id")) for r in target_id_rows if r.get("race_id")]
     print(
-        f"collection_target_races={len(target)} "
+        f"collection_target_races={len(collection_ids)} "
         f"decision_target_races={len(target_ids)} "
         f"TARGET_ID_SCOPE={TARGET_ID_SCOPE}",
         flush=True,
     )
+    try:
+        Path(COLLECTION_RACE_IDS_FILE).write_text(",".join(collection_ids),encoding="utf-8")
+        print(
+            f"COLLECTION_RACE_IDS_FILE={COLLECTION_RACE_IDS_FILE} "
+            f"written={len(collection_ids)}",
+            flush=True,
+        )
+    except Exception as e:
+        raise RuntimeError(
+            f"COLLECTION_RACE_IDS_FILEã®æ¸ãè¾¼ã¿ã«å¤±æãã¾ãã: {e}"
+        ) from e
     try:
         Path(TARGET_RACE_IDS_FILE).write_text(",".join(target_ids),encoding="utf-8")
         print(f"TARGET_RACE_IDS_FILE={TARGET_RACE_IDS_FILE} written={len(target_ids)}",flush=True)
