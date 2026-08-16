@@ -32,7 +32,7 @@ from db_pg import execute, fetch_all, upsert_rows
 import v24_pre_candidate_notifier_pg as v24
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-16 n02-windlt4-final-shadow-v1"
+VERSION = "2026-08-17 n02-windlt4-aux-shadow-v2"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -85,6 +85,17 @@ def ensure_schema() -> None:
         "alter table v2_n02_windlt4_final_shadow add column if not exists market_rank integer;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists raw_ev numeric;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists wind_speed_m numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_lane integer;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_racer_number integer;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_avg_st numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_motor3 numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists motor3_vs_field numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_local3_gap numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists aux_score integer;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists aux_grade text;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists course_stats_date date;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists course_top3_rate numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists course_avg_st numeric;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists recommendation text;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists snapshot_at timestamptz;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists raw jsonb;",
@@ -169,7 +180,26 @@ def fetch_day():
         for row in weather
         if row.get("race_id")
     }
-    return races, entries_by, odds_by, weather_by
+
+    # Forward Shadow用。各選手についてTARGET_DATE以前の最新コース別snapshotを使う。
+    course_rows = fetch_all(
+        """
+        select distinct on (racer_number, course)
+               racer_number, snapshot_date, course, top3_rate, avg_st
+        from v2_racer_course_stats_snapshots
+        where snapshot_date <= %s
+        order by racer_number, course, snapshot_date desc;
+        """,
+        (TARGET_DATE,),
+    )
+    course_by = {}
+    for row in course_rows:
+        rn = si(row.get("racer_number"), 0)
+        course = si(row.get("course"), 0)
+        if rn > 0 and 1 <= course <= 6:
+            course_by[(rn, course)] = row
+
+    return races, entries_by, odds_by, weather_by, course_by
 
 def match_n02(row: Dict[str, Any]) -> bool:
     pr = si(row.get("prob_rank"), 999)
@@ -187,6 +217,88 @@ def select_ev(rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
             sf(r.get("prob"), 0.0) or 0.0,
         ),
     )
+
+
+def _valid(v: Any, lo: float, hi: float) -> Optional[float]:
+    x = sf(v, None)
+    if x is None or not (lo <= x <= hi):
+        return None
+    return x
+
+def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[str, Any]:
+    by = v24._entry_by_lane(entries)
+    h = by.get(head)
+    if not h:
+        return {}
+
+    others = [by[i] for i in range(1, 7) if i != head and i in by]
+    if len(others) != 5:
+        return {}
+
+    head_avg_st = _valid(h.get("avg_st"), 0.01, 0.60)
+    head_motor3 = _valid(h.get("motor_place3_rate"), 0.01, 100.0)
+    head_nat3 = _valid(h.get("national_place3_rate"), 0.01, 100.0)
+    head_local3 = _valid(h.get("local_place3_rate"), 0.01, 100.0)
+
+    other_motor3 = [
+        _valid(e.get("motor_place3_rate"), 0.01, 100.0)
+        for e in others
+    ]
+    other_motor3 = [x for x in other_motor3 if x is not None]
+    other_motor3_mean = (
+        sum(other_motor3) / len(other_motor3)
+        if len(other_motor3) >= 4 else None
+    )
+
+    motor3_vs_field = (
+        head_motor3 - other_motor3_mean
+        if head_motor3 is not None and other_motor3_mean is not None
+        else None
+    )
+    head_local3_gap = (
+        head_local3 - head_nat3
+        if head_local3 is not None and head_nat3 is not None
+        else None
+    )
+
+    # Phase7でTRAINだけから固定した閾値。Forwardでは閾値を動かさない。
+    flags = {
+        "motor_edge": bool(
+            motor3_vs_field is not None and motor3_vs_field >= 5.3096
+        ),
+        "head_motor3": bool(
+            head_motor3 is not None and head_motor3 >= 54.2408
+        ),
+        "head_avg_st": bool(
+            head_avg_st is not None and head_avg_st <= 0.1500
+        ),
+    }
+    aux_score = sum(int(v) for v in flags.values())
+    aux_grade = (
+        "A" if aux_score >= 3
+        else "B" if aux_score == 2
+        else "C" if aux_score == 1
+        else "D"
+    )
+
+    racer_number = si(h.get("racer_number"), 0)
+    # 現時点では実進入コースではなく艇番=headを使用。Shadow記録のみ。
+    cs = course_by.get((racer_number, head)) if racer_number else None
+
+    return {
+        "head_lane": head,
+        "head_racer_number": racer_number or None,
+        "head_avg_st": head_avg_st,
+        "head_motor3": head_motor3,
+        "motor3_vs_field": motor3_vs_field,
+        "head_local3_gap": head_local3_gap,
+        "aux_score": aux_score,
+        "aux_grade": aux_grade,
+        "aux_flags": flags,
+        "course_stats_date": cs.get("snapshot_date") if cs else None,
+        "course_top3_rate": sf(cs.get("top3_rate"), None) if cs else None,
+        "course_avg_st": sf(cs.get("avg_st"), None) if cs else None,
+    }
 
 def main() -> None:
     print(
@@ -214,7 +326,7 @@ def main() -> None:
         return
 
     ensure_schema()
-    races, entries_by, odds_by, weather_by = fetch_day()
+    races, entries_by, odds_by, weather_by, course_by = fetch_day()
 
     out = []
     stats = {
@@ -224,6 +336,10 @@ def main() -> None:
         "wind_missing": 0,
         "wind_ge4": 0,
         "selected": 0,
+        "aux_A": 0,
+        "aux_B": 0,
+        "aux_C": 0,
+        "aux_D": 0,
     }
     now = datetime.now(JST).isoformat()
 
@@ -265,6 +381,13 @@ def main() -> None:
             continue
 
         stats["selected"] += 1
+
+        ticket = str(sel.get("ticket") or "")
+        head = si(ticket.split("-")[0], 0)
+        aux = _aux_features(entries, head, course_by)
+        grade = str(aux.get("aux_grade") or "D")
+        stats[f"aux_{grade}"] = stats.get(f"aux_{grade}", 0) + 1
+
         out.append({
             "race_id": rid,
             "race_date": race.get("race_date"),
@@ -272,13 +395,24 @@ def main() -> None:
             "race_no": rno,
             "snapshot_label": SNAPSHOT_LABEL,
             "rule_id": "N02_WIND_LT4",
-            "ticket": str(sel.get("ticket") or ""),
+            "ticket": ticket,
             "odds": sf(sel.get("odds"), 0.0),
             "prob": sf(sel.get("prob"), 0.0),
             "prob_rank": si(sel.get("prob_rank"), 999),
             "market_rank": si(sel.get("market_rank"), 999),
             "raw_ev": sf(sel.get("raw_ev"), 0.0),
             "wind_speed_m": wind,
+            "head_lane": aux.get("head_lane"),
+            "head_racer_number": aux.get("head_racer_number"),
+            "head_avg_st": aux.get("head_avg_st"),
+            "head_motor3": aux.get("head_motor3"),
+            "motor3_vs_field": aux.get("motor3_vs_field"),
+            "head_local3_gap": aux.get("head_local3_gap"),
+            "aux_score": aux.get("aux_score"),
+            "aux_grade": aux.get("aux_grade"),
+            "course_stats_date": aux.get("course_stats_date"),
+            "course_top3_rate": aux.get("course_top3_rate"),
+            "course_avg_st": aux.get("course_avg_st"),
             "recommendation": "SHADOW_BUY",
             "snapshot_at": now,
             "raw": {
@@ -290,6 +424,15 @@ def main() -> None:
                     "select": "EV_MAX",
                     "wind": "<4.0",
                 },
+                "phase7_fixed_aux": {
+                    "motor_edge_threshold": 5.3096,
+                    "head_motor3_threshold": 54.2408,
+                    "head_avg_st_threshold": 0.1500,
+                    "flags": aux.get("aux_flags", {}),
+                    "score": aux.get("aux_score"),
+                    "grade": aux.get("aux_grade"),
+                },
+                "course_stats_note": "course=head_lane assumption; shadow only",
                 "production_impact": "none",
             },
             "updated_at": now,
@@ -313,7 +456,10 @@ def main() -> None:
         print(
             f"  SHADOW {row['race_id']} R{row['race_no']} "
             f"{row['ticket']} odds={row['odds']} "
-            f"wind={row['wind_speed_m']}",
+            f"wind={row['wind_speed_m']} aux={row.get('aux_grade')}"
+            f"/{row.get('aux_score')} "
+            f"m3edge={row.get('motor3_vs_field')} "
+            f"avgST={row.get('head_avg_st')}",
             flush=True,
         )
     print("=== N02 WIND_LT4 final shadow finished ===", flush=True)
