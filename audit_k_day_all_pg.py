@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import lhafile  # type: ignore
 
-VERSION = "2026-08-17 k-day-all-audit-v5-l-no-course"
+VERSION = "2026-08-17 k-day-all-audit-v6-k01-exhibition-placeholder"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
@@ -214,7 +214,17 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
     finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
 
     # K0 / K1 欠場系特殊行
+    # K0 / K1 欠場系特殊行
+    #
+    # 確認済み形式:
+    #   K0 6 4547 ... 58 30 K . K . . .
+    #   K1 5 5275 ... 28 12 0.00 K . . .
+    #
+    # 展示値が存在しない形式と、0.00等の展示値を持つ形式の両方に対応する。
     if status in ("K0", "K1"):
+
+        # 形式1:
+        # K0 6 4547 ... 58 30 K . K . . .
         ktail = re.match(
             r"^(?P<name>.*?)\s+"
             r"(?P<motor>\d{1,3})\s+"
@@ -240,15 +250,34 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
                 "race_time": None,
             }
 
-    # L0 / L1 出遅れ系特殊行
-    #
-    # 形式A: 進入コースあり
-    #   L0 2 5357 ... 6.76 5 L . . .
-    #
-    # 形式B: 進入コースなし
-    #   L0 1 4885 ... 6.76 L . . .
-    #
-    # Kファイルに進入値が存在しない場合は推測せずNULLで保存する。
+        # 形式2:
+        # K1 5 5275 ... 28 12 0.00 K . . .
+        ktail_exh = re.match(
+            r"^(?P<name>.*?)\s+"
+            r"(?P<motor>\d{1,3})\s+"
+            r"(?P<boat>\d{1,3})\s+"
+            r"(?P<exh>\d+\.\d{2})\s+"
+            r"K\s*\.\s*\.\s*\.$",
+            rest,
+        )
+        if ktail_exh:
+            return {
+                "finish_position": None,
+                "finish_status": status,
+                "lane": int(head.group("lane")),
+                "racer_number": int(head.group("racer")),
+                "racer_name": clean(ktail_exh.group("name")),
+                "motor_no": int(ktail_exh.group("motor")),
+                "boat_no": int(ktail_exh.group("boat")),
+                "exhibition_time": float(ktail_exh.group("exh")),
+                "start_course": None,
+                "start_timing": None,
+                "start_status": None,
+                "is_flying": False,
+                "is_late": False,
+                "race_time": None,
+            }
+
     if status in ("L0", "L1"):
         ltail = re.match(
             r"^(?P<name>.*?)\s+"
