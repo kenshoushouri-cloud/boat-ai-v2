@@ -2,9 +2,8 @@
 """
 probe_k_file_pg.py
 
-BOAT RACE公式ダウンロードページから
-現在の「競走成績ダウンロード」リンクを追跡するプローブ。
-
+BOAT RACE公式ダウンロードページ構造調査。
+全a / iframe / form / script src を表示する。
 DB更新なし。
 """
 
@@ -14,9 +13,9 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-VERSION = "2026-08-17 k-file-link-discovery-v2"
+VERSION = "2026-08-17 k-file-page-structure-v3"
 
-START_URL = "https://www.boatrace.jp/owpc/pc/extra/data/download.html"
+URL = "https://www.boatrace.jp/owpc/pc/extra/data/download.html"
 
 HEADERS = {
     "User-Agent": (
@@ -29,128 +28,116 @@ HEADERS = {
 TIMEOUT = 30
 
 
-def fetch(url: str):
+def main():
+    print(f"✅ probe_k_file_pg.py VERSION {VERSION}", flush=True)
+    print("DB書き込みなし。", flush=True)
+
     r = requests.get(
-        url,
+        URL,
         headers=HEADERS,
         timeout=TIMEOUT,
         allow_redirects=True,
     )
-    print("=" * 90, flush=True)
-    print(f"GET={url}", flush=True)
+
     print(f"status={r.status_code}", flush=True)
     print(f"final_url={r.url}", flush=True)
-    print(f"content_type={r.headers.get('Content-Type')}", flush=True)
     print(f"bytes={len(r.content)}", flush=True)
-    return r
+    print(f"content_type={r.headers.get('Content-Type')}", flush=True)
 
-
-def main():
-    print(
-        f"✅ probe_k_file_pg.py VERSION {VERSION}",
-        flush=True,
-    )
-    print("DB書き込みはありません。", flush=True)
-
-    r = fetch(START_URL)
-    if r.status_code != 200:
-        raise RuntimeError("official download page fetch failed")
-
+    r.raise_for_status()
     r.encoding = r.apparent_encoding or "utf-8"
+
     soup = BeautifulSoup(r.text, "html.parser")
 
-    print("\n=== links containing download / race result words ===")
+    print("\n=== PAGE TITLE ===")
+    print(soup.title.get_text(" ", strip=True) if soup.title else "NONE")
 
-    candidates = []
+    print("\n=== TEXT AROUND DOWNLOAD WORDS ===")
+    text = soup.get_text("\n", strip=True)
+    lines = [x.strip() for x in text.splitlines() if x.strip()]
 
-    for a in soup.find_all("a", href=True):
-        text = " ".join(a.get_text(" ", strip=True).split())
+    for i, line in enumerate(lines):
+        if any(
+            key in line
+            for key in [
+                "競走成績",
+                "番組表",
+                "ダウンロード",
+                "成績",
+            ]
+        ):
+            print("-" * 80)
+            for x in lines[max(0, i - 3): min(len(lines), i + 4)]:
+                print(x)
+
+    print("\n=== ALL A LINKS ===")
+
+    count = 0
+    for a in soup.find_all("a"):
         href = a.get("href")
+        text = " ".join(a.get_text(" ", strip=True).split())
+
+        if not href:
+            continue
+
         absolute = urljoin(r.url, href)
 
-        combined = (text + " " + absolute).lower()
+        print(
+            f"{count:03d} TEXT={text!r}\n"
+            f"    HREF={href!r}\n"
+            f"    URL={absolute}",
+            flush=True,
+        )
+        count += 1
 
-        if (
-            "競走成績" in text
-            or "成績ダウンロード" in text
-            or "race" in combined
-            or "/k/" in combined
-            or "od2" in combined
-            or "mbrace" in combined
-        ):
+    print(f"a_count={count}", flush=True)
+
+    print("\n=== IFRAMES ===")
+    for iframe in soup.find_all("iframe"):
+        print(
+            f"src={iframe.get('src')!r} "
+            f"url={urljoin(r.url, iframe.get('src') or '')}",
+            flush=True,
+        )
+
+    print("\n=== FORMS ===")
+    for form in soup.find_all("form"):
+        print(
+            f"method={form.get('method')!r} "
+            f"action={form.get('action')!r} "
+            f"url={urljoin(r.url, form.get('action') or '')}",
+            flush=True,
+        )
+
+    print("\n=== SCRIPT SRC ===")
+    for script in soup.find_all("script"):
+        src = script.get("src")
+        if src:
             print(
-                f"TEXT={text!r}\nURL={absolute}",
-                flush=True,
-            )
-            candidates.append((text, absolute))
-
-    print(
-        f"\ncandidate_count={len(candidates)}",
-        flush=True,
-    )
-
-    # 有力リンクを1階層だけ追う
-    seen = set()
-
-    for text, url in candidates:
-        if url in seen:
-            continue
-        seen.add(url)
-
-        print("\n" + "#" * 90, flush=True)
-        print(f"FOLLOW text={text!r}", flush=True)
-
-        try:
-            r2 = fetch(url)
-
-            if r2.status_code != 200:
-                continue
-
-            ctype = (r2.headers.get("Content-Type") or "").lower()
-
-            # HTMLならリンクを列挙
-            if "html" in ctype or r2.content[:20].lower().startswith(b"<!doctype"):
-                r2.encoding = r2.apparent_encoding or "utf-8"
-                s2 = BeautifulSoup(r2.text, "html.parser")
-
-                print("--- child links ---", flush=True)
-
-                child_count = 0
-
-                for a in s2.find_all("a", href=True):
-                    t = " ".join(
-                        a.get_text(" ", strip=True).split()
-                    )
-                    u = urljoin(r2.url, a["href"])
-
-                    low = u.lower()
-
-                    if (
-                        ".lzh" in low
-                        or ".zip" in low
-                        or "/k/" in low
-                        or "k26" in low
-                        or "202608" in low
-                        or "260816" in low
-                    ):
-                        print(
-                            f"TEXT={t!r}\nURL={u}",
-                            flush=True,
-                        )
-                        child_count += 1
-
-                print(
-                    f"child_candidate_count={child_count}",
-                    flush=True,
-                )
-
-        except Exception as exc:
-            print(
-                f"FOLLOW_ERROR={type(exc).__name__}: {exc}",
+                f"src={src!r}\n"
+                f"url={urljoin(r.url, src)}",
                 flush=True,
             )
 
-    print("\n=== discovery finished ===", flush=True)
+    print("\n=== HTML keyword check ===")
+
+    lower = r.text.lower()
+
+    for key in [
+        "mbrace",
+        "od2",
+        ".lzh",
+        ".zip",
+        "dindex",
+        "download",
+        "競走成績",
+    ]:
+        print(
+            f"{key!r}: {'FOUND' if key.lower() in lower else 'NOT_FOUND'}",
+            flush=True,
+        )
+
+    print("\n=== structure probe finished ===", flush=True)
 
 
 if __name__ == "__main__":
