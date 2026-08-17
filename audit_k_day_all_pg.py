@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import lhafile  # type: ignore
 
-VERSION = "2026-08-17 k-day-all-audit-v3-k0k1-l0l1-placeholder"
+VERSION = "2026-08-17 k-day-all-audit-v4-status00-invalid-race"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
@@ -184,11 +184,20 @@ def parse_start_timing(raw: str):
 
 
 def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
+    """
+    Kファイル着欄:
+      01..06 = 正常着順
+      00     = レース不成立等で着順なし
+      F/S*/L*/K* = 事故・返還・欠場系コード
+
+    00 は艇データ自体（展示/進入/ST）が存在する場合があるため、
+    finish_position=None / finish_status="00" として保存する。
+    """
     s = clean(line)
 
     head = re.match(
         r"^(?P<status>"
-        r"0[1-6]|[1-6]|"
+        r"00|0[1-6]|[1-6]|"
         r"S[012]|F|L[01]|K[01]|"
         r"転|落|沈|妨|失格|失|欠|不"
         r")\s+"
@@ -374,7 +383,7 @@ def parse_section(section: Dict[str, Any]) -> List[Dict[str, Any]]:
 
             # race result rowらしい先頭か
             if re.match(
-                r"^(0[1-6]|[1-6]|S[012]|F|L[01]|K[01]|転|落|沈|妨|失格|失|欠|不)\s+[1-6]\s+\d{4}\b",
+                r"^(00|0[1-6]|[1-6]|S[012]|F|L[01]|K[01]|転|落|沈|妨|失格|失|欠|不)\s+[1-6]\s+\d{4}\b",
                 s,
             ):
                 candidate_like += 1
@@ -383,7 +392,7 @@ def parse_section(section: Dict[str, Any]) -> List[Dict[str, Any]]:
             if parsed:
                 entries.append(parsed)
             elif re.match(
-                r"^(0[1-6]|[1-6]|S[012]|F|L[01]|K[01]|転|落|沈|妨|失格|失|欠|不)\s+[1-6]\s+\d{4}\b",
+                r"^(00|0[1-6]|[1-6]|S[012]|F|L[01]|K[01]|転|落|沈|妨|失格|失|欠|不)\s+[1-6]\s+\d{4}\b",
                 s,
             ):
                 parse_failed_candidate_lines.append(s)
