@@ -2,20 +2,21 @@
 """
 probe_k_file_pg.py
 
-BOAT RACE公式 競走成績Kファイル取得プローブ。
-DB書き込みなし。
+BOAT RACE公式ダウンロードページから
+現在の「競走成績ダウンロード」リンクを追跡するプローブ。
+
+DB更新なし。
 """
 
 from __future__ import annotations
 
-import os
-from datetime import datetime
 import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
-VERSION = "2026-08-17 k-file-download-probe-v1"
+VERSION = "2026-08-17 k-file-link-discovery-v2"
 
-TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
-TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
+START_URL = "https://www.boatrace.jp/owpc/pc/extra/data/download.html"
 
 HEADERS = {
     "User-Agent": (
@@ -25,32 +26,23 @@ HEADERS = {
     "Accept-Language": "ja,en-US;q=0.8,en;q=0.6",
 }
 
+TIMEOUT = 30
 
-def candidates(date_str: str):
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
 
-    yy = dt.strftime("%y")
-    mm = dt.strftime("%m")
-    dd = dt.strftime("%d")
-    yyyymm = dt.strftime("%Y%m")
-
-    filename = f"k{yy}{mm}{dd}.lzh"
-
-    # 過去から使われている公式配信パターン。
-    return [
-        (
-            "official-static",
-            f"https://www.boatrace.jp/"
-            f"static_extra/pc_static/download/data/"
-            f"K/{yyyymm}/{filename}",
-        ),
-        (
-            "official-static-lower",
-            f"https://www.boatrace.jp/"
-            f"static_extra/pc_static/download/data/"
-            f"k/{yyyymm}/{filename}",
-        ),
-    ]
+def fetch(url: str):
+    r = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=TIMEOUT,
+        allow_redirects=True,
+    )
+    print("=" * 90, flush=True)
+    print(f"GET={url}", flush=True)
+    print(f"status={r.status_code}", flush=True)
+    print(f"final_url={r.url}", flush=True)
+    print(f"content_type={r.headers.get('Content-Type')}", flush=True)
+    print(f"bytes={len(r.content)}", flush=True)
+    return r
 
 
 def main():
@@ -58,84 +50,107 @@ def main():
         f"✅ probe_k_file_pg.py VERSION {VERSION}",
         flush=True,
     )
-    print(f"TARGET_DATE={TARGET_DATE}", flush=True)
     print("DB書き込みはありません。", flush=True)
 
-    found = False
+    r = fetch(START_URL)
+    if r.status_code != 200:
+        raise RuntimeError("official download page fetch failed")
 
-    for name, url in candidates(TARGET_DATE):
-        print("=" * 80, flush=True)
-        print(f"TRY={name}", flush=True)
-        print(f"URL={url}", flush=True)
+    r.encoding = r.apparent_encoding or "utf-8"
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    print("\n=== links containing download / race result words ===")
+
+    candidates = []
+
+    for a in soup.find_all("a", href=True):
+        text = " ".join(a.get_text(" ", strip=True).split())
+        href = a.get("href")
+        absolute = urljoin(r.url, href)
+
+        combined = (text + " " + absolute).lower()
+
+        if (
+            "競走成績" in text
+            or "成績ダウンロード" in text
+            or "race" in combined
+            or "/k/" in combined
+            or "od2" in combined
+            or "mbrace" in combined
+        ):
+            print(
+                f"TEXT={text!r}\nURL={absolute}",
+                flush=True,
+            )
+            candidates.append((text, absolute))
+
+    print(
+        f"\ncandidate_count={len(candidates)}",
+        flush=True,
+    )
+
+    # 有力リンクを1階層だけ追う
+    seen = set()
+
+    for text, url in candidates:
+        if url in seen:
+            continue
+        seen.add(url)
+
+        print("\n" + "#" * 90, flush=True)
+        print(f"FOLLOW text={text!r}", flush=True)
 
         try:
-            r = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=TIMEOUT,
-                allow_redirects=True,
-            )
+            r2 = fetch(url)
 
-            print(f"status_code={r.status_code}", flush=True)
-            print(f"final_url={r.url}", flush=True)
-            print(
-                f"content_type={r.headers.get('Content-Type')}",
-                flush=True,
-            )
-            print(
-                f"content_length_header="
-                f"{r.headers.get('Content-Length')}",
-                flush=True,
-            )
-            print(f"received_bytes={len(r.content)}", flush=True)
-            print(
-                f"first_32_bytes={r.content[:32].hex()}",
-                flush=True,
-            )
+            if r2.status_code != 200:
+                continue
 
-            if r.status_code == 200 and len(r.content) > 100:
-                found = True
+            ctype = (r2.headers.get("Content-Type") or "").lower()
 
-                out = "/tmp/boatrace_result_test.lzh"
-                with open(out, "wb") as f:
-                    f.write(r.content)
+            # HTMLならリンクを列挙
+            if "html" in ctype or r2.content[:20].lower().startswith(b"<!doctype"):
+                r2.encoding = r2.apparent_encoding or "utf-8"
+                s2 = BeautifulSoup(r2.text, "html.parser")
 
-                print("✅ DOWNLOAD SUCCESS", flush=True)
-                print(f"saved={out}", flush=True)
+                print("--- child links ---", flush=True)
 
-                # LZHの典型的なヘッダー確認。
-                head = r.content[:64]
-                if b"-lh" in head:
-                    print(
-                        "archive_signature=LZH/LHA likely",
-                        flush=True,
+                child_count = 0
+
+                for a in s2.find_all("a", href=True):
+                    t = " ".join(
+                        a.get_text(" ", strip=True).split()
                     )
-                else:
-                    print(
-                        "archive_signature=UNKNOWN",
-                        flush=True,
-                    )
+                    u = urljoin(r2.url, a["href"])
 
-                break
+                    low = u.lower()
+
+                    if (
+                        ".lzh" in low
+                        or ".zip" in low
+                        or "/k/" in low
+                        or "k26" in low
+                        or "202608" in low
+                        or "260816" in low
+                    ):
+                        print(
+                            f"TEXT={t!r}\nURL={u}",
+                            flush=True,
+                        )
+                        child_count += 1
+
+                print(
+                    f"child_candidate_count={child_count}",
+                    flush=True,
+                )
 
         except Exception as exc:
             print(
-                f"ERROR={type(exc).__name__}: {exc}",
+                f"FOLLOW_ERROR={type(exc).__name__}: {exc}",
                 flush=True,
             )
 
-    print("=" * 80, flush=True)
-
-    if found:
-        print(
-            "RESULT=SUCCESS: Kファイル候補を取得できました。",
-            flush=True,
-        )
-    else:
-        print(
-            "RESULT=NOT_FOUND: URL規則または配信方式を再確認します。",
-            flush=True,
-        )
+    print("\n=== discovery finished ===", flush=True)
 
 
 if __name__ == "__main__":
