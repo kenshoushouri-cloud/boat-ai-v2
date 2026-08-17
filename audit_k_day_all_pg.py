@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import lhafile  # type: ignore
 
-VERSION = "2026-08-17 k-day-all-audit-v4-status00-invalid-race"
+VERSION = "2026-08-17 k-day-all-audit-v5-l-no-course"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
@@ -241,17 +241,26 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
             }
 
     # L0 / L1 出遅れ系特殊行
+    #
+    # 形式A: 進入コースあり
+    #   L0 2 5357 ... 6.76 5 L . . .
+    #
+    # 形式B: 進入コースなし
+    #   L0 1 4885 ... 6.76 L . . .
+    #
+    # Kファイルに進入値が存在しない場合は推測せずNULLで保存する。
     if status in ("L0", "L1"):
         ltail = re.match(
             r"^(?P<name>.*?)\s+"
             r"(?P<motor>\d{1,3})\s+"
             r"(?P<boat>\d{1,3})\s+"
             r"(?P<exh>\d+\.\d{2})\s+"
-            r"(?P<course>[1-6])\s+"
+            r"(?:(?P<course>[1-6])\s+)?"
             r"L\s*\.\s*\.\s*\.$",
             rest,
         )
         if ltail:
+            course_raw = ltail.group("course")
             return {
                 "finish_position": None,
                 "finish_status": status,
@@ -261,7 +270,7 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
                 "motor_no": int(ltail.group("motor")),
                 "boat_no": int(ltail.group("boat")),
                 "exhibition_time": float(ltail.group("exh")),
-                "start_course": int(ltail.group("course")),
+                "start_course": int(course_raw) if course_raw else None,
                 "start_timing": None,
                 "start_status": "L",
                 "is_flying": False,
