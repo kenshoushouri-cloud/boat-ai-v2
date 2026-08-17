@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-probe_k_parse_compare_pg.py
+probe_k_parse_compare_pg_v2.py
 
 公式Kファイルを1日分取得・解凍・解析し、
 指定1レースの結果詳細をKファイルから構造化して、
@@ -8,23 +8,10 @@ probe_k_parse_compare_pg.py
 
 DB更新なし。
 
-比較:
-- 1～6艇の着順/事故状態
-- 艇番
-- 登録番号
-- モーター/ボート
-- 展示タイム
-- 実進入
-- ST
-- レースタイム
-- 決まり手
-- 三連単/払戻
-- 天候/風向/風速/波高
-
-デフォルト:
-  TARGET_DATE=2026-08-16
-  TARGET_VENUE=24
-  TARGET_RNO=12
+v2:
+- 転覆/落水/失格など事故艇行を拾えるようparse_finish_lineを改善
+- 事故艇があっても entries=6 を目標
+- KとWebで全6艇を比較
 """
 
 from __future__ import annotations
@@ -42,7 +29,7 @@ import lhafile  # type: ignore
 from repair_month_all_pg import _fetch, _official_url
 from result_detail_pg import parse_result_detail
 
-VERSION = "2026-08-17 k-parse-compare-v1"
+VERSION = "2026-08-17 k-parse-compare-v2-accident-row"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TARGET_VENUE = os.getenv("TARGET_VENUE", "24").zfill(2)
@@ -50,10 +37,7 @@ TARGET_RNO = int(os.getenv("TARGET_RNO", "12"))
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
 
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(compatible; boat-ai-v2/1.0; +https://boatrace.jp)"
-    ),
+    "User-Agent": "Mozilla/5.0 (compatible; boat-ai-v2/1.0; +https://boatrace.jp)",
     "Accept-Language": "ja,en-US;q=0.8,en;q=0.6",
 }
 
@@ -68,6 +52,10 @@ VENUE_NAMES = {
 METHODS = ("まくり差し","逃げ","差し","まくり","抜き","恵まれ")
 
 
+def clean(s: Any) -> str:
+    return re.sub(r"\s+", " ", str(s or "")).strip()
+
+
 def k_url(date_str: str) -> str:
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     return (
@@ -78,81 +66,81 @@ def k_url(date_str: str) -> str:
 
 def get_k_text(date_str: str) -> str:
     url = k_url(date_str)
-    r = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
-    print(f"K_GET status={r.status_code} bytes={len(r.content)} url={url}", flush=True)
+    r = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=TIMEOUT,
+        allow_redirects=True,
+    )
+    print(
+        f"K_GET status={r.status_code} bytes={len(r.content)} url={url}",
+        flush=True,
+    )
     r.raise_for_status()
 
     with tempfile.TemporaryDirectory(prefix="kcmp_") as td:
         archive = Path(td) / "k.lzh"
         archive.write_bytes(r.content)
+
         lha = lhafile.Lhafile(str(archive))
         names = lha.namelist()
+
         if not names:
             raise RuntimeError("K archive has no members")
+
         data = lha.read(names[0])
 
-    for enc in ("cp932", "shift_jis"):
-        try:
-            return data.decode(enc)
-        except UnicodeDecodeError:
-            pass
-    raise RuntimeError("K TXT decode failed")
-
-
-def clean(s: Any) -> str:
-    return re.sub(r"\s+", " ", str(s or "")).strip()
-
-
-def num(v: str) -> Optional[float]:
-    try:
-        return float(v)
-    except Exception:
-        return None
+    return data.decode("cp932")
 
 
 def parse_header(line: str) -> Optional[Dict[str, Any]]:
-    """
-    例:
-      12R       一般　　　　 H1800m  晴れ  風  北東　 2m  波 1cm
-    """
     s = clean(line)
     m = re.match(r"(\d{1,2})R\s+(.+?)\s+H(\d+)m\s+(.+)$", s)
     if not m:
         return None
 
-    rno = int(m.group(1))
-    title = clean(m.group(2))
-    distance = int(m.group(3))
     tail = m.group(4)
-
-    weather = None
-    wind_direction = None
-    wind_speed = None
-    wave = None
-
-    # 「晴れ 風 北東 2m 波 1cm」等
-    wm = re.search(r"^(.+?)\s+風\s+(.+?)\s+(\d+(?:\.\d+)?)m\s+波\s+(\d+(?:\.\d+)?)cm", tail)
-    if wm:
-        weather = clean(wm.group(1))
-        wind_direction = clean(wm.group(2))
-        wind_speed = float(wm.group(3))
-        wave = float(wm.group(4))
+    wm = re.search(
+        r"^(.+?)\s+風\s+(.+?)\s+(\d+(?:\.\d+)?)m\s+波\s+(\d+(?:\.\d+)?)cm",
+        tail,
+    )
 
     return {
-        "race_no": rno,
-        "race_title": title,
-        "distance_m": distance,
-        "weather": weather,
-        "wind_direction": wind_direction,
-        "wind_speed_m": wind_speed,
-        "wave_height_cm": wave,
+        "race_no": int(m.group(1)),
+        "race_title": clean(m.group(2)),
+        "distance_m": int(m.group(3)),
+        "weather": clean(wm.group(1)) if wm else None,
+        "wind_direction": clean(wm.group(2)) if wm else None,
+        "wind_speed_m": float(wm.group(3)) if wm else None,
+        "wave_height_cm": float(wm.group(4)) if wm else None,
     }
 
 
-def parse_finish_line(line: str):
+def parse_start_timing(raw: str):
+    s = clean(raw)
+
+    start_status = None
+    if s.startswith("F"):
+        start_status = "F"
+    elif s.startswith("L"):
+        start_status = "L"
+
+    numeric = s.lstrip("FL ").strip()
+
+    try:
+        if "." in numeric:
+            value = float(numeric)
+        else:
+            value = int(numeric) / 100.0
+    except Exception:
+        value = None
+
+    return start_status, value
+
+
+def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
     s = clean(line)
 
-    # 先頭: 着順/事故状態 + 艇番 + 登番
     head = re.match(
         r"^(?P<status>0[1-6]|[1-6]|転|落|沈|妨|失格|失|欠|不|F|L)\s+"
         r"(?P<lane>[1-6])\s+"
@@ -165,7 +153,6 @@ def parse_finish_line(line: str):
 
     rest = head.group("rest")
 
-    # 後半を「選手名」と「数値列」に分離
     tail = re.match(
         r"^(?P<name>.*?)\s+"
         r"(?P<motor>\d{1,3})\s+"
@@ -180,42 +167,17 @@ def parse_finish_line(line: str):
         return None
 
     status = head.group("status")
-
-    finish_position = (
-        int(status)
-        if re.fullmatch(r"0?[1-6]", status)
-        else None
-    )
-
-    st_raw = clean(tail.group("st"))
-
-    start_status = None
-    if st_raw.startswith("F"):
-        start_status = "F"
-    elif st_raw.startswith("L"):
-        start_status = "L"
-
-    st_num = st_raw.lstrip("FL ").strip()
-
-    try:
-        start_timing = (
-            float(st_num)
-            if "." in st_num
-            else int(st_num) / 100.0
-        )
-    except Exception:
-        start_timing = None
+    finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
+    start_status, start_timing = parse_start_timing(tail.group("st"))
 
     race_time_raw = clean(tail.group("time"))
-
     race_time = None
-    if (
-        race_time_raw
-        and not re.fullmatch(r"(?:\.\s*){2,}", race_time_raw)
-    ):
-        first = race_time_raw.split()[0]
-        if re.search(r"\d", first):
-            race_time = first
+    if race_time_raw:
+        compact_time = re.sub(r"\s+", "", race_time_raw)
+        if compact_time not in ("..", "..."):
+            first = race_time_raw.split()[0]
+            if re.search(r"\d", first):
+                race_time = first
 
     return {
         "finish_position": finish_position,
@@ -232,29 +194,23 @@ def parse_finish_line(line: str):
         "is_flying": start_status == "F",
         "is_late": start_status == "L",
         "race_time": race_time,
+        "source_line": s,
     }
-    
-    s = clean(line)
-
-if re.match(
-    r"^(転|落|沈|妨|失格|失|欠|不|F|L)\s+[1-6]\s+\d{4}\b",
-    s,
-):
-    print(
-        f"ACCIDENT_PARSE_FAILED={s!r}",
-        flush=True,
-    )
 
 
 def parse_trifecta(lines: List[str]) -> Dict[str, Any]:
     for line in lines:
         s = clean(line)
-        m = re.search(r"３連単\s+([1-6]-[1-6]-[1-6])\s+([\d,]+)", s)
+        m = re.search(
+            r"３連単\s+([1-6]-[1-6]-[1-6])\s+([\d,]+)",
+            s,
+        )
         if m:
             return {
                 "trifecta_ticket": m.group(1),
                 "trifecta_payout": int(m.group(2).replace(",", "")),
             }
+
     return {"trifecta_ticket": None, "trifecta_payout": None}
 
 
@@ -275,58 +231,146 @@ def parse_race_block(text: str, rno: int) -> Dict[str, Any]:
         raise RuntimeError(f"K block not found: {rno}R")
 
     end_idx = len(lines)
+
     for i in range(start_idx + 1, len(lines)):
         h = parse_header(lines[i])
+
         if h and h["race_no"] != rno:
             end_idx = i
             break
+
         if lines[i].strip() in ("ENDK", "24KEND"):
             end_idx = i
             break
 
     block = lines[start_idx:end_idx]
 
-    method = None
-    # 見出し行または次行に決まり手がある
-    for line in block[:5]:
+    winning_method = None
+    for line in block[:6]:
         s = clean(line)
-        for x in METHODS:
-            if x in s:
-                method = x
+
+        for method in METHODS:
+            if method in s:
+                winning_method = method
                 break
-        if method:
+
+        if winning_method:
             break
 
     entries = []
-    for line in block:
-        x = parse_finish_line(line)
-        if x:
-            entries.append(x)
+    failed_accident_lines = []
 
-    # 重複防止
+    for line in block:
+        parsed = parse_finish_line(line)
+
+        if parsed:
+            entries.append(parsed)
+            continue
+
+        s = clean(line)
+
+        if re.match(
+            r"^(転|落|沈|妨|失格|失|欠|不|F|L)\s+[1-6]\s+\d{4}\b",
+            s,
+        ):
+            failed_accident_lines.append(s)
+
     by_lane = {}
-    for x in entries:
-        by_lane.setdefault(x["lane"], x)
+    for row in entries:
+        by_lane.setdefault(row["lane"], row)
+
     entries = list(by_lane.values())
 
-    tri = parse_trifecta(block)
+    normal = [row for row in entries if row["finish_position"] is not None]
+    normal.sort(key=lambda row: row["finish_position"])
 
-    normal = [x for x in entries if x["finish_position"] is not None]
-    normal.sort(key=lambda x: x["finish_position"])
-    finish_order = "-".join(str(x["lane"]) for x in normal) if normal else None
+    finish_order = (
+        "-".join(str(row["lane"]) for row in normal)
+        if normal
+        else None
+    )
 
     return {
         **(header or {}),
-        "winning_method": method,
+        "winning_method": winning_method,
         "finish_order": finish_order,
         "entries": entries,
-        **tri,
-        "block_line_count": len(block),
+        "failed_accident_lines": failed_accident_lines,
+        **parse_trifecta(block),
     }
 
 
-def compare(k: Dict[str, Any], web: Dict[str, Any]) -> None:
+def main():
+    print(
+        f"✅ probe_k_parse_compare_pg_v2.py VERSION {VERSION}",
+        flush=True,
+    )
+
+    print(
+        f"TARGET_DATE={TARGET_DATE} "
+        f"TARGET_VENUE={TARGET_VENUE}"
+        f"({VENUE_NAMES.get(TARGET_VENUE)}) "
+        f"TARGET_RNO={TARGET_RNO}",
+        flush=True,
+    )
+
+    print("DB書き込みなし。", flush=True)
+
+    text = get_k_text(TARGET_DATE)
+    k = parse_race_block(text, TARGET_RNO)
+
+    print("\n=== K PARSED ===", flush=True)
+
+    print(
+        f"entries={len(k['entries'])} "
+        f"winning_method={k.get('winning_method')} "
+        f"finish_order={k.get('finish_order')} "
+        f"trifecta={k.get('trifecta_ticket')} "
+        f"payout={k.get('trifecta_payout')}",
+        flush=True,
+    )
+
+    for row in sorted(k["entries"], key=lambda x: x["lane"]):
+        print(
+            f"lane={row['lane']} "
+            f"racer={row['racer_number']} "
+            f"finish={row['finish_position']} "
+            f"status={row['finish_status']} "
+            f"motor={row['motor_no']} "
+            f"boat={row['boat_no']} "
+            f"exh={row['exhibition_time']} "
+            f"course={row['start_course']} "
+            f"ST={row['start_timing']} "
+            f"F={row['is_flying']} "
+            f"L={row['is_late']} "
+            f"time={row['race_time']}",
+            flush=True,
+        )
+
+    if k["failed_accident_lines"]:
+        print("\n=== FAILED ACCIDENT-LIKE LINES ===", flush=True)
+        for line in k["failed_accident_lines"][:20]:
+            print(repr(line), flush=True)
+
+    web_html = _fetch(
+        _official_url(
+            "raceresult",
+            TARGET_DATE,
+            TARGET_VENUE,
+            TARGET_RNO,
+        )
+    )
+
+    if not web_html:
+        raise RuntimeError("WEB raceresult fetch failed")
+
+    web = parse_result_detail(web_html)
+
+    kb = {int(row["lane"]): row for row in k["entries"]}
+    wb = {int(row["lane"]): row for row in web.get("entries", [])}
+
     print("\n=== TOP LEVEL COMPARE ===", flush=True)
+
     print(
         f"K winning_method={k.get('winning_method')} "
         f"finish_order={k.get('finish_order')} "
@@ -334,6 +378,7 @@ def compare(k: Dict[str, Any], web: Dict[str, Any]) -> None:
         f"payout={k.get('trifecta_payout')}",
         flush=True,
     )
+
     print(
         f"WEB winning_method={web.get('winning_method')} "
         f"finish_order={web.get('finish_order')}",
@@ -341,8 +386,6 @@ def compare(k: Dict[str, Any], web: Dict[str, Any]) -> None:
     )
 
     print("\n=== ENTRY COMPARE ===", flush=True)
-    wb = {int(x["lane"]): x for x in web.get("entries", [])}
-    kb = {int(x["lane"]): x for x in k.get("entries", [])}
 
     mismatches = 0
 
@@ -351,7 +394,11 @@ def compare(k: Dict[str, Any], web: Dict[str, Any]) -> None:
         b = wb.get(lane)
 
         if a is None or b is None:
-            print(f"lane={lane} missing K={a is None} WEB={b is None}", flush=True)
+            print(
+                f"lane={lane} MISSING "
+                f"K={a is None} WEB={b is None}",
+                flush=True,
+            )
             mismatches += 1
             continue
 
@@ -365,97 +412,59 @@ def compare(k: Dict[str, Any], web: Dict[str, Any]) -> None:
         ]
 
         bad = [
-            f"{name}:K={ka}/WEB={wbv}"
-            for name, ka, wbv in fields
-            if ka != wbv
+            (name, k_value, w_value)
+            for name, k_value, w_value in fields
+            if k_value != w_value
         ]
 
         if bad:
             mismatches += 1
-            print(f"lane={lane} MISMATCH " + " | ".join(bad), flush=True)
+            print(
+                f"lane={lane} MISMATCH "
+                + " | ".join(
+                    f"{name}:K={k_value}/WEB={w_value}"
+                    for name, k_value, w_value in bad
+                ),
+                flush=True,
+            )
         else:
             print(
                 f"lane={lane} OK "
-                f"racer={a.get('racer_number')} "
-                f"finish={a.get('finish_position')} "
-                f"course={a.get('start_course')} "
-                f"ST={a.get('start_timing')}",
+                f"racer={a['racer_number']} "
+                f"finish={a['finish_position']} "
+                f"status={a['finish_status']} "
+                f"course={a['start_course']} "
+                f"ST={a['start_timing']}",
                 flush=True,
             )
 
-    print(f"\nentry_mismatch_lanes={mismatches}", flush=True)
-
-    top_ok = (
+    top_level_match = (
         k.get("winning_method") == web.get("winning_method")
         and k.get("finish_order") == web.get("finish_order")
     )
 
+    entries_complete = len(k["entries"]) == 6
+    entry_match = mismatches == 0
+
+    print("\n=== SUMMARY ===", flush=True)
+
     print(
-        f"top_level_match={top_ok} entry_match={mismatches == 0}",
+        f"entries_complete={entries_complete} "
+        f"entry_mismatch_lanes={mismatches} "
+        f"top_level_match={top_level_match} "
+        f"entry_match={entry_match}",
         flush=True,
     )
 
-
-def main():
-    print(f"✅ probe_k_parse_compare_pg.py VERSION {VERSION}", flush=True)
     print(
-        f"TARGET_DATE={TARGET_DATE} "
-        f"TARGET_VENUE={TARGET_VENUE}({VENUE_NAMES.get(TARGET_VENUE)}) "
-        f"TARGET_RNO={TARGET_RNO}",
+        "RESULT="
+        + (
+            "PASS"
+            if entries_complete and entry_match and top_level_match
+            else "CHECK"
+        ),
         flush=True,
     )
-    print("DB書き込みなし。", flush=True)
-
-    if TARGET_VENUE != "24":
-        print(
-            "NOTE: Kファイルは複数場を含むため、v1では対象場ブロック切り分けを"
-            "簡略化しています。まず大村24で照合します。",
-            flush=True,
-        )
-
-    text = get_k_text(TARGET_DATE)
-
-    # v1では2026-08-16の大村ブロックが先頭なので、その中のR番号を解析。
-    # 次版で24場全ブロックの正式分割を実装する。
-    k = parse_race_block(text, TARGET_RNO)
-
-    print("\n=== K PARSED ===", flush=True)
-    print(
-        f"race={k.get('race_no')}R title={k.get('race_title')} "
-        f"weather={k.get('weather')} wind={k.get('wind_direction')} "
-        f"{k.get('wind_speed_m')}m wave={k.get('wave_height_cm')}cm",
-        flush=True,
-    )
-    print(
-        f"winning_method={k.get('winning_method')} "
-        f"finish_order={k.get('finish_order')} "
-        f"trifecta={k.get('trifecta_ticket')} "
-        f"payout={k.get('trifecta_payout')} "
-        f"entries={len(k.get('entries', []))}",
-        flush=True,
-    )
-    for x in sorted(k.get("entries", []), key=lambda z: z["lane"]):
-        print(
-            f"lane={x['lane']} racer={x['racer_number']} "
-            f"finish={x['finish_position']} status={x['finish_status']} "
-            f"motor={x['motor_no']} boat={x['boat_no']} "
-            f"exh={x['exhibition_time']} course={x['start_course']} "
-            f"ST={x['start_timing']} F={x['is_flying']} L={x['is_late']} "
-            f"time={x['race_time']}",
-            flush=True,
-        )
-
-    web_html = _fetch(
-        _official_url("raceresult", TARGET_DATE, TARGET_VENUE, TARGET_RNO)
-    )
-    if not web_html:
-        raise RuntimeError("WEB raceresult fetch failed")
-
-    web = parse_result_detail(web_html)
-
-    compare(k, web)
-
-    print("\nRESULT=SUCCESS", flush=True)
 
 
 if __name__ == "__main__":
