@@ -233,6 +233,17 @@ def parse_finish_line(line: str):
         "is_late": start_status == "L",
         "race_time": race_time,
     }
+    
+    s = clean(line)
+
+if re.match(
+    r"^(転|落|沈|妨|失格|失|欠|不|F|L)\s+[1-6]\s+\d{4}\b",
+    s,
+):
+    print(
+        f"ACCIDENT_PARSE_FAILED={s!r}",
+        flush=True,
+    )
 
 
 def parse_trifecta(lines: List[str]) -> Dict[str, Any]:
