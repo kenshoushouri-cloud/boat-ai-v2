@@ -213,22 +213,68 @@ def _official_url(kind: str, date_str: str, venue_id: str, race_no: int) -> str:
 
 def _fetch(url: str) -> Optional[str]:
     last_err: Optional[str] = None
+
     for attempt in range(MAX_RETRIES + 1):
         try:
             res = SESSION.get(url, timeout=HTTP_TIMEOUT)
+
             if res.status_code == 404:
                 return None
+
             if not res.ok:
                 last_err = f"HTTP {res.status_code}: {res.text[:120]}"
                 time.sleep(0.5 + attempt * 0.5)
                 continue
-            res.encoding = res.apparent_encoding or "utf-8"
-            return res.text
+
+            # Content-Type / requests判定を最優先。
+            encoding = (res.encoding or "").strip()
+
+            # BOAT RACE公式は現在UTF-8ページが中心。
+            # apparent_encoding は ptcp154 等へ誤判定することがあるため、
+            # primary判定には使わない。
+            if not encoding:
+                head = res.content[:5000].decode(
+                    "ascii",
+                    errors="ignore",
+                )
+
+                match = re.search(
+                    r"charset\s*=\s*[\"']?\s*([A-Za-z0-9._-]+)",
+                    head,
+                    flags=re.IGNORECASE,
+                )
+
+                if match:
+                    encoding = match.group(1)
+
+            if not encoding:
+                encoding = "utf-8"
+
+            try:
+                return res.content.decode(encoding)
+            except (LookupError, UnicodeDecodeError):
+                # 最終フォールバック
+                apparent = (res.apparent_encoding or "").strip()
+
+                if apparent and apparent.lower() != encoding.lower():
+                    try:
+                        return res.content.decode(apparent)
+                    except (LookupError, UnicodeDecodeError):
+                        pass
+
+                return res.content.decode(
+                    "utf-8",
+                    errors="replace",
+                )
+
         except Exception as exc:
             last_err = str(exc)
             time.sleep(0.5 + attempt * 0.5)
 
-    print(f"fetch failed: {url} err={last_err}", flush=True)
+    print(
+        f"fetch failed: {url} err={last_err}",
+        flush=True,
+    )
     return None
 
 
