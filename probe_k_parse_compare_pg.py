@@ -149,76 +149,88 @@ def parse_header(line: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
-    """
-    正常:
-    01  4 5250 嶋田 有里 34 85 6.96 4 0.15 1.51.2
-
-    事故行も着欄が「転」「妨」等になる場合があるため、
-    数値順位以外も許容する。
-    """
+def parse_finish_line(line: str):
     s = clean(line)
 
-    # 正常順位 / 代表的事故コード
-    m = re.match(
-        r"^(0[1-6]|[1-6]|F|L|転|落|沈|妨|失|失格|欠|不)\s+"
-        r"([1-6])\s+"
-        r"(\d{4})\s+"
-        r"(.+?)\s+"
-        r"(\d{1,3})\s+"
-        r"(\d{1,3})\s+"
-        r"(\d+\.\d{2})\s+"
-        r"([1-6])\s+"
-        r"([FL]?\s*[-+]?\d*\.\d{2}|[FL]?\s*\d{2})"
-        r"(?:\s+(.+))?$",
-        s
+    # 先頭: 着順/事故状態 + 艇番 + 登番
+    head = re.match(
+        r"^(?P<status>0[1-6]|[1-6]|転|落|沈|妨|失格|失|欠|不|F|L)\s+"
+        r"(?P<lane>[1-6])\s+"
+        r"(?P<racer>\d{4})\s+"
+        r"(?P<rest>.+)$",
+        s,
     )
-    if not m:
+    if not head:
         return None
 
-    status = m.group(1)
-    finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
-    lane = int(m.group(2))
-    racer_number = int(m.group(3))
-    racer_name = clean(m.group(4))
-    motor_no = int(m.group(5))
-    boat_no = int(m.group(6))
-    exhibition_time = float(m.group(7))
-    start_course = int(m.group(8))
-    st_raw = clean(m.group(9))
+    rest = head.group("rest")
 
-    flag = None
+    # 後半を「選手名」と「数値列」に分離
+    tail = re.match(
+        r"^(?P<name>.*?)\s+"
+        r"(?P<motor>\d{1,3})\s+"
+        r"(?P<boat>\d{1,3})\s+"
+        r"(?P<exh>\d+\.\d{2})\s+"
+        r"(?P<course>[1-6])\s+"
+        r"(?P<st>[FL]?\s*(?:[-+]?\d*\.\d{2}|\d{2}))"
+        r"(?:\s+(?P<time>.*))?$",
+        rest,
+    )
+    if not tail:
+        return None
+
+    status = head.group("status")
+
+    finish_position = (
+        int(status)
+        if re.fullmatch(r"0?[1-6]", status)
+        else None
+    )
+
+    st_raw = clean(tail.group("st"))
+
+    start_status = None
     if st_raw.startswith("F"):
-        flag = "F"
+        start_status = "F"
     elif st_raw.startswith("L"):
-        flag = "L"
+        start_status = "L"
 
-    st_numeric = st_raw.lstrip("FL ").strip()
+    st_num = st_raw.lstrip("FL ").strip()
+
     try:
-        st = float(st_numeric) if "." in st_numeric else int(st_numeric) / 100.0
+        start_timing = (
+            float(st_num)
+            if "." in st_num
+            else int(st_num) / 100.0
+        )
     except Exception:
-        st = None
+        start_timing = None
 
-    race_time_raw = clean(m.group(10))
+    race_time_raw = clean(tail.group("time"))
+
     race_time = None
-    if race_time_raw and race_time_raw not in (". .", ".  .", ". ."):
-        # 先頭トークンだけレースタイムとして採用
-        race_time = race_time_raw.split()[0]
+    if (
+        race_time_raw
+        and not re.fullmatch(r"(?:\.\s*){2,}", race_time_raw)
+    ):
+        first = race_time_raw.split()[0]
+        if re.search(r"\d", first):
+            race_time = first
 
     return {
         "finish_position": finish_position,
         "finish_status": status,
-        "lane": lane,
-        "racer_number": racer_number,
-        "racer_name": racer_name,
-        "motor_no": motor_no,
-        "boat_no": boat_no,
-        "exhibition_time": exhibition_time,
-        "start_course": start_course,
-        "start_timing": st,
-        "start_status": flag,
-        "is_flying": flag == "F",
-        "is_late": flag == "L",
+        "lane": int(head.group("lane")),
+        "racer_number": int(head.group("racer")),
+        "racer_name": clean(tail.group("name")),
+        "motor_no": int(tail.group("motor")),
+        "boat_no": int(tail.group("boat")),
+        "exhibition_time": float(tail.group("exh")),
+        "start_course": int(tail.group("course")),
+        "start_timing": start_timing,
+        "start_status": start_status,
+        "is_flying": start_status == "F",
+        "is_late": start_status == "L",
         "race_time": race_time,
     }
 
