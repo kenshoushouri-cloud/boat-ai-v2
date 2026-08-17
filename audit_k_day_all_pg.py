@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import lhafile  # type: ignore
 
-VERSION = "2026-08-17 k-day-all-audit-v2-k0k1-placeholder"
+VERSION = "2026-08-17 k-day-all-audit-v3-k0k1-l0l1-placeholder"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
@@ -204,18 +204,7 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
     rest = head.group("rest")
     finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
 
-    # --------------------------------------------------------
-    # K0 / K1 特殊行
-    #
-    # 公式Kファイルでは欠場系コードで、展示・進入・STが
-    # 通常数値ではなく次のようなプレースホルダになることがある。
-    #
-    # K0 6 4547 中 田 竜 太 58 30 K . K . . .
-    #
-    # motor / boat までは実値として保持し、
-    # exhibition_time / start_course / start_timing は None とする。
-    # status 自体(K0/K1)は失わず保存する。
-    # --------------------------------------------------------
+    # K0 / K1 欠場系特殊行
     if status in ("K0", "K1"):
         ktail = re.match(
             r"^(?P<name>.*?)\s+"
@@ -242,9 +231,35 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
                 "race_time": None,
             }
 
-    # --------------------------------------------------------
-    # 通常行 / S0,S1,S2 / F / L0,L1 等
-    # --------------------------------------------------------
+    # L0 / L1 出遅れ系特殊行
+    if status in ("L0", "L1"):
+        ltail = re.match(
+            r"^(?P<name>.*?)\s+"
+            r"(?P<motor>\d{1,3})\s+"
+            r"(?P<boat>\d{1,3})\s+"
+            r"(?P<exh>\d+\.\d{2})\s+"
+            r"(?P<course>[1-6])\s+"
+            r"L\s*\.\s*\.\s*\.$",
+            rest,
+        )
+        if ltail:
+            return {
+                "finish_position": None,
+                "finish_status": status,
+                "lane": int(head.group("lane")),
+                "racer_number": int(head.group("racer")),
+                "racer_name": clean(ltail.group("name")),
+                "motor_no": int(ltail.group("motor")),
+                "boat_no": int(ltail.group("boat")),
+                "exhibition_time": float(ltail.group("exh")),
+                "start_course": int(ltail.group("course")),
+                "start_timing": None,
+                "start_status": "L",
+                "is_flying": False,
+                "is_late": True,
+                "race_time": None,
+            }
+
     tail = re.match(
         r"^(?P<name>.*?)\s+"
         r"(?P<motor>\d{1,3})\s+"
