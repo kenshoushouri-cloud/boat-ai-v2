@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import lhafile  # type: ignore
 
-VERSION = "2026-08-17 k-day-all-audit-v1"
+VERSION = "2026-08-17 k-day-all-audit-v2-k0k1-placeholder"
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-16")
 TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
@@ -200,8 +200,51 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
     if not head:
         return None
 
+    status = head.group("status")
     rest = head.group("rest")
+    finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
 
+    # --------------------------------------------------------
+    # K0 / K1 特殊行
+    #
+    # 公式Kファイルでは欠場系コードで、展示・進入・STが
+    # 通常数値ではなく次のようなプレースホルダになることがある。
+    #
+    # K0 6 4547 中 田 竜 太 58 30 K . K . . .
+    #
+    # motor / boat までは実値として保持し、
+    # exhibition_time / start_course / start_timing は None とする。
+    # status 自体(K0/K1)は失わず保存する。
+    # --------------------------------------------------------
+    if status in ("K0", "K1"):
+        ktail = re.match(
+            r"^(?P<name>.*?)\s+"
+            r"(?P<motor>\d{1,3})\s+"
+            r"(?P<boat>\d{1,3})\s+"
+            r"K\s*\.\s+K\s*\.\s*\.\s*\.$",
+            rest,
+        )
+        if ktail:
+            return {
+                "finish_position": None,
+                "finish_status": status,
+                "lane": int(head.group("lane")),
+                "racer_number": int(head.group("racer")),
+                "racer_name": clean(ktail.group("name")),
+                "motor_no": int(ktail.group("motor")),
+                "boat_no": int(ktail.group("boat")),
+                "exhibition_time": None,
+                "start_course": None,
+                "start_timing": None,
+                "start_status": None,
+                "is_flying": False,
+                "is_late": False,
+                "race_time": None,
+            }
+
+    # --------------------------------------------------------
+    # 通常行 / S0,S1,S2 / F / L0,L1 等
+    # --------------------------------------------------------
     tail = re.match(
         r"^(?P<name>.*?)\s+"
         r"(?P<motor>\d{1,3})\s+"
@@ -214,9 +257,6 @@ def parse_finish_line(line: str) -> Optional[Dict[str, Any]]:
     )
     if not tail:
         return None
-
-    status = head.group("status")
-    finish_position = int(status) if re.fullmatch(r"0?[1-6]", status) else None
 
     start_status, start_timing = parse_start_timing(tail.group("st"))
 
