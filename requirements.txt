@@ -1,3 +1,4 @@
 requests
 beautifulsoup4>=4.12.0
 psycopg[binary]
+lhafile==0.3.1
