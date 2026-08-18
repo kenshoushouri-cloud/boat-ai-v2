@@ -62,6 +62,11 @@ RUN_CANDIDATE_SHADOW_EVAL = _env_flag(
     "1",
 )
 
+RUN_CANDIDATE_SHADOW_REPORT = _env_flag(
+    "RUN_CANDIDATE_SHADOW_REPORT",
+    "1",
+)
+
 RUN_EXHIBITION_SHADOW_EVAL = _env_flag(
     "RUN_EXHIBITION_SHADOW_EVAL",
     "1",
@@ -205,7 +210,7 @@ def _fetch_target_race_ids(target_date: str) -> list[str]:
 def main() -> None:
     print(
         "✅ run_nightly_results_pg.py "
-        "VERSION 2026-08-01 candidate-shadow-stage-v1",
+        "VERSION 2026-08-18 candidate-shadow-report-stage-v2",
         flush=True,
     )
 
@@ -217,6 +222,8 @@ def main() -> None:
     print(
         f"RUN_CANDIDATE_SHADOW_EVAL="
         f"{RUN_CANDIDATE_SHADOW_EVAL} "
+        f"RUN_CANDIDATE_SHADOW_REPORT="
+        f"{RUN_CANDIDATE_SHADOW_REPORT} "
         f"RUN_EXHIBITION_SHADOW_EVAL="
         f"{RUN_EXHIBITION_SHADOW_EVAL} "
         f"RUN_EXHIBITION_SHADOW_REPORT="
@@ -343,11 +350,56 @@ def main() -> None:
         )
 
     # --------------------------------------------------------
-    # STAGE 3: 展示Shadow当日結果評価
+    # STAGE 3: 候補フィルターShadow累積レポート
+    # --------------------------------------------------------
+    if RUN_CANDIDATE_SHADOW_REPORT:
+        candidate_report_env = {
+            **common_env,
+            "CANDIDATE_SHADOW_REPORT_DAYS": os.getenv(
+                "CANDIDATE_SHADOW_REPORT_DAYS",
+                "30",
+            ),
+            "CANDIDATE_SHADOW_READY_MIN_EVALUATED": os.getenv(
+                "CANDIDATE_SHADOW_READY_MIN_EVALUATED",
+                "30",
+            ),
+            "CANDIDATE_SHADOW_READY_MIN_RULE_EVALUATED": os.getenv(
+                "CANDIDATE_SHADOW_READY_MIN_RULE_EVALUATED",
+                "20",
+            ),
+            "CANDIDATE_SHADOW_READY_MIN_ROI": os.getenv(
+                "CANDIDATE_SHADOW_READY_MIN_ROI",
+                "100",
+            ),
+            "CANDIDATE_SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT": os.getenv(
+                "CANDIDATE_SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT",
+                "60",
+            ),
+        }
+
+        _run_stage(
+            stage_no=3,
+            stage_name="候補フィルターShadow累積レポート",
+            script_path=(
+                base_dir
+                / "report_candidate_filter_shadow_performance_pg.py"
+            ),
+            env=candidate_report_env,
+            strict=False,
+        )
+    else:
+        print(
+            "STAGE 3 SKIPPED: "
+            "RUN_CANDIDATE_SHADOW_REPORT=0",
+            flush=True,
+        )
+
+    # --------------------------------------------------------
+    # STAGE 4: 展示Shadow当日結果評価
     # --------------------------------------------------------
     if RUN_EXHIBITION_SHADOW_EVAL:
         _run_stage(
-            stage_no=3,
+            stage_no=4,
             stage_name="展示Shadow当日結果評価",
             script_path=(
                 base_dir
@@ -358,13 +410,13 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 3 SKIPPED: "
+            "STAGE 4 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_EVAL=0",
             flush=True,
         )
 
     # --------------------------------------------------------
-    # STAGE 4: 展示Shadow累積レポート
+    # STAGE 5: 展示Shadow累積レポート
     # --------------------------------------------------------
     if RUN_EXHIBITION_SHADOW_REPORT:
         report_env = {
@@ -400,7 +452,7 @@ def main() -> None:
         }
 
         _run_stage(
-            stage_no=4,
+            stage_no=5,
             stage_name="展示Shadow累積レポート",
             script_path=(
                 base_dir
@@ -411,7 +463,7 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 4 SKIPPED: "
+            "STAGE 5 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_REPORT=0",
             flush=True,
         )
