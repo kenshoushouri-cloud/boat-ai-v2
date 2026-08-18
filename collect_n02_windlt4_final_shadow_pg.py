@@ -32,7 +32,7 @@ from db_pg import execute, fetch_all, upsert_rows
 import v24_pre_candidate_notifier_pg as v24
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-18 n02-windlt4-variant-shadow-v3"
+VERSION = "2026-08-19 n02-windlt4-variant-shadow-v3.1-schema-first"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -353,11 +353,19 @@ def main() -> None:
         return
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です")
+    # schema migrationは対象レース0件でも必ず実行する。
+    # 追加Shadow列(head_motor2 / motor2_vs_field等)を先に作ることで、
+    # Forwardレポートがcollection 0件の日でも安全に起動できる。
+    ensure_schema()
+
     if not COLLECTION_RACE_IDS:
-        print("今回のcollection window対象は0件です。", flush=True)
+        print(
+            "今回のcollection window対象は0件です。"
+            " schema確認/更新のみ完了しました。",
+            flush=True,
+        )
         return
 
-    ensure_schema()
     races, entries_by, odds_by, weather_by, course_by = fetch_day()
 
     out = []
