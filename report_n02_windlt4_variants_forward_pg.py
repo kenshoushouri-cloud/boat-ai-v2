@@ -43,7 +43,7 @@ from typing import Any, Dict, List, Tuple
 from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-18 n02-windlt4-variant-forward-report-v1"
+VERSION = "2026-08-19 n02-windlt4-variant-forward-report-v1.1-schema-independent"
 
 TARGET_DATE = (
     os.getenv("TARGET_DATE")
@@ -213,9 +213,6 @@ def _fetch_rows() -> List[Dict[str, Any]]:
             s.market_rank,
             s.raw_ev,
             s.wind_speed_m,
-            s.head_avg_st,
-            s.head_motor2,
-            s.motor2_vs_field,
             s.snapshot_at,
             r.trifecta_ticket as result_ticket,
             r.trifecta_payout_yen as payout_yen,
