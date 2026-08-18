@@ -18,6 +18,8 @@ Railway Postgres版：当日結果取得。
    展示Shadow当日結果評価
 6. report_exhibition_shadow_performance_pg.py
    展示Shadow累積レポート
+7. report_n02_windlt4_variants_forward_pg.py
+   N02_WIND_LT4 Variant Forward比較レポート
 
 Start Command:
     python -u run_nightly_results_pg.py
@@ -26,6 +28,7 @@ Start Command:
     RUN_CANDIDATE_SHADOW_EVAL=1
     RUN_CANDIDATE_SHADOW_REPORT=1
     RUN_N02_FORWARD_REPORT=1
+    RUN_N02_VARIANT_FORWARD_REPORT=1
 
     CANDIDATE_SHADOW_EVAL_ENABLED=1
     CANDIDATE_SHADOW_EVAL_REEVALUATE=0
@@ -38,6 +41,9 @@ Start Command:
 
     N02_FORWARD_START_DATE=2026-08-18
     N02_FORWARD_UNIT_YEN=100
+    N02_VARIANT_FORWARD_START_DATE=2026-08-19
+    N02_VARIANT_UNIT_YEN=100
+    N02_VARIANT_REVIEW_TARGETS=10,30,50,100
 
     RUN_EXHIBITION_SHADOW_EVAL=1
     RUN_EXHIBITION_SHADOW_REPORT=1
@@ -63,7 +69,7 @@ from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-08-18 candidate-shadow-n02-forward-stage-v3"
+VERSION = "2026-08-19 n02-variant-forward-stage-v4"
 
 
 def _env_flag(name: str, default: str) -> bool:
@@ -87,6 +93,11 @@ RUN_CANDIDATE_SHADOW_REPORT = _env_flag(
 
 RUN_N02_FORWARD_REPORT = _env_flag(
     "RUN_N02_FORWARD_REPORT",
+    "1",
+)
+
+RUN_N02_VARIANT_FORWARD_REPORT = _env_flag(
+    "RUN_N02_VARIANT_FORWARD_REPORT",
     "1",
 )
 
@@ -248,6 +259,8 @@ def main() -> None:
         f"{RUN_CANDIDATE_SHADOW_REPORT} "
         f"RUN_N02_FORWARD_REPORT="
         f"{RUN_N02_FORWARD_REPORT} "
+        f"RUN_N02_VARIANT_FORWARD_REPORT="
+        f"{RUN_N02_VARIANT_FORWARD_REPORT} "
         f"RUN_EXHIBITION_SHADOW_EVAL="
         f"{RUN_EXHIBITION_SHADOW_EVAL} "
         f"RUN_EXHIBITION_SHADOW_REPORT="
@@ -525,9 +538,46 @@ def main() -> None:
             flush=True,
         )
 
+    # --------------------------------------------------------
+    # STAGE 7: N02_WIND_LT4 Variant Forward比較レポート
+    # --------------------------------------------------------
+    if RUN_N02_VARIANT_FORWARD_REPORT:
+        n02_variant_forward_env = {
+            **common_env,
+            "N02_VARIANT_FORWARD_START_DATE": os.getenv(
+                "N02_VARIANT_FORWARD_START_DATE",
+                "2026-08-19",
+            ),
+            "N02_VARIANT_UNIT_YEN": os.getenv(
+                "N02_VARIANT_UNIT_YEN",
+                os.getenv("UNIT_YEN", "100"),
+            ),
+            "N02_VARIANT_REVIEW_TARGETS": os.getenv(
+                "N02_VARIANT_REVIEW_TARGETS",
+                "10,30,50,100",
+            ),
+        }
+
+        _run_stage(
+            stage_no=7,
+            stage_name="N02_WIND_LT4 Variant Forward比較レポート",
+            script_path=(
+                base_dir
+                / "report_n02_windlt4_variants_forward_pg.py"
+            ),
+            env=n02_variant_forward_env,
+            strict=False,
+        )
+    else:
+        print(
+            "STAGE 7 SKIPPED: "
+            "RUN_N02_VARIANT_FORWARD_REPORT=0",
+            flush=True,
+        )
+
     print("", flush=True)
     print(
-        "=== nightly results + candidate/N02/exhibition "
+        "=== nightly results + candidate/N02/N02-variant/exhibition "
         "shadow evaluation/report 完了 ===",
         flush=True,
     )
