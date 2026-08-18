@@ -10,9 +10,13 @@ Railway Postgres版：当日結果取得。
    当日結果取得
 2. evaluate_candidate_filter_shadow_results_pg.py
    候補フィルターShadow当日結果評価
-3. evaluate_exhibition_shadow_results_pg.py
+3. report_candidate_filter_shadow_performance_pg.py
+   候補フィルターShadow累積レポート
+4. report_n02_forward_performance_pg.py
+   N02 Forward専用レポート
+5. evaluate_exhibition_shadow_results_pg.py
    展示Shadow当日結果評価
-4. report_exhibition_shadow_performance_pg.py
+6. report_exhibition_shadow_performance_pg.py
    展示Shadow累積レポート
 
 Start Command:
@@ -20,8 +24,20 @@ Start Command:
 
 任意Variables:
     RUN_CANDIDATE_SHADOW_EVAL=1
+    RUN_CANDIDATE_SHADOW_REPORT=1
+    RUN_N02_FORWARD_REPORT=1
+
     CANDIDATE_SHADOW_EVAL_ENABLED=1
     CANDIDATE_SHADOW_EVAL_REEVALUATE=0
+
+    CANDIDATE_SHADOW_REPORT_DAYS=30
+    CANDIDATE_SHADOW_READY_MIN_EVALUATED=30
+    CANDIDATE_SHADOW_READY_MIN_RULE_EVALUATED=20
+    CANDIDATE_SHADOW_READY_MIN_ROI=100
+    CANDIDATE_SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT=60
+
+    N02_FORWARD_START_DATE=2026-08-18
+    N02_FORWARD_UNIT_YEN=100
 
     RUN_EXHIBITION_SHADOW_EVAL=1
     RUN_EXHIBITION_SHADOW_REPORT=1
@@ -47,6 +63,8 @@ from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
 
+VERSION = "2026-08-18 candidate-shadow-n02-forward-stage-v3"
+
 
 def _env_flag(name: str, default: str) -> bool:
     return os.getenv(name, default).strip().lower() not in {
@@ -64,6 +82,11 @@ RUN_CANDIDATE_SHADOW_EVAL = _env_flag(
 
 RUN_CANDIDATE_SHADOW_REPORT = _env_flag(
     "RUN_CANDIDATE_SHADOW_REPORT",
+    "1",
+)
+
+RUN_N02_FORWARD_REPORT = _env_flag(
+    "RUN_N02_FORWARD_REPORT",
     "1",
 )
 
@@ -209,8 +232,7 @@ def _fetch_target_race_ids(target_date: str) -> list[str]:
 
 def main() -> None:
     print(
-        "✅ run_nightly_results_pg.py "
-        "VERSION 2026-08-18 candidate-shadow-report-stage-v2",
+        f"✅ run_nightly_results_pg.py VERSION {VERSION}",
         flush=True,
     )
 
@@ -224,6 +246,8 @@ def main() -> None:
         f"{RUN_CANDIDATE_SHADOW_EVAL} "
         f"RUN_CANDIDATE_SHADOW_REPORT="
         f"{RUN_CANDIDATE_SHADOW_REPORT} "
+        f"RUN_N02_FORWARD_REPORT="
+        f"{RUN_N02_FORWARD_REPORT} "
         f"RUN_EXHIBITION_SHADOW_EVAL="
         f"{RUN_EXHIBITION_SHADOW_EVAL} "
         f"RUN_EXHIBITION_SHADOW_REPORT="
@@ -395,11 +419,44 @@ def main() -> None:
         )
 
     # --------------------------------------------------------
-    # STAGE 4: 展示Shadow当日結果評価
+    # STAGE 4: N02 Forward専用レポート
+    # --------------------------------------------------------
+    if RUN_N02_FORWARD_REPORT:
+        n02_forward_env = {
+            **common_env,
+            "N02_FORWARD_START_DATE": os.getenv(
+                "N02_FORWARD_START_DATE",
+                "2026-08-18",
+            ),
+            "N02_FORWARD_UNIT_YEN": os.getenv(
+                "N02_FORWARD_UNIT_YEN",
+                os.getenv("UNIT_YEN", "100"),
+            ),
+        }
+
+        _run_stage(
+            stage_no=4,
+            stage_name="N02 Forward専用レポート",
+            script_path=(
+                base_dir
+                / "report_n02_forward_performance_pg.py"
+            ),
+            env=n02_forward_env,
+            strict=False,
+        )
+    else:
+        print(
+            "STAGE 4 SKIPPED: "
+            "RUN_N02_FORWARD_REPORT=0",
+            flush=True,
+        )
+
+    # --------------------------------------------------------
+    # STAGE 5: 展示Shadow当日結果評価
     # --------------------------------------------------------
     if RUN_EXHIBITION_SHADOW_EVAL:
         _run_stage(
-            stage_no=4,
+            stage_no=5,
             stage_name="展示Shadow当日結果評価",
             script_path=(
                 base_dir
@@ -410,13 +467,13 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 4 SKIPPED: "
+            "STAGE 5 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_EVAL=0",
             flush=True,
         )
 
     # --------------------------------------------------------
-    # STAGE 5: 展示Shadow累積レポート
+    # STAGE 6: 展示Shadow累積レポート
     # --------------------------------------------------------
     if RUN_EXHIBITION_SHADOW_REPORT:
         report_env = {
@@ -452,7 +509,7 @@ def main() -> None:
         }
 
         _run_stage(
-            stage_no=5,
+            stage_no=6,
             stage_name="展示Shadow累積レポート",
             script_path=(
                 base_dir
@@ -463,14 +520,14 @@ def main() -> None:
         )
     else:
         print(
-            "STAGE 5 SKIPPED: "
+            "STAGE 6 SKIPPED: "
             "RUN_EXHIBITION_SHADOW_REPORT=0",
             flush=True,
         )
 
     print("", flush=True)
     print(
-        "=== nightly results + candidate/exhibition "
+        "=== nightly results + candidate/N02/exhibition "
         "shadow evaluation/report 完了 ===",
         flush=True,
     )
