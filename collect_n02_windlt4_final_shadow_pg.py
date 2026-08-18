@@ -32,7 +32,7 @@ from db_pg import execute, fetch_all, upsert_rows
 import v24_pre_candidate_notifier_pg as v24
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-17 n02-windlt4-aux-shadow-v2"
+VERSION = "2026-08-18 n02-windlt4-variant-shadow-v3"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -88,6 +88,8 @@ def ensure_schema() -> None:
         "alter table v2_n02_windlt4_final_shadow add column if not exists head_lane integer;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists head_racer_number integer;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists head_avg_st numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists head_motor2 numeric;",
+        "alter table v2_n02_windlt4_final_shadow add column if not exists motor2_vs_field numeric;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists head_motor3 numeric;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists motor3_vs_field numeric;",
         "alter table v2_n02_windlt4_final_shadow add column if not exists head_local3_gap numeric;",
@@ -236,9 +238,20 @@ def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[s
         return {}
 
     head_avg_st = _valid(h.get("avg_st"), 0.01, 0.60)
+    head_motor2 = _valid(h.get("motor_place2_rate"), 0.01, 100.0)
     head_motor3 = _valid(h.get("motor_place3_rate"), 0.01, 100.0)
     head_nat3 = _valid(h.get("national_place3_rate"), 0.01, 100.0)
     head_local3 = _valid(h.get("local_place3_rate"), 0.01, 100.0)
+
+    other_motor2 = [
+        _valid(e.get("motor_place2_rate"), 0.01, 100.0)
+        for e in others
+    ]
+    other_motor2 = [x for x in other_motor2 if x is not None]
+    other_motor2_mean = (
+        sum(other_motor2) / len(other_motor2)
+        if len(other_motor2) >= 4 else None
+    )
 
     other_motor3 = [
         _valid(e.get("motor_place3_rate"), 0.01, 100.0)
@@ -250,6 +263,11 @@ def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[s
         if len(other_motor3) >= 4 else None
     )
 
+    motor2_vs_field = (
+        head_motor2 - other_motor2_mean
+        if head_motor2 is not None and other_motor2_mean is not None
+        else None
+    )
     motor3_vs_field = (
         head_motor3 - other_motor3_mean
         if head_motor3 is not None and other_motor3_mean is not None
@@ -261,7 +279,20 @@ def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[s
         else None
     )
 
-    # Phase7でTRAINだけから固定した閾値。Forwardでは閾値を動かさない。
+    # TRAIN期間だけから固定したForward検証閾値。今後は動かさない。
+    variant_flags = {
+        "N02_WIND_LT4_ST15": bool(
+            head_avg_st is not None and head_avg_st <= 0.1500
+        ),
+        "N02_WIND_LT4_MOTOR2": bool(
+            head_motor2 is not None and head_motor2 >= 38.4056
+        ),
+        "N02_WIND_LT4_MOTOR2_GAP": bool(
+            motor2_vs_field is not None and motor2_vs_field >= 5.7263
+        ),
+    }
+
+    # 既存aux評価は互換性のため残す。
     flags = {
         "motor_edge": bool(
             motor3_vs_field is not None and motor3_vs_field >= 5.3096
@@ -269,9 +300,7 @@ def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[s
         "head_motor3": bool(
             head_motor3 is not None and head_motor3 >= 54.2408
         ),
-        "head_avg_st": bool(
-            head_avg_st is not None and head_avg_st <= 0.1500
-        ),
+        "head_avg_st": variant_flags["N02_WIND_LT4_ST15"],
     }
     aux_score = sum(int(v) for v in flags.values())
     aux_grade = (
@@ -289,12 +318,15 @@ def _aux_features(entries: List[Dict[str, Any]], head: int, course_by) -> Dict[s
         "head_lane": head,
         "head_racer_number": racer_number or None,
         "head_avg_st": head_avg_st,
+        "head_motor2": head_motor2,
+        "motor2_vs_field": motor2_vs_field,
         "head_motor3": head_motor3,
         "motor3_vs_field": motor3_vs_field,
         "head_local3_gap": head_local3_gap,
         "aux_score": aux_score,
         "aux_grade": aux_grade,
         "aux_flags": flags,
+        "variant_flags": variant_flags,
         "course_stats_date": cs.get("snapshot_date") if cs else None,
         "course_top3_rate": sf(cs.get("top3_rate"), None) if cs else None,
         "course_avg_st": sf(cs.get("avg_st"), None) if cs else None,
@@ -340,6 +372,9 @@ def main() -> None:
         "aux_B": 0,
         "aux_C": 0,
         "aux_D": 0,
+        "variant_ST15": 0,
+        "variant_MOTOR2": 0,
+        "variant_MOTOR2_GAP": 0,
     }
     now = datetime.now(JST).isoformat()
 
@@ -388,13 +423,12 @@ def main() -> None:
         grade = str(aux.get("aux_grade") or "D")
         stats[f"aux_{grade}"] = stats.get(f"aux_{grade}", 0) + 1
 
-        out.append({
+        base_row = {
             "race_id": rid,
             "race_date": race.get("race_date"),
             "venue_code": venue,
             "race_no": rno,
             "snapshot_label": SNAPSHOT_LABEL,
-            "rule_id": "N02_WIND_LT4",
             "ticket": ticket,
             "odds": sf(sel.get("odds"), 0.0),
             "prob": sf(sel.get("prob"), 0.0),
@@ -405,6 +439,8 @@ def main() -> None:
             "head_lane": aux.get("head_lane"),
             "head_racer_number": aux.get("head_racer_number"),
             "head_avg_st": aux.get("head_avg_st"),
+            "head_motor2": aux.get("head_motor2"),
+            "motor2_vs_field": aux.get("motor2_vs_field"),
             "head_motor3": aux.get("head_motor3"),
             "motor3_vs_field": aux.get("motor3_vs_field"),
             "head_local3_gap": aux.get("head_local3_gap"),
@@ -415,15 +451,57 @@ def main() -> None:
             "course_avg_st": aux.get("course_avg_st"),
             "recommendation": "SHADOW_BUY",
             "snapshot_at": now,
-            "raw": {
+            "updated_at": now,
+        }
+
+        fixed_common = {
+            "prob_rank": "11-20",
+            "market_rank": "2-5",
+            "odds": "3.0-6.0",
+            "race_no": "7-10",
+            "select": "EV_MAX",
+            "wind": "<4.0",
+        }
+
+        variant_defs = [
+            ("N02_WIND_LT4", True, {}),
+            (
+                "N02_WIND_LT4_ST15",
+                bool(aux.get("variant_flags", {}).get("N02_WIND_LT4_ST15")),
+                {"head_avg_st_max": 0.1500},
+            ),
+            (
+                "N02_WIND_LT4_MOTOR2",
+                bool(aux.get("variant_flags", {}).get("N02_WIND_LT4_MOTOR2")),
+                {"head_motor2_min": 38.4056},
+            ),
+            (
+                "N02_WIND_LT4_MOTOR2_GAP",
+                bool(aux.get("variant_flags", {}).get("N02_WIND_LT4_MOTOR2_GAP")),
+                {"motor2_vs_field_min": 5.7263},
+            ),
+        ]
+
+        for rule_id, matched, extra_rule in variant_defs:
+            if not matched:
+                continue
+
+            if rule_id == "N02_WIND_LT4_ST15":
+                stats["variant_ST15"] += 1
+            elif rule_id == "N02_WIND_LT4_MOTOR2":
+                stats["variant_MOTOR2"] += 1
+            elif rule_id == "N02_WIND_LT4_MOTOR2_GAP":
+                stats["variant_MOTOR2_GAP"] += 1
+
+            row = dict(base_row)
+            row["rule_id"] = rule_id
+            row["raw"] = {
                 "fixed_rule": {
-                    "prob_rank": "11-20",
-                    "market_rank": "2-5",
-                    "odds": "3.0-6.0",
-                    "race_no": "7-10",
-                    "select": "EV_MAX",
-                    "wind": "<4.0",
+                    **fixed_common,
+                    **extra_rule,
                 },
+                "variant_family": "N02_WIND_LT4_FORWARD_FIXED_2026-08-18",
+                "variant_flags": aux.get("variant_flags", {}),
                 "phase7_fixed_aux": {
                     "motor_edge_threshold": 5.3096,
                     "head_motor3_threshold": 54.2408,
@@ -434,9 +512,8 @@ def main() -> None:
                 },
                 "course_stats_note": "course=head_lane assumption; shadow only",
                 "production_impact": "none",
-            },
-            "updated_at": now,
-        })
+            }
+            out.append(row)
 
     saved = 0
     if out:
@@ -454,12 +531,12 @@ def main() -> None:
     )
     for row in out[:10]:
         print(
-            f"  SHADOW {row['race_id']} R{row['race_no']} "
+            f"  SHADOW {row['rule_id']} {row['race_id']} R{row['race_no']} "
             f"{row['ticket']} odds={row['odds']} "
-            f"wind={row['wind_speed_m']} aux={row.get('aux_grade')}"
-            f"/{row.get('aux_score')} "
-            f"m3edge={row.get('motor3_vs_field')} "
-            f"avgST={row.get('head_avg_st')}",
+            f"wind={row['wind_speed_m']} "
+            f"avgST={row.get('head_avg_st')} "
+            f"motor2={row.get('head_motor2')} "
+            f"m2edge={row.get('motor2_vs_field')}",
             flush=True,
         )
     print("=== N02 WIND_LT4 final shadow finished ===", flush=True)
