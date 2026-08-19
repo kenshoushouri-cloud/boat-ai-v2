@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-08-08-window-progress-timeout-v3.2"
+VERSION = "2026-08-20-window-progress-timeout-v3.3-motor2-scope"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
@@ -56,11 +56,9 @@ def _connect():
 
     try:
         import psycopg  # type: ignore
-
         return psycopg.connect(url)
     except Exception:
         import psycopg2  # type: ignore
-
         return psycopg2.connect(url)
 
 
@@ -260,6 +258,7 @@ def select_odds_statuses(
         for race_id, tickets in grouped.items()
     }
 
+
 def _run_fetch_batch(
     repair,
     races: List[Dict[str, Any]],
@@ -274,8 +273,6 @@ def _run_fetch_batch(
     ThreadPoolExecutorèªä½ã§ã¯å®è¡ä¸­Futureãå®å¨ã«å¼·å¶çµäºã§ããªãããã
     å®HTTPã¿ã¤ã ã¢ã¦ãã¯ repair_month_all_pg.py ã® HTTP_TIMEOUT /
     HTTP_MAX_RETRIES ãWINDOWå´ããå¶éããã
-    ããã§ã¯heartbeatã§ãæ­¢ã¾ã£ã¦è¦ãããç¶æãé²ãã
-    é·æéå¦çä¸­ã®race_idãå¯è¦åããã
     """
     total_saved = 0
     success = 0
@@ -452,15 +449,10 @@ def main() -> None:
         int(os.getenv("WINDOW_HTTP_MAX_RETRIES", "1")),
     )
 
-    # repair_month_all_pg.py ãimportããåã«HTTPå¶éãåºå®ããã
-    # 1HTTPãªã¯ã¨ã¹ããé·æéã¶ãä¸ããã®ãé²ãã
-    # å¤å´ã®WINDOW_ODDS_RETRIESã§ä¸è¶³ã¬ã¼ã¹ãååå¾ããã
     os.environ["HTTP_TIMEOUT"] = str(window_http_timeout)
     os.environ["HTTP_MAX_RETRIES"] = str(window_http_max_retries)
 
-    # æ å¥åå¾ã¯ç· ååã®äºåãªããºåå¾å¦çã
-    # Railwayå´ã«å¤ã ODDS_IS_FINAL=1 ãæ®ã£ã¦ãã¦ãã
-    # èª¤ã£ã¦ç¢ºå®ãªããºã¨ãã¦ä¿å­ããªãããå¿ã0ã¸åºå®ããã
+    # windowåå¾ã¯ç· ååã®äºåãªããºå°ç¨ãç¢ºå®æ±ãããªãã
     os.environ["ODDS_IS_FINAL"] = "0"
 
     print(f"TARGET_DATE={target_date}", flush=True)
@@ -469,26 +461,11 @@ def main() -> None:
     print(f"WINDOW_END={window_end or ''}", flush=True)
     print(f"WINDOW_WORKERS={workers}", flush=True)
     print(f"WINDOW_ODDS_RETRIES={max_retries}", flush=True)
-    print(
-        f"WINDOW_ODDS_RETRY_WAIT_SEC={retry_wait}",
-        flush=True,
-    )
-    print(
-        f"WINDOW_ODDS_HEARTBEAT_SEC={heartbeat_sec}",
-        flush=True,
-    )
-    print(
-        f"WINDOW_ODDS_RACE_WARN_SEC={race_warn_sec}",
-        flush=True,
-    )
-    print(
-        f"WINDOW_HTTP_TIMEOUT={window_http_timeout}",
-        flush=True,
-    )
-    print(
-        f"WINDOW_HTTP_MAX_RETRIES={window_http_max_retries}",
-        flush=True,
-    )
+    print(f"WINDOW_ODDS_RETRY_WAIT_SEC={retry_wait}", flush=True)
+    print(f"WINDOW_ODDS_HEARTBEAT_SEC={heartbeat_sec}", flush=True)
+    print(f"WINDOW_ODDS_RACE_WARN_SEC={race_warn_sec}", flush=True)
+    print(f"WINDOW_HTTP_TIMEOUT={window_http_timeout}", flush=True)
+    print(f"WINDOW_HTTP_MAX_RETRIES={window_http_max_retries}", flush=True)
     print(
         f"DATABASE_URL="
         f"{'OK' if os.getenv('DATABASE_URL') else 'MISSING'}",
@@ -509,7 +486,27 @@ def main() -> None:
         window_start,
         window_end,
     )
+
+    # ------------------------------------------------------------
+    # Motor2 Forward Shadow target scope export
+    # ------------------------------------------------------------
+    # STEP1ã§é¸æããããã®windowã®å¨race_idããã
+    # run_window_pipeline_pg.py ã®STEP1.5ã¸åä¸processã®ç°å¢å¤æ°ã§æ¸¡ãã
+    # skip_full_oddsã§ä»åHTTPåå¾ãçç¥ããRããæ¢ã«å®å¨ãªããºãDBã«ãããã
+    # Shadowå¯¾è±¡ããã¯å¤ããªãã
+    window_race_ids = [
+        str(race.get("race_id") or "").strip()
+        for race in all_races
+        if str(race.get("race_id") or "").strip()
+    ]
+    os.environ["MOTOR2_SHADOW_TARGET_RACE_IDS"] = ",".join(window_race_ids)
+
     print(f"target_races={len(all_races)}", flush=True)
+    print(
+        f"MOTOR2_SHADOW_TARGET_RACE_IDS exported: "
+        f"{len(window_race_ids)} races",
+        flush=True,
+    )
 
     if not all_races:
         print(
@@ -540,8 +537,7 @@ def main() -> None:
 
         if not races:
             print(
-                "å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¾ãããä¸é£åã®å¨çµã¿åããã"
-                "æã£ã¦ãã¾ãã",
+                "å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¾ãããä¸é£åã®å¨çµã¿åãããæã£ã¦ãã¾ãã",
                 flush=True,
             )
             return
