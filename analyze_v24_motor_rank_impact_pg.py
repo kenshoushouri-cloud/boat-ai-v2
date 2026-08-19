@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from db_pg import fetch_all
 import v24_pre_candidate_notifier_pg as v24
 
-VERSION = "2026-08-19 v24-motor-rank-impact-v1"
+VERSION = "2026-08-19 v24-motor-rank-impact-v1.1-result-fix"
 START_DATE = os.getenv("MOTOR_AUDIT_START_DATE", "2025-07-01")
 END_DATE = os.getenv("MOTOR_AUDIT_END_DATE", "2026-08-15")
 TRAIN_END = "2026-03-01"
@@ -127,7 +127,7 @@ def fetch_month(ms,mx):
     ra=a.replace('-',''); rb=b.replace('-','')
     races=fetch_all("select race_id,race_date,venue_id,venue_code,race_no from v2_races where race_date >= %s and race_date < %s order by race_date,venue_id,race_no",(a,b))
     entries=fetch_all("select race_id,lane,racer_class,national_win_rate,national_place2_rate,local_place2_rate,avg_st,motor_place2_rate from v2_race_entries where race_id >= %s and race_id < %s order by race_id,lane",(ra,rb))
-    results=fetch_all("select race_id,trifecta_ticket,official,result_status,race_status from v2_results where race_date >= %s and race_date < %s and trifecta_ticket is not null order by race_id",(a,b))
+    results=fetch_all("select race_id,trifecta_ticket from v2_results where race_date >= %s and race_date < %s and trifecta_ticket is not null order by race_id",(a,b))
     return races,entries,results
 
 
@@ -149,11 +149,12 @@ def main():
         for x in entries: eb[str(x.get("race_id") or "")].append(x)
         rb={}
         for x in results:
-            if x.get("official") is False: bad_result+=1; continue
-            rs=str(x.get("result_status") or ""); rcs=str(x.get("race_status") or "")
-            if (rs and rs!="official") or (rcs and rcs!="official"): bad_result+=1; continue
-            rid=str(x.get("race_id") or ""); t=v24._norm_ticket(x.get("trifecta_ticket"))
-            if rid and t: rb[rid]=t
+            rid=str(x.get("race_id") or "")
+            t=v24._norm_ticket(x.get("trifecta_ticket"))
+            if rid and t:
+                rb[rid]=t
+            else:
+                bad_result+=1
         mp=0
         for race in races:
             rid=str(race.get("race_id") or ""); win=rb.get(rid)
@@ -202,6 +203,7 @@ def main():
         print(f"{mon}: n={b['n']} avg_rank_delta={(m['rank_sum']/m['n'])-(b['rank_sum']/b['n']):+.4f} top10_delta={pc(m['top10'],m['n'])-pc(b['top10'],b['n']):+.3f}pt winner_prob_delta={(m['prob_sum']/m['n']-b['prob_sum']/b['n'])*100:+.4f}pt")
     print("\n=== AUDIT ===")
     print(f"processed={processed} skipped_entries={skip_ent} invalid_result_rows={bad_result}")
+    print("result_set_policy=trifecta_ticket_present (same as successful motor feature audit)")
     print("\n=== INTERPRETATION ===")
     print("OOS1/OOS2ã§ãé ä½ã»TopKãå®å®æ¹åãããªããæ¬¡ã¯MOTOR2ãæ¬çªå¤æ´ããForward Shadowåãããã®æç¹ã®market_rank/odds/çµæ/ROIãä¿å­ãã¾ãã")
     print("RESULT=PASS")
