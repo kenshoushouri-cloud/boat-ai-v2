@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import math, os
+
+import math
+import os
+import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+
 from psycopg.types.json import Jsonb
 from db_pg import execute, fetch_all
 import v24_pre_candidate_notifier_pg as v24
 
-VERSION="2026-08-19 v24-motor2-forward-shadow-v1.2-entry-motor2-fetch"
-JST=timezone(timedelta(hours=9))
-TARGET_DATE=os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
-SESSION=os.getenv("MOTOR2_SHADOW_SESSION","all").strip().lower()
-RUN_CLASS=os.getenv("MOTOR2_SHADOW_RUN_CLASS","manual").strip().lower()
-WINDOW_NAME=os.getenv("WINDOW_NAME","manual").strip().lower()
-SNAPSHOT_KEY=(os.getenv("MOTOR2_SHADOW_SNAPSHOT_KEY") or datetime.now(JST).strftime("%Y%m%d%H%M%S")).strip()
+VERSION = "2026-08-20 v24-motor2-forward-shadow-v1.3-window-target-scope"
+JST = timezone(timedelta(hours=9))
+TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
+SESSION = os.getenv("MOTOR2_SHADOW_SESSION", "all").strip().lower()
+RUN_CLASS = os.getenv("MOTOR2_SHADOW_RUN_CLASS", "manual").strip().lower()
+WINDOW_NAME = os.getenv("WINDOW_NAME", "manual").strip().lower()
+SNAPSHOT_KEY = (os.getenv("MOTOR2_SHADOW_SNAPSHOT_KEY") or datetime.now(JST).strftime("%Y%m%d%H%M%S")).strip()
 
 def sf(v,d=None):
     try: return float(v) if v not in (None,"") else d
@@ -30,47 +33,30 @@ def valid_motor2(v):
 def next_day(date_str):
     return (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
+def parse_target_race_ids():
+    raw=(os.getenv("MOTOR2_SHADOW_TARGET_RACE_IDS") or "").strip()
+    if not raw: return set()
+    return {x.strip() for x in re.split(r"[,\s]+", raw) if x.strip()}
+
+TARGET_RACE_IDS=parse_target_race_ids()
+
 def fetch_entries_with_motor2(date_str):
-    """
-    v24._fetch_live_day_rows() ã¯ motor_place2_rate ãSELECTããªãããã
-    Shadowå°ç¨ã« v2_race_entries ããå®motor2ãå«ãã¦åãç´ãã
-    æ¬çªv24ã¯å¤æ´ããªãã
-    """
-    day_prefix = date_str.replace("-", "")
-    next_prefix = next_day(date_str).replace("-", "")
-
-    rows = fetch_all(
-        """
-        select
-            race_id,
-            lane,
-            racer_number,
-            racer_class,
-            racer_name,
-            national_win_rate,
-            national_place2_rate,
-            local_win_rate,
-            local_place2_rate,
-            motor_no,
-            boat_no,
-            avg_st,
-            motor_place2_rate
+    a=date_str.replace("-","")
+    b=next_day(date_str).replace("-","")
+    rows=fetch_all("""
+        select race_id,lane,racer_number,racer_class,racer_name,
+               national_win_rate,national_place2_rate,
+               local_win_rate,local_place2_rate,
+               motor_no,boat_no,avg_st,motor_place2_rate
         from v2_race_entries
-        where race_id >= %s
-          and race_id < %s
-        order by race_id, lane;
-        """,
-        (day_prefix, next_prefix),
-    )
-
-    by_race = {}
+        where race_id >= %s and race_id < %s
+        order by race_id,lane
+    """, (a,b))
+    out={}
     for row in rows:
-        rid = str(row.get("race_id") or "")
-        if not rid:
-            continue
-        by_race.setdefault(rid, []).append(row)
-
-    return by_race
+        rid=str(row.get("race_id") or "")
+        if rid: out.setdefault(rid,[]).append(row)
+    return out
 
 def ensure_table():
     execute("""create table if not exists v2_v24_motor2_forward_shadow(
@@ -86,23 +72,9 @@ def ensure_table():
       snapshot_key text not null default '',snapshot_at timestamptz not null default now(),
       result_ticket text,payout_yen integer,base_hit boolean,motor2_hit boolean,evaluated_at timestamptz,
       raw jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
-    );""")
+    )""")
     for q in [
-      "alter table v2_v24_motor2_forward_shadow add column if not exists base_near_boundary boolean not null default false;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists motor2_near_boundary boolean not null default false;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists run_class text not null default 'manual';",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists window_name text not null default 'manual';",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists session_scope text not null default 'all';",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists snapshot_key text not null default '';",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists snapshot_at timestamptz not null default now();",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists result_ticket text;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists payout_yen integer;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists base_hit boolean;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists motor2_hit boolean;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists evaluated_at timestamptz;",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists created_at timestamptz not null default now();",
-      "alter table v2_v24_motor2_forward_shadow add column if not exists updated_at timestamptz not null default now();",
-      "create unique index if not exists uq_v24_motor2_forward_run on v2_v24_motor2_forward_shadow(race_id,ticket,run_class,window_name,snapshot_key);"
+      "create unique index if not exists uq_v24_motor2_forward_run on v2_v24_motor2_forward_shadow(race_id,ticket,run_class,window_name,snapshot_key)"
     ]: execute(q)
 
 def raw_strength(e,lane,venue,use_motor):
@@ -131,12 +103,8 @@ def probs(entries,venue,use_motor):
                 out[f"{a}-{b}-{c}"]=pa*pb*(w[c]/tc)
     return out
 
-def ranks(p):
-    return {t:i for i,(t,_) in enumerate(sorted(p.items(),key=lambda kv:(-kv[1],kv[0])),1)}
-
-def market_ranks(odds):
-    return {t:i for i,(t,_) in enumerate(sorted(odds.items(),key=lambda kv:(kv[1],kv[0])),1)}
-
+def ranks(p): return {t:i for i,(t,_) in enumerate(sorted(p.items(),key=lambda kv:(-kv[1],kv[0])),1)}
+def market_ranks(odds): return {t:i for i,(t,_) in enumerate(sorted(odds.items(),key=lambda kv:(kv[1],kv[0])),1)}
 def is_low(pr,mr,odd): return 11<=pr<=20 and mr==1 and 3<=odd<5
 def is_mid(t,pr,mr,odd): return 4<=pr<=5 and 21<=mr<=30 and 30<=odd<50 and v24._head_lane(t)!="1"
 def near(pr): return 3<=pr<=6 or 10<=pr<=21
@@ -164,7 +132,7 @@ def save(row):
       base_mid_candidate=excluded.base_mid_candidate,motor2_mid_candidate=excluded.motor2_mid_candidate,
       candidate_transition=excluded.candidate_transition,base_near_boundary=excluded.base_near_boundary,motor2_near_boundary=excluded.motor2_near_boundary,
       motor2_valid_lanes=excluded.motor2_valid_lanes,motor2_fallback_lanes=excluded.motor2_fallback_lanes,
-      session_scope=excluded.session_scope,snapshot_at=excluded.snapshot_at,raw=excluded.raw,updated_at=now();""",
+      session_scope=excluded.session_scope,snapshot_at=excluded.snapshot_at,raw=excluded.raw,updated_at=now()""",
       (row["race_id"],row["race_date"],row["venue_id"],row["race_no"],row["ticket"],row["odds"],row["market_rank"],
        row["base_prob"],row["base_prob_rank"],row["base_raw_ev"],row["motor2_prob"],row["motor2_prob_rank"],row["motor2_raw_ev"],
        row["base_low_candidate"],row["motor2_low_candidate"],row["base_mid_candidate"],row["motor2_mid_candidate"],row["candidate_transition"],
@@ -175,22 +143,30 @@ def main():
     if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL is required")
     if SESSION not in {"all","day","night"}: raise RuntimeError(f"invalid session={SESSION}")
     if RUN_CLASS not in {"live","manual","test"}: raise RuntimeError(f"invalid run_class={RUN_CLASS}")
+
     print(f"OK collect_v24_motor2_forward_shadow_pg.py VERSION {VERSION}",flush=True)
     print(f"TARGET_DATE={TARGET_DATE} SESSION={SESSION} RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}",flush=True)
     print("SHADOW_ONLY=1 LINE=0 BUY=0 PROD_V24_CHANGE=0 N02_CHANGE=0",flush=True)
+    print(f"TARGET_SCOPE={'window_ids' if TARGET_RACE_IDS else 'all_day'} target_ids={len(TARGET_RACE_IDS)}",flush=True)
+
     ensure_table()
-    races,_v24_entries,ob=v24._fetch_live_day_rows(TARGET_DATE)
+    races,_e,ob=v24._fetch_live_day_rows(TARGET_DATE)
     eb=fetch_entries_with_motor2(TARGET_DATE)
+
+    if TARGET_RACE_IDS:
+        races=[r for r in races if str(r.get("race_id") or "") in TARGET_RACE_IDS]
+
     races=[r for r in races if session_match(r)]
     if not races:
         print("races=0"); print("RESULT=NO_RACES"); return
-    loaded_entry_races=len(eb)
-    loaded_entry_rows=sum(len(v) for v in eb.values())
-    print(f"ENTRY_SOURCE=direct_v2_race_entries_with_motor2 entry_races={loaded_entry_races} entry_rows={loaded_entry_rows}",flush=True)
+
+    print(f"ENTRY_SOURCE=direct_v2_race_entries_with_motor2 entry_races={len(eb)} entry_rows={sum(len(v) for v in eb.values())}",flush=True)
+
     saved=ready=skip_e=skip_o=skip_sparse=0
     tb=tm=mb=mm=0
     trc={"BOTH":0,"BASE_ONLY":0,"MOTOR2_ONLY":0,"NEITHER":0}
     valid_total=fallback_total=0
+
     for race in races:
         rid=str(race.get("race_id") or "")
         venue=str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
@@ -199,6 +175,7 @@ def main():
         if len(by)!=6: skip_e+=1; continue
         ok,_=v24._validate_odds_snapshot(odds)
         if not ok: skip_o+=1; continue
+
         ready+=1
         bp=probs(ent,venue,False); mp=probs(ent,venue,True)
         br=ranks(bp); mr=ranks(mp); mar=market_ranks(odds)
@@ -208,6 +185,7 @@ def main():
             if x is not None and 0<=x<=100: vl+=1
             else: fl+=1
         valid_total+=vl; fallback_total+=fl
+
         for t,odd in odds.items():
             if t not in bp or t not in mp: continue
             odd=float(odd); bpr=br[t]; mpr=mr[t]; mkr=mar[t]
@@ -216,13 +194,21 @@ def main():
             bc=bl or bmi; mc=ml or mmi; tr=trans(bc,mc)
             bn=near(bpr); mn=near(mpr)
             if not (bc or mc or bn or mn): skip_sparse+=1; continue
+
             trc[tr]+=1; tb+=int(bl); tm+=int(ml); mb+=int(bmi); mm+=int(mmi)
-            save(dict(race_id=rid,race_date=TARGET_DATE,venue_id=venue,race_no=rno,ticket=t,odds=odd,market_rank=mkr,
-                      base_prob=bp[t],base_prob_rank=bpr,base_raw_ev=bp[t]*odd,motor2_prob=mp[t],motor2_prob_rank=mpr,motor2_raw_ev=mp[t]*odd,
-                      base_low_candidate=bl,motor2_low_candidate=ml,base_mid_candidate=bmi,motor2_mid_candidate=mmi,candidate_transition=tr,
-                      base_near_boundary=bn,motor2_near_boundary=mn,motor2_valid_lanes=vl,motor2_fallback_lanes=fl,
-                      raw={"version":VERSION,"save_policy":"candidate_or_prob_rank_boundary","motor2_weight":0.45,"entry_source":"direct_v2_race_entries_with_motor2"}))
+            save(dict(
+                race_id=rid,race_date=TARGET_DATE,venue_id=venue,race_no=rno,ticket=t,odds=odd,market_rank=mkr,
+                base_prob=bp[t],base_prob_rank=bpr,base_raw_ev=bp[t]*odd,
+                motor2_prob=mp[t],motor2_prob_rank=mpr,motor2_raw_ev=mp[t]*odd,
+                base_low_candidate=bl,motor2_low_candidate=ml,base_mid_candidate=bmi,motor2_mid_candidate=mmi,
+                candidate_transition=tr,base_near_boundary=bn,motor2_near_boundary=mn,
+                motor2_valid_lanes=vl,motor2_fallback_lanes=fl,
+                raw={"version":VERSION,"save_policy":"candidate_or_prob_rank_boundary","motor2_weight":0.45,
+                     "entry_source":"direct_v2_race_entries_with_motor2",
+                     "target_scope":"window_ids" if TARGET_RACE_IDS else "all_day"}
+            ))
             saved+=1
+
     print("=== MOTOR2 FORWARD SHADOW SUMMARY ===")
     print(f"races={len(races)} ready={ready} saved={saved} skipped_sparse={skip_sparse}")
     print(f"skipped_entries={skip_e} skipped_odds={skip_o}")
