@@ -4,10 +4,10 @@ import math, os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from psycopg.types.json import Jsonb
-from db_pg import execute
+from db_pg import execute, fetch_all
 import v24_pre_candidate_notifier_pg as v24
 
-VERSION="2026-08-19 v24-motor2-forward-shadow-v1.1-runclass-sparse"
+VERSION="2026-08-19 v24-motor2-forward-shadow-v1.2-entry-motor2-fetch"
 JST=timezone(timedelta(hours=9))
 TARGET_DATE=os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SESSION=os.getenv("MOTOR2_SHADOW_SESSION","all").strip().lower()
@@ -26,6 +26,51 @@ def si(v,d=0):
 def valid_motor2(v):
     x=sf(v,None)
     return x if x is not None and 0<=x<=100 else 33.0
+
+def next_day(date_str):
+    return (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+def fetch_entries_with_motor2(date_str):
+    """
+    v24._fetch_live_day_rows() ã¯ motor_place2_rate ãSELECTããªãããã
+    Shadowå°ç¨ã« v2_race_entries ããå®motor2ãå«ãã¦åãç´ãã
+    æ¬çªv24ã¯å¤æ´ããªãã
+    """
+    day_prefix = date_str.replace("-", "")
+    next_prefix = next_day(date_str).replace("-", "")
+
+    rows = fetch_all(
+        """
+        select
+            race_id,
+            lane,
+            racer_number,
+            racer_class,
+            racer_name,
+            national_win_rate,
+            national_place2_rate,
+            local_win_rate,
+            local_place2_rate,
+            motor_no,
+            boat_no,
+            avg_st,
+            motor_place2_rate
+        from v2_race_entries
+        where race_id >= %s
+          and race_id < %s
+        order by race_id, lane;
+        """,
+        (day_prefix, next_prefix),
+    )
+
+    by_race = {}
+    for row in rows:
+        rid = str(row.get("race_id") or "")
+        if not rid:
+            continue
+        by_race.setdefault(rid, []).append(row)
+
+    return by_race
 
 def ensure_table():
     execute("""create table if not exists v2_v24_motor2_forward_shadow(
@@ -134,10 +179,14 @@ def main():
     print(f"TARGET_DATE={TARGET_DATE} SESSION={SESSION} RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}",flush=True)
     print("SHADOW_ONLY=1 LINE=0 BUY=0 PROD_V24_CHANGE=0 N02_CHANGE=0",flush=True)
     ensure_table()
-    races,eb,ob=v24._fetch_live_day_rows(TARGET_DATE)
+    races,_v24_entries,ob=v24._fetch_live_day_rows(TARGET_DATE)
+    eb=fetch_entries_with_motor2(TARGET_DATE)
     races=[r for r in races if session_match(r)]
     if not races:
         print("races=0"); print("RESULT=NO_RACES"); return
+    loaded_entry_races=len(eb)
+    loaded_entry_rows=sum(len(v) for v in eb.values())
+    print(f"ENTRY_SOURCE=direct_v2_race_entries_with_motor2 entry_races={loaded_entry_races} entry_rows={loaded_entry_rows}",flush=True)
     saved=ready=skip_e=skip_o=skip_sparse=0
     tb=tm=mb=mm=0
     trc={"BOTH":0,"BASE_ONLY":0,"MOTOR2_ONLY":0,"NEITHER":0}
@@ -172,7 +221,7 @@ def main():
                       base_prob=bp[t],base_prob_rank=bpr,base_raw_ev=bp[t]*odd,motor2_prob=mp[t],motor2_prob_rank=mpr,motor2_raw_ev=mp[t]*odd,
                       base_low_candidate=bl,motor2_low_candidate=ml,base_mid_candidate=bmi,motor2_mid_candidate=mmi,candidate_transition=tr,
                       base_near_boundary=bn,motor2_near_boundary=mn,motor2_valid_lanes=vl,motor2_fallback_lanes=fl,
-                      raw={"version":VERSION,"save_policy":"candidate_or_prob_rank_boundary","motor2_weight":0.45}))
+                      raw={"version":VERSION,"save_policy":"candidate_or_prob_rank_boundary","motor2_weight":0.45,"entry_source":"direct_v2_race_entries_with_motor2"}))
             saved+=1
     print("=== MOTOR2 FORWARD SHADOW SUMMARY ===")
     print(f"races={len(races)} ready={ready} saved={saved} skipped_sparse={skip_sparse}")
