@@ -2,9 +2,15 @@
 """
 v25_final_realtime_pipeline_pg.py
 
-直前収集 → 本番判定 → 展示shadow保存 → LINE最終通知を一括実行します。
+直前収集
+→ Motor2 FINAL Shadow
+→ N02 FINAL Shadow
+→ 本番判定
+→ 展示shadow
+→ LINE最終通知
 
-展示shadowは本番BUY/WATCH/SKIPやLINE通知対象を変更しません。
+Motor2 / N02 / 展示shadowは、本番BUY/WATCH/SKIPや
+LINE通知対象を変更しません。
 """
 
 from __future__ import annotations
@@ -17,6 +23,8 @@ from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
 
+VERSION = "2026-08-20 targeted-final-motor2+n02+exhibition-shadow-v4"
+
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
 DECISION_LABEL = os.getenv("DECISION_LABEL", SNAPSHOT_LABEL).strip() or SNAPSHOT_LABEL
@@ -24,12 +32,26 @@ SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip() or "ab"
 REQUIRE_EXHIBITION = os.getenv("REQUIRE_EXHIBITION", "0").strip()
 TEST_MODE = os.getenv("TEST_MODE", "1").strip()
 DRY_RUN = os.getenv("DRY_RUN", "0").strip()
+
 RUN_EXHIBITION_SHADOW = os.getenv(
     "RUN_EXHIBITION_SHADOW", "1"
 ).strip() not in ("0", "false", "False", "no", "NO")
-TARGET_RACE_IDS_FILE = os.getenv("TARGET_RACE_IDS_FILE", "/tmp/v21_target_race_ids.txt").strip() or "/tmp/v21_target_race_ids.txt"
-COLLECTION_RACE_IDS_FILE = os.getenv("COLLECTION_RACE_IDS_FILE", "/tmp/v21_collection_race_ids.txt").strip() or "/tmp/v21_collection_race_ids.txt"
-RUN_N02_WINDLT4_SHADOW = os.getenv("RUN_N02_WINDLT4_SHADOW", "1").strip() not in ("0","false","False","no","NO")
+
+RUN_N02_WINDLT4_SHADOW = os.getenv(
+    "RUN_N02_WINDLT4_SHADOW", "1"
+).strip() not in ("0", "false", "False", "no", "NO")
+
+RUN_MOTOR2_FINAL_SHADOW = os.getenv(
+    "RUN_MOTOR2_FINAL_SHADOW", "1"
+).strip() not in ("0", "false", "False", "no", "NO")
+
+TARGET_RACE_IDS_FILE = os.getenv(
+    "TARGET_RACE_IDS_FILE", "/tmp/v21_target_race_ids.txt"
+).strip() or "/tmp/v21_target_race_ids.txt"
+
+COLLECTION_RACE_IDS_FILE = os.getenv(
+    "COLLECTION_RACE_IDS_FILE", "/tmp/v21_collection_race_ids.txt"
+).strip() or "/tmp/v21_collection_race_ids.txt"
 
 
 def _require_settings() -> None:
@@ -55,6 +77,11 @@ def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
                 "REQUIRE_EXHIBITION",
                 "TEST_MODE",
                 "DRY_RUN",
+                "RUN_MOTOR2_FINAL_SHADOW",
+                "MOTOR2_SHADOW_RUN_CLASS",
+                "WINDOW_NAME",
+                "MOTOR2_SHADOW_COLLECTION_RACE_IDS",
+                "MOTOR2_SHADOW_SNAPSHOT_KEY",
                 "RUN_EXHIBITION_SHADOW",
                 "EXHIBITION_SHADOW_WEIGHT",
             ]
@@ -72,15 +99,15 @@ def main() -> None:
     _require_settings()
 
     print(
-        "✅ v25_final_realtime_pipeline_pg.py "
-        "VERSION 2026-08-16 targeted-final-shadow+n02-windlt4",
+        f"✅ v25_final_realtime_pipeline_pg.py VERSION {VERSION}",
         flush=True,
     )
     print(
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
-        f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW} "
-        f"RUN_N02_WINDLT4_SHADOW={RUN_N02_WINDLT4_SHADOW}",
+        f"RUN_MOTOR2_FINAL_SHADOW={RUN_MOTOR2_FINAL_SHADOW} "
+        f"RUN_N02_WINDLT4_SHADOW={RUN_N02_WINDLT4_SHADOW} "
+        f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW}",
         flush=True,
     )
     print("購入処理はありません。LINE通知のみです。", flush=True)
@@ -97,6 +124,7 @@ def main() -> None:
 
     target_file = Path(TARGET_RACE_IDS_FILE)
     collection_file = Path(COLLECTION_RACE_IDS_FILE)
+
     target_file.write_text("", encoding="utf-8")
     collection_file.write_text("", encoding="utf-8")
 
@@ -109,28 +137,77 @@ def main() -> None:
         },
     )
 
-    target_race_ids = target_file.read_text(encoding="utf-8").strip() if target_file.exists() else ""
-    collection_race_ids = collection_file.read_text(encoding="utf-8").strip() if collection_file.exists() else ""
+    target_race_ids = (
+        target_file.read_text(encoding="utf-8").strip()
+        if target_file.exists()
+        else ""
+    )
+    collection_race_ids = (
+        collection_file.read_text(encoding="utf-8").strip()
+        if collection_file.exists()
+        else ""
+    )
 
     target_count = len([x for x in target_race_ids.split(",") if x.strip()])
     collection_count = len([x for x in collection_race_ids.split(",") if x.strip()])
+
     print(
         f"TARGET_RACE_IDS loaded: {target_count} races / "
         f"COLLECTION_RACE_IDS loaded: {collection_count} races",
         flush=True,
     )
 
+    if RUN_MOTOR2_FINAL_SHADOW:
+        if collection_count == 0:
+            print(
+                "Motor2 FINAL ShadowはCOLLECTION_RACE_IDS=0のためスキップします。",
+                flush=True,
+            )
+        else:
+            motor2_snapshot_key = (
+                f"{TARGET_DATE.replace('-', '')}_final_"
+                f"{datetime.now(JST).strftime('%H%M%S')}"
+            )
+            _run(
+                [sys.executable, "collect_v24_motor2_forward_shadow_pg.py"],
+                {
+                    **common,
+                    "MOTOR2_SHADOW_COLLECTION_RACE_IDS": collection_race_ids,
+                    "MOTOR2_SHADOW_RUN_CLASS": "final",
+                    "MOTOR2_SHADOW_SESSION": "all",
+                    "WINDOW_NAME": "final",
+                    "MOTOR2_SHADOW_SNAPSHOT_KEY": motor2_snapshot_key,
+                },
+            )
+    else:
+        print(
+            "Motor2 FINAL ShadowはRUN_MOTOR2_FINAL_SHADOW=0のためスキップします。",
+            flush=True,
+        )
+
     if RUN_N02_WINDLT4_SHADOW:
         _run(
             [sys.executable, "collect_n02_windlt4_final_shadow_pg.py"],
-            {**common, "COLLECTION_RACE_IDS": collection_race_ids},
+            {
+                **common,
+                "COLLECTION_RACE_IDS": collection_race_ids,
+            },
         )
     else:
-        print("N02_WIND_LT4 shadowはRUN_N02_WINDLT4_SHADOW=0のためスキップします。", flush=True)
+        print(
+            "N02_WIND_LT4 shadowはRUN_N02_WINDLT4_SHADOW=0のためスキップします。",
+            flush=True,
+        )
 
-    targeted_common = {**common, "TARGET_RACE_IDS": target_race_ids}
+    targeted_common = {
+        **common,
+        "TARGET_RACE_IDS": target_race_ids,
+    }
 
-    _run([sys.executable, "run_v22_targeted_pg.py"], targeted_common)
+    _run(
+        [sys.executable, "run_v22_targeted_pg.py"],
+        targeted_common,
+    )
 
     if RUN_EXHIBITION_SHADOW:
         _run(
@@ -143,9 +220,15 @@ def main() -> None:
             },
         )
     else:
-        print("展示shadowはRUN_EXHIBITION_SHADOW=0のためスキップします。", flush=True)
+        print(
+            "展示shadowはRUN_EXHIBITION_SHADOW=0のためスキップします。",
+            flush=True,
+        )
 
-    _run([sys.executable, "v23_line_notifier_batch_pg.py"], targeted_common)
+    _run(
+        [sys.executable, "v23_line_notifier_batch_pg.py"],
+        targeted_common,
+    )
 
     print("\n=== v25 PG final realtime pipeline 完了 ===", flush=True)
 
