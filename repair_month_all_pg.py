@@ -5,13 +5,15 @@ repair_month_all_pg.py
 Railway PostgreSQL版・完全差し替え用。
 
 VERSION:
-2026-08-19 deadline-table-v10
+2026-08-20 entry-st-dash-motor2-v11
 
 主な修正:
 - BOAT RACE公式の場コードと場名の対応を維持。
 - 締切時刻は racelist 上部の 1R～12R 時刻表を「列位置」で対応付けて取得。
 - 1Rの締切を2R～12Rへ誤適用する不具合を修正。
 - 締切表解析に失敗した場合は別Rの時刻へフォールバックせず None。
+- 平均STが「-」の選手で数値列がずれ、boat_noをmotor_place2_rateとして保存する不具合を修正。
+- F/L行直後の13項目を構造的に読み、motor/boat率を0～100で検証。
 - 早朝取得オッズを誤って最終オッズ扱いしないよう ODDS_IS_FINAL を維持。
 - 三連単ticketは1～6号艇・3艇重複なしのみ保存。
 - 既存のレース、出走表、結果、オッズ保存処理を維持。
@@ -267,7 +269,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-08-19 deadline-table-v10",
+        "✅ repair_month_all_pg.py VERSION 2026-08-20 entry-st-dash-motor2-v11",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -483,6 +485,118 @@ def _num_token(v: str) -> Optional[float]:
         return None
 
 
+def _rate_or_none(v: Any) -> Optional[float]:
+    """2連率/3連率などの率系を0～100で検証する。"""
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except Exception:
+        return None
+    return x if 0.0 <= x <= 100.0 else None
+
+
+def _avg_st_or_none(v: Any) -> Optional[float]:
+    """平均ST。公式で '-' の場合はNone。異常値も保存しない。"""
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except Exception:
+        return None
+    return x if 0.0 <= x <= 1.0 else None
+
+
+def _number_or_none(v: Any) -> Optional[int]:
+    """motor_no / boat_no。3桁番号も考慮し0～999を許可。"""
+    if v is None:
+        return None
+    try:
+        x = int(float(v))
+    except Exception:
+        return None
+    return x if 0 <= x <= 999 else None
+
+
+def _win_rate_or_none(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except Exception:
+        return None
+    return x if 0.0 <= x <= 20.0 else None
+
+
+def _parse_entry_stat_block(seg_lines: List[str]) -> Optional[Dict[str, Any]]:
+    """
+    F/L行の直後から13項目を固定順で読む。
+
+    順序:
+      avg_st,
+      national_win_rate, national_place2_rate, national_place3_rate,
+      local_win_rate, local_place2_rate, local_place3_rate,
+      motor_no, motor_place2_rate, motor_place3_rate,
+      boat_no, boat_place2_rate, boat_place3_rate
+
+    avg_st='-' を1項目として保持するため、旧実装の
+    「最初の0.xxをavg_stとする」方式を使用しない。
+    """
+    f_pos: Optional[int] = None
+    l_pos: Optional[int] = None
+
+    for i, line in enumerate(seg_lines):
+        text = _clean_text(_zen_to_han(line))
+        if re.fullmatch(r"F\s*\d+", text, flags=re.IGNORECASE):
+            f_pos = i
+        elif re.fullmatch(r"L\s*\d+", text, flags=re.IGNORECASE):
+            l_pos = i
+
+    starts = [x for x in (f_pos, l_pos) if x is not None]
+    if not starts:
+        return None
+
+    start = max(starts) + 1
+    values: List[Optional[float]] = []
+
+    for line in seg_lines[start:]:
+        text = _clean_text(_zen_to_han(line))
+
+        if text in {"-", "--"}:
+            values.append(None)
+        elif re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+            try:
+                values.append(float(text))
+            except Exception:
+                continue
+        else:
+            continue
+
+        if len(values) >= 13:
+            break
+
+    if len(values) < 13:
+        return None
+
+    values = values[:13]
+
+    return {
+        "avg_st": _avg_st_or_none(values[0]),
+        "national_win_rate": _win_rate_or_none(values[1]),
+        "national_place2_rate": _rate_or_none(values[2]),
+        "national_place3_rate": _rate_or_none(values[3]),
+        "local_win_rate": _win_rate_or_none(values[4]),
+        "local_place2_rate": _rate_or_none(values[5]),
+        "local_place3_rate": _rate_or_none(values[6]),
+        "motor_no": _number_or_none(values[7]),
+        "motor_place2_rate": _rate_or_none(values[8]),
+        "motor_place3_rate": _rate_or_none(values[9]),
+        "boat_no": _number_or_none(values[10]),
+        "boat_place2_rate": _rate_or_none(values[11]),
+        "boat_place3_rate": _rate_or_none(values[12]),
+    }
+
+
 def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
 
@@ -521,7 +635,11 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
     entries: Dict[int, Dict[str, Any]] = {}
 
     for idx, (lane, pos) in enumerate(lane_positions):
-        next_pos = lane_positions[idx + 1][1] if idx + 1 < len(lane_positions) else len(lines)
+        next_pos = (
+            lane_positions[idx + 1][1]
+            if idx + 1 < len(lane_positions)
+            else len(lines)
+        )
         seg_lines = lines[pos:next_pos]
         seg = " ".join(seg_lines)
 
@@ -574,21 +692,29 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
         if match_l:
             l_count = int(match_l.group(1))
 
-        nums = re.findall(r"\d+\.\d+|\d+", seg)
+        stats = _parse_entry_stat_block(seg_lines)
 
-        avg_idx = None
-        for k, token in enumerate(nums):
-            if re.fullmatch(r"0\.\d{2}", token):
-                avg_idx = k
-                break
-
-        seq = nums[avg_idx:] if avg_idx is not None else []
-
-        def fseq(n: int) -> Optional[float]:
-            return _num_token(seq[n]) if len(seq) > n else None
-
-        def iseq(n: int) -> Optional[int]:
-            return _to_int(seq[n]) if len(seq) > n else None
+        if stats is None:
+            print(
+                f"⚠️ ENTRY_STATS_PARSE_FAILED "
+                f"race_id={race_id} lane={lane} racer={racer_number}",
+                flush=True,
+            )
+            stats = {
+                "avg_st": None,
+                "national_win_rate": None,
+                "national_place2_rate": None,
+                "national_place3_rate": None,
+                "local_win_rate": None,
+                "local_place2_rate": None,
+                "local_place3_rate": None,
+                "motor_no": None,
+                "motor_place2_rate": None,
+                "motor_place3_rate": None,
+                "boat_no": None,
+                "boat_place2_rate": None,
+                "boat_place3_rate": None,
+            }
 
         entries[lane] = {
             "race_id": race_id,
@@ -602,19 +728,7 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
             "origin": origin,
             "f_count": f_count,
             "l_count": l_count,
-            "avg_st": fseq(0),
-            "national_win_rate": fseq(1),
-            "national_place2_rate": fseq(2),
-            "national_place3_rate": fseq(3),
-            "local_win_rate": fseq(4),
-            "local_place2_rate": fseq(5),
-            "local_place3_rate": fseq(6),
-            "motor_no": iseq(7),
-            "motor_place2_rate": fseq(8),
-            "motor_place3_rate": fseq(9),
-            "boat_no": iseq(10),
-            "boat_place2_rate": fseq(11),
-            "boat_place3_rate": fseq(12),
+            **stats,
             "recent_form": [],
             "updated_at": _now_iso(),
         }
