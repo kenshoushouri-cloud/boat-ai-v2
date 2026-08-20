@@ -5,7 +5,7 @@ repair_month_all_pg.py
 Railway PostgreSQL版・完全差し替え用。
 
 VERSION:
-2026-08-20 entry-st-dash-motor2-v11
+2026-08-20 entry-stat-window-v12
 
 主な修正:
 - BOAT RACE公式の場コードと場名の対応を維持。
@@ -269,7 +269,7 @@ def _looks_no_race(html: Optional[str]) -> bool:
 
 def _require_settings() -> None:
     print(
-        "✅ repair_month_all_pg.py VERSION 2026-08-20 entry-st-dash-motor2-v11",
+        "✅ repair_month_all_pg.py VERSION 2026-08-20 entry-stat-window-v12",
         flush=True,
     )
     print("✅ SETTINGS CHECK", flush=True)
@@ -528,74 +528,150 @@ def _win_rate_or_none(v: Any) -> Optional[float]:
     return x if 0.0 <= x <= 20.0 else None
 
 
-def _parse_entry_stat_block(seg_lines: List[str]) -> Optional[Dict[str, Any]]:
+def _parse_entry_stat_block(
+    seg_lines: List[str],
+    *,
+    race_id: str = "",
+    lane: int = 0,
+    racer_number: int = 0,
+) -> Optional[Dict[str, Any]]:
     """
-    F/L行の直後から13項目を固定順で読む。
+    v12:
+    L行の直後から scalar token を抽出し、13項目の妥当な窓を探す。
 
     順序:
-      avg_st,
-      national_win_rate, national_place2_rate, national_place3_rate,
-      local_win_rate, local_place2_rate, local_place3_rate,
-      motor_no, motor_place2_rate, motor_place3_rate,
-      boat_no, boat_place2_rate, boat_place3_rate
+      0 avg_st ('-' は None)
+      1 national_win_rate
+      2 national_place2_rate
+      3 national_place3_rate
+      4 local_win_rate
+      5 local_place2_rate
+      6 local_place3_rate
+      7 motor_no
+      8 motor_place2_rate
+      9 motor_place3_rate
+      10 boat_no
+      11 boat_place2_rate
+      12 boat_place3_rate
 
-    avg_st='-' を1項目として保持するため、旧実装の
-    「最初の0.xxをavg_stとする」方式を使用しない。
+    旧不具合:
+      avg_st='-' の艇で最初の0.xxをavg_stと誤認し、
+      boat_noをmotor_place2_rateへずらして保存していた。
+
+    v12では '-' を明示的に1項目として保持し、さらに13項目全体の
+    schema validationに通った窓だけを採用する。
     """
-    f_pos: Optional[int] = None
-    l_pos: Optional[int] = None
-
-    for i, line in enumerate(seg_lines):
-        text = _clean_text(_zen_to_han(line))
-        if re.fullmatch(r"F\s*\d+", text, flags=re.IGNORECASE):
-            f_pos = i
-        elif re.fullmatch(r"L\s*\d+", text, flags=re.IGNORECASE):
-            l_pos = i
-
-    starts = [x for x in (f_pos, l_pos) if x is not None]
-    if not starts:
-        return None
-
-    start = max(starts) + 1
-    values: List[Optional[float]] = []
-
-    for line in seg_lines[start:]:
-        text = _clean_text(_zen_to_han(line))
-
-        if text in {"-", "--"}:
-            values.append(None)
-        elif re.fullmatch(r"-?\d+(?:\.\d+)?", text):
-            try:
-                values.append(float(text))
-            except Exception:
-                continue
-        else:
-            continue
-
-        if len(values) >= 13:
-            break
-
-    if len(values) < 13:
-        return None
-
-    values = values[:13]
-
-    return {
-        "avg_st": _avg_st_or_none(values[0]),
-        "national_win_rate": _win_rate_or_none(values[1]),
-        "national_place2_rate": _rate_or_none(values[2]),
-        "national_place3_rate": _rate_or_none(values[3]),
-        "local_win_rate": _win_rate_or_none(values[4]),
-        "local_place2_rate": _rate_or_none(values[5]),
-        "local_place3_rate": _rate_or_none(values[6]),
-        "motor_no": _number_or_none(values[7]),
-        "motor_place2_rate": _rate_or_none(values[8]),
-        "motor_place3_rate": _rate_or_none(values[9]),
-        "boat_no": _number_or_none(values[10]),
-        "boat_place2_rate": _rate_or_none(values[11]),
-        "boat_place3_rate": _rate_or_none(values[12]),
+    debug = (os.getenv("REPAIR_ENTRY_DEBUG") or "0").strip().lower() in {
+        "1", "true", "yes", "on"
     }
 
+    l_pos: Optional[int] = None
+    for i, line in enumerate(seg_lines):
+        text = _clean_text(_zen_to_han(line))
+        if re.fullmatch(r"L\s*\d+", text, flags=re.IGNORECASE):
+            l_pos = i
+            break
+
+    if l_pos is None:
+        return None
+
+    scalar: List[Optional[float]] = []
+    scalar_raw: List[str] = []
+
+    for line in seg_lines[l_pos + 1 :]:
+        text = _clean_text(_zen_to_han(line))
+        if text in {"-", "--"}:
+            scalar.append(None)
+            scalar_raw.append(text)
+        elif re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+            try:
+                scalar.append(float(text))
+                scalar_raw.append(text)
+            except Exception:
+                continue
+
+    def _is_avg(v: Any) -> bool:
+        return v is None or (
+            isinstance(v, (int, float)) and 0.0 <= float(v) <= 1.0
+        )
+
+    def _is_win(v: Any) -> bool:
+        return v is not None and 0.0 <= float(v) <= 20.0
+
+    def _is_rate(v: Any) -> bool:
+        return v is not None and 0.0 <= float(v) <= 100.0
+
+    def _is_no(v: Any) -> bool:
+        if v is None:
+            return False
+        x = float(v)
+        return 0.0 <= x <= 999.0 and abs(x - round(x)) < 1e-9
+
+    chosen: Optional[List[Optional[float]]] = None
+    chosen_raw: Optional[List[str]] = None
+    chosen_offset: Optional[int] = None
+
+    for offset in range(0, max(0, len(scalar) - 13 + 1)):
+        values = scalar[offset : offset + 13]
+        if len(values) < 13:
+            continue
+
+        valid = (
+            _is_avg(values[0])
+            and _is_win(values[1])
+            and _is_rate(values[2])
+            and _is_rate(values[3])
+            and _is_win(values[4])
+            and _is_rate(values[5])
+            and _is_rate(values[6])
+            and _is_no(values[7])
+            and _is_rate(values[8])
+            and _is_rate(values[9])
+            and _is_no(values[10])
+            and _is_rate(values[11])
+            and _is_rate(values[12])
+        )
+
+        if valid:
+            chosen = values
+            chosen_raw = scalar_raw[offset : offset + 13]
+            chosen_offset = offset
+            break
+
+    if chosen is None:
+        if debug:
+            print(
+                f"ENTRY_STATS_DEBUG_FAIL race_id={race_id} lane={lane} "
+                f"racer={racer_number} scalar_raw={scalar_raw[:30]}",
+                flush=True,
+            )
+        return None
+
+    result = {
+        "avg_st": _avg_st_or_none(chosen[0]),
+        "national_win_rate": _win_rate_or_none(chosen[1]),
+        "national_place2_rate": _rate_or_none(chosen[2]),
+        "national_place3_rate": _rate_or_none(chosen[3]),
+        "local_win_rate": _win_rate_or_none(chosen[4]),
+        "local_place2_rate": _rate_or_none(chosen[5]),
+        "local_place3_rate": _rate_or_none(chosen[6]),
+        "motor_no": _number_or_none(chosen[7]),
+        "motor_place2_rate": _rate_or_none(chosen[8]),
+        "motor_place3_rate": _rate_or_none(chosen[9]),
+        "boat_no": _number_or_none(chosen[10]),
+        "boat_place2_rate": _rate_or_none(chosen[11]),
+        "boat_place3_rate": _rate_or_none(chosen[12]),
+    }
+
+    if debug:
+        print(
+            f"ENTRY_STATS_DEBUG_OK race_id={race_id} lane={lane} "
+            f"racer={racer_number} offset={chosen_offset} raw={chosen_raw} "
+            f"parsed={result}",
+            flush=True,
+        )
+
+    return result
 
 def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
@@ -692,7 +768,12 @@ def parse_entries(html: str, race_id: str) -> List[Dict[str, Any]]:
         if match_l:
             l_count = int(match_l.group(1))
 
-        stats = _parse_entry_stat_block(seg_lines)
+        stats = _parse_entry_stat_block(
+            seg_lines,
+            race_id=race_id,
+            lane=lane,
+            racer_number=racer_number,
+        )
 
         if stats is None:
             print(
