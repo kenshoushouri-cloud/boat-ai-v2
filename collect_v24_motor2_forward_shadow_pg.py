@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 from db_pg import execute, fetch_all
 import v24_pre_candidate_notifier_pg as v24
 
-VERSION = "2026-08-20 v24-motor2-forward-shadow-v1.3-window-target-scope"
+VERSION = "2026-08-20 v24-motor2-forward-shadow-v1.4-pre-final-dual-scope"
 JST = timezone(timedelta(hours=9))
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SESSION = os.getenv("MOTOR2_SHADOW_SESSION", "all").strip().lower()
@@ -18,32 +18,56 @@ RUN_CLASS = os.getenv("MOTOR2_SHADOW_RUN_CLASS", "manual").strip().lower()
 WINDOW_NAME = os.getenv("WINDOW_NAME", "manual").strip().lower()
 SNAPSHOT_KEY = (os.getenv("MOTOR2_SHADOW_SNAPSHOT_KEY") or datetime.now(JST).strftime("%Y%m%d%H%M%S")).strip()
 
-def sf(v,d=None):
-    try: return float(v) if v not in (None,"") else d
+
+def sf(v, d=None):
+    try: return float(v) if v not in (None, "") else d
     except Exception: return d
 
-def si(v,d=0):
-    try: return int(float(v)) if v not in (None,"") else d
+
+def si(v, d=0):
+    try: return int(float(v)) if v not in (None, "") else d
     except Exception: return d
+
 
 def valid_motor2(v):
-    x=sf(v,None)
-    return x if x is not None and 0<=x<=100 else 33.0
+    x = sf(v, None)
+    return x if x is not None and 0 <= x <= 100 else 33.0
+
 
 def next_day(date_str):
     return (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
-def parse_target_race_ids():
-    raw=(os.getenv("MOTOR2_SHADOW_TARGET_RACE_IDS") or "").strip()
-    if not raw: return set()
+
+def _parse_ids(raw: str) -> set[str]:
+    raw = (raw or "").strip()
+    if not raw:
+        return set()
     return {x.strip() for x in re.split(r"[,\s]+", raw) if x.strip()}
 
-TARGET_RACE_IDS=parse_target_race_ids()
+
+WINDOW_TARGET_IDS = _parse_ids(os.getenv("MOTOR2_SHADOW_TARGET_RACE_IDS") or "")
+COLLECTION_TARGET_IDS = _parse_ids(
+    os.getenv("MOTOR2_SHADOW_COLLECTION_RACE_IDS")
+    or os.getenv("COLLECTION_RACE_IDS")
+    or ""
+)
+
+if COLLECTION_TARGET_IDS:
+    TARGET_RACE_IDS = COLLECTION_TARGET_IDS
+    TARGET_SCOPE = "collection_ids"
+elif WINDOW_TARGET_IDS:
+    TARGET_RACE_IDS = WINDOW_TARGET_IDS
+    TARGET_SCOPE = "window_ids"
+else:
+    TARGET_RACE_IDS = set()
+    TARGET_SCOPE = "all_day"
+
 
 def fetch_entries_with_motor2(date_str):
-    a=date_str.replace("-","")
-    b=next_day(date_str).replace("-","")
-    rows=fetch_all("""
+    a = date_str.replace("-", "")
+    b = next_day(date_str).replace("-", "")
+    rows = fetch_all(
+        """
         select race_id,lane,racer_number,racer_class,racer_name,
                national_win_rate,national_place2_rate,
                local_win_rate,local_place2_rate,
@@ -51,12 +75,16 @@ def fetch_entries_with_motor2(date_str):
         from v2_race_entries
         where race_id >= %s and race_id < %s
         order by race_id,lane
-    """, (a,b))
-    out={}
+        """,
+        (a, b),
+    )
+    out = {}
     for row in rows:
-        rid=str(row.get("race_id") or "")
-        if rid: out.setdefault(rid,[]).append(row)
+        rid = str(row.get("race_id") or "")
+        if rid:
+            out.setdefault(rid, []).append(row)
     return out
+
 
 def ensure_table():
     execute("""create table if not exists v2_v24_motor2_forward_shadow(
@@ -73,49 +101,52 @@ def ensure_table():
       result_ticket text,payout_yen integer,base_hit boolean,motor2_hit boolean,evaluated_at timestamptz,
       raw jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
     )""")
-    for q in [
-      "create unique index if not exists uq_v24_motor2_forward_run on v2_v24_motor2_forward_shadow(race_id,ticket,run_class,window_name,snapshot_key)"
-    ]: execute(q)
+    execute("create unique index if not exists uq_v24_motor2_forward_run on v2_v24_motor2_forward_shadow(race_id,ticket,run_class,window_name,snapshot_key)")
 
-def raw_strength(e,lane,venue,use_motor):
-    cls=si(e.get("racer_class"),2); cw=v24.CLASS_WEIGHT.get(cls,.55)
-    wr=sf(e.get("national_win_rate"),0) or 0
-    n2=sf(e.get("national_place2_rate"),32); n2=32 if n2 is None else n2
-    l2=sf(e.get("local_place2_rate"),30); l2=30 if l2 is None else l2
-    st=sf(e.get("avg_st"),.18); st=.18 if st is None else st
-    m2=valid_motor2(e.get("motor_place2_rate")) if use_motor else 33.0
-    cb=v24.VENUE_COURSE_BIAS.get(venue,v24.DEFAULT_COURSE_BIAS).get(lane,v24.DEFAULT_COURSE_BIAS[lane])
-    ss=max(0,min(1,(.24-st)/.12))
-    return cw+wr*.16+(n2/100)*.90+(l2/100)*.55+(m2/100)*.45+(34/100)*.25+ss*.35+cb*.22
 
-def probs(entries,venue,use_motor):
-    by=v24._entry_by_lane(entries)
-    r={i:raw_strength(by[i],i,venue,use_motor) for i in range(1,7)}
-    w={i:math.exp(r[i]/v24.PROB_TEMP) for i in range(1,7)}
-    total=sum(w.values()); out={}
-    for a in range(1,7):
-        pa=w[a]/total; tb=total-w[a]
-        for b in range(1,7):
-            if b==a: continue
-            pb=w[b]/tb; tc=tb-w[b]
-            for c in range(1,7):
-                if c in (a,b): continue
-                out[f"{a}-{b}-{c}"]=pa*pb*(w[c]/tc)
+def raw_strength(e, lane, venue, use_motor):
+    cls = si(e.get("racer_class"), 2); cw = v24.CLASS_WEIGHT.get(cls, .55)
+    wr = sf(e.get("national_win_rate"), 0) or 0
+    n2 = sf(e.get("national_place2_rate"), 32); n2 = 32 if n2 is None else n2
+    l2 = sf(e.get("local_place2_rate"), 30); l2 = 30 if l2 is None else l2
+    st = sf(e.get("avg_st"), .18); st = .18 if st is None else st
+    m2 = valid_motor2(e.get("motor_place2_rate")) if use_motor else 33.0
+    cb = v24.VENUE_COURSE_BIAS.get(venue, v24.DEFAULT_COURSE_BIAS).get(lane, v24.DEFAULT_COURSE_BIAS[lane])
+    ss = max(0, min(1, (.24 - st) / .12))
+    return cw + wr*.16 + (n2/100)*.90 + (l2/100)*.55 + (m2/100)*.45 + (34/100)*.25 + ss*.35 + cb*.22
+
+
+def probs(entries, venue, use_motor):
+    by = v24._entry_by_lane(entries)
+    r = {i: raw_strength(by[i], i, venue, use_motor) for i in range(1, 7)}
+    w = {i: math.exp(r[i] / v24.PROB_TEMP) for i in range(1, 7)}
+    total = sum(w.values()); out = {}
+    for a in range(1, 7):
+        pa = w[a] / total; tb = total - w[a]
+        for b in range(1, 7):
+            if b == a: continue
+            pb = w[b] / tb; tc = tb - w[b]
+            for c in range(1, 7):
+                if c in (a, b): continue
+                out[f"{a}-{b}-{c}"] = pa * pb * (w[c] / tc)
     return out
 
-def ranks(p): return {t:i for i,(t,_) in enumerate(sorted(p.items(),key=lambda kv:(-kv[1],kv[0])),1)}
-def market_ranks(odds): return {t:i for i,(t,_) in enumerate(sorted(odds.items(),key=lambda kv:(kv[1],kv[0])),1)}
-def is_low(pr,mr,odd): return 11<=pr<=20 and mr==1 and 3<=odd<5
-def is_mid(t,pr,mr,odd): return 4<=pr<=5 and 21<=mr<=30 and 30<=odd<50 and v24._head_lane(t)!="1"
-def near(pr): return 3<=pr<=6 or 10<=pr<=21
+
+def ranks(p): return {t:i for i,(t,_) in enumerate(sorted(p.items(), key=lambda kv:(-kv[1],kv[0])),1)}
+def market_ranks(odds): return {t:i for i,(t,_) in enumerate(sorted(odds.items(), key=lambda kv:(kv[1],kv[0])),1)}
+def is_low(pr,mr,odd): return 11 <= pr <= 20 and mr == 1 and 3 <= odd < 5
+def is_mid(t,pr,mr,odd): return 4 <= pr <= 5 and 21 <= mr <= 30 and 30 <= odd < 50 and v24._head_lane(t) != "1"
+def near(pr): return 3 <= pr <= 6 or 10 <= pr <= 21
 def trans(b,m): return "BOTH" if b and m else "BASE_ONLY" if b else "MOTOR2_ONLY" if m else "NEITHER"
 
+
 def session_match(r):
-    if SESSION=="all": return True
-    venue=str(r.get("venue_id") or r.get("venue_code") or "").zfill(2)
-    meta=v24._metadata_text(r); sess=v24._infer_session_type(r)
-    night=v24._is_night_like_session(sess,venue,meta)
-    return night if SESSION=="night" else not night
+    if SESSION == "all": return True
+    venue = str(r.get("venue_id") or r.get("venue_code") or "").zfill(2)
+    meta = v24._metadata_text(r); sess = v24._infer_session_type(r)
+    night = v24._is_night_like_session(sess, venue, meta)
+    return night if SESSION == "night" else not night
+
 
 def save(row):
     execute("""insert into v2_v24_motor2_forward_shadow(
@@ -139,28 +170,29 @@ def save(row):
        row["base_near_boundary"],row["motor2_near_boundary"],row["motor2_valid_lanes"],row["motor2_fallback_lanes"],
        RUN_CLASS,WINDOW_NAME,SESSION,SNAPSHOT_KEY,Jsonb(row["raw"])))
 
+
 def main():
     if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL is required")
     if SESSION not in {"all","day","night"}: raise RuntimeError(f"invalid session={SESSION}")
-    if RUN_CLASS not in {"live","manual","test"}: raise RuntimeError(f"invalid run_class={RUN_CLASS}")
+    if RUN_CLASS not in {"live","manual","test","final"}: raise RuntimeError(f"invalid run_class={RUN_CLASS}")
 
-    print(f"OK collect_v24_motor2_forward_shadow_pg.py VERSION {VERSION}",flush=True)
-    print(f"TARGET_DATE={TARGET_DATE} SESSION={SESSION} RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}",flush=True)
-    print("SHADOW_ONLY=1 LINE=0 BUY=0 PROD_V24_CHANGE=0 N02_CHANGE=0",flush=True)
-    print(f"TARGET_SCOPE={'window_ids' if TARGET_RACE_IDS else 'all_day'} target_ids={len(TARGET_RACE_IDS)}",flush=True)
+    print(f"OK collect_v24_motor2_forward_shadow_pg.py VERSION {VERSION}", flush=True)
+    print(f"TARGET_DATE={TARGET_DATE} SESSION={SESSION} RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}", flush=True)
+    print("SHADOW_ONLY=1 LINE=0 BUY=0 PROD_V24_CHANGE=0 N02_CHANGE=0", flush=True)
+    print(f"TARGET_SCOPE={TARGET_SCOPE} target_ids={len(TARGET_RACE_IDS)}", flush=True)
 
     ensure_table()
-    races,_e,ob=v24._fetch_live_day_rows(TARGET_DATE)
-    eb=fetch_entries_with_motor2(TARGET_DATE)
+    races, _e, ob = v24._fetch_live_day_rows(TARGET_DATE)
+    eb = fetch_entries_with_motor2(TARGET_DATE)
 
     if TARGET_RACE_IDS:
-        races=[r for r in races if str(r.get("race_id") or "") in TARGET_RACE_IDS]
+        races = [r for r in races if str(r.get("race_id") or "") in TARGET_RACE_IDS]
 
-    races=[r for r in races if session_match(r)]
+    races = [r for r in races if session_match(r)]
     if not races:
-        print("races=0"); print("RESULT=NO_RACES"); return
+        print("races=0", flush=True); print("RESULT=NO_RACES", flush=True); return
 
-    print(f"ENTRY_SOURCE=direct_v2_race_entries_with_motor2 entry_races={len(eb)} entry_rows={sum(len(v) for v in eb.values())}",flush=True)
+    print(f"ENTRY_SOURCE=direct_v2_race_entries_with_motor2 entry_races={len(eb)} entry_rows={sum(len(v) for v in eb.values())}", flush=True)
 
     saved=ready=skip_e=skip_o=skip_sparse=0
     tb=tm=mb=mm=0
@@ -204,20 +236,20 @@ def main():
                 candidate_transition=tr,base_near_boundary=bn,motor2_near_boundary=mn,
                 motor2_valid_lanes=vl,motor2_fallback_lanes=fl,
                 raw={"version":VERSION,"save_policy":"candidate_or_prob_rank_boundary","motor2_weight":0.45,
-                     "entry_source":"direct_v2_race_entries_with_motor2",
-                     "target_scope":"window_ids" if TARGET_RACE_IDS else "all_day"}
+                     "entry_source":"direct_v2_race_entries_with_motor2","target_scope":TARGET_SCOPE}
             ))
             saved+=1
 
-    print("=== MOTOR2 FORWARD SHADOW SUMMARY ===")
-    print(f"races={len(races)} ready={ready} saved={saved} skipped_sparse={skip_sparse}")
-    print(f"skipped_entries={skip_e} skipped_odds={skip_o}")
-    print(f"LOW BASE={tb} MOTOR2={tm}")
-    print(f"MID BASE={mb} MOTOR2={mm}")
-    print(f"TRANSITIONS BOTH={trc['BOTH']} BASE_ONLY={trc['BASE_ONLY']} MOTOR2_ONLY={trc['MOTOR2_ONLY']} NEITHER={trc['NEITHER']}")
-    print(f"MOTOR_DATA valid_lane_total={valid_total} fallback_lane_total={fallback_total}")
-    print(f"RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}")
-    print("RESULT=PASS")
+    print("=== MOTOR2 FORWARD SHADOW SUMMARY ===", flush=True)
+    print(f"races={len(races)} ready={ready} saved={saved} skipped_sparse={skip_sparse}", flush=True)
+    print(f"skipped_entries={skip_e} skipped_odds={skip_o}", flush=True)
+    print(f"LOW BASE={tb} MOTOR2={tm}", flush=True)
+    print(f"MID BASE={mb} MOTOR2={mm}", flush=True)
+    print(f"TRANSITIONS BOTH={trc['BOTH']} BASE_ONLY={trc['BASE_ONLY']} MOTOR2_ONLY={trc['MOTOR2_ONLY']} NEITHER={trc['NEITHER']}", flush=True)
+    print(f"MOTOR_DATA valid_lane_total={valid_total} fallback_lane_total={fallback_total}", flush=True)
+    print(f"RUN_CLASS={RUN_CLASS} WINDOW_NAME={WINDOW_NAME} SNAPSHOT_KEY={SNAPSHOT_KEY}", flush=True)
+    print("RESULT=PASS", flush=True)
+
 
 if __name__=="__main__":
     main()
