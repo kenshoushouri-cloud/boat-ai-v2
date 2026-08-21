@@ -21,13 +21,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Compile critical production and shadow files
+      - name: Compile production A and production-adjacent B files
         run: |
           python -m py_compile \
             db_pg.py \
             repair_month_all_pg.py \
             run_daily_data_prepare_pg.py \
             run_odds_window_pg.py \
+            collect_racer_course_stats_pg.py \
             run_window_pipeline_pg.py \
             run_pre_window_pg.py \
             v24_pre_candidate_notifier_pg.py \
@@ -35,8 +36,16 @@ jobs:
             v25_final_realtime_pipeline_pg.py \
             v21_realtime_collector_pg.py \
             run_v22_targeted_pg.py \
+            v22_realtime_decision_engine_pg.py \
             v23_line_notifier_batch_pg.py \
             run_nightly_results_pg.py \
+            run_monthly_performance_report.py \
+            v27_performance_report_line.py \
+            run_daily_status_report.py \
+            v28_daily_status_report_line.py \
+            run_v21_pg.py \
+            run_v22_pg.py \
+            run_v23_pg.py \
             collect_v24_motor2_forward_shadow_pg.py \
             evaluate_v24_motor2_forward_shadow_pg.py \
             report_v24_motor2_forward_performance_pg.py \
