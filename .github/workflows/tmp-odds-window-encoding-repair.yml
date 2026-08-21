@@ -18,24 +18,77 @@ jobs:
           ref: ops/odds-window-log-cleanup-20260821
           fetch-depth: 0
 
-      - name: Repair mojibake in run_odds_window_pg.py only
+      - name: Repair remaining display-only mojibake
         run: |
           python - <<'PY'
           from pathlib import Path
+
           path = Path('run_odds_window_pg.py')
-          original = path.read_text(encoding='utf-8')
+          lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
           out = []
-          changed = 0
-          for line in original.splitlines(keepends=True):
-              try:
-                  repaired = line.encode('latin-1').decode('utf-8')
-              except (UnicodeEncodeError, UnicodeDecodeError):
-                  repaired = line
-              if repaired != line:
-                  changed += 1
-              out.append(repaired)
+          i = 0
+          in_motor2_comment = False
+
+          while i < len(lines):
+              line = lines[i]
+              stripped = line.strip()
+
+              if stripped.startswith('ThreadPoolExecutor') and 'Future' in line:
+                  out.append('    ThreadPoolExecutor自体では実行中Futureを安全に強制終了できないため、\n')
+                  i += 1
+                  continue
+
+              if stripped == '# Motor2 Forward Shadow target scope export':
+                  out.append(line)
+                  in_motor2_comment = True
+                  i += 1
+                  continue
+
+              if in_motor2_comment:
+                  if stripped.startswith('# ------------------------------------------------------------'):
+                      out.append(line)
+                      i += 1
+                      continue
+                  if stripped.startswith('#'):
+                      i += 1
+                      continue
+                  if stripped.startswith('window_race_ids = ['):
+                      out.extend([
+                          '    # STEP1で選択したこのwindowの全race_idを、\n',
+                          '    # run_window_pipeline_pg.py のSTEP1.5へ同一processの環境変数で渡す。\n',
+                          '    # skip_full_oddsで今回HTTP取得を省略したRも、既に完全オッズがDBにあるため\n',
+                          '    # Shadow対象からは外さない。\n',
+                      ])
+                      in_motor2_comment = False
+                      out.append(line)
+                      i += 1
+                      continue
+
+              if stripped == 'if not races:' and any('skip_full_odds=1' in x for x in lines[max(0, i-25):i]):
+                  out.extend([
+                      '        if not races:\n',
+                      '            print(\n',
+                      '                "全対象レースで期待される三連単の全組み合わせが揃っています。",\n',
+                      '                flush=True,\n',
+                      '            )\n',
+                      '            return\n',
+                  ])
+                  i += 1
+                  while i < len(lines) and lines[i].strip() != 'return':
+                      i += 1
+                  if i < len(lines) and lines[i].strip() == 'return':
+                      i += 1
+                  continue
+
+              if '組み合わせ完了' in line and stripped.startswith('"'):
+                  out.append('                "全レース期待組み合わせ完了",\n')
+                  i += 1
+                  continue
+
+              out.append(line)
+              i += 1
+
           path.write_text(''.join(out), encoding='utf-8')
-          print(f'Repaired lines: {changed}')
           PY
 
       - name: Compile odds window
@@ -50,5 +103,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- run_odds_window_pg.py
-          git commit -m "ops: repair odds window log encoding"
+          git commit -m "ops: finish odds window log cleanup"
           git push origin HEAD:ops/odds-window-log-cleanup-20260821
