@@ -1,6 +1,11 @@
 name: Railway historical one-day pilot
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/railway-historical-one-day-pilot.yml"
   issue_comment:
     types:
       - created
@@ -16,11 +21,15 @@ env:
 jobs:
   pilot:
     if: >-
-      github.event.issue.number == 42 &&
-      github.actor == github.repository_owner &&
+      github.event_name == 'push' ||
       (
-        github.event.comment.body == '/railway historical-pilot-audit' ||
-        github.event.comment.body == '/railway historical-pilot-write'
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        (
+          github.event.comment.body == '/railway historical-pilot-audit' ||
+          github.event.comment.body == '/railway historical-pilot-write'
+        )
       )
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -50,14 +59,19 @@ jobs:
         id: mode
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          case "$COMMENT_BODY" in
-            '/railway historical-pilot-audit') mode='audit' ;;
-            '/railway historical-pilot-write') mode='write' ;;
-            *) exit 2 ;;
-          esac
+          if [ "$EVENT_NAME" = "push" ]; then
+            mode='audit'
+          else
+            case "$COMMENT_BODY" in
+              '/railway historical-pilot-audit') mode='audit' ;;
+              '/railway historical-pilot-write') mode='write' ;;
+              *) exit 2 ;;
+            esac
+          fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
       - name: Load public database URL without publishing it
