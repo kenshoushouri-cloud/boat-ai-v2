@@ -12,7 +12,7 @@ from typing import Dict
 from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-21 nightly-observability-v7-robustness"
+VERSION = "2026-08-21 nightly-observability-v8-candidate-robustness"
 
 
 def flag(name: str, default: str) -> bool:
@@ -21,6 +21,7 @@ def flag(name: str, default: str) -> bool:
 
 RUN_CANDIDATE_SHADOW_EVAL = flag("RUN_CANDIDATE_SHADOW_EVAL", "1")
 RUN_CANDIDATE_SHADOW_REPORT = flag("RUN_CANDIDATE_SHADOW_REPORT", "1")
+RUN_CANDIDATE_ROBUSTNESS_REPORT = flag("RUN_CANDIDATE_ROBUSTNESS_REPORT", "1")
 RUN_N02_FORWARD_REPORT = flag("RUN_N02_FORWARD_REPORT", "1")
 RUN_N02_VARIANT_FORWARD_REPORT = flag("RUN_N02_VARIANT_FORWARD_REPORT", "1")
 RUN_EXHIBITION_SHADOW_EVAL = flag("RUN_EXHIBITION_SHADOW_EVAL", "1")
@@ -365,6 +366,20 @@ def main() -> None:
             {
                 **common,
                 "SHADOW_REPORT_DAYS": os.getenv("SHADOW_REPORT_DAYS", "30"),
+            },
+            False,
+        )
+
+    if RUN_CANDIDATE_ROBUSTNESS_REPORT:
+        run_stage(
+            13,
+            "S01-S05候補フィルターShadow分布robustnessレポート",
+            base_dir / "report_candidate_filter_shadow_robustness_pg.py",
+            {
+                **common,
+                "CANDIDATE_SHADOW_REPORT_DAYS": os.getenv(
+                    "CANDIDATE_SHADOW_REPORT_DAYS", "30"
+                ),
             },
             False,
         )
