@@ -140,75 +140,70 @@ jobs:
           import os
           from pathlib import Path
 
-          src = Path("railway-status.json")
-          data = json.loads(src.read_text(encoding="utf-8"))
+          data = json.loads(Path("railway-status.json").read_text(encoding="utf-8"))
           operation = os.environ.get("OPERATION", "status")
-
-          sensitive_parts = (
-              "token", "secret", "password", "credential", "database", "connection",
-              "url", "uri", "auth", "apikey", "api_key", "private", "publickey",
-              "variable", "environmentvariable", "value",
-          )
-          id_names = {
-              "id", "projectid", "environmentid", "serviceid", "deploymentid",
-              "pluginid", "volumeid", "uuid",
-          }
-          useful_names = {
-              "name", "project", "environment", "service", "services", "status", "state",
-              "region", "replicas", "cronschedule", "schedule", "startcommand", "rootdirectory",
-              "source", "branch", "builder", "runtime", "restartpolicytype",
-          }
-
-          def key_norm(k):
-              return str(k).replace("_", "").replace("-", "").lower()
-
-          def safe_scalar(v):
-              if isinstance(v, (bool, int, float)) or v is None:
-                  return v
-              s = str(v)
-              if len(s) > 160:
-                  return "[redacted-long-value]"
-              if "://" in s or "postgres" in s.lower() or "password=" in s.lower():
-                  return "[redacted]"
-              return s
-
-          def scrub(obj):
-              if isinstance(obj, dict):
-                  out = {}
-                  for k, v in obj.items():
-                      nk = key_norm(k)
-                      if nk in id_names:
-                          continue
-                      if any(part in nk for part in sensitive_parts):
-                          continue
-                      if isinstance(v, (dict, list)):
-                          sv = scrub(v)
-                          if sv not in ({}, [], None):
-                              out[k] = sv
-                      elif nk in useful_names:
-                          out[k] = safe_scalar(v)
-                  return out
-              if isinstance(obj, list):
-                  return [x for x in (scrub(v) for v in obj) if x not in ({}, [], None)]
-              return safe_scalar(obj)
-
-          safe = scrub(data)
-          payload = json.dumps(safe, ensure_ascii=False, indent=2)
-          if len(payload) > 12000:
-              payload = payload[:12000] + "\n... [truncated]"
+          cli_version = Path("railway-version.txt").read_text(encoding="utf-8").strip()
 
           lines = [
               "## Railway bridge " + ("inventory" if operation == "inventory" else "status"),
               "",
               "✅ Railway Project Token connection succeeded.",
               "",
-              f"Railway CLI: `{Path('railway-version.txt').read_text(encoding='utf-8').strip()}`",
+              f"Railway CLI: `{cli_version}`",
               f"Commit: `{os.environ.get('GITHUB_SHA', '')}`",
-              "",
-              "The output below is sanitized for this public repository: secret-like fields, URLs, IDs and variable values are removed.",
           ]
+
           if operation == "inventory":
-              lines += ["", "```json", payload, "```"]
+              service_names = {}
+              for edge in (data.get("services") or {}).get("edges", []):
+                  node = edge.get("node") or {}
+                  sid = node.get("id")
+                  name = node.get("name")
+                  if sid and name:
+                      service_names[sid] = name
+
+              rows = []
+              for env_edge in (data.get("environments") or {}).get("edges", []):
+                  env_node = env_edge.get("node") or {}
+                  env_name = env_node.get("name") or "unknown"
+                  instances = (env_node.get("serviceInstances") or {}).get("edges", [])
+                  for inst_edge in instances:
+                      inst = inst_edge.get("node") or {}
+                      sid = inst.get("serviceId")
+                      service_name = (
+                          service_names.get(sid)
+                          or inst.get("serviceName")
+                          or inst.get("name")
+                          or "unresolved-service"
+                      )
+                      latest = inst.get("latestDeployment") or {}
+                      meta = latest.get("meta") or {}
+                      manifest = meta.get("serviceManifest") or {}
+                      deploy = manifest.get("deploy") or {}
+                      cron = inst.get("cronSchedule") or deploy.get("cronSchedule") or "-"
+                      start = inst.get("startCommand") or deploy.get("startCommand") or "-"
+                      status = latest.get("status") or "-"
+                      branch = meta.get("branch") or "-"
+                      rows.append((env_name, service_name, cron, start, status, branch))
+
+              rows.sort(key=lambda r: (r[0], r[1]))
+              lines += [
+                  "",
+                  "Only non-secret operational fields are shown. Railway IDs, URLs and Variable values are not published.",
+                  "",
+                  f"Services discovered: **{len(rows)}**",
+                  "",
+                  "| Environment | Service | Cron | Start Command | Latest deployment | Branch |",
+                  "|---|---|---|---|---|---|",
+              ]
+              for env_name, service_name, cron, start, status, branch in rows:
+                  def cell(value):
+                      return str(value).replace("|", "\\|").replace("\n", " ")[:180]
+                  lines.append(
+                      f"| {cell(env_name)} | {cell(service_name)} | `{cell(cron)}` | `{cell(start)}` | {cell(status)} | {cell(branch)} |"
+                  )
+              if not rows:
+                  lines += ["", "⚠️ No service instances could be summarized from Railway status output."]
           else:
               lines += ["", "No Railway settings were changed by this operation."]
 
