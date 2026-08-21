@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable
 
 from db_pg import fetch_all
 
-VERSION = "2026-08-21 v24-motor2-forward-performance-v3-robustness"
+VERSION = "2026-08-21 v24-motor2-forward-performance-v4-phase-dedup"
 JST = timezone(timedelta(hours=9))
 END_DATE = (os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")).strip()
 START_DATE = (os.getenv("MOTOR2_FORWARD_REPORT_START_DATE") or "2026-08-20").strip()
@@ -92,6 +92,7 @@ def fmt(name: str, s: Dict[str, int]) -> str:
 
 
 def latest(rows: Iterable[Dict[str, Any]]):
+    """Keep the latest snapshot within each run_class/window."""
     out: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
     for r in rows:
         key = (
@@ -100,6 +101,16 @@ def latest(rows: Iterable[Dict[str, Any]]):
             str(r.get("run_class") or ""),
             str(r.get("window_name") or ""),
         )
+        if key not in out or str(r.get("snapshot_at") or "") >= str(out[key].get("snapshot_at") or ""):
+            out[key] = r
+    return list(out.values())
+
+
+def latest_race_ticket(rows: Iterable[Dict[str, Any]]):
+    """Deduplicate overlapping windows by race_id/ticket, keeping the latest snapshot."""
+    out: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for r in rows:
+        key = (str(r.get("race_id") or ""), str(r.get("ticket") or ""))
         if key not in out or str(r.get("snapshot_at") or "") >= str(out[key].get("snapshot_at") or ""):
             out[key] = r
     return list(out.values())
@@ -253,8 +264,25 @@ def prefinal(rows) -> None:
     )
 
 
+def candidate_count(rows) -> int:
+    return sum(
+        1
+        for r in rows
+        if bool(r.get("motor2_low_candidate")) or bool(r.get("motor2_mid_candidate"))
+    )
+
+
 def next_target(current: int, targets):
     return next((x for x in targets if current < x), None)
+
+
+def print_review_progress(label: str, current: int, targets) -> None:
+    nxt = next_target(current, targets)
+    print(f"{label}_rows={current}")
+    if nxt is None:
+        print(f"{label}_next_review_target=completed")
+    else:
+        print(f"{label}_next_review_target={nxt} remaining={nxt-current}")
 
 
 def main() -> None:
@@ -269,24 +297,34 @@ def main() -> None:
     rows = latest(raw)
     print(f"raw_rows={len(raw)} dedup_latest_rows={len(rows)}")
 
-    pre = [
+    pre_observations = [
         r for r in rows
         if str(r.get("window_name") or "") in ("morning", "day", "night")
     ]
-    final = [r for r in rows if str(r.get("window_name") or "") == "final"]
+    final_observations = [r for r in rows if str(r.get("window_name") or "") == "final"]
 
-    scope("OVERALL", rows)
-    scope("PRE ALL", pre)
-    scope("FINAL", final)
+    pre_unique = latest_race_ticket(pre_observations)
+    final_unique = latest_race_ticket(final_observations)
+
+    print(
+        f"pre_observations={len(pre_observations)} pre_unique_race_ticket={len(pre_unique)} "
+        f"pre_overlap_duplicates={len(pre_observations)-len(pre_unique)}"
+    )
+    print(
+        f"final_observations={len(final_observations)} final_unique_race_ticket={len(final_unique)}"
+    )
+
+    scope("OVERALL OBSERVATIONS (DIAGNOSTIC ONLY)", rows)
+    scope("PRE UNIQUE", pre_unique)
+    scope("FINAL UNIQUE", final_unique)
     for window in ("morning", "day", "night"):
         window_rows = [
             r for r in rows if str(r.get("window_name") or "") == window
         ]
         scope(f"PRE {window.upper()}", window_rows)
 
-    mid_eligible = mid_veto_scope("OVERALL", rows)
-    mid_veto_scope("PRE ALL", pre)
-    mid_veto_scope("FINAL", final)
+    mid_veto_scope("PRE UNIQUE", pre_unique)
+    mid_veto_scope("FINAL UNIQUE", final_unique)
     for window in ("morning", "day", "night"):
         mid_veto_scope(
             f"PRE {window.upper()}",
@@ -295,29 +333,16 @@ def main() -> None:
 
     prefinal(rows)
 
-    motor2_candidates = sum(
-        1
-        for r in rows
-        if bool(r.get("motor2_low_candidate")) or bool(r.get("motor2_mid_candidate"))
-    )
-    motor2_next = next_target(motor2_candidates, REVIEW_TARGETS)
-    mid_next = next_target(mid_eligible, MID_VETO_REVIEW_TARGETS)
+    pre_motor2_candidates = candidate_count(pre_unique)
+    final_motor2_candidates = candidate_count(final_unique)
+    _, pre_mid_eligible, _ = mid_veto_stats(pre_unique)
+    _, final_mid_eligible, _ = mid_veto_stats(final_unique)
 
-    print("=== REVIEW PROGRESS ===")
-    print(f"motor2_candidate_rows={motor2_candidates}")
-    if motor2_next is None:
-        print("next_review_target=completed")
-    else:
-        print(f"next_review_target={motor2_next} remaining={motor2_next - motor2_candidates}")
-
-    print(f"mid_veto_evaluable_rows={mid_eligible}")
-    if mid_next is None:
-        print("mid_veto_next_review_target=completed")
-    else:
-        print(
-            f"mid_veto_next_review_target={mid_next} "
-            f"remaining={mid_next - mid_eligible}"
-        )
+    print("=== REVIEW PROGRESS (UNIQUE RACE/TICKET) ===")
+    print_review_progress("motor2_pre_unique", pre_motor2_candidates, REVIEW_TARGETS)
+    print_review_progress("motor2_final_unique", final_motor2_candidates, REVIEW_TARGETS)
+    print_review_progress("mid_veto_pre_unique", pre_mid_eligible, MID_VETO_REVIEW_TARGETS)
+    print_review_progress("mid_veto_final_unique", final_mid_eligible, MID_VETO_REVIEW_TARGETS)
 
     print("RESULT=PASS")
 
