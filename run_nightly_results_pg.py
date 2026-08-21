@@ -27,6 +27,9 @@ RUN_EXHIBITION_SHADOW_EVAL = flag("RUN_EXHIBITION_SHADOW_EVAL", "1")
 RUN_EXHIBITION_SHADOW_REPORT = flag("RUN_EXHIBITION_SHADOW_REPORT", "1")
 RUN_MOTOR2_FORWARD_EVAL = flag("RUN_MOTOR2_FORWARD_EVAL", "1")
 RUN_MOTOR2_FORWARD_REPORT = flag("RUN_MOTOR2_FORWARD_REPORT", "1")
+RUN_MOTOR2_ROBUSTNESS_REPORT = flag("RUN_MOTOR2_ROBUSTNESS_REPORT", "1")
+RUN_N02_ROBUSTNESS_REPORT = flag("RUN_N02_ROBUSTNESS_REPORT", "1")
+RUN_EXHIBITION_ROBUSTNESS_REPORT = flag("RUN_EXHIBITION_ROBUSTNESS_REPORT", "1")
 SHADOW_EVAL_STRICT = flag("SHADOW_EVAL_STRICT", "0")
 
 
@@ -316,6 +319,52 @@ def main() -> None:
                 "MOTOR2_MID_VETO_REVIEW_TARGETS": os.getenv(
                     "MOTOR2_MID_VETO_REVIEW_TARGETS", "10,30,50,100"
                 ),
+            },
+            False,
+        )
+
+    if RUN_MOTOR2_ROBUSTNESS_REPORT:
+        run_stage(
+            10,
+            "Motor2 Forward分布robustnessレポート",
+            base_dir / "report_v24_motor2_forward_robustness_pg.py",
+            {
+                **common,
+                "MOTOR2_FORWARD_REPORT_START_DATE": os.getenv(
+                    "MOTOR2_FORWARD_REPORT_START_DATE", "2026-08-20"
+                ),
+                "MOTOR2_FORWARD_UNIT_YEN": os.getenv(
+                    "MOTOR2_FORWARD_UNIT_YEN", os.getenv("UNIT_YEN", "100")
+                ),
+            },
+            False,
+        )
+
+    if RUN_N02_ROBUSTNESS_REPORT:
+        run_stage(
+            11,
+            "N02 Forward分布robustnessレポート",
+            base_dir / "report_n02_forward_robustness_pg.py",
+            {
+                **common,
+                "N02_FORWARD_START_DATE": os.getenv(
+                    "N02_FORWARD_START_DATE", "2026-08-18"
+                ),
+                "N02_FORWARD_UNIT_YEN": os.getenv(
+                    "N02_FORWARD_UNIT_YEN", os.getenv("UNIT_YEN", "100")
+                ),
+            },
+            False,
+        )
+
+    if RUN_EXHIBITION_ROBUSTNESS_REPORT:
+        run_stage(
+            12,
+            "展示Shadow分布robustnessレポート",
+            base_dir / "report_exhibition_shadow_robustness_pg.py",
+            {
+                **common,
+                "SHADOW_REPORT_DAYS": os.getenv("SHADOW_REPORT_DAYS", "30"),
             },
             False,
         )
