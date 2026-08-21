@@ -1,0 +1,51 @@
+name: Critical Python syntax
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  py-compile-critical:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile critical production and shadow files
+        run: |
+          python -m py_compile \
+            db_pg.py \
+            repair_month_all_pg.py \
+            run_daily_data_prepare_pg.py \
+            run_odds_window_pg.py \
+            run_window_pipeline_pg.py \
+            run_pre_window_pg.py \
+            v24_pre_candidate_notifier_pg.py \
+            run_final_pg.py \
+            v25_final_realtime_pipeline_pg.py \
+            v21_realtime_collector_pg.py \
+            run_v22_targeted_pg.py \
+            v23_line_notifier_batch_pg.py \
+            run_nightly_results_pg.py \
+            collect_v24_motor2_forward_shadow_pg.py \
+            evaluate_v24_motor2_forward_shadow_pg.py \
+            report_v24_motor2_forward_performance_pg.py \
+            collect_candidate_filter_shadow_pg.py \
+            evaluate_candidate_filter_shadow_results_pg.py \
+            report_candidate_filter_shadow_performance_pg.py \
+            collect_n02_windlt4_final_shadow_pg.py \
+            report_n02_forward_performance_pg.py \
+            report_n02_windlt4_variants_forward_pg.py \
+            v22_exhibition_shadow_pg.py \
+            evaluate_exhibition_shadow_results_pg.py \
+            report_exhibition_shadow_performance_pg.py
