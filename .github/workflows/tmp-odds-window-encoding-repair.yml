@@ -1,0 +1,54 @@
+name: Temporary odds window encoding repair
+
+on:
+  push:
+    branches:
+      - ops/odds-window-log-cleanup-20260821
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ops/odds-window-log-cleanup-20260821
+          fetch-depth: 0
+
+      - name: Repair mojibake in run_odds_window_pg.py only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('run_odds_window_pg.py')
+          original = path.read_text(encoding='utf-8')
+          out = []
+          changed = 0
+          for line in original.splitlines(keepends=True):
+              try:
+                  repaired = line.encode('latin-1').decode('utf-8')
+              except (UnicodeEncodeError, UnicodeDecodeError):
+                  repaired = line
+              if repaired != line:
+                  changed += 1
+              out.append(repaired)
+          path.write_text(''.join(out), encoding='utf-8')
+          print(f'Repaired lines: {changed}')
+          PY
+
+      - name: Compile odds window
+        run: python -m py_compile run_odds_window_pg.py
+
+      - name: Commit repaired file
+        run: |
+          if git diff --quiet -- run_odds_window_pg.py; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- run_odds_window_pg.py
+          git commit -m "ops: repair odds window log encoding"
+          git push origin HEAD:ops/odds-window-log-cleanup-20260821
