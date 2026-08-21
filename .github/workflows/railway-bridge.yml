@@ -10,7 +10,11 @@ on:
         type: choice
         options:
           - status
+          - inventory
           - help
+  issue_comment:
+    types:
+      - created
   push:
     branches:
       - main
@@ -27,6 +31,13 @@ env:
 
 jobs:
   railway-bridge:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        (github.event.comment.body == '/railway status' || github.event.comment.body == '/railway inventory')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -42,6 +53,28 @@ jobs:
       - name: Install Railway CLI
         run: npm install --global @railway/cli
 
+      - name: Resolve operation
+        id: op
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          op="status"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            op="$DISPATCH_OPERATION"
+          elif [ "$EVENT_NAME" = "issue_comment" ]; then
+            case "$COMMENT_BODY" in
+              "/railway inventory") op="inventory" ;;
+              "/railway status") op="status" ;;
+              *) op="status" ;;
+            esac
+          fi
+          echo "operation=$op" >> "$GITHUB_OUTPUT"
+          echo "Railway bridge operation: $op"
+
       - name: Record Railway CLI help
         shell: bash
         run: |
@@ -54,9 +87,9 @@ jobs:
           railway redeploy --help > railway-redeploy-help.txt || true
           echo "Railway CLI help captured."
 
-      - name: Railway connection status
+      - name: Railway read-only status
         id: railway_status
-        if: ${{ github.event_name == 'push' || inputs.operation == 'status' }}
+        if: ${{ steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -80,16 +113,6 @@ jobs:
           set -e
 
           if [ "$rc" -eq 0 ]; then
-            {
-              echo "## Railway bridge status"
-              echo
-              echo "✅ Railway Project Token connection succeeded."
-              echo
-              echo "Railway CLI: \`$(cat railway-version.txt)\`"
-              echo "Commit: \`${GITHUB_SHA}\`"
-              echo
-              echo "No Railway settings were changed by this test."
-            } >> railway-status-summary.md
             echo "status_ok=1" >> "$GITHUB_OUTPUT"
           else
             {
@@ -105,8 +128,95 @@ jobs:
             echo "status_ok=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Post safe Railway status to control issue
-        if: ${{ (github.event_name == 'push' || inputs.operation == 'status') && always() }}
+      - name: Build safe Railway summary
+        if: ${{ steps.railway_status.outputs.status_ok == '1' }}
+        shell: bash
+        env:
+          OPERATION: ${{ steps.op.outputs.operation }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          src = Path("railway-status.json")
+          data = json.loads(src.read_text(encoding="utf-8"))
+          operation = os.environ.get("OPERATION", "status")
+
+          sensitive_parts = (
+              "token", "secret", "password", "credential", "database", "connection",
+              "url", "uri", "auth", "apikey", "api_key", "private", "publickey",
+              "variable", "environmentvariable", "value",
+          )
+          id_names = {
+              "id", "projectid", "environmentid", "serviceid", "deploymentid",
+              "pluginid", "volumeid", "uuid",
+          }
+          useful_names = {
+              "name", "project", "environment", "service", "services", "status", "state",
+              "region", "replicas", "cronschedule", "schedule", "startcommand", "rootdirectory",
+              "source", "branch", "builder", "runtime", "restartpolicytype",
+          }
+
+          def key_norm(k):
+              return str(k).replace("_", "").replace("-", "").lower()
+
+          def safe_scalar(v):
+              if isinstance(v, (bool, int, float)) or v is None:
+                  return v
+              s = str(v)
+              if len(s) > 160:
+                  return "[redacted-long-value]"
+              if "://" in s or "postgres" in s.lower() or "password=" in s.lower():
+                  return "[redacted]"
+              return s
+
+          def scrub(obj):
+              if isinstance(obj, dict):
+                  out = {}
+                  for k, v in obj.items():
+                      nk = key_norm(k)
+                      if nk in id_names:
+                          continue
+                      if any(part in nk for part in sensitive_parts):
+                          continue
+                      if isinstance(v, (dict, list)):
+                          sv = scrub(v)
+                          if sv not in ({}, [], None):
+                              out[k] = sv
+                      elif nk in useful_names:
+                          out[k] = safe_scalar(v)
+                  return out
+              if isinstance(obj, list):
+                  return [x for x in (scrub(v) for v in obj) if x not in ({}, [], None)]
+              return safe_scalar(obj)
+
+          safe = scrub(data)
+          payload = json.dumps(safe, ensure_ascii=False, indent=2)
+          if len(payload) > 12000:
+              payload = payload[:12000] + "\n... [truncated]"
+
+          lines = [
+              "## Railway bridge " + ("inventory" if operation == "inventory" else "status"),
+              "",
+              "✅ Railway Project Token connection succeeded.",
+              "",
+              f"Railway CLI: `{Path('railway-version.txt').read_text(encoding='utf-8').strip()}`",
+              f"Commit: `{os.environ.get('GITHUB_SHA', '')}`",
+              "",
+              "The output below is sanitized for this public repository: secret-like fields, URLs, IDs and variable values are removed.",
+          ]
+          if operation == "inventory":
+              lines += ["", "```json", payload, "```"]
+          else:
+              lines += ["", "No Railway settings were changed by this operation."]
+
+          Path("railway-status-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Post safe Railway result to control issue
+        if: ${{ (steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory') && always() }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -117,14 +227,14 @@ jobs:
           fi
 
       - name: Fail after reporting connection error
-        if: ${{ (github.event_name == 'push' || inputs.operation == 'status') && steps.railway_status.outputs.status_ok == '0' }}
+        if: ${{ (steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory') && steps.railway_status.outputs.status_ok == '0' }}
         shell: bash
         run: |
-          echo "Railway connection test did not succeed. See control issue #${RAILWAY_BRIDGE_ISSUE}."
+          echo "Railway read-only operation did not succeed. See control issue #${RAILWAY_BRIDGE_ISSUE}."
           exit 1
 
       - name: Show CLI help
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'help' }}
+        if: ${{ steps.op.outputs.operation == 'help' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -152,5 +262,4 @@ jobs:
             railway-logs-help.txt
             railway-variables-help.txt
             railway-redeploy-help.txt
-            railway-status.json
             railway-status-summary.md
