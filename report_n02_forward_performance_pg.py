@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-18 n02-forward-performance-v1"
+VERSION = "2026-08-21 n02-forward-performance-v2-robustness"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 START_DATE = os.getenv("N02_FORWARD_START_DATE", "2026-08-18")
@@ -24,6 +24,7 @@ BACKTEST_REFERENCE = {
     "max_drawdown_yen": 920,
 }
 
+
 def _safe_int(v: Any, d: int = 0) -> int:
     try:
         if v is None or v == "":
@@ -32,28 +33,46 @@ def _safe_int(v: Any, d: int = 0) -> int:
     except Exception:
         return d
 
+
 def _new_stat() -> Dict[str, Any]:
-    return {"rows": 0, "evaluated": 0, "hits": 0, "investment": 0, "return": 0}
+    return {
+        "rows": 0,
+        "evaluated": 0,
+        "hits": 0,
+        "investment": 0,
+        "return": 0,
+        "max_payout": 0,
+    }
+
 
 def _add(stat: Dict[str, Any], row: Dict[str, Any]) -> None:
     stat["rows"] += 1
     if str(row.get("evaluation_status") or "") != "evaluated":
         return
+
     stat["evaluated"] += 1
     inv = _safe_int(row.get("investment_yen"), UNIT_YEN)
     if inv <= 0:
         inv = UNIT_YEN
     ret = _safe_int(row.get("return_yen"), 0)
+
     stat["investment"] += inv
     stat["return"] += ret
+
     if bool(row.get("hit")):
         stat["hits"] += 1
+        payout = _safe_int(row.get("payout_yen"), ret)
+        if payout > stat["max_payout"]:
+            stat["max_payout"] = payout
+
 
 def _metrics(stat: Dict[str, Any]) -> Dict[str, float]:
     e = int(stat["evaluated"])
     h = int(stat["hits"])
     inv = int(stat["investment"])
     ret = int(stat["return"])
+    max_payout = int(stat["max_payout"])
+
     return {
         "evaluated": e,
         "hits": h,
@@ -62,7 +81,10 @@ def _metrics(stat: Dict[str, Any]) -> Dict[str, float]:
         "profit": ret - inv,
         "hit_rate": h / e * 100.0 if e else 0.0,
         "roi": ret / inv * 100.0 if inv else 0.0,
+        "max_payout": max_payout,
+        "single_hit_share": max_payout / ret * 100.0 if ret else 0.0,
     }
+
 
 def _print_stat(label: str, stat: Dict[str, Any]) -> None:
     m = _metrics(stat)
@@ -70,9 +92,12 @@ def _print_stat(label: str, stat: Dict[str, Any]) -> None:
         f"{label}: rows={stat['rows']} evaluated={int(m['evaluated'])} "
         f"hits={int(m['hits'])} hit_rate={m['hit_rate']:.2f}% "
         f"investment={int(m['investment'])} return={int(m['return'])} "
-        f"profit={int(m['profit'])} ROI={m['roi']:.2f}%",
+        f"profit={int(m['profit'])} ROI={m['roi']:.2f}% "
+        f"max_payout={int(m['max_payout'])} "
+        f"single_hit_share={m['single_hit_share']:.2f}%",
         flush=True,
     )
+
 
 def _status(evaluated: int) -> str:
     if evaluated < 10:
@@ -84,6 +109,7 @@ def _status(evaluated: int) -> str:
     if evaluated < 100:
         return "MID_REVIEW"
     return "FULL_REVIEW"
+
 
 def _fetch_rows() -> List[Dict[str, Any]]:
     return fetch_all(
@@ -101,8 +127,13 @@ def _fetch_rows() -> List[Dict[str, Any]]:
         (START_DATE, TARGET_DATE),
     )
 
+
 def _risk(rows: List[Dict[str, Any]]) -> Dict[str, int]:
-    eval_rows = [r for r in rows if str(r.get("evaluation_status") or "") == "evaluated"]
+    eval_rows = [
+        r for r in rows
+        if str(r.get("evaluation_status") or "") == "evaluated"
+    ]
+
     streak = max_streak = 0
     equity = peak = 0
     peak_idx = 0
@@ -138,14 +169,21 @@ def _risk(rows: List[Dict[str, Any]]) -> Dict[str, int]:
         "max_drawdown_bets": max_dd_bets,
     }
 
+
 def main() -> None:
-    print(f"â report_n02_forward_performance_pg.py VERSION {VERSION}", flush=True)
+    print(f"OK report_n02_forward_performance_pg.py VERSION {VERSION}", flush=True)
     print(f"PERIOD={START_DATE}..{TARGET_DATE}", flush=True)
-    print("N02å°ç¨ãã©ã¯ã¼ãéè¨ãããã¯ãã¹ãçµæã»ä»ã«ã¼ã«ã¯æ··ãã¾ããã", flush=True)
-    print("èª­ã¿åãå°ç¨ã§ããDBæ´æ°ã»LINEéç¥ã»æ¬çªå¤å®å¤æ´ã¯ããã¾ããã", flush=True)
+    print(
+        "N02専用Forward集計。バックテスト結果・他ルールは混在させません。",
+        flush=True,
+    )
+    print(
+        "READ_ONLY=1 DB_UPDATE=0 LINE=0 PROD_CHANGE=0",
+        flush=True,
+    )
 
     if not os.getenv("DATABASE_URL"):
-        raise RuntimeError("DATABASE_URL ãå¿è¦ã§ãã")
+        raise RuntimeError("DATABASE_URL が必要です。")
 
     rows = _fetch_rows()
     overall = _new_stat()
@@ -181,6 +219,8 @@ def main() -> None:
     print(f"max_losing_streak={risk['max_losing_streak']}", flush=True)
     print(f"max_drawdown_yen={risk['max_drawdown_yen']}", flush=True)
     print(f"max_drawdown_bets={risk['max_drawdown_bets']}", flush=True)
+    print(f"max_payout={int(m['max_payout'])}", flush=True)
+    print(f"single_hit_share={m['single_hit_share']:.2f}%", flush=True)
 
     print("\n=== N02 FORWARD DAILY ===", flush=True)
     if by_day:
@@ -218,7 +258,10 @@ def main() -> None:
         print(f"remaining_to_next_review={target - evaluated}", flush=True)
 
     print("\n=== BACKTEST REFERENCE ONLY ===", flush=True)
-    print("â»åèå¤ã®ã¿ããã©ã¯ã¼ãæç¸¾ã«ã¯å ç®ãã¾ããã", flush=True)
+    print(
+        "参考値のみ。Forward成績には加算しません。",
+        flush=True,
+    )
     print(
         f"bets={BACKTEST_REFERENCE['bets']} hits={BACKTEST_REFERENCE['hits']} "
         f"hit_rate={BACKTEST_REFERENCE['hit_rate']:.3f}% ROI={BACKTEST_REFERENCE['roi']:.2f}% "
@@ -228,9 +271,17 @@ def main() -> None:
     )
 
     print("\n=== IMPORTANT NOTE ===", flush=True)
-    print("N02æ¡ä»¶ã¯åºå®ããã¾ã¾è©ä¾¡ãã¦ãã ããã", flush=True)
-    print("10ä»¶=åä½ç¢ºèªã30ä»¶=ä¸æ¬¡è©ä¾¡ã50ä»¶=ä¸­éè©ä¾¡ã100ä»¶=æ¬çªæ¡ç¨å¤æ­åè£ã§ãã", flush=True)
+    print("N02条件は固定したまま評価してください。", flush=True)
+    print(
+        "10件=動作確認、30件=一次評価、50件=中間評価、100件=本番採用判断候補です。",
+        flush=True,
+    )
+    print(
+        "高ROIでもsingle_hit_shareが高い場合は単発高配当依存として慎重に判断します。",
+        flush=True,
+    )
     print("RESULT=PASS", flush=True)
+
 
 if __name__ == "__main__":
     main()
