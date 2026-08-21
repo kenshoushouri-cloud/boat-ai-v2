@@ -30,23 +30,43 @@ jobs:
           path = Path('v21_realtime_collector_pg.py')
           original = path.read_text(encoding='utf-8')
           fixed_lines = []
-          changed_lines = 0
 
           for line in original.splitlines(keepends=True):
               try:
                   repaired = line.encode('latin-1').decode('utf-8')
               except (UnicodeEncodeError, UnicodeDecodeError):
                   repaired = line
-              if repaired != line:
-                  changed_lines += 1
               fixed_lines.append(repaired)
 
-          fixed = ''.join(fixed_lines)
-          if fixed == original:
-              print('No encoding changes required.')
-          else:
-              path.write_text(fixed, encoding='utf-8')
-              print(f'Repaired lines: {changed_lines}')
+          lines = ''.join(fixed_lines).splitlines(keepends=True)
+          out = []
+          for line in lines:
+              stripped = line.lstrip()
+              indent = line[:len(line) - len(stripped)]
+
+              if 'race_condition={' in line and 'is_stabilizer_used' in line:
+                  line = indent + 'race_condition={"is_stabilizer_used":"安定板" in text,"is_fixed_entry":"進入固定" in text,"race_distance_m":distance_m,"has_new_propeller":("新プロペラ" in text or "新ペラ" in text or "プロペラ交換" in text),"parts_replacement_count":0,"raw_text":text[:5000]}\n'
+              elif stripped.startswith('if any("') and ' in x for x in n):' in line and '着順' not in line:
+                  line = indent + 'if any("進入" in x for x in n):\n'
+              elif stripped.startswith('# ') and ('ç·' in line or 'å¨ã¬ã¼ã¹' in line):
+                  line = indent + '# 締切前の全レースの直前情報を保存しつつ、従来の候補レースだけを\n'
+
+              out.append(line)
+
+          fixed = ''.join(out)
+          path.write_text(fixed, encoding='utf-8')
+          PY
+
+      - name: Reject remaining mojibake markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('v21_realtime_collector_pg.py').read_text(encoding='utf-8')
+          markers = ['Ã', 'Â', 'ã', 'â', 'å', 'æ', 'ç', 'é', 'ï¼', '', '', '']
+          found = [m for m in markers if m in text]
+          if found:
+              raise SystemExit(f'Remaining mojibake markers: {found}')
+          print('No mojibake markers found.')
           PY
 
       - name: Compile v21
@@ -61,5 +81,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- v21_realtime_collector_pg.py
-          git commit -m "fix: repair v21 realtime encoding"
+          git commit -m "fix: finish v21 realtime encoding repair"
           git push origin HEAD:fix/v21-realtime-encoding-20260821
