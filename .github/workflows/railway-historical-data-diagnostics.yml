@@ -1,0 +1,318 @@
+name: Railway historical data diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read-only diagnostic
+        required: true
+        default: monthly
+        type: choice
+        options:
+          - monthly
+          - probe
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  diagnose:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        (
+          github.event.comment.body == '/railway monthly-audit' ||
+          github.event.comment.body == '/railway historical-probe'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Resolve operation
+        id: op
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            op="${DISPATCH_OPERATION:-monthly}"
+          elif [ "$COMMENT_BODY" = "/railway historical-probe" ]; then
+            op="probe"
+          else
+            op="monthly"
+          fi
+          case "$op" in monthly|probe) ;; *) exit 2 ;; esac
+          echo "operation=$op" >> "$GITHUB_OUTPUT"
+
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "RAILWAY_TOKEN is not configured."
+            exit 1
+          fi
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Monthly completeness matrix
+        if: ${{ steps.op.outputs.operation == 'monthly' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from collections import defaultdict
+          from pathlib import Path
+          import psycopg
+          from psycopg.rows import dict_row
+
+          START = '2025-07-01'
+          END = '2026-08-23'  # exclusive; audit through 2026-08-22 JST
+
+          conn = psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row)
+          conn.execute("set statement_timeout = '120s'")
+
+          def q(sql, params=()):
+              with conn.cursor() as cur:
+                  cur.execute(sql, params)
+                  return cur.fetchall()
+
+          months = {}
+          for r in q("""
+              select to_char(race_date,'YYYY-MM') as month, count(*)::int as n
+              from v2_races where race_date >= %s and race_date < %s
+              group by 1 order by 1
+          """, (START, END)):
+              months[r['month']] = {'races': r['n']}
+
+          def add_race_complete(key, table, having_sql):
+              sql = f"""
+                  select substr(race_id,1,4)||'-'||substr(race_id,5,2) as month,
+                         count(*)::int as n
+                  from (
+                    select race_id from {table}
+                    where race_id >= '20250701' and race_id < '20260823'
+                    group by race_id
+                    having {having_sql}
+                  ) x
+                  group by 1 order by 1
+              """
+              for r in q(sql): months.setdefault(r['month'], {})[key] = r['n']
+
+          add_race_complete('entries6', 'v2_race_entries', 'count(distinct lane)=6')
+          add_race_complete('result_entries6', 'v2_result_entries', 'count(distinct lane)=6')
+          add_race_complete('odds120', 'v2_odds_trifecta', "count(distinct ticket) filter (where odds is not null and odds > 0)=120")
+          add_race_complete('hist_exh6', 'v2_realtime_exhibition_snapshots', "count(distinct lane) filter (where snapshot_label='historical' and exhibition_time is not null)=6")
+          add_race_complete('hist_racer6', 'v2_realtime_racer_condition_snapshots', "count(distinct lane) filter (where snapshot_label='historical')=6")
+
+          for key, table, where_extra in [
+              ('results', 'v2_results', ''),
+              ('hist_weather', 'v2_realtime_weather_snapshots', "and snapshot_label='historical'"),
+              ('hist_race_cond', 'v2_realtime_race_condition_snapshots', "and snapshot_label='historical'"),
+          ]:
+              rows = q(f"""
+                  select substr(race_id,1,4)||'-'||substr(race_id,5,2) as month,
+                         count(distinct race_id)::int as n
+                  from {table}
+                  where race_id >= '20250701' and race_id < '20260823' {where_extra}
+                  group by 1 order by 1
+              """)
+              for r in rows: months.setdefault(r['month'], {})[key] = r['n']
+
+          # Field fill rates: entry identity / historical weather / historical exhibition / previous-race fields.
+          metric_queries = {
+              'name_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where nullif(trim(racer_name),'') is not null)/nullif(count(*),0) pct
+                from v2_race_entries where race_id >= '20250701' and race_id < '20260823' group by 1
+              """,
+              'branch_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where nullif(trim(branch),'') is not null)/nullif(count(*),0) pct
+                from v2_race_entries where race_id >= '20250701' and race_id < '20260823' group by 1
+              """,
+              'temp_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where temperature_c is not null)/nullif(count(*),0) pct
+                from v2_realtime_weather_snapshots where race_id >= '20250701' and race_id < '20260823' and snapshot_label='historical' group by 1
+              """,
+              'winddir_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where nullif(trim(wind_direction),'') is not null)/nullif(count(*),0) pct
+                from v2_realtime_weather_snapshots where race_id >= '20250701' and race_id < '20260823' and snapshot_label='historical' group by 1
+              """,
+              'tilt_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where tilt is not null)/nullif(count(*),0) pct
+                from v2_realtime_exhibition_snapshots where race_id >= '20250701' and race_id < '20260823' and snapshot_label='historical' group by 1
+              """,
+              'prev_st_pct': """
+                select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                       100.0*count(*) filter (where previous_st is not null)/nullif(count(*),0) pct
+                from v2_realtime_racer_condition_snapshots where race_id >= '20250701' and race_id < '20260823' and snapshot_label='historical' group by 1
+              """,
+          }
+          for key, sql in metric_queries.items():
+              for r in q(sql): months.setdefault(r['month'], {})[key] = float(r['pct'] or 0)
+
+          # recent_form semantic check: non-empty, not merely non-null.
+          info = q("""
+              select data_type, udt_name from information_schema.columns
+              where table_schema='public' and table_name='v2_race_entries' and column_name='recent_form'
+          """)
+          recent_expr = None
+          if info:
+              typ = info[0]['udt_name']
+              if typ == 'jsonb':
+                  recent_expr = "jsonb_typeof(recent_form)='array' and jsonb_array_length(recent_form)>0"
+              elif typ == 'json':
+                  recent_expr = "json_typeof(recent_form)='array' and json_array_length(recent_form)>0"
+              else:
+                  recent_expr = "nullif(trim(recent_form::text),'') is not null and trim(recent_form::text) not in ('[]','{}','null')"
+          if recent_expr:
+              for r in q(f"""
+                  select substr(race_id,1,4)||'-'||substr(race_id,5,2) month,
+                         100.0*count(*) filter (where {recent_expr})/nullif(count(*),0) pct
+                  from v2_race_entries where race_id >= '20250701' and race_id < '20260823' group by 1
+              """):
+                  months.setdefault(r['month'], {})['recent_pct'] = float(r['pct'] or 0)
+
+          def pct(n, d): return 100.0*n/d if d else 0.0
+          lines = [
+              '## Railway historical monthly coverage', '',
+              'Read-only audit. Period: **2025-07-01 .. 2026-08-22**.', '',
+              '| Month | Races | Entries6 | Results | Result rows6 | Odds120 | Hist weather | Hist exh6 | Hist race cond | Hist racer6 | Name% | Temp% | WindDir% | Tilt% | PrevST% | RecentForm(non-empty)% |',
+              '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+          ]
+          for m in sorted(months):
+              x = months[m]; b=x.get('races',0)
+              f = lambda k: f"{x.get(k,0)}/{b} ({pct(x.get(k,0),b):.1f}%)"
+              lines.append(
+                  f"| {m} | {b} | {f('entries6')} | {f('results')} | {f('result_entries6')} | {f('odds120')} | {f('hist_weather')} | {f('hist_exh6')} | {f('hist_race_cond')} | {f('hist_racer6')} | "
+                  f"{x.get('name_pct',0):.1f}% | {x.get('temp_pct',0):.1f}% | {x.get('winddir_pct',0):.1f}% | {x.get('tilt_pct',0):.1f}% | {x.get('prev_st_pct',0):.1f}% | {x.get('recent_pct',0):.1f}% |"
+              )
+          lines += ['', 'No rows, schema, Variables, deployments, prediction logic, or LINE behavior were changed.']
+          Path('diagnostic-summary.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          conn.close()
+          PY
+
+      - name: Historical official-beforeinfo parser probe
+        if: ${{ steps.op.outputs.operation == 'probe' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > probe-output.txt
+          for d in 2025-07-01 2025-12-15 2026-04-15 2026-08-20; do
+            echo "===== DATE $d =====" >> probe-output.txt
+            HIST_PROBE_DATE="$d" HIST_PROBE_MAX_VENUES=2 HIST_PROBE_RACE_NOS="1,6,12" \
+              python -u probe_historical_beforeinfo_availability_pg.py >> probe-output.txt 2>&1 || true
+          done
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('probe-output.txt').read_text(encoding='utf-8', errors='replace')
+          # Keep only diagnostic lines that contain parsed values/status; no raw page text or credentials.
+          keep = []
+          for line in text.splitlines():
+              if (
+                  line.startswith('===== DATE ') or
+                  line.startswith('HIST_PROBE_DATE=') or
+                  line.startswith('2025') or line.startswith('2026') or
+                  line.startswith('  weather=') or
+                  line.startswith('samples=') or line.startswith('http_ok=') or
+                  line.startswith('weather_') or line.startswith('exhibition_') or
+                  line.startswith('racer_condition_') or
+                  line.startswith('HISTORICAL_BACKFILL_READY=')
+              ):
+                  keep.append(line[:500])
+          lines = [
+              '## Railway historical parser probe', '',
+              'Read-only samples from official historical `beforeinfo` pages.',
+              'Dates: 2025-07-01, 2025-12-15, 2026-04-15, 2026-08-20.', '',
+              '```text', *keep[:250], '```', '',
+              'No database writes, Railway setting changes, deployments, prediction changes, or LINE sends were performed.'
+          ]
+          Path('diagnostic-summary.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          PY
+
+      - name: Build failure summary
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Railway historical data diagnostics'
+            echo
+            echo '❌ Read-only diagnostic failed.'
+            echo
+            echo 'No database writes or Railway setting changes were performed.'
+            echo 'Raw stderr and connection values were not published.'
+          } > diagnostic-summary.md
+
+      - name: Remove raw/sensitive temporary files
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-vars.json railway-vars-error.txt probe-output.txt
+
+      - name: Post result to control issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f diagnostic-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file diagnostic-summary.md
+          fi
