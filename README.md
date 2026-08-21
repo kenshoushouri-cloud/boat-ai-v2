@@ -1,79 +1,225 @@
-# boat_ai_v2
+# boat-ai-v2
 
-競艇 3連単専用 AI予想システム v2
+競艇3連単AI予想システム。BOAT RACE公式データ取得、Railway PostgreSQL保存、PRE候補抽出、直前情報取得、FINAL判定、LINE通知、結果回収、Shadow検証、バックテスト、データ品質監査までを含む運用システムです。
 
-## 概要
+## Source of truth
 
-- 安定モードと馬王モード（穴狙い）の2モード並行運用
-- 朝の一括予想配信 + レース直前のEVベース買い目配信
-- 1日800〜1,200円の投資を目安に運用
+- **GitHub**: コードの正
+- **Railway**: 本番実行環境の正
+- **Railway PostgreSQL**: データの正
+- **Supabase**: 旧構成。現行本番DBではありません
 
-## モード説明
+Railway側のService / Start Command / Variables / CronはGitHubだけでは完全確認できないため、運用変更時はRailwayの現在値と照合してください。
 
-### 安定モード
+## 本番DB
 
-- 確率・スコアベースで買い目選択
-- 1日最大7点・100円/点
-- 3連単優先・2連単保険
+接続は原則 `DATABASE_URL` を使用します。
 
-### 馬王モード（穴狙い）
+主要テーブル:
 
-- オッズ15倍以上の穴のみ狙う
-- 1日最大5点・100円/点
-- 1点勝負
+- `v2_races`
+- `v2_race_entries`
+- `v2_results`
+- `v2_odds_trifecta`
+- `v2_exhibition`
+- `v2_race_weather`
+- `v2_feature_snapshots`
+- `v2_realtime_odds_snapshots`
 
-## 実行ファイル
+出走表テーブルは **`v2_race_entries`** です。`v2_entries` ではありません。
 
-|ファイル                     |内容            |タイミング  |
-|-------------------------|--------------|-------|
-|`run_morning_jobs.py`    |朝まとめ予想をLINE配信 |毎朝8時JST|
-|`run_pre_race_jobs.py`   |直前にEV再計算・買い目配信|5分ごと   |
-|`run_results.py`         |前日結果の取得と保存    |毎朝     |
-|`run_report.py`          |前日レポートの作成と通知  |毎朝     |
-|`run_odds.py`            |オッズ取得         |随時     |
-|`run_seed.py`            |当日レース投入       |毎朝     |
-|`run_backtest.py`        |バックテスト実行      |随時     |
-|`run_missing_results.py` |欠損データ補完・払戻修正  |随時     |
-|`run_repair_entries.py`  |出走表NULLデータ修復  |随時     |
-|`run_backfill_history.py`|過去データ一括取得     |随時     |
+## 主要本番入口
 
-## 環境変数（Railwayで設定）
+### 日次データ準備
 
-|変数名                        |内容                      |
-|---------------------------|------------------------|
-|`SUPABASE_URL`             |SupabaseプロジェクトURL       |
-|`SUPABASE_KEY`             |Supabase service_roleキー |
-|`LINE_CHANNEL_ACCESS_TOKEN`|LINEチャネルアクセストークン        |
-|`LINE_USER_ID`             |LINE送信先ユーザーID           |
-|`ENABLE_LINE_NOTIFY`       |LINE通知ON/OFF（true/false）|
+```text
+run_daily_data_prepare_pg.py
+  -> repair_month_all_pg.py
+```
 
-## インフラ構成
+当日race / entries / 事前oddsを準備します。事前取得oddsを確定値扱いしないため、`run_daily_data_prepare_pg.py` は `ODDS_IS_FINAL=0` を強制します。
 
-- **Railway**: ジョブ実行（各サービスにCronスケジュール設定）
-- **GitHub**: コード管理（privateリポジトリ）
-- **Supabase**: データ保存（v2_races・v2_results等）
-- **LINE Messaging API**: 予想通知配信
+### PRE window pipeline
 
-## Railwayサービス構成
+```text
+run_window_pipeline_pg.py
+  -> run_odds_window_pg.py
+  -> collect_v24_motor2_forward_shadow_pg.py
+  -> run_pre_window_pg.py
+       -> v24_pre_candidate_notifier_pg.py
+       -> collect_candidate_filter_shadow_pg.py
+```
 
-|サービス名          |JOB_MODE |Cron (UTC)     |内容      |
-|---------------|---------|---------------|--------|
-|boat-v2-results|`results`|`30 17 * * *`  |前日結果取得  |
-|boat-v2-seed   |`seed`   |`0 18 * * *`   |当日レース投入 |
-|boat-v2-odds   |`odds`   |`30 18 * * *`  |オッズ取得   |
-|boat-v2-morning|`morning`|`0 23 * * *`   |朝まとめ予想配信|
-|boat-v2-prerace|`prerace`|`*/5 0-9 * * *`|直前予想配信  |
-|boat-v2-report |`report` |`30 2 * * *`   |前日レポート配信|
+基本window:
 
-## 主要テーブル（Supabase）
+- `morning`: 08:30〜10:15
+- `day`: 09:45〜15:00
+- `night`: 14:45以降
 
-- `v2_races`: レース基本情報
-- `v2_race_entries`: 出走表・選手成績
-- `v2_odds_trifecta`: 3連単オッズ
-- `v2_exhibition`: 展示データ
-- `v2_results`: レース結果・払戻
-- `v2_predictions`: 予想買い目
-- `v2_notifications`: LINE通知ログ
-- `v2_daily_stats`: 日次集計
-- `v2_backtest_runs`: バックテスト結果サマリー
-- `v2_backtest_races`: バックテスト詳細
+境界レースの取りこぼし防止のためwindowは一部重複します。
+
+`run_pre_window_pg.py` には historical / future / live 判定、live guard、replay safetyがあります。過去日replayでは原則 `DRY_RUN=1` / `TEST_MODE=1` を使用してください。
+
+### FINAL pipeline
+
+```text
+run_final_pg.py
+  -> v25_final_realtime_pipeline_pg.py
+       -> v21_realtime_collector_pg.py
+       -> collect_v24_motor2_forward_shadow_pg.py   # Motor2 FINAL Shadow
+       -> collect_n02_windlt4_final_shadow_pg.py    # N02 FINAL Shadow
+       -> run_v22_targeted_pg.py                    # production decision
+       -> v22_exhibition_shadow_pg.py               # Exhibition Shadow
+       -> v23_line_notifier_batch_pg.py             # LINE notification
+```
+
+Motor2 / N02 / 展示Shadowは、現状では本番BUY/WATCH/SKIPやLINE通知対象を直接変更しない検証系です。ただし本番pipelineから呼ばれているため、未使用ファイルとして削除しないでください。
+
+### Nightly
+
+```text
+run_nightly_results_pg.py
+```
+
+現在の主なstage:
+
+1. 当日結果取得 (`repair_month_all_pg.py`)
+2. Candidate Filter Shadow当日評価
+3. Candidate Filter累積report
+4. N02 Forward report
+5. 展示Shadow当日評価
+6. 展示Shadow累積report
+7. N02 WIND_LT4 Variant Forward比較
+8. Motor2 Forward Shadow当日評価
+9. Motor2 PRE/FINAL累積比較report
+
+Nightlyから呼ばれるevaluate/reportファイルも本番付随依存です。
+
+## 定期レポート
+
+PostgreSQL版:
+
+- `run_monthly_performance_report.py` -> `v27_performance_report_line.py`
+- `run_daily_status_report.py` -> `v28_daily_status_report_line.py`
+
+`v27` / `v28` は現在Railway PostgreSQL版です。
+
+## データ補修
+
+中心ファイルは `repair_month_all_pg.py` です。
+
+主な環境変数:
+
+- `REPAIR_START_DATE`
+- `REPAIR_END_DATE`
+- `REPAIR_VENUES`
+- `REPAIR_RACE_NOS`
+- `REPAIR_RACE_IDS`
+- `REPAIR_DO_RACES`
+- `REPAIR_DO_RESULTS`
+- `REPAIR_DO_ODDS`
+- `REPAIR_WORKERS`
+- `REPAIR_ODDS_WORKERS`
+- `REPAIR_SLEEP_SEC`
+- `ODDS_IS_FINAL`
+
+`repair_month_all_pg.py` はrace / entries / results / odds取得の基盤です。本番依存があるため安易に移動・分割しないでください。
+
+## データ品質上の重要事項
+
+- 締切時刻はrace_noごとに取得し、別Rの時刻へ誤fallbackしないこと
+- 三連単ticketは1〜6号艇、3艇重複なしの有効ticketだけを扱うこと
+- Motor/Boat率は0〜100の範囲を検証すること
+- 会場コードは公式対応を維持すること
+  - `06` 浜名湖
+  - `08` 常滑
+  - `09` 津
+  - `21` 芦屋
+  - `23` 唐津
+
+## Shadow / Researchの原則
+
+予測改善は次の順で行います。
+
+1. データ品質確認
+2. Historical analysis
+3. OOS
+4. Walk-forward
+5. Forward Shadow
+6. Live sample蓄積
+7. 本番採用判断
+
+高ROIでも単発高配当依存の場合は採用しません。`n`, `bets`, `hit count`, `ROI`, `max payout`, `single-hit share`, venue/month/odds分布、train/OOS差を確認します。
+
+目標は候補数を増やすことではなく、**期待値の低いレースを見送る能力を高めること**です。
+
+## LINE通知安全策
+
+主な変数:
+
+- `DRY_RUN`
+- `TEST_MODE`
+- `DAILY_LINE_LIMIT`
+- `MONTHLY_LINE_LIMIT`
+- `MAX_ITEMS_PER_MESSAGE`
+- `BATCH_NOTIFY`
+
+historical test / replayでは誤通知防止を最優先してください。
+
+## 旧Supabaseコードについて
+
+リポジトリには旧Supabase世代のコードが残っています。例:
+
+- `Procfile` / `main.py` の旧JOB_MODE入口
+- `db/client.py`
+- `config/settings.py`
+- `app/jobs/*` の旧job群
+- `data_pipeline/*` の旧pipeline
+- `backtest/runner.py` / `backtest/portfolio_runner.py`
+- `v26_nightly_results_learning.py`
+- `v29_odds_retention_cleanup.py`
+
+これらには `SUPABASE_URL` / `SUPABASE_KEY` / Supabase REST API依存が残っています。現行本番と判断しないでください。
+
+ただしRailway Start Commandとして残っている可能性のあるwrapperもあるため、削除前にRailwayの現在設定を確認してください。
+
+## Repository cleanup policy
+
+整理時は次の分類を使用します。
+
+- **A Production**: 本番入口・本番必須依存
+- **B Production Shadow**: 本番jobから呼ばれるShadow / evaluator / report
+- **C Research**: analyze / backtest / feature_lab / walk-forward等
+- **D Maintenance**: repair / diagnose / debug / probe / inspect / audit等
+- **E Legacy Supabase**: Supabase REST / 旧JOB_MODE系
+- **F Delete confirmed**: 完全重複・不可視文字重複等
+
+ファイル名やv番号だけで新旧を判断しないでください。`import`, `runpy.run_path`, `subprocess`, Railway Start Commandの参照確認を行ってから整理します。
+
+## Railwayとの対応
+
+過去に確認されている主なService名:
+
+- `cron-data-prepare`
+- `cron-racer-course-stats`
+- `cron-monthly-report`
+- `test-beforeinfo-extra`
+- `cron-final-check`
+- `cron-window-morning`
+- `cron-window-day`
+- `cron-window-night`
+- `cron-nightly-results`
+- `cron-daily-report`
+
+これはGitHub内コードだけから現在値を保証できる一覧ではありません。Railwayへ変更を加える前に、Service一覧、Start Command、Cron、Variables、deployment sourceを現在のRailway設定と照合してください。
+
+## Secret management
+
+以下をGitHubへcommitしないでください。
+
+- `DATABASE_URL`
+- LINE token / user/group IDなどのsecret
+- API key
+- password
+
+Railway Variables / service references等を使用します。
