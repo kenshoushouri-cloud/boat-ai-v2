@@ -175,7 +175,7 @@ def parse_beforeinfo_extra(html,entries):
     soup=BeautifulSoup(html,"html.parser");text=_soup_text(html)
     entry_by_lane={_safe_int(e.get("lane")):e for e in entries if 1<=_safe_int(e.get("lane"))<=6}
     m=re.search(r"(?<!\d)(1200|1800)\s*m",text,flags=re.I);distance_m=_safe_int(m.group(1),None) if m else None
-    race_condition={"is_stabilizer_used":"å®å®æ¿" in text,"is_fixed_entry":"é²å¥åºå®" in text,"race_distance_m":distance_m,"has_new_propeller":("æ°ãã­ãã©" in text or "æ°ãã©" in text or "ãã­ãã©äº¤æ" in text),"parts_replacement_count":0,"raw_text":text[:5000]}
+    race_condition={"is_stabilizer_used":"安定板" in text,"is_fixed_entry":"進入固定" in text,"race_distance_m":distance_m,"has_new_propeller":("新プロペラ" in text or "新ペラ" in text or "プロペラ交換" in text),"parts_replacement_count":0,"raw_text":text[:5000]}
     by_lane={lane:{"lane":lane,"racer_number":entry_by_lane.get(lane,{}).get("racer_number"),"weight_kg":None,"adjustment_weight_kg":None,"is_new_propeller":False,"parts_replacements":[],"previous_race_no":None,"previous_course":None,"previous_st":None,"previous_finish":None,"raw_cells":[]} for lane in range(1,7)}
     def norm(v):return unicodedata.normalize("NFKC",re.sub(r"\s+"," ",str(v or "")).strip())
     def cells_of(tr):return [norm(c.get_text(" ",strip=True)) for c in tr.find_all(["th","td"],recursive=False)]
@@ -203,7 +203,7 @@ def parse_beforeinfo_extra(html,entries):
                 if d and 1<=int(d)<=6:row["previous_finish"]=int(d)
         for cells in rows[1:]:
             n=[norm(x) for x in cells]
-            if any("é²å¥" in x for x in n):
+            if any("進入" in x for x in n):
                 for v in reversed(n):
                     x=_safe_int(v,0)
                     if 1<=x<=6:row["previous_course"]=x;break
@@ -319,7 +319,7 @@ def main():
     print(f"deadline_filter_used={use_filter} skipped_deadline_missing={miss} skipped_too_early={early} skipped_deadline_passed={passed}",flush=True)
     # 収集対象(target)と、後段の本番判定へ渡すrace_idを分離する。
     # COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates にすると、
-    # ç· ååã®å¨ã¬ã¼ã¹ã®ç´åæ報を保存しつつ、従来の候補レースだけを
+    # 締切前の全レースの直前情報を保存しつつ、従来の候補レースだけを
     # TARGET_RACE_IDS_FILEへ出力できる。
     if TARGET_RACE_ID:
         target_id_rows = target
