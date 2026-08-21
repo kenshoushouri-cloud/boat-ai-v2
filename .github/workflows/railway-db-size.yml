@@ -63,12 +63,12 @@ jobs:
             exit 1
           fi
 
-      - name: Load DATABASE_URL without publishing it
+      - name: Load public database URL without publishing it
         shell: bash
         run: |
           set -euo pipefail
           railway variable list \
-            --service cron-data-prepare \
+            --service postgres \
             --environment production \
             --json > railway-vars.json 2> railway-vars-error.txt
 
@@ -80,15 +80,15 @@ jobs:
           data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
           value = None
           if isinstance(data, dict):
-              value = data.get('DATABASE_URL')
+              value = data.get('DATABASE_PUBLIC_URL')
           elif isinstance(data, list):
               for item in data:
-                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_URL' or item.get('key') == 'DATABASE_URL'):
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
                       value = item.get('value')
                       break
 
           if not value:
-              raise SystemExit('DATABASE_URL was not found for cron-data-prepare')
+              raise SystemExit('DATABASE_PUBLIC_URL was not found for postgres')
 
           print(f'::add-mask::{value}')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
