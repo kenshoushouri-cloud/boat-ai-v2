@@ -1,0 +1,28 @@
+name: V21 parser sanity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  parser-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install parser dependencies
+        run: python -m pip install requests beautifulsoup4 'psycopg[binary]'
+
+      - name: Run v21 parser sanity tests
+        run: python -m unittest tests/test_v21_parser_sanity.py
