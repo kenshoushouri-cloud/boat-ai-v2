@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - fix/v21-realtime-encoding-20260821
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   repair:
+    if: github.head_ref == 'fix/v21-realtime-encoding-20260821' || github.ref_name == 'fix/v21-realtime-encoding-20260821'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
