@@ -34,11 +34,13 @@ jobs:
           if not files:
               raise SystemExit('No critical Python files found in critical-python-syntax.yml')
 
-          # Narrow signatures seen when UTF-8 Japanese/emoji text is decoded as Latin-1/Windows-1252.
+          # UTF-8 Japanese/emoji bytes mis-decoded as Latin-1/Windows-1252.
+          # Escapes keep C1 control characters out of this YAML file itself.
           markers = (
-              'ã', 'ã', 'ã',
-              'â', 'â', 'ï¼',
-              'æ', 'å®', 'çµ', 'é', 'è¨', 'ä¸', 'å',
+              '\u00e3\u0081', '\u00e3\u0082', '\u00e3\u0083',
+              '\u00e2\u009c', '\u00e2\u009a', '\u00ef\u00bc',
+              '\u00e6\u009c', '\u00e5\u00ae', '\u00e7\u00b5', '\u00e9\u0080',
+              '\u00e8\u00a8', '\u00e4\u00b8', '\u00e5\u0085',
           )
 
           problems = []
