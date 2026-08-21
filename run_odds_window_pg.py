@@ -160,7 +160,7 @@ def _evaluate_ticket_snapshot(tickets: List[str]) -> Dict[str, Any]:
     DBに保存済みの三連単ticket集合を評価する。
 
     6艇=120、5艇=60、4艇=24通りを許可するが、
-    ä»¶æ°ã ãã§ã¯ãªããæå¹èéåã®å¨é åã¨å®å¨ä¸è´ããå ´åã®ã¿
+    件数だけではなく、有効艇集合の全順列と完全一致した場合のみ
     complete=True とする。
     """
     normalized = [str(ticket or "").strip() for ticket in tickets]
@@ -270,7 +270,7 @@ def _run_fetch_batch(
     """
     各R完了ごとに進捗を表示する。
 
-    ThreadPoolExecutorèªä½ã§ã¯å®è¡ä¸­Futureãå®å¨ã«å¼·å¶çµäºã§ããªãããã
+    ThreadPoolExecutor自体では実行中Futureを安全に強制終了できないため、
     実HTTPタイムアウトは repair_month_all_pg.py の HTTP_TIMEOUT /
     HTTP_MAX_RETRIES をWINDOW側から制限する。
     """
@@ -490,9 +490,9 @@ def main() -> None:
     # ------------------------------------------------------------
     # Motor2 Forward Shadow target scope export
     # ------------------------------------------------------------
-    # STEP1ã§é¸æããããã®windowã®å¨race_idããã
+    # STEP1で選択したこのwindowの全race_idを、
     # run_window_pipeline_pg.py のSTEP1.5へ同一processの環境変数で渡す。
-    # skip_full_oddsã§ä»åHTTPåå¾ãçç¥ããRããæ¢ã«å®å¨ãªããºãDBã«ãããã
+    # skip_full_oddsで今回HTTP取得を省略したRも、既に完全オッズがDBにあるため
     # Shadow対象からは外さない。
     window_race_ids = [
         str(race.get("race_id") or "").strip()
@@ -537,7 +537,7 @@ def main() -> None:
 
         if not races:
             print(
-                "å¨å¯¾è±¡ã¬ã¼ã¹ã§æå¾ãããä¸é£åã®å¨çµã¿åãããæã£ã¦ãã¾ãã",
+                "全対象レースで期待される三連単の全組み合わせが揃っています。",
                 flush=True,
             )
             return
@@ -587,7 +587,7 @@ def main() -> None:
         if not pending:
             print(
                 f"retry_check={retry_no}: "
-                "å¨ã¬ã¼ã¹æå¾組み合わせ完了",
+                "全レース期待組み合わせ完了",
                 flush=True,
             )
             break
