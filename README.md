@@ -166,14 +166,30 @@ PostgreSQL版:
 
 historical test / replayでは誤通知防止を最優先してください。
 
+## Repository classification
+
+詳細なA〜G分類、production exceptions、研究/保守ファミリーの扱いは `REPOSITORY_CLASSIFICATION.md` を正とします。
+
+- **A Production**: 本番入口・本番必須依存
+- **B Production Shadow**: 本番jobから呼ばれるShadow / evaluator / report
+- **C Research**: analyze / backtest / feature_lab / walk-forward等
+- **D Maintenance**: repair / diagnose / debug / probe / inspect / audit等
+- **E Legacy Supabase**: 現在、既知の残存実コードなし
+- **F Delete confirmed**: 現在、既知の残存対象なし
+- **G Metadata / Docs**: README、分類文書、設定メタデータ等
+
+ファイル名やv番号だけで新旧を判断せず、`import`, `runpy.run_path`, `subprocess`, Railway Start Commandを確認してから整理します。
+
 ## Repository cleanup status
 
-2026-08-21時点で、次の旧Supabase/旧JOB_MODE内部群はGitHubから削除済みです。
+2026-08-21に旧Supabase / 旧JOB_MODE群を段階的に削除しました。
+
+削除済みの主な群:
 
 - 不可視Unicode重複 `diagnose_motor2_parser_pg.py⁠`
 - `app/jobs/*`
 - `data_pipeline/*`
-- `backtest/*`
+- 旧 `backtest/*` ディレクトリ
 - `db/client.py`
 - `config/settings.py`
 - 旧 `models/*`
@@ -181,13 +197,6 @@ historical test / replayでは誤通知防止を最優先してください。
 - 旧 `notifications/*`
 - `main.py`
 - `Procfile`
-
-現行PostgreSQL本番コードは削除対象に含めていません。
-
-## Railway確認待ちのLegacy候補
-
-以下はコード上は旧経路ですが、Railway Start Commandとして残っている可能性を完全には排除できないため、現時点では維持します。
-
 - `run_pre_day_pg.py`
 - `run_pre_night_pg.py`
 - `run_nightly_results_learning.py`
@@ -195,20 +204,7 @@ historical test / replayでは誤通知防止を最優先してください。
 - `run_odds_retention_cleanup.py`
 - `v29_odds_retention_cleanup.py`
 
-`v26_nightly_results_learning.py` と `v29_odds_retention_cleanup.py` はSupabase REST依存です。現行本番と判断しないでください。
-
-## Repository cleanup policy
-
-整理時は次の分類を使用します。
-
-- **A Production**: 本番入口・本番必須依存
-- **B Production Shadow**: 本番jobから呼ばれるShadow / evaluator / report
-- **C Research**: analyze / backtest / feature_lab / walk-forward等
-- **D Maintenance**: repair / diagnose / debug / probe / inspect / audit等
-- **E Legacy Supabase**: Supabase REST / 旧JOB_MODE系
-- **F Delete confirmed**: 完全重複・不可視文字重複等
-
-ファイル名やv番号だけで新旧を判断せず、`import`, `runpy.run_path`, `subprocess`, Railway Start Commandを確認してから整理します。
+現行PostgreSQL本番コード、Shadow、研究用 `backtest_*.py` / `analyze_*.py` はこのcleanupで削除していません。
 
 ## Railwayとの対応
 
