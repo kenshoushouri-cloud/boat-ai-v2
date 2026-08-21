@@ -61,4 +61,5 @@ jobs:
             v22_exhibition_shadow_pg.py \
             evaluate_exhibition_shadow_results_pg.py \
             report_exhibition_shadow_performance_pg.py \
-            report_exhibition_shadow_robustness_pg.py
+            report_exhibition_shadow_robustness_pg.py \
+            report_shadow_collection_health_pg.py
