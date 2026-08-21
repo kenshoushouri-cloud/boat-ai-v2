@@ -1,0 +1,66 @@
+name: Critical mojibake guard
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  critical-mojibake-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan production A/B files for UTF-8 mojibake
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          critical_workflow = Path('.github/workflows/critical-python-syntax.yml')
+          workflow_text = critical_workflow.read_text(encoding='utf-8')
+          files = []
+          for match in re.finditer(r'(?m)^\s+([A-Za-z0-9_./-]+\.py)\s*\\?\s*$', workflow_text):
+              path = match.group(1)
+              if path not in files:
+                  files.append(path)
+
+          if not files:
+              raise SystemExit('No critical Python files found in critical-python-syntax.yml')
+
+          # UTF-8 Japanese/emoji bytes mis-decoded as Latin-1/Windows-1252.
+          # Escapes keep C1 control characters out of this YAML file itself.
+          markers = (
+              '\u00e3\u0081', '\u00e3\u0082', '\u00e3\u0083',
+              '\u00e2\u009c', '\u00e2\u009a', '\u00ef\u00bc',
+              '\u00e6\u009c', '\u00e5\u00ae', '\u00e7\u00b5', '\u00e9\u0080',
+              '\u00e8\u00a8', '\u00e4\u00b8', '\u00e5\u0085',
+          )
+
+          problems = []
+          for filename in files:
+              path = Path(filename)
+              if not path.exists():
+                  problems.append((filename, 0, 'MISSING_CRITICAL_FILE', ''))
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for lineno, line in enumerate(text.splitlines(), 1):
+                  hit = next((marker for marker in markers if marker in line), None)
+                  if hit:
+                      problems.append((filename, lineno, hit, line.strip()[:240]))
+
+          print(f'critical_files_scanned={len(files)}')
+          if problems:
+              print('Potential mojibake found in critical production files:')
+              for filename, lineno, marker, snippet in problems:
+                  print(f'  {filename}:{lineno} marker={marker!r} {snippet}')
+              sys.exit(1)
+
+          print('RESULT=PASS no critical mojibake signatures found')
+          PY
