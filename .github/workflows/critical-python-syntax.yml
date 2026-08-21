@@ -53,6 +53,7 @@ jobs:
             collect_candidate_filter_shadow_pg.py \
             evaluate_candidate_filter_shadow_results_pg.py \
             report_candidate_filter_shadow_performance_pg.py \
+            report_candidate_filter_shadow_robustness_pg.py \
             collect_n02_windlt4_final_shadow_pg.py \
             report_n02_forward_performance_pg.py \
             report_n02_forward_robustness_pg.py \
