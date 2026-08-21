@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable
 
 from db_pg import fetch_all
 
-VERSION = "2026-08-21 v24-motor2-forward-performance-v2-mid-veto"
+VERSION = "2026-08-21 v24-motor2-forward-performance-v3-robustness"
 JST = timezone(timedelta(hours=9))
 END_DATE = (os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")).strip()
 START_DATE = (os.getenv("MOTOR2_FORWARD_REPORT_START_DATE") or "2026-08-20").strip()
@@ -50,7 +50,13 @@ def fetch_rows():
 
 
 def new() -> Dict[str, int]:
-    return {"bets": 0, "hits": 0, "investment": 0, "return": 0}
+    return {
+        "bets": 0,
+        "hits": 0,
+        "investment": 0,
+        "return": 0,
+        "max_payout": 0,
+    }
 
 
 def add(s: Dict[str, int], selected: bool, hit: bool, payout: int) -> None:
@@ -61,10 +67,16 @@ def add(s: Dict[str, int], selected: bool, hit: bool, payout: int) -> None:
     if hit:
         s["hits"] += 1
         s["return"] += payout
+        if payout > s["max_payout"]:
+            s["max_payout"] = payout
 
 
 def roi(s: Dict[str, int]) -> float:
     return s["return"] / s["investment"] * 100 if s["investment"] else 0.0
+
+
+def single_hit_share(s: Dict[str, int]) -> float:
+    return s["max_payout"] / s["return"] * 100 if s["return"] else 0.0
 
 
 def fmt(name: str, s: Dict[str, int]) -> str:
@@ -73,7 +85,9 @@ def fmt(name: str, s: Dict[str, int]) -> str:
     return (
         f"{name}: bets={bets} hits={s['hits']} hit_rate={hit_rate:.2f}% "
         f"investment={s['investment']} return={s['return']} "
-        f"profit={s['return'] - s['investment']} ROI={roi(s):.2f}%"
+        f"profit={s['return'] - s['investment']} ROI={roi(s):.2f}% "
+        f"max_payout={s['max_payout']} "
+        f"single_hit_share={single_hit_share(s):.2f}%"
     )
 
 
@@ -265,14 +279,19 @@ def main() -> None:
     scope("PRE ALL", pre)
     scope("FINAL", final)
     for window in ("morning", "day", "night"):
-        scope(
-            f"PRE {window.upper()}",
-            [r for r in rows if str(r.get("window_name") or "") == window],
-        )
+        window_rows = [
+            r for r in rows if str(r.get("window_name") or "") == window
+        ]
+        scope(f"PRE {window.upper()}", window_rows)
 
     mid_eligible = mid_veto_scope("OVERALL", rows)
     mid_veto_scope("PRE ALL", pre)
     mid_veto_scope("FINAL", final)
+    for window in ("morning", "day", "night"):
+        mid_veto_scope(
+            f"PRE {window.upper()}",
+            [r for r in rows if str(r.get("window_name") or "") == window],
+        )
 
     prefinal(rows)
 
