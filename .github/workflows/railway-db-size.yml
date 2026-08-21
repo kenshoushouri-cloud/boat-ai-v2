@@ -57,15 +57,44 @@ jobs:
             exit 1
           fi
 
+      - name: Load DATABASE_URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list \
+            --service cron-data-prepare \
+            --environment production \
+            --json > railway-vars.json 2> railway-vars-error.txt
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_URL')
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_URL' or item.get('key') == 'DATABASE_URL'):
+                      value = item.get('value')
+                      break
+
+          if not value:
+              raise SystemExit('DATABASE_URL was not found for cron-data-prepare')
+
+          # Prevent accidental disclosure in subsequent Actions output.
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
       - name: Run read-only database size check
         shell: bash
         run: |
           set -euo pipefail
-          railway run \
-            --service cron-data-prepare \
-            --environment production \
-            python -u pg_db_size_check.py \
-            > railway-db-size.txt 2> railway-db-size-error.txt
+          python -u pg_db_size_check.py > railway-db-size.txt 2> railway-db-size-error.txt
 
       - name: Build safe summary
         shell: bash
@@ -120,10 +149,28 @@ jobs:
           Path('railway-db-size-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
 
-      - name: Remove raw output
+      - name: Build failure summary
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Railway PostgreSQL size'
+            echo
+            echo '❌ Read-only database size check failed.'
+            echo
+            echo 'No database rows, schema, Railway Variables, deployments, or settings were changed.'
+            echo 'Raw stderr and secret-bearing values were not published.'
+          } > railway-db-size-summary.md
+
+      - name: Remove raw sensitive files
         if: always()
         shell: bash
-        run: rm -f railway-db-size.txt railway-db-size-error.txt
+        run: |
+          rm -f \
+            railway-vars.json \
+            railway-vars-error.txt \
+            railway-db-size.txt \
+            railway-db-size-error.txt
 
       - name: Post result to control issue
         if: always()
