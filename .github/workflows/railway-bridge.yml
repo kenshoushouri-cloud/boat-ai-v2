@@ -1,0 +1,104 @@
+name: Railway bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Railway bridge operation
+        required: true
+        default: status
+        type: choice
+        options:
+          - status
+          - help
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/railway-bridge.yml
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  railway-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Record Railway CLI help
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway --version
+          railway --help > railway-help.txt
+          railway status --help > railway-status-help.txt || true
+          railway logs --help > railway-logs-help.txt || true
+          railway variables --help > railway-variables-help.txt || true
+          railway redeploy --help > railway-redeploy-help.txt || true
+          echo "Railway CLI help captured."
+
+      - name: Railway connection status
+        if: ${{ github.event_name == 'push' || inputs.operation == 'status' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "RAILWAY_TOKEN is not configured."
+            echo "Register the Railway Project Token as repository secret RAILWAY_TOKEN, then run this workflow manually."
+            exit 0
+          fi
+
+          echo "RAILWAY_TOKEN is configured. Testing project-scoped CLI access..."
+          railway status --json > railway-status.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('railway-status.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Show CLI help
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'help' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat railway-help.txt
+          echo "\n=== status ==="
+          cat railway-status-help.txt
+          echo "\n=== logs ==="
+          cat railway-logs-help.txt
+          echo "\n=== variables ==="
+          cat railway-variables-help.txt
+          echo "\n=== redeploy ==="
+          cat railway-redeploy-help.txt
+
+      - name: Upload Railway bridge diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: railway-bridge-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            railway-help.txt
+            railway-status-help.txt
+            railway-logs-help.txt
+            railway-variables-help.txt
+            railway-redeploy-help.txt
+            railway-status.json
