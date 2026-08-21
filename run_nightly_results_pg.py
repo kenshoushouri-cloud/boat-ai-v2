@@ -12,7 +12,7 @@ from typing import Dict
 from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-21 nightly-observability-v6"
+VERSION = "2026-08-21 nightly-observability-v7-robustness"
 
 
 def flag(name: str, default: str) -> bool:
