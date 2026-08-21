@@ -1,0 +1,53 @@
+name: Temporary fix candidate report rule isolation
+
+on:
+  push:
+    branches:
+      - fix/candidate-shadow-report-rule-isolation-20260821
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/candidate-shadow-report-rule-isolation-20260821
+          fetch-depth: 0
+
+      - name: Patch report
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('report_candidate_filter_shadow_performance_pg.py')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              '"VERSION 2026-08-02 cumulative-readiness-v1",',
+              '"VERSION 2026-08-21 cumulative-readiness-v2-rule-isolation",',
+              1,
+          )
+
+          old = '''        where race_date >= %s\n          and race_date <= %s\n        order by race_date, race_id, rule_id, ticket;\n'''
+          new = '''        where race_date >= %s\n          and race_date <= %s\n          and rule_id in ('S01','S02','S03','S04','S05')\n        order by race_date, race_id, rule_id, ticket;\n'''
+          if old not in text:
+              raise SystemExit('SQL anchor not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Compile report
+        run: python -m py_compile report_candidate_filter_shadow_performance_pg.py
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- report_candidate_filter_shadow_performance_pg.py
+          git commit -m "fix: isolate S01-S05 candidate shadow report"
+          git push origin HEAD:fix/candidate-shadow-report-rule-isolation-20260821
