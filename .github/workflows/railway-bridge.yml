@@ -12,16 +12,18 @@ on:
           - status
           - inventory
           - config
-          - watchpaths-help
           - vars-keys
+          - vars-safe
+          - logs
           - apply-watchpaths
+          - redeploy
           - help
       service:
-        description: Service name for vars-keys
+        description: Railway service for service-scoped operations
         required: false
         type: string
       confirmation:
-        description: Type APPLY_WATCH_PATHS for apply-watchpaths
+        description: APPLY_WATCH_PATHS or REDEPLOY when required
         required: false
         type: string
   issue_comment:
@@ -52,13 +54,16 @@ jobs:
           github.event.comment.body == '/railway status' ||
           github.event.comment.body == '/railway inventory' ||
           github.event.comment.body == '/railway config' ||
-          github.event.comment.body == '/railway watchpaths-help' ||
+          github.event.comment.body == '/railway help' ||
           github.event.comment.body == '/railway apply-watchpaths CONFIRM' ||
-          startsWith(github.event.comment.body, '/railway vars ')
+          startsWith(github.event.comment.body, '/railway vars ') ||
+          startsWith(github.event.comment.body, '/railway vars-safe ') ||
+          startsWith(github.event.comment.body, '/railway logs ') ||
+          startsWith(github.event.comment.body, '/railway redeploy ')
         )
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -89,40 +94,68 @@ jobs:
           confirmed="0"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            op="$DISPATCH_OPERATION"
-            service="$DISPATCH_SERVICE"
-            if [ "$op" = "apply-watchpaths" ] && [ "$DISPATCH_CONFIRMATION" = "APPLY_WATCH_PATHS" ]; then
+            op="${DISPATCH_OPERATION:-status}"
+            service="${DISPATCH_SERVICE:-}"
+            if [ "$op" = "apply-watchpaths" ] && [ "${DISPATCH_CONFIRMATION:-}" = "APPLY_WATCH_PATHS" ]; then
+              confirmed="1"
+            elif [ "$op" = "redeploy" ] && [ "${DISPATCH_CONFIRMATION:-}" = "REDEPLOY" ]; then
               confirmed="1"
             fi
           elif [ "$EVENT_NAME" = "issue_comment" ]; then
             case "$COMMENT_BODY" in
-              "/railway inventory") op="inventory" ;;
               "/railway status") op="status" ;;
+              "/railway inventory") op="inventory" ;;
               "/railway config") op="config" ;;
-              "/railway watchpaths-help") op="watchpaths-help" ;;
+              "/railway help") op="help" ;;
               "/railway apply-watchpaths CONFIRM")
                 op="apply-watchpaths"
                 confirmed="1"
+                ;;
+              "/railway vars-safe "*)
+                op="vars-safe"
+                service="${COMMENT_BODY#/railway vars-safe }"
                 ;;
               "/railway vars "*)
                 op="vars-keys"
                 service="${COMMENT_BODY#/railway vars }"
                 ;;
+              "/railway logs "*)
+                op="logs"
+                service="${COMMENT_BODY#/railway logs }"
+                ;;
+              "/railway redeploy "*" CONFIRM")
+                op="redeploy"
+                tmp="${COMMENT_BODY#/railway redeploy }"
+                service="${tmp% CONFIRM}"
+                confirmed="1"
+                ;;
               *) op="status" ;;
             esac
           fi
 
-          if [ "$op" = "vars-keys" ]; then
-            case "$service" in
-              backtest-analysis|cron-daily-report|cron-data-prepare|cron-final-check|cron-learning-all|cron-monthly-report|cron-nightly-results|cron-racer-course-stats|cron-window-day|cron-window-morning|cron-window-night|historical-backfill|test-beforeinfo-extra|postgres)
-                ;;
-              *)
-                echo "Unsupported Railway service for vars-keys."
-                exit 2
-                ;;
-            esac
-          else
-            service=""
+          case "$op" in
+            vars-keys|vars-safe|logs|redeploy)
+              case "$service" in
+                backtest-analysis|cron-daily-report|cron-data-prepare|cron-final-check|cron-learning-all|cron-monthly-report|cron-nightly-results|cron-racer-course-stats|cron-window-day|cron-window-morning|cron-window-night|historical-backfill|test-beforeinfo-extra|postgres)
+                  ;;
+                *)
+                  echo "Unsupported Railway service."
+                  exit 2
+                  ;;
+              esac
+              ;;
+            status|inventory|config|apply-watchpaths|help)
+              service=""
+              ;;
+            *)
+              echo "Unsupported Railway bridge operation."
+              exit 2
+              ;;
+          esac
+
+          if [ "$op" = "redeploy" ] && [ "$service" = "postgres" ]; then
+            echo "Postgres redeploy is not permitted by this bridge."
+            exit 2
           fi
 
           echo "operation=$op" >> "$GITHUB_OUTPUT"
@@ -133,24 +166,14 @@ jobs:
             echo "Railway service: $service"
           fi
 
-      - name: Record Railway CLI help
+      - name: Record Railway CLI version
         shell: bash
         run: |
           set -euo pipefail
           railway --version | tee railway-version.txt
-          railway --help > railway-help.txt
-          railway status --help > railway-status-help.txt || true
-          railway logs --help > railway-logs-help.txt || true
-          railway variable --help > railway-variable-help.txt || true
-          railway variable list --help > railway-variable-list-help.txt || true
-          railway redeploy --help > railway-redeploy-help.txt || true
-          railway environment --help > railway-environment-help.txt || true
-          railway environment config --help > railway-environment-config-help.txt || true
-          railway environment edit --help > railway-environment-edit-help.txt || true
-          echo "Railway CLI help captured."
 
       - name: Require Railway token
-        if: ${{ steps.op.outputs.operation != 'help' && steps.op.outputs.operation != 'watchpaths-help' }}
+        if: ${{ steps.op.outputs.operation != 'help' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -161,15 +184,11 @@ jobs:
 
       - name: Railway status snapshot
         id: railway_status
-        if: ${{ steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory' || steps.op.outputs.operation == 'config' || steps.op.outputs.operation == 'apply-watchpaths' }}
+        if: ${{ contains(fromJSON('["status","inventory","config"]'), steps.op.outputs.operation) }}
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          railway status --json > railway-status.json 2> railway-status-error.txt
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
+          if ! railway status --json > railway-status.json 2> railway-status-error.txt; then
             {
               echo "## Railway bridge ${{ steps.op.outputs.operation }}"
               echo
@@ -180,13 +199,11 @@ jobs:
               echo
               echo "Secret values and raw stderr are intentionally not posted."
             } > railway-result-summary.md
-            echo "status_ok=0" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
-          echo "status_ok=1" >> "$GITHUB_OUTPUT"
 
       - name: Build safe status or inventory summary
-        if: ${{ steps.railway_status.outputs.status_ok == '1' && (steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory') }}
+        if: ${{ steps.op.outputs.operation == 'status' || steps.op.outputs.operation == 'inventory' }}
         shell: bash
         env:
           OPERATION: ${{ steps.op.outputs.operation }}
@@ -198,11 +215,11 @@ jobs:
           from pathlib import Path
 
           data = json.loads(Path("railway-status.json").read_text(encoding="utf-8"))
-          operation = os.environ.get("OPERATION", "status")
+          operation = os.environ["OPERATION"]
           cli_version = Path("railway-version.txt").read_text(encoding="utf-8").strip()
 
           lines = [
-              "## Railway bridge " + operation,
+              f"## Railway bridge {operation}",
               "",
               "✅ Railway Project Token connection succeeded.",
               "",
@@ -214,31 +231,36 @@ jobs:
               service_names = {}
               for edge in (data.get("services") or {}).get("edges", []):
                   node = edge.get("node") or {}
-                  sid = node.get("id")
-                  name = node.get("name")
-                  if sid and name:
-                      service_names[sid] = name
+                  if node.get("id") and node.get("name"):
+                      service_names[node["id"]] = node["name"]
 
               rows = []
               for env_edge in (data.get("environments") or {}).get("edges", []):
                   env_node = env_edge.get("node") or {}
                   env_name = env_node.get("name") or "unknown"
-                  instances = (env_node.get("serviceInstances") or {}).get("edges", [])
-                  for inst_edge in instances:
+                  for inst_edge in (env_node.get("serviceInstances") or {}).get("edges", []):
                       inst = inst_edge.get("node") or {}
                       sid = inst.get("serviceId")
-                      service_name = service_names.get(sid) or inst.get("serviceName") or inst.get("name") or "unresolved-service"
+                      service_name = (
+                          service_names.get(sid)
+                          or inst.get("serviceName")
+                          or inst.get("name")
+                          or "unresolved-service"
+                      )
                       latest = inst.get("latestDeployment") or {}
                       meta = latest.get("meta") or {}
                       manifest = meta.get("serviceManifest") or {}
                       deploy = manifest.get("deploy") or {}
-                      cron = inst.get("cronSchedule") or deploy.get("cronSchedule") or "-"
-                      start = inst.get("startCommand") or deploy.get("startCommand") or "-"
-                      status = latest.get("status") or "-"
-                      branch = meta.get("branch") or "-"
-                      rows.append((env_name, service_name, cron, start, status, branch))
+                      rows.append((
+                          env_name,
+                          service_name,
+                          inst.get("cronSchedule") or deploy.get("cronSchedule") or "-",
+                          inst.get("startCommand") or deploy.get("startCommand") or "-",
+                          latest.get("status") or "-",
+                          meta.get("branch") or "-",
+                      ))
 
-              rows.sort(key=lambda r: (r[0], r[1]))
+              rows.sort(key=lambda row: (row[0], row[1]))
               lines += [
                   "",
                   "Only non-secret operational fields are shown. Railway IDs, URLs and Variable values are not published.",
@@ -248,46 +270,42 @@ jobs:
                   "| Environment | Service | Cron | Start Command | Latest deployment | Branch |",
                   "|---|---|---|---|---|---|",
               ]
-              for env_name, service_name, cron, start, status, branch in rows:
-                  def cell(value):
-                      return str(value).replace("|", "\\|").replace("\n", " ")[:180]
-                  lines.append(f"| {cell(env_name)} | {cell(service_name)} | `{cell(cron)}` | `{cell(start)}` | {cell(status)} | {cell(branch)} |")
-              if not rows:
-                  lines += ["", "⚠️ No service instances could be summarized from Railway status output."]
+
+              def cell(value):
+                  return str(value).replace("|", "\\|").replace("\n", " ")[:180]
+
+              for row in rows:
+                  env_name, service_name, cron, start, status, branch = row
+                  lines.append(
+                      f"| {cell(env_name)} | {cell(service_name)} | `{cell(cron)}` | "
+                      f"`{cell(start)}` | {cell(status)} | {cell(branch)} |"
+                  )
           else:
               lines += ["", "No Railway settings were changed by this operation."]
 
-          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
           PY
 
       - name: Read Railway environment config
-        id: railway_config
-        if: ${{ steps.railway_status.outputs.status_ok == '1' && (steps.op.outputs.operation == 'config' || steps.op.outputs.operation == 'apply-watchpaths') }}
+        if: ${{ steps.op.outputs.operation == 'config' }}
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          railway environment config --json > railway-config.json 2> railway-config-error.txt
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
+          if ! railway environment config --json > railway-config.json 2> railway-config-error.txt; then
             {
               echo "## Railway bridge config"
               echo
               echo "❌ Railway environment config query failed."
               echo
-              echo "Railway CLI: \`$(cat railway-version.txt)\`"
-              echo "Commit: \`${GITHUB_SHA}\`"
-              echo
-              echo "Secret values and raw stderr are intentionally not posted."
+              echo "Raw stderr was not published."
             } > railway-result-summary.md
-            echo "config_ok=0" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
-          echo "config_ok=1" >> "$GITHUB_OUTPUT"
 
       - name: Build safe Railway config summary
-        if: ${{ steps.op.outputs.operation == 'config' && steps.railway_config.outputs.config_ok == '1' }}
+        if: ${{ steps.op.outputs.operation == 'config' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -303,20 +321,23 @@ jobs:
           services = []
           for edge in (status.get("services") or {}).get("edges", []):
               node = edge.get("node") or {}
-              sid = node.get("id")
-              name = node.get("name")
-              if sid and name:
-                  services.append((sid, name))
+              if node.get("id") and node.get("name"):
+                  services.append((node["id"], node["name"]))
 
           def candidate_for(obj, sid, name):
               if isinstance(obj, dict):
                   for key in (sid, name):
                       value = obj.get(key)
-                      if isinstance(value, dict) and any(k in value for k in ("build", "deploy", "source", "variables")):
+                      if isinstance(value, dict) and any(
+                          k in value for k in ("build", "deploy", "source", "variables")
+                      ):
                           return value
                   marker_id = obj.get("serviceId") or obj.get("id")
                   marker_name = obj.get("serviceName") or obj.get("name")
-                  if (marker_id == sid or marker_name == name) and any(k in obj for k in ("build", "deploy", "source", "variables")):
+                  if (
+                      (marker_id == sid or marker_name == name)
+                      and any(k in obj for k in ("build", "deploy", "source", "variables"))
+                  ):
                       return obj
                   for value in obj.values():
                       found = candidate_for(value, sid, name)
@@ -329,32 +350,35 @@ jobs:
                           return found
               return None
 
-          def nested(d, *keys):
-              cur = d
+          def nested(data, *keys):
+              current = data
               for key in keys:
-                  if not isinstance(cur, dict):
+                  if not isinstance(current, dict):
                       return None
-                  cur = cur.get(key)
-              return cur
+                  current = current.get(key)
+              return current
 
           rows = []
-          for sid, name in sorted(services, key=lambda x: x[1]):
+          for sid, name in sorted(services, key=lambda item: item[1]):
               svc = candidate_for(config, sid, name)
               if svc is None:
                   rows.append((name, "unresolved", "-", "-", "-", "-"))
                   continue
               watch = nested(svc, "build", "watchPatterns")
-              root = nested(svc, "source", "rootDirectory")
-              builder = nested(svc, "build", "builder")
-              start = nested(svc, "deploy", "startCommand")
-              cron = nested(svc, "deploy", "cronSchedule")
-              if watch is None:
-                  watch_text = "(not set)"
-              else:
-                  watch_text = json.dumps(watch, ensure_ascii=False, separators=(",", ":"))
-              rows.append((name, watch_text, root or "-", builder or "-", start or "-", cron or "-"))
+              watch_text = (
+                  "(not set)"
+                  if watch is None
+                  else json.dumps(watch, ensure_ascii=False, separators=(",", ":"))
+              )
+              rows.append((
+                  name,
+                  watch_text,
+                  nested(svc, "source", "rootDirectory") or "-",
+                  nested(svc, "build", "builder") or "-",
+                  nested(svc, "deploy", "startCommand") or "-",
+                  nested(svc, "deploy", "cronSchedule") or "-",
+              ))
 
-          top_keys = sorted(str(k) for k in config.keys()) if isinstance(config, dict) else []
           resolved = sum(1 for row in rows if row[1] != "unresolved")
           lines = [
               "## Railway bridge config",
@@ -371,90 +395,57 @@ jobs:
               "| Service | Watch Paths | Root | Builder | Start Command | Cron |",
               "|---|---|---|---|---|---|",
           ]
+
           def cell(value):
               return str(value).replace("|", "\\|").replace("\n", " ")[:260]
-          for name, watch, root, builder, start, cron in rows:
-              lines.append(f"| {cell(name)} | `{cell(watch)}` | `{cell(root)}` | {cell(builder)} | `{cell(start)}` | `{cell(cron)}` |")
-          if resolved == 0:
-              lines += ["", "Safe diagnostic top-level keys: `" + ", ".join(top_keys[:20]) + "`"]
 
-          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          for name, watch, root, builder, start, cron in rows:
+              lines.append(
+                  f"| {cell(name)} | `{cell(watch)}` | `{cell(root)}` | "
+                  f"{cell(builder)} | `{cell(start)}` | `{cell(cron)}` |"
+              )
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
           PY
 
-      - name: Build Watch Paths help and plan
-        if: ${{ steps.op.outputs.operation == 'watchpaths-help' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "## Railway Watch Paths plan"
-            echo
-            echo "Railway CLI: \`$(cat railway-version.txt)\`"
-            echo "Commit: \`${GITHUB_SHA}\`"
-            echo
-            echo "No Railway settings were changed by this operation."
-            echo
-            echo "Planned fixed patterns for source-backed Python services:"
-            echo
-            echo '- `/*.py`'
-            echo '- `/requirements.txt`'
-            echo '- `/utils/**`'
-            echo '- `/scripts/**`'
-            echo '- `/railway.json`'
-            echo '- `/railway.toml`'
-            echo
-            echo "Excluded from automatic deployment triggers: `.github/**`, README/docs, tests, archive and unrelated files."
-            echo
-            echo "Target services are fixed in the workflow; `postgres` is excluded."
-            echo
-            echo "### Railway CLI environment edit help"
-            echo '```text'
-            sed -n '1,180p' railway-environment-edit-help.txt
-            echo '```'
-          } > railway-result-summary.md
-
-      - name: Read Railway variable keys
-        id: vars_keys
+      - name: Read Railway Variable keys
         if: ${{ steps.op.outputs.operation == 'vars-keys' }}
         shell: bash
         env:
-          SERVICE_NAME: ${{ steps.op.outputs.service }}
+          SERVICE: ${{ steps.op.outputs.service }}
         run: |
           set -euo pipefail
-          set +e
-          railway variable list --json --service "$SERVICE_NAME" > railway-vars.json 2> railway-vars-error.txt
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
+          if ! railway variable list --service "$SERVICE" --environment production --json > railway-vars.json 2> railway-vars-error.txt; then
             {
               echo "## Railway variable keys"
               echo
-              echo "❌ Variable key query failed for \`$SERVICE_NAME\`."
+              echo "Service: \`$SERVICE\`"
               echo
-              echo "Variable values and raw stderr are intentionally not posted."
+              echo "❌ Variable query failed. Raw stderr was not published."
             } > railway-result-summary.md
-            echo "vars_ok=0" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
 
-          SERVICE_NAME="$SERVICE_NAME" python - <<'PY'
+          python - <<'PY'
           import json
           import os
           from pathlib import Path
 
+          service = os.environ["SERVICE"]
           data = json.loads(Path("railway-vars.json").read_text(encoding="utf-8"))
-          keys = []
+
+          keys = set()
           if isinstance(data, dict):
-              keys = sorted(str(k) for k in data.keys())
+              keys.update(str(key) for key in data)
           elif isinstance(data, list):
               for item in data:
                   if isinstance(item, dict):
                       key = item.get("name") or item.get("key")
                       if key:
-                          keys.append(str(key))
-              keys = sorted(set(keys))
+                          keys.add(str(key))
 
-          service = os.environ["SERVICE_NAME"]
           lines = [
               "## Railway variable keys",
               "",
@@ -464,25 +455,260 @@ jobs:
               "",
               f"Keys discovered: **{len(keys)}**",
               "",
+              ", ".join(f"`{key}`" for key in sorted(keys)) or "(none)",
           ]
-          if keys:
-              lines.append("`" + "`, `".join(k.replace("`", "") for k in keys) + "`")
-          else:
-              lines.append("No keys could be summarized from the CLI output.")
-          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+          Path("railway-vars.json").unlink(missing_ok=True)
           PY
-          echo "vars_ok=1" >> "$GITHUB_OUTPUT"
-          rm -f railway-vars.json
 
-      - name: Apply fixed Watch Paths
-        id: apply_watchpaths
-        if: ${{ steps.op.outputs.operation == 'apply-watchpaths' && steps.railway_config.outputs.config_ok == '1' }}
+      - name: Read allowlisted non-secret Variable values
+        if: ${{ steps.op.outputs.operation == 'vars-safe' }}
+        shell: bash
+        env:
+          SERVICE: ${{ steps.op.outputs.service }}
+        run: |
+          set -euo pipefail
+          if ! railway variable list --service "$SERVICE" --environment production --json > railway-vars.json 2> railway-vars-error.txt; then
+            {
+              echo "## Railway safe variable values"
+              echo
+              echo "Service: \`$SERVICE\`"
+              echo
+              echo "❌ Variable query failed. Raw stderr was not published."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          service = os.environ["SERVICE"]
+          data = json.loads(Path("railway-vars.json").read_text(encoding="utf-8"))
+
+          SAFE_KEYS = {
+              "CANDIDATE_SHADOW_DISABLED_RULES",
+              "CANDIDATE_SHADOW_ENABLED",
+              "CANDIDATE_SHADOW_REQUIRE_COMPLETE_ODDS",
+              "CANDIDATE_SHADOW_RULES",
+              "COLLECT_SCOPE",
+              "DO_ODDS",
+              "DO_RACES",
+              "DO_RESULTS",
+              "DRY_RUN",
+              "FINAL_DEADLINE_FILTER",
+              "FINAL_IGNORE_DAILY_LIMIT",
+              "FINAL_WINDOW_AFTER_MIN",
+              "FINAL_WINDOW_BEFORE_MIN",
+              "LEARNING_ALL_ENABLED",
+              "LEARNING_REALTIME_SLEEP_SEC",
+              "LEARNING_SNAPSHOT_LABEL",
+              "LEARNING_WINDOW_AFTER_MIN",
+              "LEARNING_WINDOW_BEFORE_MIN",
+              "ODDS_WORKERS",
+              "REPAIR_WORKERS",
+              "RUN_CANDIDATE_SHADOW_EVAL",
+              "RUN_CANDIDATE_SHADOW_REPORT",
+              "RUN_EXHIBITION_SHADOW_EVAL",
+              "RUN_EXHIBITION_SHADOW_REPORT",
+              "RUN_MOTOR2_FINAL_SHADOW",
+              "RUN_MOTOR2_FORWARD_EVAL",
+              "RUN_MOTOR2_FORWARD_REPORT",
+              "RUN_MOTOR2_ROBUSTNESS_REPORT",
+              "RUN_N02_FORWARD_REPORT",
+              "RUN_N02_ROBUSTNESS_REPORT",
+              "RUN_N02_VARIANT_FORWARD_REPORT",
+              "RUN_N02_WINDLT4_SHADOW",
+              "RUN_SHADOW_COLLECTION_HEALTH",
+              "SELECTOR_MODE",
+              "SHADOW_EVAL_STRICT",
+              "SNAPSHOT_LABEL",
+              "TARGET_ID_SCOPE",
+              "TEST_MODE",
+              "UNIT_YEN",
+              "WINDOW_NAME",
+              "WINDOW_ODDS_HEARTBEAT_SEC",
+              "WINDOW_ODDS_RACE_WARN_SEC",
+              "WINDOW_ODDS_RETRIES",
+              "WINDOW_ODDS_RETRY_WAIT_SEC",
+              "WINDOW_SKIP_FULL_ODDS",
+              "WORKERS",
+          }
+
+          values = {}
+          if isinstance(data, dict):
+              values = {str(k): v for k, v in data.items()}
+          elif isinstance(data, list):
+              for item in data:
+                  if not isinstance(item, dict):
+                      continue
+                  key = item.get("name") or item.get("key")
+                  if key:
+                      values[str(key)] = item.get("value")
+
+          safe = [(key, values[key]) for key in sorted(SAFE_KEYS) if key in values]
+
+          def clean(value):
+              if value is None:
+                  return "(null)"
+              text = str(value).replace("\r", " ").replace("\n", " ")
+              text = text.replace("|", "\\|").replace("`", "'")
+              return text[:180]
+
+          lines = [
+              "## Railway safe variable values",
+              "",
+              f"Service: `{service}`",
+              "",
+              "Only explicitly allowlisted non-secret Variable values are shown.",
+              "Secret-bearing keys such as DATABASE_URL, LINE tokens, passwords and credentials are never published.",
+              "",
+              f"Allowlisted values found: **{len(safe)}**",
+              "",
+              "| Key | Value |",
+              "|---|---|",
+          ]
+          for key, value in safe:
+              lines.append(f"| `{key}` | `{clean(value)}` |")
+          if not safe:
+              lines.append("| (none) | - |")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+          Path("railway-vars.json").unlink(missing_ok=True)
+          PY
+
+      - name: Read and sanitize recent Railway logs
+        if: ${{ steps.op.outputs.operation == 'logs' }}
+        shell: bash
+        env:
+          SERVICE: ${{ steps.op.outputs.service }}
+        run: |
+          set -euo pipefail
+
+          # Fetch Variables only to redact their exact values from logs.
+          # This raw file is never published or uploaded.
+          if ! railway variable list --service "$SERVICE" --environment production --json > railway-vars-redact.json 2> railway-vars-redact-error.txt; then
+            {
+              echo "## Railway sanitized logs"
+              echo
+              echo "Service: \`$SERVICE\`"
+              echo
+              echo "❌ Refusing to publish logs because the secret-redaction source could not be loaded."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          set +e
+          railway logs --service "$SERVICE" --environment production --lines 120 --latest > railway-logs-raw.txt 2> railway-logs-error.txt
+          rc=$?
+          set -e
+
+          if [ "$rc" -ne 0 ]; then
+            {
+              echo "## Railway sanitized logs"
+              echo
+              echo "Service: \`$SERVICE\`"
+              echo
+              echo "❌ Railway log query failed. Raw stderr was not published."
+            } > railway-result-summary.md
+            rm -f railway-vars-redact.json railway-logs-raw.txt
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          service = os.environ["SERVICE"]
+          vars_data = json.loads(Path("railway-vars-redact.json").read_text(encoding="utf-8"))
+          raw = Path("railway-logs-raw.txt").read_text(encoding="utf-8", errors="replace")
+
+          values = []
+          if isinstance(vars_data, dict):
+              source_values = vars_data.values()
+          elif isinstance(vars_data, list):
+              source_values = [
+                  item.get("value")
+                  for item in vars_data
+                  if isinstance(item, dict)
+              ]
+          else:
+              source_values = []
+
+          for value in source_values:
+              if isinstance(value, (str, int, float)):
+                  text = str(value)
+                  if len(text) >= 4:
+                      values.append(text)
+
+          # Replace exact Variable values first, longest first.
+          for value in sorted(set(values), key=len, reverse=True):
+              raw = raw.replace(value, "[REDACTED_VARIABLE]")
+
+          # Defense-in-depth redaction for common secret forms.
+          raw = re.sub(
+              r"(?i)\b(DATABASE_URL|TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|AUTHORIZATION|LINE_TO)\b\s*[:=]\s*\S+",
+              r"\1=[REDACTED]",
+              raw,
+          )
+          raw = re.sub(
+              r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+",
+              "Bearer [REDACTED]",
+              raw,
+          )
+          raw = re.sub(
+              r"\beyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
+              "[REDACTED_JWT]",
+              raw,
+          )
+          raw = re.sub(
+              r"([A-Za-z][A-Za-z0-9+.-]*://)([^@\s/]+)@",
+              r"\1[REDACTED_CREDENTIALS]@",
+              raw,
+          )
+
+          cleaned = []
+          for line in raw.splitlines()[-120:]:
+              line = line.replace("\x00", "")
+              if len(line) > 700:
+                  line = line[:700] + "…"
+              cleaned.append(line)
+
+          lines = [
+              "## Railway sanitized logs",
+              "",
+              f"Service: `{service}`",
+              "",
+              "Recent deploy logs, capped at 120 lines. Railway Variable values and common secret forms are redacted before publication.",
+              "",
+          ]
+          if cleaned:
+              lines.extend("    " + line for line in cleaned)
+          else:
+              lines.append("    (no log lines returned)")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+
+          Path("railway-vars-redact.json").unlink(missing_ok=True)
+          Path("railway-logs-raw.txt").unlink(missing_ok=True)
+          PY
+
+      - name: Apply and verify fixed Watch Paths
+        if: ${{ steps.op.outputs.operation == 'apply-watchpaths' }}
         shell: bash
         env:
           CONFIRMED: ${{ steps.op.outputs.confirmed }}
         run: |
           set -euo pipefail
-          : > railway-result-summary.md
 
           if [ "$CONFIRMED" != "1" ]; then
             {
@@ -492,11 +718,21 @@ jobs:
               echo
               echo "Issue command must be exactly: \`/railway apply-watchpaths CONFIRM\`"
             } > railway-result-summary.md
-            echo "apply_ok=0" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
+          fi
+
+          if ! command -v script >/dev/null 2>&1; then
+            {
+              echo "## Railway Watch Paths apply"
+              echo
+              echo "❌ The pseudo-TTY helper \`script\` is unavailable. No settings were changed."
+            } > railway-result-summary.md
+            exit 1
           fi
 
           WATCH_PATTERNS='["/*.py","/requirements.txt","/utils/**","/scripts/**","/railway.json","/railway.toml"]'
+          export WATCH_PATTERNS
+
           services=(
             backtest-analysis
             cron-daily-report
@@ -513,105 +749,236 @@ jobs:
             test-beforeinfo-extra
           )
 
-          succeeded=()
-          failed=()
+          command_failed=()
           for service in "${services[@]}"; do
+            export SERVICE="$service"
             set +e
-            railway environment edit \
-              --service-config "$service" build.watchPatterns "$WATCH_PATTERNS" \
-              --message "ops: restrict automatic deploy watch paths" \
-              --json > "railway-edit-${service}.json" 2> "railway-edit-${service}.err"
+            script -q -e -c \
+              'railway environment edit --service-config "$SERVICE" build.watchPatterns "$WATCH_PATTERNS" --message "ops: restrict automatic deploy watch paths" --json' \
+              /dev/null > "railway-edit-${service}.txt" 2>&1
             rc=$?
             set -e
-            rm -f "railway-edit-${service}.json"
-            if [ "$rc" -eq 0 ]; then
-              succeeded+=("$service")
-            else
-              failed+=("$service")
+            if [ "$rc" -ne 0 ]; then
+              command_failed+=("$service")
             fi
           done
 
-          {
-            echo "## Railway Watch Paths apply"
-            echo
-            echo "Fixed Watch Paths requested: \`$WATCH_PATTERNS\`"
-            echo
-            echo "Target count: **${#services[@]}** (postgres excluded)"
-            echo "Succeeded: **${#succeeded[@]}**"
-            echo "Failed: **${#failed[@]}**"
-            if [ "${#failed[@]}" -gt 0 ]; then
-              echo
-              echo "Failed services: \`${failed[*]}\`"
-              echo
-              echo "Raw stderr is intentionally not posted."
-            fi
-            echo
-            echo "This operation changes Railway service deployment settings and can create new deployments."
-          } > railway-result-summary.md
+          # Postcondition is authoritative: read the environment again and verify
+          # the exact fixed pattern list for every target service.
+          railway status --json > railway-watch-status.json 2> railway-watch-status-error.txt
+          railway environment config --json > railway-watch-config.json 2> railway-watch-config-error.txt
 
-          if [ "${#failed[@]}" -eq 0 ]; then
-            echo "apply_ok=1" >> "$GITHUB_OUTPUT"
-          else
-            echo "apply_ok=0" >> "$GITHUB_OUTPUT"
+          COMMAND_FAILED="$(IFS=,; echo "${command_failed[*]-}")"
+          export COMMAND_FAILED
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = [
+              "/*.py",
+              "/requirements.txt",
+              "/utils/**",
+              "/scripts/**",
+              "/railway.json",
+              "/railway.toml",
+          ]
+          targets = [
+              "backtest-analysis",
+              "cron-daily-report",
+              "cron-data-prepare",
+              "cron-final-check",
+              "cron-learning-all",
+              "cron-monthly-report",
+              "cron-nightly-results",
+              "cron-racer-course-stats",
+              "cron-window-day",
+              "cron-window-morning",
+              "cron-window-night",
+              "historical-backfill",
+              "test-beforeinfo-extra",
+          ]
+
+          status = json.loads(Path("railway-watch-status.json").read_text(encoding="utf-8"))
+          config = json.loads(Path("railway-watch-config.json").read_text(encoding="utf-8"))
+
+          service_ids = {}
+          for edge in (status.get("services") or {}).get("edges", []):
+              node = edge.get("node") or {}
+              if node.get("id") and node.get("name"):
+                  service_ids[node["name"]] = node["id"]
+
+          def candidate_for(obj, sid, name):
+              if isinstance(obj, dict):
+                  for key in (sid, name):
+                      value = obj.get(key)
+                      if isinstance(value, dict) and any(
+                          k in value for k in ("build", "deploy", "source", "variables")
+                      ):
+                          return value
+                  marker_id = obj.get("serviceId") or obj.get("id")
+                  marker_name = obj.get("serviceName") or obj.get("name")
+                  if (
+                      (marker_id == sid or marker_name == name)
+                      and any(k in obj for k in ("build", "deploy", "source", "variables"))
+                  ):
+                      return obj
+                  for value in obj.values():
+                      found = candidate_for(value, sid, name)
+                      if found is not None:
+                          return found
+              elif isinstance(obj, list):
+                  for value in obj:
+                      found = candidate_for(value, sid, name)
+                      if found is not None:
+                          return found
+              return None
+
+          verified = []
+          missing = []
+          for name in targets:
+              sid = service_ids.get(name, "")
+              svc = candidate_for(config, sid, name)
+              watch = None
+              if isinstance(svc, dict):
+                  build = svc.get("build")
+                  if isinstance(build, dict):
+                      watch = build.get("watchPatterns")
+              if watch == expected:
+                  verified.append(name)
+              else:
+                  missing.append(name)
+
+          command_failed = [
+              item for item in os.environ.get("COMMAND_FAILED", "").split(",") if item
+          ]
+
+          lines = [
+              "## Railway Watch Paths apply",
+              "",
+              f"Fixed Watch Paths: `{json.dumps(expected, separators=(',', ':'))}`",
+              "",
+              f"Target count: **{len(targets)}** (postgres excluded)",
+              f"CLI command failures: **{len(command_failed)}**",
+              f"Postcondition verified: **{len(verified)}/{len(targets)}**",
+              "",
+          ]
+          if command_failed:
+              lines.append("Command failures: " + ", ".join(f"`{x}`" for x in command_failed))
+          if missing:
+              lines.append("Not verified: " + ", ".join(f"`{x}`" for x in missing))
+          if not command_failed and not missing:
+              lines += [
+                  "✅ All target services now have the exact fixed Watch Paths.",
+                  "",
+                  "`.github/**`, README/docs, tests and archive-only changes no longer match these deployment triggers.",
+              ]
+          else:
+              lines += [
+                  "",
+                  "❌ Verification failed. Do not assume Watch Paths are active for unverified services.",
+              ]
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+
+          for path in Path(".").glob("railway-edit-*.txt"):
+              path.unlink(missing_ok=True)
+
+          if command_failed or missing:
+              raise SystemExit(1)
+          PY
+
+      - name: Guarded Railway redeploy
+        if: ${{ steps.op.outputs.operation == 'redeploy' }}
+        shell: bash
+        env:
+          SERVICE: ${{ steps.op.outputs.service }}
+          CONFIRMED: ${{ steps.op.outputs.confirmed }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CONFIRMED" != "1" ]; then
+            {
+              echo "## Railway redeploy"
+              echo
+              echo "Service: \`$SERVICE\`"
+              echo
+              echo "❌ Confirmation missing. No redeploy was started."
+              echo
+              echo "Issue command: \`/railway redeploy $SERVICE CONFIRM\`"
+            } > railway-result-summary.md
+            exit 1
           fi
 
-      - name: Show general CLI help
+          if ! railway redeploy --service "$SERVICE" --yes --json > railway-redeploy.json 2> railway-redeploy-error.txt; then
+            {
+              echo "## Railway redeploy"
+              echo
+              echo "Service: \`$SERVICE\`"
+              echo
+              echo "❌ Redeploy failed. Raw stderr was not published."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          {
+            echo "## Railway redeploy"
+            echo
+            echo "Service: \`$SERVICE\`"
+            echo
+            echo "✅ Railway accepted the guarded redeploy request."
+            echo
+            echo "No secret values are published."
+          } > railway-result-summary.md
+          rm -f railway-redeploy.json
+
+      - name: Build help summary
         if: ${{ steps.op.outputs.operation == 'help' }}
         shell: bash
         run: |
           set -euo pipefail
-          cat railway-help.txt
-          echo "\n=== status ==="
-          cat railway-status-help.txt
-          echo "\n=== logs ==="
-          cat railway-logs-help.txt
-          echo "\n=== variable ==="
-          cat railway-variable-help.txt
-          echo "\n=== redeploy ==="
-          cat railway-redeploy-help.txt
-          echo "\n=== environment ==="
-          cat railway-environment-help.txt
+          {
+            echo "## Railway bridge help"
+            echo
+            echo "Read-only:"
+            echo '- `/railway status`'
+            echo '- `/railway inventory`'
+            echo '- `/railway config`'
+            echo '- `/railway vars <service>` — Variable names only'
+            echo '- `/railway vars-safe <service>` — allowlisted non-secret values only'
+            echo '- `/railway logs <service>` — recent logs with Variable-value redaction'
+            echo
+            echo "Guarded writes:"
+            echo '- `/railway apply-watchpaths CONFIRM`'
+            echo '- `/railway redeploy <service> CONFIRM`'
+            echo
+            echo "Destructive operations, arbitrary shell commands and arbitrary secret reads are not supported."
+          } > railway-result-summary.md
 
-      - name: Post safe Railway result to control issue
-        if: ${{ steps.op.outputs.operation != 'help' && always() }}
+      - name: Remove raw sensitive files
+        if: always()
+        shell: bash
+        run: |
+          rm -f \
+            railway-vars.json \
+            railway-vars-redact.json \
+            railway-logs-raw.txt \
+            railway-status.json \
+            railway-config.json \
+            railway-watch-status.json \
+            railway-watch-config.json \
+            railway-redeploy.json
+
+      - name: Post Railway result to control issue
+        if: always()
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -euo pipefail
-          if [ -s railway-result-summary.md ]; then
-            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
           fi
-
-      - name: Fail after reported Railway read error
-        if: ${{ always() && (steps.railway_status.outputs.status_ok == '0' || steps.railway_config.outputs.config_ok == '0' || steps.vars_keys.outputs.vars_ok == '0' || steps.apply_watchpaths.outputs.apply_ok == '0') }}
-        shell: bash
-        run: |
-          echo "Railway bridge operation did not fully succeed. See control issue #${RAILWAY_BRIDGE_ISSUE}."
-          exit 1
-
-      - name: Remove ephemeral Railway data
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          rm -f railway-status.json railway-status-error.txt railway-config.json railway-config-error.txt railway-vars.json railway-vars-error.txt railway-edit-*.json railway-edit-*.err
-
-      - name: Upload safe Railway bridge diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: railway-bridge-diagnostics
-          if-no-files-found: ignore
-          retention-days: 7
-          path: |
-            railway-version.txt
-            railway-help.txt
-            railway-status-help.txt
-            railway-logs-help.txt
-            railway-variable-help.txt
-            railway-variable-list-help.txt
-            railway-redeploy-help.txt
-            railway-environment-help.txt
-            railway-environment-config-help.txt
-            railway-environment-edit-help.txt
-            railway-result-summary.md
