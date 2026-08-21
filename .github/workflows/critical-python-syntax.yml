@@ -59,4 +59,5 @@ jobs:
             report_n02_windlt4_variants_forward_pg.py \
             v22_exhibition_shadow_pg.py \
             evaluate_exhibition_shadow_results_pg.py \
-            report_exhibition_shadow_performance_pg.py
+            report_exhibition_shadow_performance_pg.py \
+            report_exhibition_shadow_robustness_pg.py
