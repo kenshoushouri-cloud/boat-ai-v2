@@ -13,7 +13,7 @@ Railway側のService / Start Command / Variables / CronはGitHubだけでは完�
 
 ## 本番DB
 
-接続は原則 `DATABASE_URL` を使用します。
+接続は `DATABASE_URL` を使用します。
 
 主要テーブル:
 
@@ -166,22 +166,36 @@ PostgreSQL版:
 
 historical test / replayでは誤通知防止を最優先してください。
 
-## 旧Supabaseコードについて
+## Repository cleanup status
 
-リポジトリには旧Supabase世代のコードが残っています。例:
+2026-08-21時点で、次の旧Supabase/旧JOB_MODE内部群はGitHubから削除済みです。
 
-- `Procfile` / `main.py` の旧JOB_MODE入口
+- 不可視Unicode重複 `diagnose_motor2_parser_pg.py⁠`
+- `app/jobs/*`
+- `data_pipeline/*`
+- `backtest/*`
 - `db/client.py`
 - `config/settings.py`
-- `app/jobs/*` の旧job群
-- `data_pipeline/*` の旧pipeline
-- `backtest/runner.py` / `backtest/portfolio_runner.py`
+- 旧 `models/*`
+- 旧 `betting/*`
+- 旧 `notifications/*`
+- `main.py`
+- `Procfile`
+
+現行PostgreSQL本番コードは削除対象に含めていません。
+
+## Railway確認待ちのLegacy候補
+
+以下はコード上は旧経路ですが、Railway Start Commandとして残っている可能性を完全には排除できないため、現時点では維持します。
+
+- `run_pre_day_pg.py`
+- `run_pre_night_pg.py`
+- `run_nightly_results_learning.py`
 - `v26_nightly_results_learning.py`
+- `run_odds_retention_cleanup.py`
 - `v29_odds_retention_cleanup.py`
 
-これらには `SUPABASE_URL` / `SUPABASE_KEY` / Supabase REST API依存が残っています。現行本番と判断しないでください。
-
-ただしRailway Start Commandとして残っている可能性のあるwrapperもあるため、削除前にRailwayの現在設定を確認してください。
+`v26_nightly_results_learning.py` と `v29_odds_retention_cleanup.py` はSupabase REST依存です。現行本番と判断しないでください。
 
 ## Repository cleanup policy
 
@@ -194,7 +208,7 @@ historical test / replayでは誤通知防止を最優先してください。
 - **E Legacy Supabase**: Supabase REST / 旧JOB_MODE系
 - **F Delete confirmed**: 完全重複・不可視文字重複等
 
-ファイル名やv番号だけで新旧を判断しないでください。`import`, `runpy.run_path`, `subprocess`, Railway Start Commandの参照確認を行ってから整理します。
+ファイル名やv番号だけで新旧を判断せず、`import`, `runpy.run_path`, `subprocess`, Railway Start Commandを確認してから整理します。
 
 ## Railwayとの対応
 
