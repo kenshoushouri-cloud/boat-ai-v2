@@ -1,0 +1,291 @@
+name: Railway data coverage audit
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/railway-data-coverage-audit.yml
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway data-audit'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if value is None and isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Audit 2025-07-01 onward coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from typing import Dict, List
+          from db_pg import fetch_all, fetch_one
+
+          START = '2025-07-01'
+          END = datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d')
+
+          def exists(table: str) -> bool:
+              row = fetch_one("select exists(select 1 from information_schema.tables where table_schema='public' and table_name=%s) ok", (table,)) or {}
+              return bool(row.get('ok'))
+
+          def cols(table: str) -> List[str]:
+              if not exists(table):
+                  return []
+              return [str(r['column_name']) for r in fetch_all("select column_name from information_schema.columns where table_schema='public' and table_name=%s order by ordinal_position", (table,))]
+
+          def pick(table: str, aliases: List[str]):
+              c = set(cols(table))
+              return next((x for x in aliases if x in c), None)
+
+          def base_races() -> int:
+              row = fetch_one("select count(distinct race_id) n from v2_races where race_date between %s and %s", (START, END)) or {}
+              return int(row.get('n') or 0)
+
+          BASE = base_races()
+
+          def scoped_count(table: str, expr='count(*)'):
+              if not exists(table): return 0
+              c = cols(table)
+              if table == 'v2_races':
+                  row = fetch_one(f"select {expr} n from v2_races where race_date between %s and %s", (START, END)) or {}
+              elif 'race_id' in c:
+                  row = fetch_one(f"select {expr} n from {table} t join v2_races r on r.race_id=t.race_id where r.race_date between %s and %s", (START, END)) or {}
+              elif 'race_date' in c:
+                  row = fetch_one(f"select {expr} n from {table} where race_date between %s and %s", (START, END)) or {}
+              else:
+                  row = fetch_one(f"select {expr} n from {table}") or {}
+              return int(row.get('n') or 0)
+
+          def distinct_races(table: str) -> int:
+              if not exists(table) or 'race_id' not in cols(table): return 0
+              return scoped_count(table, 'count(distinct t.race_id)' if table != 'v2_races' else 'count(distinct race_id)')
+
+          def field_pct(table: str, aliases: List[str]):
+              col = pick(table, aliases)
+              if not col: return None, None, None
+              if table == 'v2_races':
+                  row = fetch_one(f"select count(*) total, count({col}) got from v2_races where race_date between %s and %s", (START, END)) or {}
+              else:
+                  row = fetch_one(f"select count(*) total, count(t.{col}) got from {table} t join v2_races r on r.race_id=t.race_id where r.race_date between %s and %s", (START, END)) or {}
+              total = int(row.get('total') or 0); got = int(row.get('got') or 0)
+              pct = got / total * 100 if total else 0.0
+              return col, got, pct
+
+          def full_lane_coverage(table: str, lane_aliases=('lane','course','boat_no')):
+              if not exists(table): return None
+              lane = pick(table, list(lane_aliases))
+              if not lane or 'race_id' not in cols(table): return None
+              row = fetch_one(f"select count(*) n from (select t.race_id from {table} t join v2_races r on r.race_id=t.race_id where r.race_date between %s and %s group by t.race_id having count(distinct t.{lane})=6) x", (START, END)) or {}
+              return int(row.get('n') or 0)
+
+          def full_ticket_coverage(table: str):
+              if not exists(table) or 'ticket' not in cols(table): return None
+              row = fetch_one(f"select count(*) n from (select t.race_id from {table} t join v2_races r on r.race_id=t.race_id where r.race_date between %s and %s group by t.race_id having count(distinct t.ticket)=120) x", (START, END)) or {}
+              return int(row.get('n') or 0)
+
+          table_labels = [
+              ('v2_races','レース基本'),
+              ('v2_race_entries','出走表'),
+              ('v2_results','結果'),
+              ('v2_result_entries','結果6艇明細'),
+              ('v2_odds_trifecta','三連単オッズ'),
+              ('v2_race_weather','旧気象'),
+              ('v2_exhibition','旧展示'),
+              ('v2_realtime_weather_snapshots','気象Snapshot'),
+              ('v2_realtime_exhibition_snapshots','展示Snapshot'),
+              ('v2_realtime_entry_snapshots','進入/艇Snapshot'),
+              ('v2_realtime_odds_snapshots','Realtimeオッズ'),
+              ('v2_realtime_race_condition_snapshots','レース条件Snapshot'),
+              ('v2_realtime_racer_condition_snapshots','選手状態Snapshot'),
+          ]
+
+          lines = [
+              '## Railway data coverage audit', '',
+              f'Period: **{START} .. {END}**',
+              f'Base races in `v2_races`: **{BASE:,}**', '',
+              '### Table / race coverage', '',
+              '| Data | Table | Distinct races | Base coverage | Completeness |',
+              '|---|---|---:|---:|---|',
+          ]
+
+          for table, label in table_labels:
+              if not exists(table):
+                  lines.append(f'| {label} | `{table}` | - | - | **TABLE MISSING** |')
+                  continue
+              dr = distinct_races(table)
+              pct = dr / BASE * 100 if BASE else 0
+              complete = '-'
+              if table in ('v2_race_entries','v2_result_entries','v2_exhibition','v2_realtime_exhibition_snapshots','v2_realtime_entry_snapshots','v2_realtime_racer_condition_snapshots'):
+                  n = full_lane_coverage(table)
+                  if n is not None: complete = f'6-lane races {n:,}/{BASE:,} ({n/BASE*100 if BASE else 0:.1f}%)'
+              elif table in ('v2_odds_trifecta','v2_realtime_odds_snapshots'):
+                  n = full_ticket_coverage(table)
+                  if n is not None: complete = f'120-ticket races {n:,}/{BASE:,} ({n/BASE*100 if BASE else 0:.1f}%)'
+              lines.append(f'| {label} | `{table}` | {dr:,} | {pct:.1f}% | {complete} |')
+
+          critical: Dict[str, Dict[str, List[str]]] = {
+              'v2_races': {
+                  'race_name':['race_name','title'], 'deadline_time':['deadline_time'], 'deadline_at':['deadline_at'],
+              },
+              'v2_race_entries': {
+                  'racer_number':['racer_number','registration_no'], 'racer_name':['racer_name'], 'class':['racer_class_text','racer_class'],
+                  'branch':['branch'], 'origin':['origin'], 'F count':['f_count'], 'L count':['l_count'], 'avg ST':['avg_st'],
+                  'national win rate':['national_win_rate'], 'national place2':['national_place2_rate'], 'national place3':['national_place3_rate'],
+                  'local win rate':['local_win_rate'], 'local place2':['local_place2_rate'], 'local place3':['local_place3_rate'],
+                  'motor no':['motor_no'], 'motor place2':['motor_place2_rate','motor_2rate'], 'motor place3':['motor_place3_rate'],
+                  'boat no':['boat_no'], 'boat place2':['boat_place2_rate','boat_2rate'], 'boat place3':['boat_place3_rate'],
+                  'tilt':['tilt'], 'recent_form':['recent_form'],
+              },
+              'v2_race_weather': {
+                  'weather':['weather','weather_text'], 'air temperature':['air_temperature','temperature_c','temperature'],
+                  'water temperature':['water_temperature','water_temperature_c','water_temp'], 'wind speed':['wind_speed','wind_speed_m','wind_speed_mps'],
+                  'wind direction':['wind_direction','wind_dir'], 'wave height':['wave_height','wave_height_cm'],
+              },
+              'v2_exhibition': {
+                  'exhibition time':['exhibition_time'], 'start timing':['start_timing','exhibition_st'], 'entry course':['entry_course','exhibition_course','course'],
+              },
+              'v2_realtime_weather_snapshots': {
+                  'weather':['weather'], 'temperature':['temperature_c'], 'water temperature':['water_temperature_c'], 'wind speed':['wind_speed_m'], 'wind direction':['wind_direction'], 'wave height':['wave_height_cm'],
+              },
+              'v2_realtime_exhibition_snapshots': {
+                  'exhibition course':['exhibition_course'], 'exhibition time':['exhibition_time'], 'time rank':['exhibition_time_rank'], 'time diff':['exhibition_time_diff'],
+                  'start timing':['start_timing'], 'ST rank':['start_timing_rank'], 'ST diff':['start_timing_diff'], 'tilt':['tilt'], 'original tilt':['original_tilt'], 'tilt change':['tilt_change'],
+              },
+              'v2_realtime_entry_snapshots': {
+                  'racer number':['racer_number'], 'racer name':['racer_name'], 'class':['racer_class'], 'original course':['original_course'], 'exhibition course':['exhibition_course'],
+                  'course changed':['is_course_changed'], 'motor no':['motor_no'], 'boat no':['boat_no'], 'tilt':['tilt'],
+              },
+              'v2_realtime_race_condition_snapshots': {
+                  'stabilizer':['is_stabilizer_used'], 'fixed entry':['is_fixed_entry'], 'distance':['race_distance_m'], 'new propeller':['has_new_propeller'], 'parts replacement count':['parts_replacement_count'],
+              },
+              'v2_realtime_racer_condition_snapshots': {
+                  'weight':['weight_kg'], 'adjustment weight':['adjustment_weight_kg'], 'new propeller':['is_new_propeller'], 'parts replacements':['parts_replacements'],
+                  'previous race no':['previous_race_no'], 'previous course':['previous_course'], 'previous ST':['previous_st'], 'previous finish':['previous_finish'],
+              },
+              'v2_realtime_odds_snapshots': {
+                  'ticket':['ticket'], 'odds':['odds'], 'market rank':['market_rank'], 'previous odds':['prev_odds'], 'odds delta':['odds_delta'], 'odds delta pct':['odds_delta_pct'],
+                  'previous market rank':['prev_market_rank'], 'market rank delta':['market_rank_delta'],
+              },
+          }
+
+          lines += ['', '### Critical field fill rates', '', '> Low percentage can mean either historical data has not been backfilled or the official source legitimately omits the field in some races.', '']
+          for table, fields in critical.items():
+              lines += [f'#### `{table}`', '', '| Field | DB column | Non-null rate | Status |', '|---|---|---:|---|']
+              if not exists(table):
+                  lines.append('| - | - | - | **TABLE MISSING** |')
+                  continue
+              for label, aliases in fields.items():
+                  col, got, pct = field_pct(table, aliases)
+                  if col is None:
+                      lines.append(f'| {label} | - | - | **COLUMN MISSING** |')
+                  else:
+                      status = 'OK' if pct >= 95 else ('PARTIAL' if pct >= 20 else 'LOW/MISSING')
+                      lines.append(f'| {label} | `{col}` | {pct:.1f}% | **{status}** |')
+              lines.append('')
+
+          # Snapshot-label coverage reveals whether historical beforeinfo backfill actually exists.
+          lines += ['### Snapshot label coverage', '', '| Table | Label | Distinct races |', '|---|---|---:|']
+          for table, _ in table_labels:
+              if not exists(table) or 'snapshot_label' not in cols(table) or 'race_id' not in cols(table):
+                  continue
+              rows = fetch_all(f"select coalesce(t.snapshot_label,'(null)') label, count(distinct t.race_id) n from {table} t join v2_races r on r.race_id=t.race_id where r.race_date between %s and %s group by 1 order by 2 desc limit 12", (START, END))
+              for row in rows:
+                  lines.append(f"| `{table}` | `{row.get('label')}` | {int(row.get('n') or 0):,} |")
+
+          lines += ['', 'Read-only audit only. No rows, schema, Variables, deployment settings, prediction logic or LINE behavior were changed.']
+          Path('railway-data-audit-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Build failure summary
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Railway data coverage audit'
+            echo
+            echo '❌ Read-only coverage audit failed.'
+            echo
+            echo 'No database rows, schema, Railway Variables, deployments, or settings were changed.'
+          } > railway-data-audit-summary.md
+
+      - name: Remove raw sensitive files
+        if: always()
+        shell: bash
+        run: rm -f railway-vars.json railway-vars-error.txt
+
+      - name: Post result to control issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-data-audit-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-data-audit-summary.md
+          fi
