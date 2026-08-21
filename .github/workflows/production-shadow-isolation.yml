@@ -1,0 +1,66 @@
+name: Production shadow isolation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  production-shadow-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Block direct Shadow coupling in production decision files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+
+          protected_files = (
+              'v24_pre_candidate_notifier_pg.py',
+              'v22_realtime_decision_engine_pg.py',
+              'run_v22_targeted_pg.py',
+              'v23_line_notifier_batch_pg.py',
+          )
+
+          forbidden = (
+              'v2_v24_motor2_forward_shadow',
+              'v2_candidate_filter_shadow',
+              'v2_n02_windlt4_final_shadow',
+              'v2_exhibition_shadow_decisions',
+              'v2_exhibition_shadow_results',
+              'mid_veto_',
+              'mid_keep_',
+              'N02_WIND_LT4',
+              'EXHIBITION_SHADOW_WEIGHT',
+          )
+
+          problems = []
+          for filename in protected_files:
+              path = Path(filename)
+              if not path.exists():
+                  problems.append((filename, 0, 'MISSING_PROTECTED_FILE', ''))
+                  continue
+
+              text = path.read_text(encoding='utf-8')
+              for lineno, line in enumerate(text.splitlines(), 1):
+                  for marker in forbidden:
+                      if marker in line:
+                          problems.append((filename, lineno, marker, line.strip()[:240]))
+
+          print(f'protected_files_scanned={len(protected_files)}')
+          if problems:
+              print('Direct Shadow coupling found in production decision/notification files:')
+              for filename, lineno, marker, snippet in problems:
+                  print(f'  {filename}:{lineno} marker={marker!r} {snippet}')
+              print('Shadow promotion requires an explicit production-promotion PR and guard update.')
+              sys.exit(1)
+
+          print('RESULT=PASS production decision files remain isolated from Shadow rules/tables')
+          PY
