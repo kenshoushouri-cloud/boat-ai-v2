@@ -16,6 +16,7 @@ Start Command:
     SHADOW_REPORT_DAYS=30
     SNAPSHOT_LABEL=final_ab
     SELECTOR_MODE=ab
+    SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT=60
 """
 
 from __future__ import annotations
@@ -56,6 +57,9 @@ SHADOW_READY_MIN_REMOVED = max(
 SHADOW_READY_MAX_ROI_DROP_PT = float(
     os.getenv("SHADOW_READY_MAX_ROI_DROP_PT", "0.0")
 )
+SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT = float(
+    os.getenv("SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT", "60")
+)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -83,6 +87,16 @@ def _summary(rows: List[Dict[str, Any]], prefix: str) -> Dict[str, float]:
     roi = returns / investment * 100.0 if investment > 0 else 0.0
     hit_rate = hits / candidates * 100.0 if candidates > 0 else 0.0
 
+    hit_returns = [
+        _safe_int(r.get(return_key))
+        for r in rows
+        if _safe_int(r.get(investment_key)) > 0
+        and bool(r.get("ticket_hit"))
+        and _safe_int(r.get(return_key)) > 0
+    ]
+    max_hit = max(hit_returns) if hit_returns else 0
+    single_hit_share = max_hit / returns * 100.0 if returns > 0 else 0.0
+
     return {
         "candidates": candidates,
         "hits": hits,
@@ -91,6 +105,8 @@ def _summary(rows: List[Dict[str, Any]], prefix: str) -> Dict[str, float]:
         "profit": profit,
         "roi": roi,
         "hit_rate": hit_rate,
+        "max_hit": max_hit,
+        "single_hit_share": single_hit_share,
     }
 
 
@@ -103,7 +119,9 @@ def _print_summary(label: str, data: Dict[str, float]) -> None:
         f"investment={int(data['investment'])} "
         f"return={int(data['returns'])} "
         f"profit={int(data['profit'])} "
-        f"ROI={data['roi']:.2f}%",
+        f"ROI={data['roi']:.2f}% "
+        f"max_hit={int(data['max_hit'])} "
+        f"single_hit_share={data['single_hit_share']:.2f}%",
         flush=True,
     )
 
@@ -116,8 +134,8 @@ def main() -> None:
     start_date = end_date - timedelta(days=SHADOW_REPORT_DAYS - 1)
 
     print(
-        "✅ report_exhibition_shadow_performance_pg.py "
-        "VERSION 2026-07-15 cumulative-shadow-report-v2-readiness",
+        "OK report_exhibition_shadow_performance_pg.py "
+        "VERSION 2026-08-21 cumulative-shadow-report-v3-robustness",
         flush=True,
     )
     print(
@@ -133,10 +151,11 @@ def main() -> None:
         f"shadow_candidates>={SHADOW_READY_MIN_SHADOW_CANDIDATES} "
         f"added>={SHADOW_READY_MIN_ADDED} "
         f"removed>={SHADOW_READY_MIN_REMOVED} "
-        f"max_roi_drop={SHADOW_READY_MAX_ROI_DROP_PT:.2f}pt",
+        f"max_roi_drop={SHADOW_READY_MAX_ROI_DROP_PT:.2f}pt "
+        f"max_single_hit_share={SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT:.2f}%",
         flush=True,
     )
-    print("読み取り専用です。本番判定・LINE通知は変更しません。", flush=True)
+    print("READ_ONLY=1 PROD_CHANGE=0 LINE=0 BUY=0", flush=True)
 
     rows = fetch_all(
         """
@@ -215,7 +234,8 @@ def main() -> None:
         print(
             f"  {d}: rows={len(part)} "
             f"base_candidates={int(b['candidates'])} base_profit={int(b['profit'])} "
-            f"shadow_candidates={int(s['candidates'])} shadow_profit={int(s['profit'])}",
+            f"shadow_candidates={int(s['candidates'])} shadow_profit={int(s['profit'])} "
+            f"shadow_single_hit_share={s['single_hit_share']:.2f}%",
             flush=True,
         )
 
@@ -236,6 +256,9 @@ def main() -> None:
             change_counts.get("removed", 0) >= SHADOW_READY_MIN_REMOVED
         ),
         "roi_not_worse": roi_diff >= -SHADOW_READY_MAX_ROI_DROP_PT,
+        "shadow_single_hit_share": (
+            shadow["single_hit_share"] <= SHADOW_READY_MAX_SINGLE_HIT_SHARE_PCT
+        ),
     }
 
     ready = all(readiness_checks.values())
