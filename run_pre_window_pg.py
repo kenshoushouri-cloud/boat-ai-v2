@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-18 live-guard-runclass-v1"
+VERSION = "2026-08-21 pre-window-log-cleanup-v2"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
@@ -16,20 +16,24 @@ WINDOW_PRESETS = {
     "night": ("14:45", None),
 }
 
+
 def _today_jst() -> str:
     return datetime.now(JST).strftime("%Y-%m-%d")
 
+
 def _env_bool(name: str, default: bool) -> bool:
-    v = os.getenv(name)
-    if v is None:
+    value = os.getenv(name)
+    if value is None:
         return default
-    return v.strip().lower() in {"1","true","yes","y","on"}
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 LIVE_GUARD_ENABLED = _env_bool("PRE_LIVE_GUARD_ENABLED", True)
 ALLOW_HISTORICAL_REPLAY = _env_bool("PRE_ALLOW_HISTORICAL_REPLAY", False)
 ALLOW_FUTURE_TEST = _env_bool("PRE_ALLOW_FUTURE_TEST", False)
 FORCE_DRY_RUN_FOR_REPLAY = _env_bool("PRE_FORCE_DRY_RUN_FOR_REPLAY", True)
 DISABLE_SHADOW_ON_REPLAY = _env_bool("PRE_DISABLE_SHADOW_ON_REPLAY", True)
+
 
 def _resolve_window() -> Tuple[str, Optional[str], str]:
     name = (os.getenv("WINDOW_NAME") or os.getenv("WINDOW_MODE") or "").strip().lower()
@@ -51,19 +55,24 @@ def _resolve_window() -> Tuple[str, Optional[str], str]:
 
     return start, (end or None), name
 
+
 def _default_pre_session(window_name: str) -> str:
     return "night" if window_name == "night" else "day"
+
 
 def _connect():
     url = os.getenv("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL ãæªè¨­å®ã§ã")
+        raise RuntimeError("DATABASE_URL が未設定です")
     try:
         import psycopg
+
         return psycopg.connect(url)
     except Exception:
         import psycopg2
+
         return psycopg2.connect(url)
+
 
 def _fetch_dicts(sql: str, params: Tuple[Any, ...]) -> List[Dict[str, Any]]:
     conn = _connect()
@@ -76,7 +85,12 @@ def _fetch_dicts(sql: str, params: Tuple[Any, ...]) -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
-def select_window_races(target_date: str, start: str, end: Optional[str]) -> List[Dict[str, Any]]:
+
+def select_window_races(
+    target_date: str,
+    start: str,
+    end: Optional[str],
+) -> List[Dict[str, Any]]:
     if end:
         if start <= end:
             sql = """
@@ -114,6 +128,7 @@ def select_window_races(target_date: str, start: str, end: Optional[str]) -> Lis
         params = (target_date, start)
     return _fetch_dicts(sql, params)
 
+
 def _deadline_at(race: Dict[str, Any], target_date: str) -> Optional[datetime]:
     value = race.get("deadline_at")
     if isinstance(value, datetime):
@@ -121,18 +136,22 @@ def _deadline_at(race: Dict[str, Any], target_date: str) -> Optional[datetime]:
 
     if value:
         try:
-            dt = datetime.fromisoformat(str(value).replace("Z","+00:00"))
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
             return dt.replace(tzinfo=JST) if dt.tzinfo is None else dt.astimezone(JST)
         except Exception:
             pass
 
-    t = str(race.get("deadline_time") or "").strip()
-    if t:
+    deadline_time = str(race.get("deadline_time") or "").strip()
+    if deadline_time:
         try:
-            return datetime.strptime(f"{target_date} {t}", "%Y-%m-%d %H:%M").replace(tzinfo=JST)
+            return datetime.strptime(
+                f"{target_date} {deadline_time}",
+                "%Y-%m-%d %H:%M",
+            ).replace(tzinfo=JST)
         except Exception:
             return None
     return None
+
 
 def _resolve_run_class(target_date: str) -> str:
     today = _today_jst()
@@ -141,6 +160,7 @@ def _resolve_run_class(target_date: str) -> str:
     if target_date > today:
         return "future_test"
     return "live"
+
 
 def _apply_live_guard(
     races: List[Dict[str, Any]],
@@ -151,37 +171,47 @@ def _apply_live_guard(
 
     if run_class == "historical_test":
         if LIVE_GUARD_ENABLED and not ALLOW_HISTORICAL_REPLAY:
-            print("LIVE_GUARD: éå»æ¥TARGET_DATEã®ãããã­ãã¯ãã¾ãã", flush=True)
+            print(
+                "LIVE_GUARD: 過去日のTARGET_DATEのためブロックします。",
+                flush=True,
+            )
             return [], run_class, len(races)
         return races, run_class, 0
 
     if run_class == "future_test":
         if LIVE_GUARD_ENABLED and not ALLOW_FUTURE_TEST:
-            print("LIVE_GUARD: æªæ¥æ¥TARGET_DATEã®ãããã­ãã¯ãã¾ãã", flush=True)
+            print(
+                "LIVE_GUARD: 未来日のTARGET_DATEのためブロックします。",
+                flush=True,
+            )
             return [], run_class, len(races)
         return races, run_class, 0
 
     if not LIVE_GUARD_ENABLED:
         expired = sum(
-            1 for r in races
-            if (_deadline_at(r, target_date) is not None
-                and _deadline_at(r, target_date) <= now_jst)
+            1
+            for race in races
+            if (
+                _deadline_at(race, target_date) is not None
+                and _deadline_at(race, target_date) <= now_jst
+            )
         )
         return races, ("late_replay" if expired else "live"), 0
 
-    kept = []
+    kept: List[Dict[str, Any]] = []
     skipped = 0
     for race in races:
-        dl = _deadline_at(race, target_date)
-        if dl is None or dl <= now_jst:
+        deadline_at = _deadline_at(race, target_date)
+        if deadline_at is None or deadline_at <= now_jst:
             skipped += 1
             continue
         kept.append(race)
 
     return kept, run_class, skipped
 
+
 def _apply_replay_safety(run_class: str) -> None:
-    if run_class not in {"late_replay","historical_test","future_test"}:
+    if run_class not in {"late_replay", "historical_test", "future_test"}:
         return
 
     if FORCE_DRY_RUN_FOR_REPLAY:
@@ -193,18 +223,21 @@ def _apply_replay_safety(run_class: str) -> None:
         os.environ["CANDIDATE_SHADOW_ENABLED"] = "0"
         print("REPLAY_SAFETY: CANDIDATE_SHADOW_ENABLED=0", flush=True)
 
+
 def _run_script(script_path: Path, display_name: str, *, required: bool) -> None:
     if not script_path.exists():
-        msg = f"{display_name} ãè¦ã¤ããã¾ãã: {script_path}"
+        msg = f"{display_name} が見つかりません: {script_path}"
         if required:
             raise FileNotFoundError(msg)
-        print(f"â ï¸ {msg}", flush=True)
+        print(f"WARNING: {msg}", flush=True)
         return
-    print(f"{display_name} ãå®è¡ãã¾ãã", flush=True)
+
+    print(f"{display_name} を実行します。", flush=True)
     runpy.run_path(str(script_path), run_name="__main__")
 
+
 def main() -> None:
-    print(f"â run_pre_window_pg.py VERSION {VERSION}", flush=True)
+    print(f"OK run_pre_window_pg.py VERSION {VERSION}", flush=True)
 
     target_date = os.getenv("TARGET_DATE") or _today_jst()
     window_start, window_end, window_name = _resolve_window()
@@ -227,10 +260,10 @@ def main() -> None:
     print(f"target_races={len(races)}", flush=True)
 
     if not races:
-        print("LIVE_GUARDé©ç¨å¾ã®å¯¾è±¡ã¬ã¼ã¹ãªããçµäºãã¾ãã", flush=True)
+        print("LIVE_GUARD適用後の対象レースなし。終了します。", flush=True)
         return
 
-    race_ids = [str(r["race_id"]) for r in races]
+    race_ids = [str(race["race_id"]) for race in races]
     pre_session = os.getenv("PRE_SESSION") or _default_pre_session(window_name)
 
     os.environ["TARGET_DATE"] = target_date
@@ -260,6 +293,7 @@ def main() -> None:
     )
 
     print("=== run_pre_window_pg.py finished ===", flush=True)
+
 
 if __name__ == "__main__":
     main()
