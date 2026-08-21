@@ -1,4 +1,4 @@
-name: Temporary wire nightly robustness reports
+name: Temporary finalize nightly robustness wiring
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  patch:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -18,36 +18,26 @@ jobs:
           ref: ops/nightly-robustness-reports-20260821
           fetch-depth: 0
 
-      - name: Patch nightly runner
+      - name: Bump nightly version
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('run_nightly_results_pg.py')
           text = path.read_text(encoding='utf-8')
-
-          old_flags = '''RUN_MOTOR2_FORWARD_EVAL = flag("RUN_MOTOR2_FORWARD_EVAL", "1")\nRUN_MOTOR2_FORWARD_REPORT = flag("RUN_MOTOR2_FORWARD_REPORT", "1")\nSHADOW_EVAL_STRICT = flag("SHADOW_EVAL_STRICT", "0")\n'''
-          new_flags = '''RUN_MOTOR2_FORWARD_EVAL = flag("RUN_MOTOR2_FORWARD_EVAL", "1")\nRUN_MOTOR2_FORWARD_REPORT = flag("RUN_MOTOR2_FORWARD_REPORT", "1")\nRUN_MOTOR2_ROBUSTNESS_REPORT = flag("RUN_MOTOR2_ROBUSTNESS_REPORT", "1")\nRUN_N02_ROBUSTNESS_REPORT = flag("RUN_N02_ROBUSTNESS_REPORT", "1")\nRUN_EXHIBITION_ROBUSTNESS_REPORT = flag("RUN_EXHIBITION_ROBUSTNESS_REPORT", "1")\nSHADOW_EVAL_STRICT = flag("SHADOW_EVAL_STRICT", "0")\n'''
-          if old_flags not in text:
-              raise SystemExit('flag anchor not found')
-          text = text.replace(old_flags, new_flags, 1)
-
-          anchor = '''    print(\n        "\\n=== nightly results + Candidate/N02/N02-Variant/Exhibition/Motor2 "\n        "shadow evaluation/report 完了 ===",\n        flush=True,\n    )\n'''
-          stages = '''    if RUN_MOTOR2_ROBUSTNESS_REPORT:\n        run_stage(\n            10,\n            "Motor2 Forward分布robustnessレポート",\n            base_dir / "report_v24_motor2_forward_robustness_pg.py",\n            {\n                **common,\n                "MOTOR2_FORWARD_REPORT_START_DATE": os.getenv(\n                    "MOTOR2_FORWARD_REPORT_START_DATE", "2026-08-20"\n                ),\n                "MOTOR2_FORWARD_UNIT_YEN": os.getenv(\n                    "MOTOR2_FORWARD_UNIT_YEN", os.getenv("UNIT_YEN", "100")\n                ),\n            },\n            False,\n        )\n\n    if RUN_N02_ROBUSTNESS_REPORT:\n        run_stage(\n            11,\n            "N02 Forward分布robustnessレポート",\n            base_dir / "report_n02_forward_robustness_pg.py",\n            {\n                **common,\n                "N02_FORWARD_START_DATE": os.getenv(\n                    "N02_FORWARD_START_DATE", "2026-08-18"\n                ),\n                "N02_FORWARD_UNIT_YEN": os.getenv(\n                    "N02_FORWARD_UNIT_YEN", os.getenv("UNIT_YEN", "100")\n                ),\n            },\n            False,\n        )\n\n    if RUN_EXHIBITION_ROBUSTNESS_REPORT:\n        run_stage(\n            12,\n            "展示Shadow分布robustnessレポート",\n            base_dir / "report_exhibition_shadow_robustness_pg.py",\n            {\n                **common,\n                "SHADOW_REPORT_DAYS": os.getenv("SHADOW_REPORT_DAYS", "30"),\n            },\n            False,\n        )\n\n''' + anchor
-          if anchor not in text:
-              raise SystemExit('final summary anchor not found')
-          text = text.replace(anchor, stages, 1)
-
-          path.write_text(text, encoding='utf-8')
+          old = 'VERSION = "2026-08-21 nightly-observability-v6"'
+          new = 'VERSION = "2026-08-21 nightly-observability-v7-robustness"'
+          if old not in text:
+              raise SystemExit('version anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
       - name: Compile nightly runner
         run: python -m py_compile run_nightly_results_pg.py
 
-      - name: Commit patch
+      - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- run_nightly_results_pg.py
-          git commit -m "ops: wire robustness reports into nightly"
+          git commit -m "ops: identify nightly robustness stages"
           git push origin HEAD:ops/nightly-robustness-reports-20260821
