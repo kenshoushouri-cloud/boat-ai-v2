@@ -49,6 +49,7 @@ jobs:
             collect_v24_motor2_forward_shadow_pg.py \
             evaluate_v24_motor2_forward_shadow_pg.py \
             report_v24_motor2_forward_performance_pg.py \
+            report_v24_motor2_forward_robustness_pg.py \
             collect_candidate_filter_shadow_pg.py \
             evaluate_candidate_filter_shadow_results_pg.py \
             report_candidate_filter_shadow_performance_pg.py \
