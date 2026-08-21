@@ -32,7 +32,7 @@ OFFICIAL="https://www.boatrace.jp/owpc/pc/race"
 SESSION=requests.Session(); SESSION.headers.update({"User-Agent":"Mozilla/5.0 (compatible; boatrace-realtime-collector-pg/1.0)"})
 
 def _require_settings():
-    if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL ãå¿è¦ã§ãã")
+    if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL が必要です。")
 def _now(): return datetime.now(JST)
 def _now_iso(): return _now().isoformat()
 def _yyyymmdd(s): return s.replace("-","")
@@ -42,7 +42,7 @@ def _shift_day(s,n): return (datetime.strptime(s,"%Y-%m-%d")+timedelta(days=n)).
 def _norm_text(s): return re.sub(r"\s+"," ",str(s or "")).strip()
 def _norm_ticket(s):
     text=unicodedata.normalize("NFKC",str(s or "")).strip()
-    m=re.fullmatch(r"\s*([1-6])\s*[-ï¼]\s*([1-6])\s*[-ï¼]\s*([1-6])\s*",text)
+    m=re.fullmatch(r"\s*([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])\s*",text)
     if not m:return ""
     a,b,c=m.groups()
     return f"{a}-{b}-{c}" if len({a,b,c})==3 else ""
@@ -67,11 +67,11 @@ def _fetch(url):
             if not r.ok:last=f"HTTP {r.status_code}: {r.text[:120]}";time.sleep(RETRY_SLEEP);continue
             r.encoding=r.apparent_encoding or "utf-8";return r.text
         except Exception as e:last=repr(e);time.sleep(RETRY_SLEEP)
-    print(f"â ï¸ fetch failed: {url} / {last}",flush=True);return None
+    print(f"⚠️ fetch failed: {url} / {last}",flush=True);return None
 def _looks_no_data(html):
     if not html:return True
     t=_norm_text(re.sub(r"<[^>]+>"," ",html))
-    return "ãã¼ã¿ãããã¾ãã" in t or "éå¬ã¯ããã¾ãã" in t or "è©²å½ãããã¼ã¿ã¯ããã¾ãã" in t or ("ãªããºã®æ´æ°" in t and len(t)<500)
+    return "データがありません" in t or "開催はありません" in t or "該当するデータはありません" in t or ("オッズの更新" in t and len(t)<500)
 def _parse_deadline_at(r):
     raw=r.get("deadline_at")
     if isinstance(raw,datetime):
@@ -127,11 +127,11 @@ def _soup_text(html):
     if BeautifulSoup is not None:return _norm_text(BeautifulSoup(html,"html.parser").get_text(" ",strip=True))
     return _norm_text(re.sub(r"<[^>]+>"," ",html))
 def parse_weather(html):
-    text=_soup_text(html);weather=next((w for w in ["æ´","æã","ããã","é¨","éª","é§"] if w in text),None)
+    text=_soup_text(html);weather=next((w for w in ["晴","曇り","くもり","雨","雪","霧"] if w in text),None)
     def rx(p):
         m=re.search(p,text);return _safe_float(m.group(1),None) if m else None
-    m=re.search(r"(å|åæ±|æ±|åæ±|å|åè¥¿|è¥¿|åè¥¿|åãé¢¨|è¿½ãé¢¨|å³æ¨ªé¢¨|å·¦æ¨ªé¢¨)",text)
-    return {"weather":weather,"temperature_c":rx(r"æ°æ¸©\s*([0-9.]+)\s*â"),"water_temperature_c":rx(r"æ°´æ¸©\s*([0-9.]+)\s*â"),"wind_speed_m":rx(r"é¢¨é\s*([0-9.]+)\s*m"),"wind_direction":m.group(1) if m else None,"wave_height_cm":rx(r"æ³¢é«\s*([0-9.]+)\s*cm"),"raw_text":text[:2000]}
+    m=re.search(r"(北|北東|東|南東|南|南西|西|北西|向い風|追い風|右横風|左横風)",text)
+    return {"weather":weather,"temperature_c":rx(r"気温\s*([0-9.]+)\s*℃"),"water_temperature_c":rx(r"水温\s*([0-9.]+)\s*℃"),"wind_speed_m":rx(r"風速\s*([0-9.]+)\s*m"),"wind_direction":m.group(1) if m else None,"wave_height_cm":rx(r"波高\s*([0-9.]+)\s*cm"),"raw_text":text[:2000]}
 def _extract_table_rows(html):
     if BeautifulSoup is None:return []
     out=[]
@@ -165,12 +165,12 @@ def parse_exhibition(html):
 def parse_odds3t(html):
     if not html:return {}
     text=_soup_text(html);out={}
-    for m in re.finditer(r"([1-6])\s*[-ï¼]\s*([1-6])\s*[-ï¼]\s*([1-6])\s+([0-9]{1,4}(?:\.[0-9])?)",text):
+    for m in re.finditer(r"([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])\s+([0-9]{1,4}(?:\.[0-9])?)",text):
         a,b,c,o=m.groups();ticket=_norm_ticket(f"{a}-{b}-{c}");v=_safe_float(o)
         if ticket and v>0:out[ticket]=v
     return out
 
-PART_KEYWORDS=["ãã¹ãã³","ãªã³ã°","é»æ°ä¸å¼","ã­ã£ãªã¢ããã¼","ã®ã¤ã±ã¼ã¹","ã¯ã©ã³ã¯ã·ã£ãã","ã·ãªã³ã","ã­ã£ãã¬ã¿","ã­ã£ãã¬ã¿ã¼","ãã­ãã©"]
+PART_KEYWORDS=["ピストン","リング","電気一式","キャリアボデー","ギヤケース","クランクシャフト","シリンダ","キャブレタ","キャブレター","プロペラ"]
 def parse_beforeinfo_extra(html,entries):
     soup=BeautifulSoup(html,"html.parser");text=_soup_text(html)
     entry_by_lane={_safe_int(e.get("lane")):e for e in entries if 1<=_safe_int(e.get("lane"))<=6}
@@ -191,7 +191,7 @@ def parse_beforeinfo_extra(html,entries):
                 w=_safe_float(wm.group(1),None)
                 if w is not None and 35<=w<=80:row["weight_kg"]=w
         prop=norm(main[6]) if len(main)>=7 else "";parts=norm(main[7]) if len(main)>=8 else "";prev=norm(main[-1]) if len(main)>=9 else ""
-        row["is_new_propeller"]=any(k in prop for k in ("æ°ãã­ãã©","æ°ãã©","ãã­ãã©äº¤æ"))
+        row["is_new_propeller"]=any(k in prop for k in ("新プロペラ","新ペラ","プロペラ交換"))
         row["parts_replacements"]=[k for k in PART_KEYWORDS if k in parts]
         if re.fullmatch(r"\d{1,2}",prev):row["previous_race_no"]=int(prev)
         if row["previous_race_no"] is not None:
@@ -217,7 +217,7 @@ def parse_beforeinfo_extra(html,entries):
                         if re.fullmatch(r"[FL]?\d?\.\d{2}",v.strip(),flags=re.I):
                             x=_safe_float(v.replace("F","-").replace("L",""),None)
                             if x is not None:row["previous_st"]=x;break
-            if any("çé " in x for x in n):
+            if any("着順" in x for x in n):
                 for v in reversed(n):
                     x=_safe_int(v,0)
                     if 1<=x<=6:row["previous_finish"]=x;break
@@ -298,7 +298,7 @@ def save_odds(r,odds,source):
     return _upsert("v2_realtime_odds_snapshots",rows,"race_id,snapshot_label,ticket")
 def main():
     _require_settings();_ensure_realtime_tables();now=_now()
-    print("â v21_realtime_collector_pg.py VERSION 2026-08-16 collect-all-dual-target-files-v3",flush=True)
+    print("✅ v21_realtime_collector_pg.py VERSION 2026-08-16 collect-all-dual-target-files-v3",flush=True)
     print(f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} SCOPE={COLLECT_SCOPE} TARGET_ID_SCOPE={TARGET_ID_SCOPE} TARGET_RACE_ID={TARGET_RACE_ID or '-'} PARSE_ALLOW_PARTIAL={PARSE_ALLOW_PARTIAL}",flush=True)
     print(f"FINAL_DEADLINE_FILTER={FINAL_DEADLINE_FILTER} FINAL_WINDOW_BEFORE_MIN={FINAL_WINDOW_BEFORE_MIN} FINAL_WINDOW_AFTER_MIN={FINAL_WINDOW_AFTER_MIN} NOW_JST={now.isoformat()}",flush=True)
     races,entries_by,base_odds=fetch_day_base(TARGET_DATE);days=_event_day_by_venue(TARGET_DATE);scope=[]
@@ -317,10 +317,10 @@ def main():
         else:passed+=1
     print(f"races={len(races)} scope_races={len(scope)} target_races={len(target)}",flush=True)
     print(f"deadline_filter_used={use_filter} skipped_deadline_missing={miss} skipped_too_early={early} skipped_deadline_passed={passed}",flush=True)
-    # åéå¯¾è±¡(target)ã¨ãå¾æ®µã®æ¬çªå¤å®ã¸æ¸¡ãrace_idãåé¢ããã
-    # COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates ã«ããã¨ã
-    # ç· ååã®å¨ã¬ã¼ã¹ã®ç´åæå ±ãä¿å­ãã¤ã¤ãå¾æ¥ã®åè£ã¬ã¼ã¹ã ãã
-    # TARGET_RACE_IDS_FILEã¸åºåã§ããã
+    # 収集対象(target)と、後段の本番判定へ渡すrace_idを分離する。
+    # COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates にすると、
+    # ç· ååã®å¨ã¬ã¼ã¹ã®ç´åæ報を保存しつつ、従来の候補レースだけを
+    # TARGET_RACE_IDS_FILEへ出力できる。
     if TARGET_RACE_ID:
         target_id_rows = target
     elif TARGET_ID_SCOPE in ("candidates", "candidate"):
@@ -333,7 +333,7 @@ def main():
     elif TARGET_ID_SCOPE in ("none", "off", "disabled"):
         target_id_rows = []
     else:
-        # same / all: å¾æ¥äºæãåéå¯¾è±¡ããã®ã¾ã¾åºåããã
+        # same / all: 従来互換。収集対象をそのまま出力する。
         target_id_rows = target
 
     collection_ids=[str(r.get("race_id")) for r in target if r.get("race_id")]
@@ -353,12 +353,12 @@ def main():
         )
     except Exception as e:
         raise RuntimeError(
-            f"COLLECTION_RACE_IDS_FILEã®æ¸ãè¾¼ã¿ã«å¤±æãã¾ãã: {e}"
+            f"COLLECTION_RACE_IDS_FILEの書き込みに失敗しました: {e}"
         ) from e
     try:
         Path(TARGET_RACE_IDS_FILE).write_text(",".join(target_ids),encoding="utf-8")
         print(f"TARGET_RACE_IDS_FILE={TARGET_RACE_IDS_FILE} written={len(target_ids)}",flush=True)
-    except Exception as e:raise RuntimeError(f"TARGET_RACE_IDS_FILEã®æ¸ãè¾¼ã¿ã«å¤±æãã¾ãã: {e}") from e
+    except Exception as e:raise RuntimeError(f"TARGET_RACE_IDS_FILEの書き込みに失敗しました: {e}") from e
     for r in target[:20]:
         dl=_parse_deadline_at(r);print(f"  {r.get('race_id')} deadline={dl.isoformat() if dl else '-'}",flush=True)
     sw=sx=se=so=src_cond=splayer_cond=nb=ne=no=0
@@ -377,5 +377,5 @@ def main():
         if REALTIME_SLEEP_SEC>0:time.sleep(REALTIME_SLEEP_SEC)
     print("\n=== v21 PG realtime collection summary ===",flush=True)
     print(f"scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_race_condition_rows: {src_cond}\nsaved_racer_condition_rows: {splayer_cond}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}",flush=True)
-    print("=== v21 PG ãªã¢ã«ã¿ã¤ã åéçµäº ===",flush=True)
+    print("=== v21 PG リアルタイム収集終了 ===",flush=True)
 if __name__=="__main__":main()
