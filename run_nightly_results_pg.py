@@ -12,7 +12,7 @@ from typing import Dict
 from db_pg import fetch_all
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-21 nightly-observability-v8-candidate-robustness"
+VERSION = "2026-08-21 nightly-observability-v9-shadow-health"
 
 
 def flag(name: str, default: str) -> bool:
@@ -31,6 +31,7 @@ RUN_MOTOR2_FORWARD_REPORT = flag("RUN_MOTOR2_FORWARD_REPORT", "1")
 RUN_MOTOR2_ROBUSTNESS_REPORT = flag("RUN_MOTOR2_ROBUSTNESS_REPORT", "1")
 RUN_N02_ROBUSTNESS_REPORT = flag("RUN_N02_ROBUSTNESS_REPORT", "1")
 RUN_EXHIBITION_ROBUSTNESS_REPORT = flag("RUN_EXHIBITION_ROBUSTNESS_REPORT", "1")
+RUN_SHADOW_COLLECTION_HEALTH = flag("RUN_SHADOW_COLLECTION_HEALTH", "1")
 SHADOW_EVAL_STRICT = flag("SHADOW_EVAL_STRICT", "0")
 
 
@@ -381,6 +382,15 @@ def main() -> None:
                     "CANDIDATE_SHADOW_REPORT_DAYS", "30"
                 ),
             },
+            False,
+        )
+
+    if RUN_SHADOW_COLLECTION_HEALTH:
+        run_stage(
+            14,
+            "Shadow当日収集ヘルスレポート",
+            base_dir / "report_shadow_collection_health_pg.py",
+            common,
             False,
         )
 
