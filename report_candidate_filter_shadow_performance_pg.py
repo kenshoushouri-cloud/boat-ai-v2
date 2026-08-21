@@ -165,6 +165,7 @@ def _fetch_rows(start_date: str) -> List[Dict[str, Any]]:
         from v2_candidate_filter_shadow
         where race_date >= %s
           and race_date <= %s
+          and rule_id in ('S01','S02','S03','S04','S05')
         order by race_date, race_id, rule_id, ticket;
         """,
         (start_date, TARGET_DATE),
@@ -181,7 +182,7 @@ def _dedup_key(row: Dict[str, Any]) -> Tuple[str, str]:
 def main() -> None:
     print(
         "✅ report_candidate_filter_shadow_performance_pg.py "
-        "VERSION 2026-08-02 cumulative-readiness-v1",
+        "VERSION 2026-08-21 cumulative-readiness-v2-rule-isolation",
         flush=True,
     )
 
