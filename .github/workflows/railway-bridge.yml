@@ -1,5 +1,4 @@
 name: Railway bridge
-# Connection test trigger after RAILWAY_TOKEN registration.
 
 on:
   workflow_dispatch:
@@ -20,9 +19,11 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
 
 jobs:
   railway-bridge:
@@ -45,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway --version
+          railway --version | tee railway-version.txt
           railway --help > railway-help.txt
           railway status --help > railway-status-help.txt || true
           railway logs --help > railway-logs-help.txt || true
@@ -54,26 +55,73 @@ jobs:
           echo "Railway CLI help captured."
 
       - name: Railway connection status
+        id: railway_status
         if: ${{ github.event_name == 'push' || inputs.operation == 'status' }}
         shell: bash
         run: |
           set -euo pipefail
+          : > railway-status-summary.md
+
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "RAILWAY_TOKEN is not configured."
-            echo "Register the Railway Project Token as repository secret RAILWAY_TOKEN, then run this workflow manually."
+            {
+              echo "## Railway bridge status"
+              echo
+              echo "❌ RAILWAY_TOKEN is not configured."
+              echo
+              echo "Commit: \`${GITHUB_SHA}\`"
+            } >> railway-status-summary.md
+            echo "status_ok=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "RAILWAY_TOKEN is configured. Testing project-scoped CLI access..."
-          railway status --json > railway-status.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
+          set +e
+          railway status --json > railway-status.json 2> railway-status-error.txt
+          rc=$?
+          set -e
 
-          path = Path('railway-status.json')
-          data = json.loads(path.read_text(encoding='utf-8'))
-          print(json.dumps(data, ensure_ascii=False, indent=2))
-          PY
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "## Railway bridge status"
+              echo
+              echo "✅ Railway Project Token connection succeeded."
+              echo
+              echo "Railway CLI: \`$(cat railway-version.txt)\`"
+              echo "Commit: \`${GITHUB_SHA}\`"
+              echo
+              echo "No Railway settings were changed by this test."
+            } >> railway-status-summary.md
+            echo "status_ok=1" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "## Railway bridge status"
+              echo
+              echo "❌ Railway connection test failed."
+              echo
+              echo "Railway CLI: \`$(cat railway-version.txt)\`"
+              echo "Commit: \`${GITHUB_SHA}\`"
+              echo
+              echo "Secret values and raw stderr are intentionally not posted."
+            } >> railway-status-summary.md
+            echo "status_ok=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post safe Railway status to control issue
+        if: ${{ (github.event_name == 'push' || inputs.operation == 'status') && always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s railway-status-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-status-summary.md
+          fi
+
+      - name: Fail after reporting connection error
+        if: ${{ (github.event_name == 'push' || inputs.operation == 'status') && steps.railway_status.outputs.status_ok == '0' }}
+        shell: bash
+        run: |
+          echo "Railway connection test did not succeed. See control issue #${RAILWAY_BRIDGE_ISSUE}."
+          exit 1
 
       - name: Show CLI help
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'help' }}
@@ -91,15 +139,18 @@ jobs:
           cat railway-redeploy-help.txt
 
       - name: Upload Railway bridge diagnostics
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: railway-bridge-diagnostics
           if-no-files-found: ignore
           retention-days: 7
           path: |
+            railway-version.txt
             railway-help.txt
             railway-status-help.txt
             railway-logs-help.txt
             railway-variables-help.txt
             railway-redeploy-help.txt
             railway-status.json
+            railway-status-summary.md
