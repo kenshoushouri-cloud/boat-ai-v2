@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/railway-historical-one-day-pilot.yml"
+      - ".github/scripts/historical_weather_tilt_one_day_pilot.py"
   issue_comment:
     types:
       - created
@@ -107,7 +108,7 @@ jobs:
               fh.write(f'DATABASE_URL={value}\n')
           PY
 
-      - name: Run fixed-date pilot
+      - name: Run fixed-date weather/tilt pilot
         id: run_pilot
         shell: bash
         env:
@@ -115,7 +116,7 @@ jobs:
           CONFIRM_HISTORICAL_PILOT: ${{ steps.mode.outputs.mode == 'write' && 'YES' || 'NO' }}
         run: |
           set +e
-          python -u .github/scripts/historical_beforeinfo_one_day_pilot.py > pilot-output.txt 2>&1
+          python -u .github/scripts/historical_weather_tilt_one_day_pilot.py > pilot-output.txt 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -144,9 +145,9 @@ jobs:
           mode = os.environ.get('MODE', '?')
           code = os.environ.get('EXIT_CODE', '?')
           title = (
-              '## Historical beforeinfo one-day pilot audit'
+              '## Historical weather/tilt one-day pilot audit'
               if mode == 'audit'
-              else '## Historical beforeinfo one-day pilot write'
+              else '## Historical weather/tilt one-day pilot write'
           )
           lines = [
               title,
@@ -164,8 +165,9 @@ jobs:
               lines.append('Read-only: HTTP GET + database SELECT only. No rows were changed.')
           else:
               lines.append(
-                  'Write scope is restricted to historical weather/exhibition rows for the fixed target date. '
-                  'Production labels, prediction tables and LINE are not touched.'
+                  'Write scope is restricted to existing historical temperature, water-temperature, '
+                  'and tilt fields for the fixed target date. Exhibition course/ST/ranks, Production '
+                  'labels, prediction tables and LINE are not touched.'
               )
           Path('pilot-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
