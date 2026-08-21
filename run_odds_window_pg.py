@@ -52,7 +52,7 @@ def _normalize_date(value: Any) -> str:
 def _connect():
     url = os.getenv("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL ãæªè¨­å®ã§ã")
+        raise RuntimeError("DATABASE_URL が未設定です")
 
     try:
         import psycopg  # type: ignore
@@ -157,11 +157,11 @@ def _expected_ticket_set(active_lanes: set[int]) -> set[str]:
 
 def _evaluate_ticket_snapshot(tickets: List[str]) -> Dict[str, Any]:
     """
-    DBã«ä¿å­æ¸ã¿ã®ä¸é£åticketéåãè©ä¾¡ããã
+    DBに保存済みの三連単ticket集合を評価する。
 
-    6è=120ã5è=60ã4è=24éããè¨±å¯ãããã
+    6艇=120、5艇=60、4艇=24通りを許可するが、
     ä»¶æ°ã ãã§ã¯ãªããæå¹èéåã®å¨é åã¨å®å¨ä¸è´ããå ´åã®ã¿
-    complete=True ã¨ããã
+    complete=True とする。
     """
     normalized = [str(ticket or "").strip() for ticket in tickets]
     unique_tickets = set(normalized)
@@ -268,11 +268,11 @@ def _run_fetch_batch(
     warn_sec: float,
 ):
     """
-    åRå®äºãã¨ã«é²æãè¡¨ç¤ºããã
+    各R完了ごとに進捗を表示する。
 
     ThreadPoolExecutorèªä½ã§ã¯å®è¡ä¸­Futureãå®å¨ã«å¼·å¶çµäºã§ããªãããã
-    å®HTTPã¿ã¤ã ã¢ã¦ãã¯ repair_month_all_pg.py ã® HTTP_TIMEOUT /
-    HTTP_MAX_RETRIES ãWINDOWå´ããå¶éããã
+    実HTTPタイムアウトは repair_month_all_pg.py の HTTP_TIMEOUT /
+    HTTP_MAX_RETRIES をWINDOW側から制限する。
     """
     total_saved = 0
     success = 0
@@ -339,7 +339,7 @@ def _run_fetch_batch(
                         warned.add(future)
                         race_id = str(futures[future]["race_id"])
                         print(
-                            f"â ï¸ SLOW_RACE {label} "
+                            f"⚠️ SLOW_RACE {label} "
                             f"race_id={race_id} elapsed={elapsed:.1f}s",
                             flush=True,
                         )
@@ -411,7 +411,7 @@ def _run_fetch_batch(
 
 def main() -> None:
     print(
-        f"â run_odds_window_pg.py VERSION {VERSION}",
+        f"✅ run_odds_window_pg.py VERSION {VERSION}",
         flush=True,
     )
 
@@ -452,7 +452,7 @@ def main() -> None:
     os.environ["HTTP_TIMEOUT"] = str(window_http_timeout)
     os.environ["HTTP_MAX_RETRIES"] = str(window_http_max_retries)
 
-    # windowåå¾ã¯ç· ååã®äºåãªããºå°ç¨ãç¢ºå®æ±ãããªãã
+    # window取得は締切前の事前オッズ専用。確定扱いしない。
     os.environ["ODDS_IS_FINAL"] = "0"
 
     print(f"TARGET_DATE={target_date}", flush=True)
@@ -491,9 +491,9 @@ def main() -> None:
     # Motor2 Forward Shadow target scope export
     # ------------------------------------------------------------
     # STEP1ã§é¸æããããã®windowã®å¨race_idããã
-    # run_window_pipeline_pg.py ã®STEP1.5ã¸åä¸processã®ç°å¢å¤æ°ã§æ¸¡ãã
+    # run_window_pipeline_pg.py のSTEP1.5へ同一processの環境変数で渡す。
     # skip_full_oddsã§ä»åHTTPåå¾ãçç¥ããRããæ¢ã«å®å¨ãªããºãDBã«ãããã
-    # Shadowå¯¾è±¡ããã¯å¤ããªãã
+    # Shadow対象からは外さない。
     window_race_ids = [
         str(race.get("race_id") or "").strip()
         for race in all_races
@@ -510,7 +510,7 @@ def main() -> None:
 
     if not all_races:
         print(
-            "å¯¾è±¡ã¬ã¼ã¹ãªããçµäºãã¾ãã",
+            "対象レースなし。終了します。",
             flush=True,
         )
         return
@@ -587,7 +587,7 @@ def main() -> None:
         if not pending:
             print(
                 f"retry_check={retry_no}: "
-                "å¨ã¬ã¼ã¹æå¾çµã¿åããå®äº",
+                "å¨ã¬ã¼ã¹æå¾組み合わせ完了",
                 flush=True,
             )
             break
