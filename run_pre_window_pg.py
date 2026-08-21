@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import os
+import re
 import runpy
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-21 pre-window-log-cleanup-v2"
+VERSION = "2026-08-21 pre-window-log-cleanup-v3-shadow-rules-observability"
 
 WINDOW_PRESETS = {
     "morning": ("08:30", "10:15"),
@@ -224,6 +225,25 @@ def _apply_replay_safety(run_class: str) -> None:
         print("REPLAY_SAFETY: CANDIDATE_SHADOW_ENABLED=0", flush=True)
 
 
+def _candidate_shadow_rule_observability() -> None:
+    enabled = _env_bool("CANDIDATE_SHADOW_ENABLED", True)
+    raw = (os.getenv("CANDIDATE_SHADOW_RULES") or "S01,S02,S03,S04,S05").strip()
+    rules = {
+        value.strip().upper()
+        for value in re.split(r"[,\s]+", raw)
+        if value.strip()
+    }
+    print(f"CANDIDATE_SHADOW_ENABLED={enabled}", flush=True)
+    print(f"CANDIDATE_SHADOW_RULES effective={','.join(sorted(rules))}", flush=True)
+    if enabled and "N02" not in rules:
+        print(
+            "WARNING: N02 PRE Forward collection is not enabled by the effective "
+            "CANDIDATE_SHADOW_RULES. N02 rows will not be added by this PRE window "
+            "unless Railway Variables explicitly include N02.",
+            flush=True,
+        )
+
+
 def _run_script(script_path: Path, display_name: str, *, required: bool) -> None:
     if not script_path.exists():
         msg = f"{display_name} が見つかりません: {script_path}"
@@ -277,6 +297,7 @@ def main() -> None:
     print(f"PRE_SESSION exported: {pre_session}", flush=True)
     print(f"WINDOW_NAME exported: {window_name}", flush=True)
     print(f"PRE_RUN_CLASS exported: {run_class}", flush=True)
+    _candidate_shadow_rule_observability()
 
     base_dir = Path(__file__).resolve().parent
 
