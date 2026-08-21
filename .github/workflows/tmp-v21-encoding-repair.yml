@@ -1,0 +1,61 @@
+name: Temporary v21 encoding repair
+
+on:
+  push:
+    branches:
+      - fix/v21-realtime-encoding-20260821
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/v21-realtime-encoding-20260821
+          fetch-depth: 0
+
+      - name: Repair mojibake in v21 only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('v21_realtime_collector_pg.py')
+          original = path.read_text(encoding='utf-8')
+          fixed_lines = []
+          changed_lines = 0
+
+          for line in original.splitlines(keepends=True):
+              try:
+                  repaired = line.encode('latin-1').decode('utf-8')
+              except (UnicodeEncodeError, UnicodeDecodeError):
+                  repaired = line
+              if repaired != line:
+                  changed_lines += 1
+              fixed_lines.append(repaired)
+
+          fixed = ''.join(fixed_lines)
+          if fixed == original:
+              print('No encoding changes required.')
+          else:
+              path.write_text(fixed, encoding='utf-8')
+              print(f'Repaired lines: {changed_lines}')
+          PY
+
+      - name: Compile v21
+        run: python -m py_compile v21_realtime_collector_pg.py
+
+      - name: Commit repaired file if changed
+        run: |
+          if git diff --quiet -- v21_realtime_collector_pg.py; then
+            echo "No v21 changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- v21_realtime_collector_pg.py
+          git commit -m "fix: repair v21 realtime encoding"
+          git push origin HEAD:fix/v21-realtime-encoding-20260821
