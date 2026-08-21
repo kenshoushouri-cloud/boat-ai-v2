@@ -1,0 +1,137 @@
+name: Railway DB size check
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  db-size:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway db-size'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "RAILWAY_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Run read-only database size check
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run \
+            --service cron-data-prepare \
+            --environment production \
+            python -u pg_db_size_check.py \
+            > railway-db-size.txt 2> railway-db-size-error.txt
+
+      - name: Build safe summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path('railway-db-size.txt').read_text(encoding='utf-8', errors='replace')
+          m = re.search(r'^database_size:\s*(.+)$', text, re.MULTILINE)
+          db_size = m.group(1).strip() if m else 'unknown'
+
+          rows = []
+          in_tables = False
+          for line in text.splitlines():
+              if line.strip() == '--- table sizes top 30 ---':
+                  in_tables = True
+                  continue
+              if in_tables:
+                  if line.startswith('==='):
+                      break
+                  if ': ' in line:
+                      name, size = line.split(': ', 1)
+                      if re.fullmatch(r'[A-Za-z0-9_]+', name):
+                          rows.append((name, size[:40]))
+
+          lines = [
+              '## Railway PostgreSQL size',
+              '',
+              '✅ Read-only database size check completed.',
+              '',
+              f'Database size: **{db_size}**',
+              '',
+              'Railway Hobby database limit reference: **5 GB**.',
+              '',
+              '### Largest tables',
+              '',
+              '| Table | Total size |',
+              '|---|---:|',
+          ]
+          for name, size in rows[:15]:
+              lines.append(f'| `{name}` | {size} |')
+          if not rows:
+              lines.append('| (not returned) | - |')
+
+          lines += [
+              '',
+              'This operation only executed PostgreSQL size functions and table-size reads; no rows, schema, Variables, deployments, or Railway settings were changed.',
+          ]
+
+          Path('railway-db-size-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Remove raw output
+        if: always()
+        shell: bash
+        run: rm -f railway-db-size.txt railway-db-size-error.txt
+
+      - name: Post result to control issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-db-size-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-db-size-summary.md
+          fi
