@@ -1,0 +1,19 @@
+name: Bao probability independence audit
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/bao_probability_independence_audit.py'
+      - '.github/workflows/bao-probability-independence-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run static probability independence audit
+        run: python -u .github/scripts/bao_probability_independence_audit.py
