@@ -1,0 +1,113 @@
+name: Railway venue-lane weather multi-split audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/railway-venue-lane-weather-multisplit-audit.yml"
+      - ".github/scripts/racer_condition_effect_oos_audit.py"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway venue-lane-weather-multisplit-audit'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run three read-only OOS splits
+        id: audit
+        run: |
+          set +e
+          : > multisplit-output.txt
+          overall=0
+          for split in 2026-03-31 2026-04-30 2026-05-31; do
+            echo "SPLIT=$split" >> multisplit-output.txt
+            CONDITION_EFFECT_SPLIT_DATE="$split" python -u .github/scripts/racer_condition_effect_oos_audit.py > one-output.txt 2>&1
+            code=$?
+            if [ "$code" -ne 0 ]; then overall=$code; fi
+            grep -E '^(CONDITION_EFFECT_(SCHEMA|RESULT)|EFFECT_(WIND|WAVE)_VENUE_LANE=)' one-output.txt >> multisplit-output.txt || true
+          done
+          echo "exit_code=$overall" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Show sanitized multi-split summary
+        if: always()
+        run: |
+          echo '## Venue x lane weather multi-split OOS audit'
+          echo
+          echo '**Read-only / aggregate only / no coefficients / no DB writes**'
+          echo '```text'
+          cat multisplit-output.txt
+          echo '```'
+      - name: Build issue summary
+        if: always()
+        env:
+          AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          text=Path('multisplit-output.txt').read_text(encoding='utf-8',errors='replace') if Path('multisplit-output.txt').exists() else ''
+          body='## Venue x lane weather multi-split OOS audit\n\n**Read-only / aggregate only / no coefficients / no DB writes**\n\n```text\n'+text+'```\n\nAudit exit code: `'+os.environ.get('AUDIT_EXIT_CODE','?')+'`\n'
+          Path('multisplit-summary.md').write_text(body,encoding='utf-8')
+          PY
+      - name: Remove temporary files
+        if: always()
+        run: rm -f railway-vars.json railway-vars-error.txt one-output.txt
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file multisplit-summary.md
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
