@@ -26,10 +26,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from historical_weather_one_day_pilot import norm, parse_raw_weather
-from historical_weather_month_audit import (
-    has_numeric_near_label,
-    has_placeholder_near_label,
-)
+from historical_weather_month_audit import has_numeric_near_label
 
 MONTH_START = date(2025, 7, 1)
 MONTH_END = date(2025, 8, 1)
@@ -60,7 +57,7 @@ def fetch_all(conn, sql: str, params=()):
 
 def counts(conn, label: str | None) -> Dict[str, int]:
     if label is None:
-        where_label = "snapshot_label <> %s"
+        where_label = "snapshot_label is distinct from %s"
     else:
         where_label = "snapshot_label = %s"
     row = fetch_one(
@@ -158,6 +155,7 @@ def main() -> None:
             (MONTH_START, MONTH_END, SNAPSHOT_LABEL),
         )
 
+    source_by_id = {str(row["race_id"]): row for row in source_rows}
     repair_rows: list[tuple[float, float, str]] = []
     source_gap_ids: list[str] = []
     ambiguous_ids: list[str] = []
@@ -207,6 +205,7 @@ def main() -> None:
         and pre["distinct_races"] == EXPECTED_RACES
         and pre["raw_rows"] == EXPECTED_RACES
         and len(source_rows) == EXPECTED_RACES
+        and len(source_by_id) == EXPECTED_RACES
         and pre["temp_filled"] >= EXPECTED_ALREADY_FILLED_MIN
         and pre["water_filled"] >= EXPECTED_ALREADY_FILLED_MIN
         and len(source_gap_ids) == EXPECTED_SOURCE_GAPS
@@ -221,12 +220,14 @@ def main() -> None:
 
     if MODE == "audit":
         projected_temp = pre["temp_filled"] + sum(
-            1 for _, _, rid in repair_rows
-            if next(r for r in source_rows if str(r["race_id"]) == rid).get("temperature_c") is None
+            1
+            for _, _, rid in repair_rows
+            if source_by_id[rid].get("temperature_c") is None
         )
         projected_water = pre["water_filled"] + sum(
-            1 for _, _, rid in repair_rows
-            if next(r for r in source_rows if str(r["race_id"]) == rid).get("water_temperature_c") is None
+            1
+            for _, _, rid in repair_rows
+            if source_by_id[rid].get("water_temperature_c") is None
         )
         print(f"PROJECTED_TEMP_FILLED={projected_temp}", flush=True)
         print(f"PROJECTED_WATER_FILLED={projected_water}", flush=True)
