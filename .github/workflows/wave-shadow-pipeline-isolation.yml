@@ -1,0 +1,23 @@
+name: Wave shadow pipeline isolation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "v25_final_realtime_pipeline_pg.py"
+      - ".github/scripts/test_wave_shadow_pipeline_isolation.py"
+      - ".github/workflows/wave-shadow-pipeline-isolation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run isolation test
+        run: python -u .github/scripts/test_wave_shadow_pipeline_isolation.py
