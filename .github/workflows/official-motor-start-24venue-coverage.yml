@@ -1,0 +1,21 @@
+name: Official motor start 24-venue coverage
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/official_motor_start_24venue_coverage.py'
+      - '.github/workflows/official-motor-start-24venue-coverage.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Run 24-venue HTTP read-only coverage audit
+        run: python -u .github/scripts/official_motor_start_24venue_coverage.py
