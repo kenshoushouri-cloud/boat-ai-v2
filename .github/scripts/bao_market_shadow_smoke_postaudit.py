@@ -9,7 +9,8 @@ from psycopg.rows import dict_row
 JST=timezone(timedelta(hours=9))
 DB=os.getenv('DATABASE_URL','').strip()
 TARGET_DATE=os.getenv('TARGET_DATE') or datetime.now(JST).strftime('%Y-%m-%d')
-AUDIT_AT=datetime.fromisoformat(os.getenv('BAO_SMOKE_AUDIT_AT','2026-08-23T08:08:18+09:00'))
+# Second owner-only smoke was posted just after the 08:56:20 JST clock check.
+AUDIT_AT=datetime.fromisoformat(os.getenv('BAO_SMOKE_AUDIT_AT','2026-08-23T08:56:25+09:00'))
 
 
 def main():
@@ -29,14 +30,9 @@ def main():
             for x in eligible[:20]:
                 mb=float(x['minutes_before']); phase='early' if 20 <= mb <= 30 else 'late'
                 print(f"BAO_SMOKE_AUDIT_TARGET=race:{x['race_id']} venue:{x['venue_id']} rno:{x['race_no']} phase:{phase} minutes_before:{mb:.2f} deadline:{x['deadline_at']}", flush=True)
-
-            # Cross-check whether the regular realtime collector had full 120-ticket
-            # snapshots near the smoke time. This does not prove the official page's
-            # exact state at 08:08, but it gives independent contemporaneous evidence.
             for x in eligible:
                 rid=str(x['race_id'])
-                c.execute("""select snapshot_label,
-                                    min(snapshot_at) first_at,max(snapshot_at) last_at,
+                c.execute("""select snapshot_label,min(snapshot_at) first_at,max(snapshot_at) last_at,
                                     count(*) rows,count(distinct ticket) tickets
                              from v2_realtime_odds_snapshots
                              where race_id=%s and snapshot_at between %s::timestamptz - interval '30 minutes'
@@ -46,10 +42,8 @@ def main():
                 print(f'BAO_SMOKE_RT_GROUPS=race:{rid} groups:{len(rt_rows)}', flush=True)
                 for r in rt_rows:
                     print(f"BAO_SMOKE_RT_GROUP=race:{rid} label:{r['snapshot_label']} rows:{r['rows']} tickets:{r['tickets']} first:{r['first_at']} last:{r['last_at']}", flush=True)
-                c.execute("""select count(*) rows,count(distinct ticket) tickets,
-                                    min(snapshot_at) first_at,max(snapshot_at) last_at
-                             from v2_realtime_odds_snapshots
-                             where race_id=%s and snapshot_at <= %s::timestamptz""",(rid,AUDIT_AT))
+                c.execute("""select count(*) rows,count(distinct ticket) tickets,min(snapshot_at) first_at,max(snapshot_at) last_at
+                             from v2_realtime_odds_snapshots where race_id=%s and snapshot_at <= %s::timestamptz""",(rid,AUDIT_AT))
                 before=c.fetchone()
                 print(f"BAO_SMOKE_RT_BEFORE=race:{rid} rows:{before['rows']} tickets:{before['tickets']} first:{before['first_at']} last:{before['last_at']}", flush=True)
 
