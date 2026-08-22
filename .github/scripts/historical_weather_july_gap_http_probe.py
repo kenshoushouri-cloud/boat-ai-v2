@@ -6,13 +6,18 @@ text cannot yield both air and water temperatures. This diagnostic re-fetches
 only those failed public BOAT RACE historical beforeinfo pages and reports
 aggregate recoverability. It never writes to PostgreSQL and never publishes raw
 HTML/text or connection values.
+
+The gate passes only when every stored-raw gap is reachable and still lacks a
+usable air/water-temperature pair on the current official historical page. If
+any value becomes recoverable, the gate intentionally stops so a separate
+provenance-safe repair path can be designed instead of silently mixing sources.
 """
 from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 
 import os
 import psycopg
@@ -160,7 +165,17 @@ def main() -> None:
     if http_failed:
         print("GAP_PROBE_RESULT=FAIL_HTTP", flush=True)
         raise SystemExit(2)
-    print("GAP_PROBE_RESULT=PASS", flush=True)
+    if live_sanity_failed:
+        print("GAP_PROBE_RESULT=FAIL_SANITY", flush=True)
+        raise SystemExit(3)
+    if live_usable:
+        print("GAP_PROBE_RESULT=RECOVERABLE_VALUES_FOUND", flush=True)
+        raise SystemExit(4)
+    if live_parse_failed != len(failed_ids):
+        print("GAP_PROBE_RESULT=FAIL_ACCOUNTING", flush=True)
+        raise SystemExit(5)
+
+    print("GAP_PROBE_RESULT=PASS_CONFIRMED_SOURCE_GAPS", flush=True)
 
 
 if __name__ == "__main__":
