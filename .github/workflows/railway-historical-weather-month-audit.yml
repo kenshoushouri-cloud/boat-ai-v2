@@ -146,24 +146,14 @@ jobs:
               'REPAIR_', 'EXISTING_', 'PROJECTED_', 'RESULT=',
           )
           keep = [line[:800] for line in text.splitlines() if line.startswith(prefixes)]
-          audit_code = os.environ.get('AUDIT_EXIT_CODE', '?')
-          repair_code = os.environ.get('REPAIR_AUDIT_EXIT_CODE', '?')
           lines = [
-              '## Historical weather July 2025 full-month audit',
+              '## Historical weather July 2025 full-month audit', '',
+              '**Fixed target: 2025-07 / snapshot_label=historical**', '', '```text',
+              *keep[:220], '```', '',
+              f'Stored-raw audit exit code: `{os.environ.get("AUDIT_EXIT_CODE", "?")}`',
+              f'Partial-month repair projection exit code: `{os.environ.get("REPAIR_AUDIT_EXIT_CODE", "?")}`',
               '',
-              '**Fixed target: 2025-07 / snapshot_label=historical**',
-              '',
-              '```text',
-              *keep[:220],
-              '```',
-              '',
-              f'Stored-raw audit exit code: `{audit_code}`',
-              f'Partial-month repair projection exit code: `{repair_code}`',
-              '',
-              'Read-only: database SELECT + stored historical raw-text parse only. The repair '
-              'projection does not write. Confirmed source gaps are rechecked against official '
-              'historical pages immediately before any explicit month write, not during normal PR '
-              'CI. No database rows, Railway settings, predictions, or LINE behavior were changed.',
+              'Read-only: database SELECT + stored historical raw-text parse only. No database rows, Railway settings, predictions, or LINE behavior were changed.',
           ]
           Path('month-audit-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
@@ -171,22 +161,127 @@ jobs:
       - name: Remove raw temporary files
         if: always()
         shell: bash
-        run: |
-          rm -f railway-vars.json railway-vars-error.txt month-audit-output.txt repair-audit-output.txt
+        run: rm -f railway-vars.json railway-vars-error.txt month-audit-output.txt repair-audit-output.txt
 
       - name: Post sanitized result to control issue
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-audit-summary.md
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-audit-summary.md
 
       - name: Fail workflow if an audit gate failed
         if: >-
           steps.audit.outputs.exit_code != '0' ||
           steps.repair_audit.outputs.exit_code != '0'
+        shell: bash
+        run: exit 1
+
+  month-repair-diagnostic:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-weather-month-diagnose-jul25'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run rollback-only transaction diagnostic
+        id: diagnose
+        shell: bash
+        env:
+          HISTORICAL_MONTH_MODE: diagnose
+        run: |
+          set +e
+          python -u .github/scripts/historical_weather_july_month_repair.py > diagnostic-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized diagnostic summary
+        if: always()
+        shell: bash
+        env:
+          DIAG_EXIT_CODE: ${{ steps.diagnose.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          text = Path('diagnostic-output.txt').read_text(encoding='utf-8', errors='replace') if Path('diagnostic-output.txt').exists() else ''
+          prefixes = (
+              'MONTH_REPAIR_', 'EXPECTED_', 'PRE_', 'PARSE_', 'SOURCE_', 'AMBIGUOUS_',
+              'SANITY_', 'REPAIR_', 'EXISTING_', 'DIAG_', 'WRITE_WEATHER_ROWS=', 'POST_', 'RESULT=',
+          )
+          keep = [line[:400] for line in text.splitlines() if line.startswith(prefixes)]
+          lines = [
+              '## Historical weather July 2025 rollback-only write diagnostic', '',
+              '```text', *keep[:160], '```', '',
+              f'Diagnostic exit code: `{os.environ.get("DIAG_EXIT_CODE", "?")}`', '',
+              'Diagnostic mode executes the same historical NULL-only UPDATE path inside one transaction and always rolls it back. No committed database changes, Railway settings, predictions, or LINE behavior are allowed.',
+          ]
+          Path('diagnostic-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Remove raw temporary files
+        if: always()
+        shell: bash
+        run: rm -f railway-vars.json railway-vars-error.txt diagnostic-output.txt
+
+      - name: Post sanitized diagnostic result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file diagnostic-summary.md
+
+      - name: Fail if diagnostic found an error
+        if: steps.diagnose.outputs.exit_code != '0'
         shell: bash
         run: exit 1
 
@@ -226,26 +321,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "RAILWAY_TOKEN is not configured."
-            exit 1
-          fi
           railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
           python - <<'PY'
           import json
           import os
           from pathlib import Path
-
           data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
-          value = None
-          if isinstance(data, dict):
-              value = data.get('DATABASE_PUBLIC_URL')
-          elif isinstance(data, list):
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
               for item in data:
-                  if isinstance(item, dict) and (
-                      item.get('name') == 'DATABASE_PUBLIC_URL'
-                      or item.get('key') == 'DATABASE_PUBLIC_URL'
-                  ):
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
                       value = item.get('value')
                       break
           if not value:
@@ -305,7 +390,6 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-
           texts = []
           for name in ('prewrite-audit-output.txt', 'gap-probe-output.txt', 'month-write-output.txt'):
               path = Path(name)
@@ -319,23 +403,13 @@ jobs:
           )
           keep = [line[:800] for line in text.splitlines() if line.startswith(prefixes)]
           lines = [
-              '## Historical weather July 2025 guarded partial-month repair',
-              '',
-              '**Fixed target: 2025-07 / snapshot_label=historical**',
-              '',
-              '```text',
-              *keep[:220],
-              '```',
-              '',
+              '## Historical weather July 2025 guarded partial-month repair', '',
+              '**Fixed target: 2025-07 / snapshot_label=historical**', '', '```text',
+              *keep[:220], '```', '',
               f'Prewrite audit exit code: `{os.environ.get("PREAUDIT_EXIT_CODE", "?")}`',
               f'Official source-gap recheck exit code: `{os.environ.get("GAP_EXIT_CODE", "?")}`',
-              f'Write exit code: `{os.environ.get("WRITE_EXIT_CODE", "?")}`',
-              '',
-              'Write scope: existing historical rows only; temperature_c and '
-              'water_temperature_c NULL cells only; values come only from stored official raw '
-              'text. Confirmed source-gap races remain NULL. Exhibition/course/ST/tilt, '
-              'nonhistorical snapshots, Production/Shadow decisions, Railway settings and LINE '
-              'are not touched.',
+              f'Write exit code: `{os.environ.get("WRITE_EXIT_CODE", "?")}`', '',
+              'Write scope: existing historical rows only; temperature_c and water_temperature_c NULL cells only; values come only from stored official raw text. Confirmed source-gap races remain NULL. Exhibition/course/ST/tilt, nonhistorical snapshots, Production/Shadow decisions, Railway settings and LINE are not touched.',
           ]
           Path('month-write-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
@@ -343,17 +417,14 @@ jobs:
       - name: Remove raw temporary files
         if: always()
         shell: bash
-        run: |
-          rm -f railway-vars.json railway-vars-error.txt prewrite-audit-output.txt gap-probe-output.txt month-write-output.txt
+        run: rm -f railway-vars.json railway-vars-error.txt prewrite-audit-output.txt gap-probe-output.txt month-write-output.txt
 
       - name: Post sanitized result to control issue
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-write-summary.md
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-write-summary.md
 
       - name: Fail workflow if any write gate failed
         if: >-
