@@ -76,6 +76,13 @@ def main() -> None:
     print("TILT_POLICY=coverage_diagnostic_only_not_feature_ready", flush=True)
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=True) as conn:
+        # Session-local safety only. Avoid parallel DSM pressure on the production DB.
+        with conn.cursor() as cur:
+            cur.execute("set max_parallel_workers_per_gather = 0")
+            cur.execute("set work_mem = '8MB'")
+            cur.execute("set statement_timeout = '120s'")
+        print("INTERACTION_READINESS_SESSION=parallel_off,work_mem_8MB,timeout_120s", flush=True)
+
         ec = columns(conn, "v2_race_entries")
         xc = columns(conn, "v2_realtime_exhibition_snapshots")
         wc = columns(conn, "v2_realtime_weather_snapshots")
