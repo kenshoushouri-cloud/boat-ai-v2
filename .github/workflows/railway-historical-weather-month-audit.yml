@@ -1,0 +1,163 @@
+name: Railway historical weather month audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/railway-historical-weather-month-audit.yml"
+      - ".github/scripts/historical_weather_month_audit.py"
+      - ".github/scripts/historical_weather_one_day_pilot.py"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - ".github/workflows/railway-historical-weather-month-audit.yml"
+      - ".github/scripts/historical_weather_month_audit.py"
+      - ".github/scripts/historical_weather_one_day_pilot.py"
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  month-audit:
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway historical-weather-month-audit-jul25'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "RAILWAY_TOKEN is not configured."
+            exit 1
+          fi
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (
+                      item.get('name') == 'DATABASE_PUBLIC_URL'
+                      or item.get('key') == 'DATABASE_PUBLIC_URL'
+                  ):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run fixed July 2025 historical weather month audit
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          python -u .github/scripts/historical_weather_month_audit.py > month-audit-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized month audit summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          src = Path('month-audit-output.txt')
+          text = src.read_text(encoding='utf-8', errors='replace') if src.exists() else ''
+          prefixes = (
+              'MONTH_AUDIT_', 'EXPECTED_', 'HIST_', 'RAW_', 'PARSE_',
+              'PRE_', 'REPARSED_', 'RESULT=',
+          )
+          keep = [line[:800] for line in text.splitlines() if line.startswith(prefixes)]
+          code = os.environ.get('EXIT_CODE', '?')
+          lines = [
+              '## Historical weather July 2025 full-month audit',
+              '',
+              '**Fixed target: 2025-07 / snapshot_label=historical**',
+              '',
+              '```text',
+              *keep[:120],
+              '```',
+              '',
+              f'Process exit code: `{code}`',
+              '',
+              'Read-only: database SELECT + stored historical raw-text parse only. '
+              'No database rows, Railway settings, predictions, or LINE behavior were changed.',
+          ]
+          Path('month-audit-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Remove raw temporary files
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-vars.json railway-vars-error.txt month-audit-output.txt
+
+      - name: Post sanitized result to control issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-audit-summary.md
+
+      - name: Fail workflow if quality gate failed
+        if: ${{ steps.audit.outputs.exit_code != '0' }}
+        shell: bash
+        run: exit 1
