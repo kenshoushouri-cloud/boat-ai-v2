@@ -50,14 +50,14 @@ def main():
                      w.wave_height_cm,w.wind_speed_m
               from races r left join e using(race_id) left join x using(race_id) left join w using(race_id) left join o using(race_id)
             )
-            select to_char(race_date,'YYYY-MM') month,count(*) races,
-              count(*) filter(where motor_n=6) motor6,
-              count(*) filter(where ex_n=6) ex6,
-              count(*) filter(where odds_n=120) odds120,
-              count(*) filter(where wave_height_cm is not null) wave,
-              count(*) filter(where wind_speed_m is not null) wind,
-              count(*) filter(where motor_n=6 and ex_n=6 and odds_n=120 and wave_height_cm is not null) joint_wave,
-              count(*) filter(where motor_n=6 and ex_n=6 and odds_n=120 and wind_speed_m is not null) joint_wind
+            select to_char(race_date,'YYYY-MM') as month_key,count(*) as races,
+              count(*) filter(where motor_n=6) as motor6,
+              count(*) filter(where ex_n=6) as ex6,
+              count(*) filter(where odds_n=120) as odds120,
+              count(*) filter(where wave_height_cm is not null) as wave,
+              count(*) filter(where wind_speed_m is not null) as wind,
+              count(*) filter(where motor_n=6 and ex_n=6 and odds_n=120 and wave_height_cm is not null) as joint_wave,
+              count(*) filter(where motor_n=6 and ex_n=6 and odds_n=120 and wind_speed_m is not null) as joint_wind
             from z group by 1 order by 1
             '''
             c.execute(q,(START,END,HIST,HIST)); rows=[dict(x) for x in c.fetchall()]
@@ -65,15 +65,15 @@ def main():
             for r in rows:
                 print('BAO_WX_READY_MONTH='+ ' '.join(f'{k}:{v}' for k,v in r.items()),flush=True)
                 total['races']+=int(r['races']); total['joint_wave']+=int(r['joint_wave']); total['joint_wind']+=int(r['joint_wind'])
-            dist=one(c,'''select count(*) rows,
-                count(*) filter(where wave_height_cm<3) wave_lt3,
-                count(*) filter(where wave_height_cm>=3 and wave_height_cm<6) wave_3_6,
-                count(*) filter(where wave_height_cm>=6 and wave_height_cm<10) wave_6_10,
-                count(*) filter(where wave_height_cm>=10) wave_ge10,
-                count(*) filter(where wind_speed_m<2) wind_lt2,
-                count(*) filter(where wind_speed_m>=2 and wind_speed_m<4) wind_2_4,
-                count(*) filter(where wind_speed_m>=4 and wind_speed_m<6) wind_4_6,
-                count(*) filter(where wind_speed_m>=6) wind_ge6
+            dist=one(c,'''select count(*) as rows,
+                count(*) filter(where wave_height_cm<3) as wave_lt3,
+                count(*) filter(where wave_height_cm>=3 and wave_height_cm<6) as wave_3_6,
+                count(*) filter(where wave_height_cm>=6 and wave_height_cm<10) as wave_6_10,
+                count(*) filter(where wave_height_cm>=10) as wave_ge10,
+                count(*) filter(where wind_speed_m<2) as wind_lt2,
+                count(*) filter(where wind_speed_m>=2 and wind_speed_m<4) as wind_2_4,
+                count(*) filter(where wind_speed_m>=4 and wind_speed_m<6) as wind_4_6,
+                count(*) filter(where wind_speed_m>=6) as wind_ge6
                 from v2_realtime_weather_snapshots w join v2_races r using(race_id)
                 where r.race_date between %s and %s and w.snapshot_label=%s''',(START,END,HIST))
     print('BAO_WX_READY_TOTAL='+ ' '.join(f'{k}:{v}' for k,v in total.items()),flush=True)
