@@ -48,7 +48,7 @@ def audit(conn,split):
              (avg(b.top3)-tb.ptop3) * (count(*)::float8/(count(*)+%s)) etop3
       from base b join tbase tb using(own_class,own_lane)
       where b.race_date<=%s and tb.n>=%s
-      group by 1,2,3,4,tb.pwin,tb.ptop3
+      group by b.own_class,b.own_lane,b.opp_lane,b.opp_class,tb.pwin,tb.ptop3
       having count(*)>=%s
     ),
     scored as (
@@ -61,7 +61,7 @@ def audit(conn,split):
       join tbase tb using(own_class,own_lane)
       left join teff t using(own_class,own_lane,opp_lane,opp_class)
       where b.race_date>%s and tb.n>=%s
-      group by 1,2,3,5,6
+      group by b.race_id,b.own_lane,b.own_class,tb.pwin,tb.ptop3
     ),
     pred as (
       select *,greatest(.001,least(.999,pwin+score_win)) pwin_adj,
