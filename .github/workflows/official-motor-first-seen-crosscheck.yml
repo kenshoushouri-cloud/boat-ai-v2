@@ -1,0 +1,19 @@
+name: Official motor generation start cross-check
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/official_motor_first_seen_crosscheck.py'
+      - '.github/workflows/official-motor-first-seen-crosscheck.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - run: python -u .github/scripts/official_motor_first_seen_crosscheck.py
