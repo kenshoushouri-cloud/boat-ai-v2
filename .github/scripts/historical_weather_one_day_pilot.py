@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Fixed-date historical weather repair pilot using already-stored raw text.
+"""Allowlisted fixed-date historical weather repair pilot using stored raw text.
 
 The historical weather rows already contain the official beforeinfo text in
 `raw.text`. The original parser normalized Unicode with NFKC, which converts
@@ -12,8 +12,10 @@ historical raw text and fills only:
 - v2_realtime_weather_snapshots.water_temperature_c
 
 Safety:
-- Date is hardcoded to 2025-07-01.
+- Date must be in the explicit ALLOWED_PILOT_DATES set.
 - snapshot_label is hardcoded to historical.
+- The expected race count is read from v2_races for the selected date and all
+  historical weather rows/raw texts must match that count exactly.
 - Existing rows only: UPDATE, never INSERT/UPSERT.
 - Existing non-null values are preserved with COALESCE.
 - No exhibition/course/ST/tilt fields are read for writing or changed.
@@ -30,12 +32,13 @@ from typing import Any, Dict
 import psycopg
 from psycopg.rows import dict_row
 
-PILOT_DATE = "2025-07-01"
+ALLOWED_PILOT_DATES = {"2025-07-01", "2025-12-15"}
+PILOT_DATE = os.getenv("HISTORICAL_PILOT_DATE", "2025-07-01").strip()
 SNAPSHOT_LABEL = "historical"
 MODE = os.getenv("HISTORICAL_PILOT_MODE", "audit").strip().lower()
 CONFIRM = os.getenv("CONFIRM_HISTORICAL_PILOT", "").strip()
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-EXPECTED_RACES = 144
+MAX_EXPECTED_RACES = 288
 
 
 def norm(value: Any) -> str:
@@ -129,6 +132,8 @@ def print_db(prefix: str, row: Dict[str, int]) -> None:
 
 
 def main() -> None:
+    if PILOT_DATE not in ALLOWED_PILOT_DATES:
+        raise RuntimeError("HISTORICAL_PILOT_DATE is not allowlisted")
     if MODE not in {"audit", "write"}:
         raise RuntimeError("HISTORICAL_PILOT_MODE must be audit or write")
     if not DATABASE_URL:
@@ -159,6 +164,7 @@ def main() -> None:
             (PILOT_DATE, SNAPSHOT_LABEL),
         )
 
+    expected_races = pre["races"]
     parsed_rows = []
     parse_failed = 0
     sanity_failed = 0
@@ -181,18 +187,19 @@ def main() -> None:
         )
 
     quality_ok = (
-        pre["races"] == EXPECTED_RACES
-        and pre["weather_rows"] == EXPECTED_RACES
-        and pre["distinct_races"] == EXPECTED_RACES
-        and pre["raw_text"] == EXPECTED_RACES
-        and len(source_rows) == EXPECTED_RACES
-        and len(parsed_rows) == EXPECTED_RACES
+        1 <= expected_races <= MAX_EXPECTED_RACES
+        and pre["weather_rows"] == expected_races
+        and pre["distinct_races"] == expected_races
+        and pre["raw_text"] == expected_races
+        and len(source_rows) == expected_races
+        and len(parsed_rows) == expected_races
         and parse_failed == 0
         and sanity_failed == 0
     )
 
-    print(f"PARSE_RAW_ROWS={len(source_rows)}/{EXPECTED_RACES}", flush=True)
-    print(f"PARSE_WEATHER_USABLE={len(parsed_rows)}/{EXPECTED_RACES}", flush=True)
+    print(f"PILOT_EXPECTED_RACES={expected_races}", flush=True)
+    print(f"PARSE_RAW_ROWS={len(source_rows)}/{expected_races}", flush=True)
+    print(f"PARSE_WEATHER_USABLE={len(parsed_rows)}/{expected_races}", flush=True)
     print(f"PARSE_FAILED={parse_failed}", flush=True)
     print(f"PARSE_SANITY_FAILED={sanity_failed}", flush=True)
     print_db("PRE", pre)
@@ -245,9 +252,9 @@ def main() -> None:
                 raise RuntimeError("historical weather row count changed unexpectedly")
             if post_in_tx["distinct_races"] != pre["distinct_races"]:
                 raise RuntimeError("historical weather race set changed unexpectedly")
-            if post_in_tx["temp"] != EXPECTED_RACES:
+            if post_in_tx["temp"] != expected_races:
                 raise RuntimeError("post-write temperature completeness failed")
-            if post_in_tx["water_temp"] != EXPECTED_RACES:
+            if post_in_tx["water_temp"] != expected_races:
                 raise RuntimeError("post-write water-temperature completeness failed")
             if post_in_tx["raw_text"] != pre["raw_text"]:
                 raise RuntimeError("historical raw text coverage changed unexpectedly")
