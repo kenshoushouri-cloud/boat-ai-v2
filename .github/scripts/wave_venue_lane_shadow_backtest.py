@@ -98,24 +98,25 @@ def build_profile(rows):
             continue
         win = int(x.get("finish_position") == 1)
         b = wave_bucket(x.get("wave_height_cm"))
-        bc = base_counts[(venue, lane)]
-        bc[0] += 1
-        bc[1] += win
-        wc = bucket_counts[(venue, lane, b)]
-        wc[0] += 1
-        wc[1] += win
+        base_counts[(venue, lane)][0] += 1
+        base_counts[(venue, lane)][1] += win
+        bucket_counts[(venue, lane, b)][0] += 1
+        bucket_counts[(venue, lane, b)][1] += win
 
     out = {}
     for key, (n, wins) in bucket_counts.items():
-        venue, lane, b = key
+        venue, lane, _ = key
         bn, bw = base_counts[(venue, lane)]
         if n < BUCKET_MIN or bn < BASE_MIN:
             continue
         p_bucket = (wins + 0.5) / (n + 1.0)
         p_base = (bw + 0.5) / (bn + 1.0)
         shrink = n / (n + SHRINK_K)
-        delta_logit = (logit(p_bucket) - logit(p_base)) * shrink
-        out[key] = {"n": n, "base_n": bn, "delta_logit": delta_logit}
+        out[key] = {
+            "n": n,
+            "base_n": bn,
+            "delta_logit": (logit(p_bucket) - logit(p_base)) * shrink,
+        }
     return out
 
 
@@ -126,10 +127,46 @@ def group_races(rows):
     return by
 
 
+def stability_summary(base_groups, adj_groups):
+    result = {}
+    keys = sorted(base_groups)
+    for w in WEIGHTS:
+        eligible = 0
+        logloss_better = 0
+        brier_better = 0
+        top1_not_worse = 0
+        all_three = 0
+        for key in keys:
+            bm = metrics(base_groups[key])
+            am = metrics(adj_groups[w].get(key, []))
+            if bm["n"] < 50 or am["n"] != bm["n"]:
+                continue
+            eligible += 1
+            ll = am["logloss"] < bm["logloss"]
+            br = am["brier"] < bm["brier"]
+            t1 = am["top1"] >= bm["top1"]
+            logloss_better += int(ll)
+            brier_better += int(br)
+            top1_not_worse += int(t1)
+            all_three += int(ll and br and t1)
+        result[w] = {
+            "eligible": eligible,
+            "logloss_better": logloss_better,
+            "brier_better": brier_better,
+            "top1_not_worse": top1_not_worse,
+            "all_three": all_three,
+        }
+    return result
+
+
 def evaluate(rows, profile):
     grouped = group_races(rows)
     baseline = []
     adjusted = {w: [] for w in WEIGHTS}
+    month_base = defaultdict(list)
+    month_adj = {w: defaultdict(list) for w in WEIGHTS}
+    venue_base = defaultdict(list)
+    venue_adj = {w: defaultdict(list) for w in WEIGHTS}
     covered_races = 0
     complete_races = 0
 
@@ -144,9 +181,13 @@ def evaluate(rows, profile):
             continue
         winner = winners[0]
         venue = str(rr[0].get("venue_id") or "").zfill(2)
+        month = str(rr[0].get("race_date"))[:7]
         bucket = wave_bucket(rr[0].get("wave_height_cm"))
         raw = {lane: base._lane_raw_strength(lanes[lane], lane, venue) for lane in range(1, 7)}
-        baseline.append((softmax(raw), winner))
+        base_rec = (softmax(raw), winner)
+        baseline.append(base_rec)
+        month_base[month].append(base_rec)
+        venue_base[venue].append(base_rec)
         complete_races += 1
 
         effects = {lane: profile.get((venue, lane, bucket)) for lane in range(1, 7)}
@@ -157,9 +198,33 @@ def evaluate(rows, profile):
             for lane, effect in effects.items():
                 if effect:
                     adj_raw[lane] += effect["delta_logit"] * base.PROB_TEMP * weight
-            adjusted[weight].append((softmax(adj_raw), winner))
+            rec = (softmax(adj_raw), winner)
+            adjusted[weight].append(rec)
+            month_adj[weight][month].append(rec)
+            venue_adj[weight][venue].append(rec)
 
-    return complete_races, covered_races, metrics(baseline), {w: metrics(v) for w, v in adjusted.items()}
+    return {
+        "complete": complete_races,
+        "covered": covered_races,
+        "baseline": metrics(baseline),
+        "adjusted": {w: metrics(v) for w, v in adjusted.items()},
+        "month_stability": stability_summary(month_base, month_adj),
+        "venue_stability": stability_summary(venue_base, venue_adj),
+    }
+
+
+def print_stability(prefix, data):
+    for w in WEIGHTS:
+        s = data[w]
+        e = s["eligible"]
+        print(
+            f"WAVE_SHADOW_BT_{prefix}_{w:.2f}=eligible:{e} "
+            f"logloss_better:{s['logloss_better']}/{e} "
+            f"brier_better:{s['brier_better']}/{e} "
+            f"top1_not_worse:{s['top1_not_worse']}/{e} "
+            f"all_three:{s['all_three']}/{e}",
+            flush=True,
+        )
 
 
 def main():
@@ -168,23 +233,27 @@ def main():
     if not (START_DATE <= SPLIT_DATE < END_DATE):
         raise RuntimeError("invalid period")
 
+    oos_start = date.fromordinal(SPLIT_DATE.toordinal() + 1)
     print("WAVE_SHADOW_BT_MODE=read_only", flush=True)
     print(f"WAVE_SHADOW_BT_PERIOD={START_DATE}..{END_DATE}", flush=True)
     print(f"WAVE_SHADOW_BT_TRAIN={START_DATE}..{SPLIT_DATE}", flush=True)
-    print(f"WAVE_SHADOW_BT_OOS={date.fromordinal(SPLIT_DATE.toordinal()+1)}..{END_DATE}", flush=True)
+    print(f"WAVE_SHADOW_BT_OOS={oos_start}..{END_DATE}", flush=True)
     print(f"WAVE_SHADOW_BT_GATES=bucket>={BUCKET_MIN},base>={BASE_MIN},shrink_k={SHRINK_K}", flush=True)
     print("WAVE_SHADOW_BT_POLICY=no_writes_no_production_no_shadow_table_no_line", flush=True)
 
     train = load_rows(START_DATE, SPLIT_DATE)
-    oos = load_rows(date.fromordinal(SPLIT_DATE.toordinal() + 1), END_DATE)
+    oos = load_rows(oos_start, END_DATE)
     profile = build_profile(train)
     print(f"WAVE_SHADOW_BT_PROFILE_GROUPS={len(profile)}", flush=True)
-    complete, covered, base_m, adj = evaluate(oos, profile)
+    result = evaluate(oos, profile)
+    complete = result["complete"]
+    covered = result["covered"]
+    base_m = result["baseline"]
     print(f"WAVE_SHADOW_BT_OOS_RACES={complete}", flush=True)
     print(f"WAVE_SHADOW_BT_COVERED_RACES={covered} ({(100.0 * covered / complete if complete else 0.0):.1f}%)", flush=True)
     print(f"WAVE_SHADOW_BT_BASELINE=top1:{100 * base_m['top1']:.3f}% logloss:{base_m['logloss']:.6f} brier:{base_m['brier']:.6f}", flush=True)
     for w in WEIGHTS:
-        m = adj[w]
+        m = result["adjusted"][w]
         print(
             f"WAVE_SHADOW_BT_WEIGHT_{w:.2f}=top1:{100 * m['top1']:.3f}% "
             f"logloss:{m['logloss']:.6f} brier:{m['brier']:.6f} "
@@ -193,6 +262,8 @@ def main():
             f"delta_brier:{m['brier'] - base_m['brier']:+.6f}",
             flush=True,
         )
+    print_stability("MONTH_STABILITY", result["month_stability"])
+    print_stability("VENUE_STABILITY", result["venue_stability"])
     print("WAVE_SHADOW_BT_RESULT=PASS_READ_ONLY", flush=True)
 
 
