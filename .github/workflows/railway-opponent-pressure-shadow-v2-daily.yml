@@ -1,0 +1,190 @@
+name: Railway opponent pressure Shadow v2 daily
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/railway-opponent-pressure-shadow-v2-daily.yml'
+      - '.github/scripts/opponent_pressure_shadow_v2_compact.py'
+  schedule:
+    # 07:15 JST. Runs after morning data preparation and before the earliest 08:30 races.
+    - cron: '15 22 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opponent-pressure-v2-daily
+  cancel-in-progress: false
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'main' || '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Resolve target date
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, timezone, timedelta
+          jst=timezone(timedelta(hours=9))
+          target='2026-08-22' if os.environ.get('GITHUB_EVENT_NAME')=='pull_request' else datetime.now(jst).strftime('%Y-%m-%d')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'TARGET_DATE={target}\n')
+          print(f'OPP_PRESSURE_DAILY_TARGET_DATE={target}')
+          PY
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Preflight complete race cards
+        run: |
+          python - <<'PY'
+          import os, psycopg
+          from psycopg.rows import dict_row
+          target=os.environ['TARGET_DATE']
+          with psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""
+                    with cards as (
+                      select r.race_id,
+                             count(e.*) filter(where e.lane between 1 and 6 and e.racer_class between 1 and 4) valid_entries,
+                             count(distinct e.lane) filter(where e.lane between 1 and 6 and e.racer_class between 1 and 4) valid_lanes
+                      from v2_races r
+                      left join v2_race_entries e on e.race_id=r.race_id
+                      where r.race_date=%s
+                      group by r.race_id
+                    )
+                    select count(*) total_races,
+                           count(*) filter(where valid_entries=6 and valid_lanes=6) complete_races,
+                           coalesce(sum(valid_entries),0) valid_entries
+                    from cards
+                  """,(target,))
+                  r=cur.fetchone()
+          total=int(r['total_races'] or 0); complete=int(r['complete_races'] or 0); entries=int(r['valid_entries'] or 0)
+          print(f'OPP_PRESSURE_DAILY_PREFLIGHT=total:{total} complete:{complete} entries:{entries}')
+          if total <= 0 or complete != total or entries != total*6:
+              raise SystemExit('target race cards are not complete; no Shadow write will be attempted')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'EXPECTED_RACES={total}\n')
+          PY
+      - name: Read-only score preflight
+        id: preflight
+        env:
+          OPPONENT_PRESSURE_V2_ENABLED: '1'
+          OPPONENT_PRESSURE_V2_DRY_RUN: '1'
+        run: |
+          set +e
+          python -u .github/scripts/opponent_pressure_shadow_v2_compact.py > pressure-v2-preflight.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Validate score preflight
+        if: always()
+        run: |
+          python - <<'PY'
+          import os,re
+          from pathlib import Path
+          text=Path('pressure-v2-preflight.txt').read_text(encoding='utf-8',errors='replace') if Path('pressure-v2-preflight.txt').exists() else ''
+          for line in text.splitlines():
+              if line.startswith('OPP_PRESSURE_V2_'):
+                  print(line[:1000])
+          if '${{ steps.preflight.outputs.exit_code }}' != '0':
+              raise SystemExit('score preflight failed')
+          m=re.search(r'OPP_PRESSURE_V2_EFFECT_CELLS=(\d+) TARGET_RACES=(\d+) PAYLOADS=(\d+) COMPLETE=(\d+)',text)
+          if not m:
+              raise SystemExit('score preflight summary missing')
+          _,target,payloads,complete=map(int,m.groups())
+          expected=int(os.environ['EXPECTED_RACES'])
+          if target != expected or payloads != expected or complete != expected:
+              raise SystemExit(f'incomplete score preflight target={target} payloads={payloads} complete={complete} expected={expected}')
+          if 'OPP_PRESSURE_V2_RESULT=PASS_DRY_RUN' not in text:
+              raise SystemExit('dry-run PASS marker missing')
+          print('OPP_PRESSURE_DAILY_SCORE_PREFLIGHT=PASS')
+          PY
+      - name: Write daily compact Shadow rows
+        if: github.event_name == 'schedule'
+        id: write
+        env:
+          OPPONENT_PRESSURE_V2_ENABLED: '1'
+          OPPONENT_PRESSURE_V2_DRY_RUN: '0'
+        run: |
+          set +e
+          python -u .github/scripts/opponent_pressure_shadow_v2_compact.py > pressure-v2-write.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Verify scheduled write
+        if: github.event_name == 'schedule'
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import date,timedelta
+          from pathlib import Path
+          import psycopg
+          from psycopg.rows import dict_row
+          text=Path('pressure-v2-write.txt').read_text(encoding='utf-8',errors='replace') if Path('pressure-v2-write.txt').exists() else ''
+          for line in text.splitlines():
+              if line.startswith('OPP_PRESSURE_V2_'):
+                  print(line[:1000])
+          if '${{ steps.write.outputs.exit_code }}' != '0' or 'OPP_PRESSURE_V2_RESULT=PASS_WRITE' not in text:
+              raise SystemExit('daily Shadow write failed')
+          target=date.fromisoformat(os.environ['TARGET_DATE']); expected=int(os.environ['EXPECTED_RACES'])
+          with psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""
+                    select count(*) rows,
+                      count(*) filter(where model_version=2 and train_end=%s) version_rows,
+                      count(*) filter(where cardinality(racer_classes)=6 and cardinality(matched_opponents)=6
+                        and cardinality(base_win)=6 and cardinality(base_top3)=6
+                        and cardinality(score_win)=6 and cardinality(score_top3)=6
+                        and cardinality(adj_win)=6 and cardinality(adj_top3)=6) arrays_ok,
+                      count(*) filter(where 4 <= all(matched_opponents)) matched_ok
+                    from v2_opponent_pressure_shadow_v2 where race_date=%s
+                  """,(target-timedelta(days=1),target))
+                  r=cur.fetchone()
+                  cur.execute("select count(*) total_rows,pg_total_relation_size('v2_opponent_pressure_shadow_v2') relation_bytes from v2_opponent_pressure_shadow_v2")
+                  s=cur.fetchone()
+          print(f"OPP_PRESSURE_DAILY_POST=rows:{r['rows']} version:{r['version_rows']} arrays:{r['arrays_ok']} matched:{r['matched_ok']} expected:{expected}")
+          print(f"OPP_PRESSURE_DAILY_STORAGE=total_rows:{s['total_rows']} relation_bytes:{s['relation_bytes']}")
+          if any(int(r[k] or 0) != expected for k in ('rows','version_rows','arrays_ok','matched_ok')):
+              raise SystemExit('daily Shadow postcondition failed')
+          print('OPP_PRESSURE_DAILY_RESULT=PASS_WRITE_VERIFIED')
+          PY
+      - name: PR validation result
+        if: github.event_name == 'pull_request'
+        run: echo 'OPP_PRESSURE_DAILY_RESULT=PASS_READ_ONLY_PR'
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json pressure-v2-preflight.txt pressure-v2-write.txt
