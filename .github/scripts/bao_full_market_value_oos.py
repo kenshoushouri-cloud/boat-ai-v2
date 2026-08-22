@@ -25,7 +25,7 @@ import v24_pre_candidate_notifier_pg as v24
 
 DB=os.getenv('DATABASE_URL','').strip()
 START=date.fromisoformat('2026-01-01');END=date.fromisoformat('2026-08-22');TEMP=1.20
-BINS=[(0,.5,'LT0.5'),(.5,.7,'0.5-0.7'),(.7,.85,'0.7-0.85'),(.85,1.0,'0.85-1.0'),(1.0,1.1,'1.0-1.1'),(1.1,1.25,'1.1-1.25'),(1.25,1.5,'1.25-1.5'),(1.5,2.0,'1.5-2.0'),(2.0,99.,'GE2.0')]
+BINS=[(0,.5,'LT0.5'),(.5,.7,'0.5-0.7'),(.7,.85,'0.7-0.85'),(.85,1.0,'0.85-1.0'),(1.0,1.1,'1.0-1.1'),(1.1,1.25,'1.1-1.25'),(1.25,1.5,'1.25-1.5'),(1.5,2.0,'1.5-2.0'),(2.0,float('inf'),'GE2.0')]
 THRESH=[.8,1.0,1.1,1.25,1.5,2.0]
 
 def nt(v):
@@ -77,7 +77,6 @@ def main():
     except Exception:continue
     if len(ps)==120 and abs(sum(ps.values())-1)<1e-10:preds[rid]=ps
    pred_races+=len(preds)
-   # Market and outcome are deliberately queried after all probabilities exist.
    with conn.cursor() as c:
     c.execute("""select o.race_id,o.ticket,o.odds from v2_odds_trifecta o join v2_races r on r.race_id=o.race_id where r.race_date >= %s and r.race_date < %s and o.odds is not null and o.odds > 1 order by o.race_id,o.ticket""",(a,b));odds=[dict(x) for x in c.fetchall()]
     c.execute("""select res.race_id,res.trifecta_ticket,coalesce(res.trifecta_payout_yen,res.trifecta_payout,0) payout from v2_results res join v2_races r on r.race_id=res.race_id where r.race_date >= %s and r.race_date < %s""",(a,b));res={str(x['race_id']):(nt(x['trifecta_ticket']),int(float(x['payout'] or 0))) for x in c.fetchall()}
@@ -87,7 +86,9 @@ def main():
     rid=str(o['race_id']);ticket=nt(o['ticket']);ps=preds.get(rid);rr=res.get(rid)
     if not ps or ticket not in ps or not rr:continue
     odd=float(o['odds']);edge=float(ps[ticket])*odd;hit=(ticket==rr[0]);payout=rr[1]
-    bn=edge_bin(edge);add(mb[bn],rid,edge,hit,payout);add(overall[bn],rid,edge,hit,payout)
+    bn=edge_bin(edge)
+    if bn=='OTHER':continue
+    add(mb[bn],rid,edge,hit,payout);add(overall[bn],rid,edge,hit,payout)
     for t in THRESH:
      if edge>=t:add(mt[t],rid,edge,hit,payout);add(oths[t],rid,edge,hit,payout)
    monthly[key]=(mb,mt)
