@@ -45,7 +45,7 @@ jobs:
         github.event.comment.body == '/railway historical-weather-month-audit-jul25'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -111,16 +111,6 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Recheck only stored-raw gaps against official historical pages
-        id: gap_probe
-        shell: bash
-        run: |
-          set +e
-          python -u .github/scripts/historical_weather_july_gap_http_probe.py > gap-probe-output.txt 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-
       - name: Audit guarded partial-month repair projection
         id: repair_audit
         shell: bash
@@ -138,7 +128,6 @@ jobs:
         shell: bash
         env:
           AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
-          GAP_EXIT_CODE: ${{ steps.gap_probe.outputs.exit_code }}
           REPAIR_AUDIT_EXIT_CODE: ${{ steps.repair_audit.outputs.exit_code }}
         run: |
           python - <<'PY'
@@ -146,19 +135,18 @@ jobs:
           from pathlib import Path
 
           texts = []
-          for name in ('month-audit-output.txt', 'gap-probe-output.txt', 'repair-audit-output.txt'):
+          for name in ('month-audit-output.txt', 'repair-audit-output.txt'):
               path = Path(name)
               if path.exists():
                   texts.append(path.read_text(encoding='utf-8', errors='replace'))
           text = '\n'.join(texts)
           prefixes = (
               'MONTH_AUDIT_', 'MONTH_REPAIR_', 'EXPECTED_', 'HIST_', 'RAW_', 'PARSE_',
-              'PRE_', 'REPARSED_', 'FAILED_', 'GAP_', 'SOURCE_', 'AMBIGUOUS_',
-              'SANITY_', 'REPAIR_', 'EXISTING_', 'PROJECTED_', 'RESULT=',
+              'PRE_', 'REPARSED_', 'FAILED_', 'SOURCE_', 'AMBIGUOUS_', 'SANITY_',
+              'REPAIR_', 'EXISTING_', 'PROJECTED_', 'RESULT=',
           )
           keep = [line[:800] for line in text.splitlines() if line.startswith(prefixes)]
           audit_code = os.environ.get('AUDIT_EXIT_CODE', '?')
-          gap_code = os.environ.get('GAP_EXIT_CODE', '?')
           repair_code = os.environ.get('REPAIR_AUDIT_EXIT_CODE', '?')
           lines = [
               '## Historical weather July 2025 full-month audit',
@@ -170,13 +158,12 @@ jobs:
               '```',
               '',
               f'Stored-raw audit exit code: `{audit_code}`',
-              f'Official-gap probe exit code: `{gap_code}`',
               f'Partial-month repair projection exit code: `{repair_code}`',
               '',
-              'Read-only: database SELECT + stored historical raw-text parse, plus a bounded '
-              'official historical-page recheck only for stored-raw gaps. The repair projection '
-              'does not write. No database rows, Railway settings, predictions, or LINE behavior '
-              'were changed.',
+              'Read-only: database SELECT + stored historical raw-text parse only. The repair '
+              'projection does not write. Confirmed source gaps are rechecked against official '
+              'historical pages immediately before any explicit month write, not during normal PR '
+              'CI. No database rows, Railway settings, predictions, or LINE behavior were changed.',
           ]
           Path('month-audit-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
           PY
@@ -185,7 +172,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f railway-vars.json railway-vars-error.txt month-audit-output.txt gap-probe-output.txt repair-audit-output.txt
+          rm -f railway-vars.json railway-vars-error.txt month-audit-output.txt repair-audit-output.txt
 
       - name: Post sanitized result to control issue
         if: always()
@@ -199,7 +186,6 @@ jobs:
       - name: Fail workflow if an audit gate failed
         if: >-
           steps.audit.outputs.exit_code != '0' ||
-          steps.gap_probe.outputs.exit_code != '0' ||
           steps.repair_audit.outputs.exit_code != '0'
         shell: bash
         run: exit 1
@@ -269,7 +255,7 @@ jobs:
               fh.write(f'DATABASE_URL={value}\n')
           PY
 
-      - name: Revalidate July stored-raw quality gate immediately before write
+      - name: Revalidate stored-raw repair projection immediately before write
         id: preaudit
         shell: bash
         env:
@@ -279,10 +265,24 @@ jobs:
           python -u .github/scripts/historical_weather_july_month_repair.py > prewrite-audit-output.txt 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          if [ "$code" -ne 0 ]; then exit "$code"; fi
+          exit 0
+
+      - name: Recheck confirmed source gaps against official historical pages
+        id: gap_probe
+        if: steps.preaudit.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python -u .github/scripts/historical_weather_july_gap_http_probe.py > gap-probe-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Write only safe historical NULL weather cells
         id: write
+        if: >-
+          steps.preaudit.outputs.exit_code == '0' &&
+          steps.gap_probe.outputs.exit_code == '0'
         shell: bash
         env:
           HISTORICAL_MONTH_MODE: write
@@ -299,6 +299,7 @@ jobs:
         shell: bash
         env:
           PREAUDIT_EXIT_CODE: ${{ steps.preaudit.outputs.exit_code }}
+          GAP_EXIT_CODE: ${{ steps.gap_probe.outputs.exit_code }}
           WRITE_EXIT_CODE: ${{ steps.write.outputs.exit_code }}
         run: |
           python - <<'PY'
@@ -306,13 +307,13 @@ jobs:
           from pathlib import Path
 
           texts = []
-          for name in ('prewrite-audit-output.txt', 'month-write-output.txt'):
+          for name in ('prewrite-audit-output.txt', 'gap-probe-output.txt', 'month-write-output.txt'):
               path = Path(name)
               if path.exists():
                   texts.append(path.read_text(encoding='utf-8', errors='replace'))
           text = '\n'.join(texts)
           prefixes = (
-              'MONTH_REPAIR_', 'EXPECTED_', 'PRE_', 'PARSE_', 'SOURCE_',
+              'MONTH_REPAIR_', 'EXPECTED_', 'PRE_', 'PARSE_', 'SOURCE_', 'GAP_',
               'AMBIGUOUS_', 'SANITY_', 'REPAIR_', 'EXISTING_', 'PROJECTED_',
               'WRITE_', 'POST_', 'RESULT=',
           )
@@ -323,10 +324,11 @@ jobs:
               '**Fixed target: 2025-07 / snapshot_label=historical**',
               '',
               '```text',
-              *keep[:180],
+              *keep[:220],
               '```',
               '',
               f'Prewrite audit exit code: `{os.environ.get("PREAUDIT_EXIT_CODE", "?")}`',
+              f'Official source-gap recheck exit code: `{os.environ.get("GAP_EXIT_CODE", "?")}`',
               f'Write exit code: `{os.environ.get("WRITE_EXIT_CODE", "?")}`',
               '',
               'Write scope: existing historical rows only; temperature_c and '
@@ -342,7 +344,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f railway-vars.json railway-vars-error.txt prewrite-audit-output.txt month-write-output.txt
+          rm -f railway-vars.json railway-vars-error.txt prewrite-audit-output.txt gap-probe-output.txt month-write-output.txt
 
       - name: Post sanitized result to control issue
         if: always()
@@ -353,7 +355,10 @@ jobs:
           set -euo pipefail
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file month-write-summary.md
 
-      - name: Fail workflow if write gate failed
-        if: steps.write.outputs.exit_code != '0'
+      - name: Fail workflow if any write gate failed
+        if: >-
+          steps.preaudit.outputs.exit_code != '0' ||
+          steps.gap_probe.outputs.exit_code != '0' ||
+          steps.write.outputs.exit_code != '0'
         shell: bash
         run: exit 1
