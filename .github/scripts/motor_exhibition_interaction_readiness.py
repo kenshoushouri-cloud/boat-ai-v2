@@ -126,7 +126,6 @@ def main() -> None:
             pct = 0.0 if total == 0 else 100.0*n/total
             print(f"COVERAGE_{key.upper()}={n}/{total} ({pct:.1f}%)", flush=True)
 
-        # Coarse, intentionally regularized buckets. These are readiness counts only.
         motor_bucket = "case when e.motor_place2_rate < 25 then 'M<25' when e.motor_place2_rate < 35 then 'M25-35' when e.motor_place2_rate < 45 then 'M35-45' else 'M45+' end"
         ex_bucket = "case when x.exhibition_time_rank <= 2 then 'EX_TOP2' when x.exhibition_time_rank <= 4 then 'EX_MID' else 'EX_LOW' end"
         st_bucket = "case when x.start_timing_rank <= 2 then 'ST_TOP2' when x.start_timing_rank <= 4 then 'ST_MID' else 'ST_LOW' end"
@@ -154,4 +153,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        msg = str(exc).replace("\n", " ").replace("\r", " ")[:700]
+        print(f"INTERACTION_READINESS_ERROR={type(exc).__name__}:{msg}", flush=True)
+        raise
