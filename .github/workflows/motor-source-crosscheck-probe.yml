@@ -1,0 +1,19 @@
+name: Motor source cross-check probe
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/motor_source_crosscheck_probe.py'
+      - '.github/workflows/motor-source-crosscheck-probe.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4
+      - run: python -u .github/scripts/motor_source_crosscheck_probe.py
