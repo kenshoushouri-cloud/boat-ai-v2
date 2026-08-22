@@ -7,6 +7,14 @@ on:
     paths:
       - ".github/workflows/railway-historical-one-day-pilot.yml"
       - ".github/scripts/historical_weather_one_day_pilot.py"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - ".github/workflows/railway-historical-one-day-pilot.yml"
+      - ".github/scripts/historical_weather_one_day_pilot.py"
   issue_comment:
     types:
       - created
@@ -23,6 +31,7 @@ jobs:
   pilot:
     if: >-
       github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.number == 42 &&
@@ -64,7 +73,7 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
             mode='audit'
           else
             case "$COMMENT_BODY" in
