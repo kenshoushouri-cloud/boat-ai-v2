@@ -1,0 +1,127 @@
+name: Railway wave shadow commit once
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  CONTROL_ISSUE: "42"
+
+jobs:
+  commit:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway wave-shadow-commit-once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Resolve explicit final_ab race ids
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime,timedelta,timezone
+          from db_pg import fetch_all
+          jst=timezone(timedelta(hours=9))
+          d=datetime.now(jst).strftime('%Y-%m-%d')
+          rows=fetch_all('''select distinct race_id from v2_realtime_weather_snapshots where race_date=%s and snapshot_label='final_ab' and wave_height_cm is not null order by race_id''',(d,))
+          ids=','.join(str(r['race_id']) for r in rows if r.get('race_id'))
+          if not ids: raise SystemExit('No final_ab race ids with wave height')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'TARGET_DATE={d}\n')
+              fh.write(f'COLLECTION_RACE_IDS={ids}\n')
+          print(f'WAVE_COMMIT_ONCE_EXPLICIT_RACES={len(ids.split(","))}')
+          PY
+      - name: Commit wave Shadow rows
+        id: commit
+        env:
+          WAVE_SHADOW_WRITE_MODE: commit
+          WAVE_SHADOW_ENABLED: "1"
+          SNAPSHOT_LABEL: final_ab
+        run: |
+          set +e
+          python -u collect_wave_venue_lane_final_shadow_pg.py > wave-commit-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Verify committed Shadow table
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from db_pg import fetch_all
+          text=Path('wave-commit-output.txt').read_text(encoding='utf-8',errors='replace') if Path('wave-commit-output.txt').exists() else ''
+          for line in text.splitlines():
+              if line.startswith('WAVE_SHADOW_'):
+                  print(line[:1200])
+          try:
+              rows=fetch_all('''select count(*)::bigint n, count(distinct race_id)::bigint races from v2_wave_venue_lane_final_shadow where race_date=%s and snapshot_label='final_ab' and profile_version='wave-vl-stable-v1-20260531' ''',(os.environ['TARGET_DATE'],))
+              r=rows[0] if rows else {'n':0,'races':0}
+              print(f"WAVE_COMMIT_ONCE_DB_ROWS={int(r['n'])}")
+              print(f"WAVE_COMMIT_ONCE_DB_RACES={int(r['races'])}")
+          except Exception as exc:
+              print(f'WAVE_COMMIT_ONCE_VERIFY_ERROR={type(exc).__name__}')
+          PY
+      - name: Build sanitized summary
+        if: always()
+        env:
+          COMMIT_EXIT: ${{ steps.commit.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          text=Path('wave-commit-output.txt').read_text(encoding='utf-8',errors='replace') if Path('wave-commit-output.txt').exists() else ''
+          keep=[x[:800] for x in text.splitlines() if x.startswith('WAVE_SHADOW_') or x.startswith('TARGET_DATE=')]
+          Path('summary.md').write_text('\n'.join(['## Wave Shadow one-time commit','',*['`'+x+'`' for x in keep],'',f"Exit code: `{os.environ.get('COMMIT_EXIT','?')}`",'', 'Shadow table only. No production decision or LINE changes.'])+'\n',encoding='utf-8')
+          PY
+      - name: Remove temporary files
+        if: always()
+        run: rm -f railway-vars.json railway-vars-error.txt wave-commit-output.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "$CONTROL_ISSUE" --body-file summary.md
+      - name: Fail if commit failed
+        if: steps.commit.outputs.exit_code != '0'
+        run: exit 1

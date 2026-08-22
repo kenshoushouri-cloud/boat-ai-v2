@@ -5,12 +5,13 @@ v25_final_realtime_pipeline_pg.py
 直前収集
 → Motor2 FINAL Shadow
 → N02 FINAL Shadow
+→ Wave venue/lane FINAL Shadow (optional / non-fatal)
 → 本番判定
 → 展示shadow
 → LINE最終通知
 
-Motor2 / N02 / 展示shadowは、本番BUY/WATCH/SKIPや
-LINE通知対象を変更しません。
+各Shadowは、本番BUY/WATCH/SKIPやLINE通知対象を変更しません。
+Wave venue/lane Shadowは観測専用のため、失敗しても本番判定・LINEを止めません。
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-08-20 targeted-final-motor2+n02+exhibition-shadow-v4"
+VERSION = "2026-08-22 targeted-final-wave-shadow-hook-v5"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -45,6 +46,11 @@ RUN_MOTOR2_FINAL_SHADOW = os.getenv(
     "RUN_MOTOR2_FINAL_SHADOW", "1"
 ).strip() not in ("0", "false", "False", "no", "NO")
 
+# New wave Shadow remains OFF unless Railway explicitly enables it.
+RUN_WAVE_VL_FINAL_SHADOW = os.getenv(
+    "RUN_WAVE_VL_FINAL_SHADOW", "0"
+).strip() not in ("0", "false", "False", "no", "NO")
+
 TARGET_RACE_IDS_FILE = os.getenv(
     "TARGET_RACE_IDS_FILE", "/tmp/v21_target_race_ids.txt"
 ).strip() or "/tmp/v21_target_race_ids.txt"
@@ -59,12 +65,9 @@ def _require_settings() -> None:
         raise RuntimeError("DATABASE_URL が必要です。")
 
 
-def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
-    env = os.environ.copy()
-    env.update(extra_env)
-
+def _log_run(cmd: list[str], env: dict[str, str], optional: bool = False) -> None:
     print("\n" + "=" * 80, flush=True)
-    print("RUN:", " ".join(cmd), flush=True)
+    print("RUN OPTIONAL SHADOW:" if optional else "RUN:", " ".join(cmd), flush=True)
     print(
         "ENV:",
         {
@@ -82,6 +85,8 @@ def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
                 "WINDOW_NAME",
                 "MOTOR2_SHADOW_COLLECTION_RACE_IDS",
                 "MOTOR2_SHADOW_SNAPSHOT_KEY",
+                "RUN_WAVE_VL_FINAL_SHADOW",
+                "WAVE_SHADOW_WRITE_MODE",
                 "RUN_EXHIBITION_SHADOW",
                 "EXHIBITION_SHADOW_WEIGHT",
             ]
@@ -90,9 +95,38 @@ def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
     )
     print("=" * 80, flush=True)
 
+
+def _run(cmd: list[str], extra_env: dict[str, str]) -> None:
+    env = os.environ.copy()
+    env.update(extra_env)
+    _log_run(cmd, env, optional=False)
     p = subprocess.run(cmd, env=env)
     if p.returncode != 0:
         raise SystemExit(p.returncode)
+
+
+def _run_optional_shadow(cmd: list[str], extra_env: dict[str, str]) -> bool:
+    """Run observational Shadow without making it a production blocker."""
+    env = os.environ.copy()
+    env.update(extra_env)
+    _log_run(cmd, env, optional=True)
+    try:
+        p = subprocess.run(cmd, env=env)
+    except Exception as exc:
+        print(
+            f"⚠️ optional Shadow起動失敗: {type(exc).__name__}: {exc}. "
+            "本番判定・LINEは継続します。",
+            flush=True,
+        )
+        return False
+    if p.returncode != 0:
+        print(
+            f"⚠️ optional Shadow returncode={p.returncode}. "
+            "本番判定・LINEは継続します。",
+            flush=True,
+        )
+        return False
+    return True
 
 
 def main() -> None:
@@ -107,6 +141,7 @@ def main() -> None:
         f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"RUN_MOTOR2_FINAL_SHADOW={RUN_MOTOR2_FINAL_SHADOW} "
         f"RUN_N02_WINDLT4_SHADOW={RUN_N02_WINDLT4_SHADOW} "
+        f"RUN_WAVE_VL_FINAL_SHADOW={RUN_WAVE_VL_FINAL_SHADOW} "
         f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW}",
         flush=True,
     )
@@ -196,6 +231,32 @@ def main() -> None:
     else:
         print(
             "N02_WIND_LT4 shadowはRUN_N02_WINDLT4_SHADOW=0のためスキップします。",
+            flush=True,
+        )
+
+    if RUN_WAVE_VL_FINAL_SHADOW:
+        if collection_count == 0:
+            print(
+                "Wave venue/lane FINAL ShadowはCOLLECTION_RACE_IDS=0のためスキップします。",
+                flush=True,
+            )
+        else:
+            wave_ok = _run_optional_shadow(
+                [sys.executable, "collect_wave_venue_lane_final_shadow_pg.py"],
+                {
+                    **common,
+                    "COLLECTION_RACE_IDS": collection_race_ids,
+                    "WAVE_SHADOW_ENABLED": "1",
+                    "WAVE_SHADOW_WRITE_MODE": "commit",
+                },
+            )
+            print(
+                f"Wave venue/lane FINAL Shadow status={'ok' if wave_ok else 'failed_nonfatal'}",
+                flush=True,
+            )
+    else:
+        print(
+            "Wave venue/lane FINAL ShadowはRUN_WAVE_VL_FINAL_SHADOW=0のためスキップします。",
             flush=True,
         )
 
