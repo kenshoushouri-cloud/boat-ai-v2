@@ -43,6 +43,8 @@ jobs:
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
           PY
       - name: Run odds-free historical probability replay
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python -u .github/scripts/bao_historical_probability_replay.py
       - name: Clean temporary files
         if: always()
