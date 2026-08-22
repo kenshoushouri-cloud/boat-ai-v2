@@ -3,14 +3,19 @@
 
 Modes:
 - audit: read-only projection
-- diagnose: execute the same UPDATE path inside one transaction, verify all
-  postconditions, then ALWAYS roll back
+- diagnose: execute the same set-based UPDATE path inside one transaction,
+  verify all postconditions, then ALWAYS roll back
 - write: execute and commit only after every guard passes
 
 Only temperature_c and water_temperature_c NULL cells are eligible. Values are
 parsed exclusively from each row's already-stored official historical raw.text.
 The 51 source-gap races confirmed by the full-month audit and official-page
 recheck remain NULL; no values are guessed or synthesized.
+
+The transaction path stages repair values in a temporary table via PostgreSQL
+COPY, then performs one UPDATE ... FROM join. This avoids thousands of
+round-trips over the public database connection while preserving the same
+transaction and postcondition guarantees.
 """
 from __future__ import annotations
 
@@ -134,6 +139,7 @@ def run_transaction(
 ) -> None:
     phase = "connect"
     updated = 0
+    staged = 0
     conn = None
     try:
         conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False)
@@ -144,23 +150,58 @@ def run_transaction(
         if pre_tx != pre or pre_nonhist_tx != pre_nonhist:
             raise RuntimeError("database state changed between audit and transaction")
 
-        phase = "row_updates"
+        phase = "create_temp_table"
         with conn.cursor() as cur:
-            for index, (temp, water, race_id) in enumerate(repair_rows, 1):
-                cur.execute(
-                    """
-                    update v2_realtime_weather_snapshots
-                    set temperature_c = coalesce(temperature_c, %s),
-                        water_temperature_c = coalesce(water_temperature_c, %s)
-                    where race_id=%s and snapshot_label=%s
-                      and race_date >= %s and race_date < %s
-                      and (temperature_c is null or water_temperature_c is null)
-                    """,
-                    (temp, water, race_id, SNAPSHOT_LABEL, MONTH_START, MONTH_END),
-                )
-                updated += int(cur.rowcount or 0)
-                if MODE == "diagnose" and index % 500 == 0:
-                    print(f"DIAG_UPDATE_PROGRESS={index}/{len(repair_rows)}", flush=True)
+            cur.execute(
+                """
+                create temporary table tmp_july_weather_repair(
+                    race_id text primary key,
+                    temperature_c double precision not null,
+                    water_temperature_c double precision not null
+                ) on commit drop
+                """
+            )
+
+        phase = "copy_repair_rows"
+        with conn.cursor() as cur:
+            with cur.copy(
+                "copy tmp_july_weather_repair "
+                "(race_id,temperature_c,water_temperature_c) from stdin"
+            ) as copy:
+                for temp, water, race_id in repair_rows:
+                    copy.write_row((race_id, temp, water))
+                    staged += 1
+
+        phase = "validate_staging"
+        stage_count = int(
+            fetch_one(
+                conn,
+                "select count(*)::int as n from tmp_july_weather_repair",
+            ).get("n")
+            or 0
+        )
+        if staged != len(repair_rows) or stage_count != len(repair_rows):
+            raise RuntimeError("temporary repair staging count mismatch")
+        print(f"STAGED_REPAIR_ROWS={stage_count}", flush=True)
+
+        phase = "set_based_update"
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update v2_realtime_weather_snapshots as w
+                set temperature_c = coalesce(w.temperature_c, t.temperature_c),
+                    water_temperature_c = coalesce(w.water_temperature_c, t.water_temperature_c)
+                from tmp_july_weather_repair as t
+                where w.race_id = t.race_id
+                  and w.snapshot_label = %s
+                  and w.race_date >= %s
+                  and w.race_date < %s
+                  and (w.temperature_c is null or w.water_temperature_c is null)
+                """,
+                (SNAPSHOT_LABEL, MONTH_START, MONTH_END),
+            )
+            updated = int(cur.rowcount or 0)
+        print(f"SET_BASED_UPDATED_ROWS={updated}", flush=True)
 
         phase = "post_counts"
         post = counts(conn, SNAPSHOT_LABEL)
@@ -228,9 +269,13 @@ def run_transaction(
         print(f"{prefix}_ERROR_PHASE={phase}", flush=True)
         print(f"{prefix}_ERROR_TYPE={type(exc).__name__}", flush=True)
         print(f"{prefix}_ERROR_SQLSTATE={sqlstate(exc)}", flush=True)
+        print(f"{prefix}_STAGED_BEFORE_ERROR={staged}", flush=True)
         print(f"{prefix}_UPDATED_BEFORE_ERROR={updated}", flush=True)
         print(f"{prefix}_TRANSACTION=ROLLED_BACK", flush=True)
-        print(f"RESULT=FAIL_MONTH_REPAIR_{'DIAGNOSTIC' if MODE == 'diagnose' else 'WRITE'}", flush=True)
+        print(
+            f"RESULT=FAIL_MONTH_REPAIR_{'DIAGNOSTIC' if MODE == 'diagnose' else 'WRITE'}",
+            flush=True,
+        )
         raise
     finally:
         if conn is not None:
@@ -251,6 +296,7 @@ def main() -> None:
     print("MONTH_REPAIR_SOURCE=stored_raw_text", flush=True)
     print("MONTH_REPAIR_FIELDS=temperature_c,water_temperature_c", flush=True)
     print("MONTH_REPAIR_POLICY=null_only_source_gaps_remain_null", flush=True)
+    print("MONTH_REPAIR_WRITE_STRATEGY=temp_table_copy_set_based_update", flush=True)
 
     with psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=True) as conn:
         expected = base_races(conn)
@@ -330,11 +376,13 @@ def main() -> None:
 
     if MODE == "audit":
         projected_temp = pre["temp_filled"] + sum(
-            1 for _, _, rid in repair_rows
+            1
+            for _, _, rid in repair_rows
             if source_by_id[rid].get("temperature_c") is None
         )
         projected_water = pre["water_filled"] + sum(
-            1 for _, _, rid in repair_rows
+            1
+            for _, _, rid in repair_rows
             if source_by_id[rid].get("water_temperature_c") is None
         )
         print(f"PROJECTED_TEMP_FILLED={projected_temp}", flush=True)
