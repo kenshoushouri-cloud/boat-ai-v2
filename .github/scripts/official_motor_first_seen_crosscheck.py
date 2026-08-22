@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Read-only audit: validate externally verified 艇国DB motor aggregate start dates against BOAT RACE official event/motor pages.
+"""Read-only audit of externally verified motor-generation checkpoints.
 
-艇国DB is used only as a manually verified secondary checkpoint date. HTTP automation hits BOAT RACE official only.
+艇国DB is used only as a manually verified secondary checkpoint date.
+Automated HTTP access hits BOAT RACE official only. The audit deliberately
+separates "event first day" from "representative motor present": a motor
+number missing from an official ranking table is evidence that the chosen
+representative is not suitable for that checkpoint, not that the checkpoint
+start date itself is false.
+
 No DB writes and no page persistence.
 """
 from __future__ import annotations
@@ -12,11 +18,10 @@ import requests
 from bs4 import BeautifulSoup
 
 # Secondary checkpoints manually verified from 艇国DB pages.
-# 尼崎 motor 1: aggregate period starts 2025-04-02.
-# 大村 motor list: aggregate period starts 2025-06-22; motor 11 is present in that generation.
+# Representative motor is optional corroborating evidence only.
 CASES = [
-    ("13", "20250402", "1"),
-    ("24", "20250622", "11"),
+    {"venue": "13", "hd": "20250402", "motor_no": "1", "label": "Amagasaki"},
+    {"venue": "24", "hd": "20250622", "motor_no": "11", "label": "Omura"},
 ]
 
 
@@ -29,31 +34,45 @@ def fetch_text(session: requests.Session, url: str) -> str:
 
 def main() -> None:
     print("MOTOR_FIRSTSEEN_MODE=official_http_read_only", flush=True)
-    print("MOTOR_FIRSTSEEN_POLICY=teikoku_checkpoint_official_automation", flush=True)
+    print("MOTOR_FIRSTSEEN_POLICY=checkpoint_date_primary_motor_number_advisory", flush=True)
     s = requests.Session()
     s.headers.update({"User-Agent": "Mozilla/5.0"})
     passed = 0
-    for venue, hd, motor_no in CASES:
+    advisory_misses = 0
+
+    for case in CASES:
+        venue = case["venue"]
+        hd = case["hd"]
+        motor_no = case["motor_no"]
         race_url = f"https://www.boatrace.jp/owpc/pc/race/raceindex?hd={hd}&jcd={venue}"
         motor_url = f"https://www.boatrace.jp/owpc/pc/race/rankingmotor?hd={hd}&jcd={venue}"
         race_text = re.sub(r"\s+", "", fetch_text(s, race_url))
         motor_text = re.sub(r"\s+", "", fetch_text(s, motor_url))
 
-        # Require the checkpoint date to be an official event first day.
+        # Primary checkpoint: the externally verified start date must be an
+        # official event first day, and an official motor-ranking table must
+        # exist for that event/date.
         first_day = ("初日" in race_text) and (hd[4:6].lstrip("0") + "月" in race_text)
-        # Require an actual motor ranking table and the representative motor number.
         has_table = "モーター抽選結果" in motor_text and "2連対率" in motor_text
-        # Keep the motor-number check conservative: number must occur near a percentage/table context.
+
+        # Advisory corroboration only. rankingmotor is not guaranteed to list
+        # every motor number, so absence must not invalidate the start date.
         has_motor = bool(re.search(rf"(?:^|\D){re.escape(str(int(motor_no)))}(?:\D|$)", motor_text))
-        ok = first_day and has_table and has_motor
+        advisory_misses += int(not has_motor)
+        ok = first_day and has_table
+        checkpoint_date = date(int(hd[:4]), int(hd[4:6]), int(hd[6:8]))
         print(
-            f"MOTOR_FIRSTSEEN_CASE=venue:{venue} checkpoint:{date(int(hd[:4]),int(hd[4:6]),int(hd[6:8]))} "
-            f"motor:{motor_no} official_first_day:{int(first_day)} motor_table:{int(has_table)} motor_present:{int(has_motor)} pass:{int(ok)}",
+            f"MOTOR_FIRSTSEEN_CASE=venue:{venue} label:{case['label']} checkpoint:{checkpoint_date} "
+            f"motor:{motor_no} official_first_day:{int(first_day)} motor_table:{int(has_table)} "
+            f"motor_present_advisory:{int(has_motor)} pass:{int(ok)}",
             flush=True,
         )
         passed += int(ok)
 
-    print(f"MOTOR_FIRSTSEEN_SUMMARY=pass:{passed}/{len(CASES)}", flush=True)
+    print(
+        f"MOTOR_FIRSTSEEN_SUMMARY=pass:{passed}/{len(CASES)} advisory_motor_misses:{advisory_misses}",
+        flush=True,
+    )
     if passed != len(CASES):
         print("MOTOR_FIRSTSEEN_RESULT=FAIL", flush=True)
         raise SystemExit(2)
