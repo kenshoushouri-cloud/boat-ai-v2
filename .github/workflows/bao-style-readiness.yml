@@ -1,0 +1,20 @@
+name: Bao-style architecture readiness
+on:
+  pull_request:
+    paths:
+      - 'docs/bao_style_applicability.md'
+      - '.github/scripts/bao_style_readiness_audit.py'
+      - '.github/workflows/bao-style-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run static readiness audit
+        run: python -u .github/scripts/bao_style_readiness_audit.py
