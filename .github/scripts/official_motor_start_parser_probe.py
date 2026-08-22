@@ -2,6 +2,8 @@
 """Read-only HTTP probe for official BOAT RACE motor use-start dates.
 
 No DB writes. No prediction/Shadow/LINE changes.
+A page without an explicit official use-start statement is UNKNOWN; never infer
+start date from event date, first-seen date, or motor statistics.
 """
 from __future__ import annotations
 
@@ -11,11 +13,13 @@ from datetime import date
 import requests
 from bs4 import BeautifulSoup
 
+# expected=None means the official page is intentionally expected to have no
+# explicit use-start statement; safe parser behavior is to return UNKNOWN.
 PROBES = [
     ("06", "20260526", date(2026, 4, 9)),
     ("13", "20260609", date(2026, 4, 17)),
     ("24", "20260617", date(2026, 5, 24)),
-    ("13", "20220724", date(2022, 4, 10)),
+    ("13", "20220724", None),
 ]
 
 PATTERNS = [
@@ -49,8 +53,10 @@ def parse_start(text: str, hd: str):
 
 def main() -> None:
     print("MOTOR_START_PROBE_MODE=http_read_only", flush=True)
-    print("MOTOR_START_PROBE_POLICY=official_rankingmotor_no_db_writes", flush=True)
+    print("MOTOR_START_PROBE_POLICY=official_rankingmotor_no_db_writes_no_inference", flush=True)
     ok = 0
+    explicit = 0
+    unknown = 0
     for venue, hd, expected in PROBES:
         url = f"https://www.boatrace.jp/owpc/pc/race/rankingmotor?hd={hd}&jcd={venue}"
         r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
@@ -59,8 +65,13 @@ def main() -> None:
         text = BeautifulSoup(r.text, "html.parser").get_text(" ", strip=True)
         parsed, pattern = parse_start(text, hd)
         passed = parsed == expected
-        print(f"MOTOR_START_PARSE=venue:{venue} hd:{hd} parsed:{parsed} expected:{expected} pattern:{pattern} pass:{int(passed)}", flush=True)
+        state = "explicit" if parsed is not None else "unknown"
+        explicit += int(parsed is not None)
+        unknown += int(parsed is None)
+        print(f"MOTOR_START_PARSE=venue:{venue} hd:{hd} state:{state} parsed:{parsed} expected:{expected} pattern:{pattern} pass:{int(passed)}", flush=True)
         ok += int(passed)
+    print(f"MOTOR_START_PROBE_EXPLICIT={explicit}", flush=True)
+    print(f"MOTOR_START_PROBE_UNKNOWN={unknown}", flush=True)
     print(f"MOTOR_START_PROBE_PASS={ok}/{len(PROBES)}", flush=True)
     if ok != len(PROBES):
         raise SystemExit(2)
