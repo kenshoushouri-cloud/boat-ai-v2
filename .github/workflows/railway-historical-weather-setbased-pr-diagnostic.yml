@@ -1,0 +1,77 @@
+name: Railway historical weather set-based PR diagnostic
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/scripts/historical_weather_july_month_repair.py"
+      - ".github/workflows/railway-historical-weather-setbased-pr-diagnostic.yml"
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  rollback-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL was not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run set-based rollback-only diagnostic
+        shell: bash
+        env:
+          HISTORICAL_MONTH_MODE: diagnose
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/historical_weather_july_month_repair.py | tee diagnostic-output.txt
+          grep -q '^DIAG_TRANSACTION=ROLLED_BACK$' diagnostic-output.txt
+          grep -q '^RESULT=PASS_MONTH_REPAIR_DIAGNOSTIC$' diagnostic-output.txt
+          grep -q '^STAGED_REPAIR_ROWS=5001$' diagnostic-output.txt
+          grep -q '^SET_BASED_UPDATED_ROWS=5001$' diagnostic-output.txt
+
+      - name: Remove temporary files
+        if: always()
+        run: rm -f railway-vars.json railway-vars-error.txt diagnostic-output.txt
