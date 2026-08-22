@@ -8,8 +8,14 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from db_pg import fetch_all
 import v22_realtime_decision_engine_pg as base
@@ -93,9 +99,11 @@ def build_profile(rows):
         win = int(x.get("finish_position") == 1)
         b = wave_bucket(x.get("wave_height_cm"))
         bc = base_counts[(venue, lane)]
-        bc[0] += 1; bc[1] += win
+        bc[0] += 1
+        bc[1] += win
         wc = bucket_counts[(venue, lane, b)]
-        wc[0] += 1; wc[1] += win
+        wc[0] += 1
+        wc[1] += win
 
     out = {}
     for key, (n, wins) in bucket_counts.items():
@@ -125,33 +133,33 @@ def evaluate(rows, profile):
     covered_races = 0
     complete_races = 0
 
-    for rid, rr in grouped.items():
+    for _, rr in grouped.items():
         if len(rr) != 6:
             continue
         lanes = {int(x.get("lane") or 0): x for x in rr}
-        if set(lanes) != {1,2,3,4,5,6}:
+        if set(lanes) != {1, 2, 3, 4, 5, 6}:
             continue
-        winners = [lane for lane,x in lanes.items() if int(x.get("finish_position") or 0) == 1]
+        winners = [lane for lane, x in lanes.items() if int(x.get("finish_position") or 0) == 1]
         if len(winners) != 1:
             continue
         winner = winners[0]
         venue = str(rr[0].get("venue_id") or "").zfill(2)
         bucket = wave_bucket(rr[0].get("wave_height_cm"))
-        raw = {lane: base._lane_raw_strength(lanes[lane], lane, venue) for lane in range(1,7)}
+        raw = {lane: base._lane_raw_strength(lanes[lane], lane, venue) for lane in range(1, 7)}
         baseline.append((softmax(raw), winner))
         complete_races += 1
 
-        effects = {lane: profile.get((venue, lane, bucket)) for lane in range(1,7)}
+        effects = {lane: profile.get((venue, lane, bucket)) for lane in range(1, 7)}
         if any(effects.values()):
             covered_races += 1
         for weight in WEIGHTS:
             adj_raw = dict(raw)
-            for lane,effect in effects.items():
+            for lane, effect in effects.items():
                 if effect:
                     adj_raw[lane] += effect["delta_logit"] * base.PROB_TEMP * weight
             adjusted[weight].append((softmax(adj_raw), winner))
 
-    return complete_races, covered_races, metrics(baseline), {w: metrics(v) for w,v in adjusted.items()}
+    return complete_races, covered_races, metrics(baseline), {w: metrics(v) for w, v in adjusted.items()}
 
 
 def main():
@@ -163,26 +171,26 @@ def main():
     print("WAVE_SHADOW_BT_MODE=read_only", flush=True)
     print(f"WAVE_SHADOW_BT_PERIOD={START_DATE}..{END_DATE}", flush=True)
     print(f"WAVE_SHADOW_BT_TRAIN={START_DATE}..{SPLIT_DATE}", flush=True)
-    print(f"WAVE_SHADOW_BT_OOS={SPLIT_DATE}..{END_DATE}", flush=True)
+    print(f"WAVE_SHADOW_BT_OOS={date.fromordinal(SPLIT_DATE.toordinal()+1)}..{END_DATE}", flush=True)
     print(f"WAVE_SHADOW_BT_GATES=bucket>={BUCKET_MIN},base>={BASE_MIN},shrink_k={SHRINK_K}", flush=True)
     print("WAVE_SHADOW_BT_POLICY=no_writes_no_production_no_shadow_table_no_line", flush=True)
 
     train = load_rows(START_DATE, SPLIT_DATE)
-    oos = load_rows(date.fromordinal(SPLIT_DATE.toordinal()+1), END_DATE)
+    oos = load_rows(date.fromordinal(SPLIT_DATE.toordinal() + 1), END_DATE)
     profile = build_profile(train)
     print(f"WAVE_SHADOW_BT_PROFILE_GROUPS={len(profile)}", flush=True)
     complete, covered, base_m, adj = evaluate(oos, profile)
     print(f"WAVE_SHADOW_BT_OOS_RACES={complete}", flush=True)
-    print(f"WAVE_SHADOW_BT_COVERED_RACES={covered} ({(100.0*covered/complete if complete else 0.0):.1f}%)", flush=True)
-    print(f"WAVE_SHADOW_BT_BASELINE=top1:{100*base_m['top1']:.3f}% logloss:{base_m['logloss']:.6f} brier:{base_m['brier']:.6f}", flush=True)
+    print(f"WAVE_SHADOW_BT_COVERED_RACES={covered} ({(100.0 * covered / complete if complete else 0.0):.1f}%)", flush=True)
+    print(f"WAVE_SHADOW_BT_BASELINE=top1:{100 * base_m['top1']:.3f}% logloss:{base_m['logloss']:.6f} brier:{base_m['brier']:.6f}", flush=True)
     for w in WEIGHTS:
         m = adj[w]
         print(
-            f"WAVE_SHADOW_BT_WEIGHT_{w:.2f}=top1:{100*m['top1']:.3f}% "
+            f"WAVE_SHADOW_BT_WEIGHT_{w:.2f}=top1:{100 * m['top1']:.3f}% "
             f"logloss:{m['logloss']:.6f} brier:{m['brier']:.6f} "
-            f"delta_top1_pt:{100*(m['top1']-base_m['top1']):+.3f} "
-            f"delta_logloss:{m['logloss']-base_m['logloss']:+.6f} "
-            f"delta_brier:{m['brier']-base_m['brier']:+.6f}",
+            f"delta_top1_pt:{100 * (m['top1'] - base_m['top1']):+.3f} "
+            f"delta_logloss:{m['logloss'] - base_m['logloss']:+.6f} "
+            f"delta_brier:{m['brier'] - base_m['brier']:+.6f}",
             flush=True,
         )
     print("WAVE_SHADOW_BT_RESULT=PASS_READ_ONLY", flush=True)
