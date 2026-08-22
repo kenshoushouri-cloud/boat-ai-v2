@@ -6,19 +6,24 @@ It never writes to PostgreSQL. It verifies whether every base race has exactly
 one historical weather snapshot with stored official raw text, then reparses
 that raw text with the same parser used by the proven one-day repair pilot.
 
+When parsing is incomplete, it emits only aggregate/public race diagnostics:
+label presence and whether the same failed races have six result-entry rows.
+No raw page text is published.
+
 No HTTP requests, UPDATE/INSERT/DELETE, prediction logic, Railway settings, or
 LINE operations are performed.
 """
 from __future__ import annotations
 
 import os
+from collections import Counter
 from datetime import date
 from typing import Any, Dict
 
 import psycopg
 from psycopg.rows import dict_row
 
-from historical_weather_one_day_pilot import parse_raw_weather
+from historical_weather_one_day_pilot import norm, parse_raw_weather
 
 AUDIT_MONTH = "2025-07"
 MONTH_START = date(2025, 7, 1)
@@ -36,6 +41,10 @@ def fetch_all(conn, sql: str, params=()):
 
 def safe_int(value: Any) -> int:
     return int(value or 0)
+
+
+def compact_counter(counter: Counter[str]) -> str:
+    return ",".join(f"{key}:{counter[key]}" for key in sorted(counter)) or "-"
 
 
 def main() -> None:
@@ -105,13 +114,44 @@ def main() -> None:
     reparsed_temp_missing = 0
     reparsed_water_missing = 0
 
+    failed_race_ids: list[str] = []
+    failed_temp_none = 0
+    failed_water_none = 0
+    failed_temp_label_present = 0
+    failed_water_label_present = 0
+    failed_both_labels_present = 0
+    failed_degree_c_present = 0
+    failed_by_date: Counter[str] = Counter()
+    failed_by_venue: Counter[str] = Counter()
+
     for row in source_rows:
+        race_id = str(row["race_id"])
         raw_text = row.get("raw_text") or ""
         parsed: Dict[str, float | None] = parse_raw_weather(raw_text)
         temp = parsed.get("temperature_c")
         water = parsed.get("water_temperature_c")
         if temp is None or water is None:
             parse_failed += 1
+            failed_race_ids.append(race_id)
+            text = norm(raw_text)
+            has_temp = "気温" in text
+            has_water = "水温" in text
+            if temp is None:
+                failed_temp_none += 1
+            if water is None:
+                failed_water_none += 1
+            if has_temp:
+                failed_temp_label_present += 1
+            if has_water:
+                failed_water_label_present += 1
+            if has_temp and has_water:
+                failed_both_labels_present += 1
+            if "°C" in text or "℃" in text:
+                failed_degree_c_present += 1
+            parts = race_id.split("_")
+            if len(parts) >= 3:
+                failed_by_date[parts[0]] += 1
+                failed_by_venue[parts[1]] += 1
             continue
         if not (-20.0 <= float(temp) <= 45.0 and 0.0 <= float(water) <= 40.0):
             sanity_failed += 1
@@ -123,6 +163,29 @@ def main() -> None:
             reparsed_temp_missing += 1
         if row.get("water_temperature_c") is None:
             reparsed_water_missing += 1
+
+    result6_by_race: dict[str, int] = {}
+    if failed_race_ids:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=True) as conn:
+            result_counts = fetch_all(
+                conn,
+                """
+                select race_id, count(*)::int as n
+                from v2_result_entries
+                where race_id = any(%s)
+                group by race_id
+                """,
+                (failed_race_ids,),
+            )
+        result6_by_race = {
+            str(row["race_id"]): safe_int(row["n"])
+            for row in result_counts
+        }
+
+    failed_with_result6 = sum(
+        1 for race_id in failed_race_ids if result6_by_race.get(race_id, 0) == 6
+    )
+    failed_without_result6 = len(failed_race_ids) - failed_with_result6
 
     print(f"EXPECTED_RACES={expected}", flush=True)
     print(f"HIST_WEATHER_ROWS={rows}", flush=True)
@@ -140,6 +203,16 @@ def main() -> None:
     print(f"REPARSED_ROWS_NEEDING_FILL={reparsed_rows_needing_fill}", flush=True)
     print(f"REPARSED_TEMP_MISSING={reparsed_temp_missing}", flush=True)
     print(f"REPARSED_WATER_MISSING={reparsed_water_missing}", flush=True)
+    print(f"FAILED_TEMP_NONE={failed_temp_none}", flush=True)
+    print(f"FAILED_WATER_NONE={failed_water_none}", flush=True)
+    print(f"FAILED_TEMP_LABEL_PRESENT={failed_temp_label_present}", flush=True)
+    print(f"FAILED_WATER_LABEL_PRESENT={failed_water_label_present}", flush=True)
+    print(f"FAILED_BOTH_LABELS_PRESENT={failed_both_labels_present}", flush=True)
+    print(f"FAILED_DEGREE_C_PRESENT={failed_degree_c_present}", flush=True)
+    print(f"FAILED_WITH_RESULT6={failed_with_result6}", flush=True)
+    print(f"FAILED_WITHOUT_RESULT6={failed_without_result6}", flush=True)
+    print(f"FAILED_BY_DATE={compact_counter(failed_by_date)}", flush=True)
+    print(f"FAILED_BY_VENUE={compact_counter(failed_by_venue)}", flush=True)
 
     quality_ok = (
         1 <= expected <= MAX_EXPECTED_RACES
