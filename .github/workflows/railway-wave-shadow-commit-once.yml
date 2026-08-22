@@ -63,7 +63,15 @@ jobs:
           from db_pg import fetch_all
           jst=timezone(timedelta(hours=9))
           d=datetime.now(jst).strftime('%Y-%m-%d')
-          rows=fetch_all('''select distinct race_id from v2_realtime_weather_snapshots where race_date=%s and snapshot_label='final_ab' and wave_height_cm is not null order by race_id''',(d,))
+          rows=fetch_all('''
+            select distinct w.race_id
+            from v2_realtime_weather_snapshots w
+            join v2_races r on r.race_id=w.race_id
+            where r.race_date=%s
+              and w.snapshot_label='final_ab'
+              and w.wave_height_cm is not null
+            order by w.race_id
+          ''',(d,))
           ids=','.join(str(r['race_id']) for r in rows if r.get('race_id'))
           if not ids: raise SystemExit('No final_ab race ids with wave height')
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
@@ -94,13 +102,12 @@ jobs:
           for line in text.splitlines():
               if line.startswith('WAVE_SHADOW_'):
                   print(line[:1200])
-          try:
-              rows=fetch_all('''select count(*)::bigint n, count(distinct race_id)::bigint races from v2_wave_venue_lane_final_shadow where race_date=%s and snapshot_label='final_ab' and profile_version='wave-vl-stable-v1-20260531' ''',(os.environ['TARGET_DATE'],))
-              r=rows[0] if rows else {'n':0,'races':0}
-              print(f"WAVE_COMMIT_ONCE_DB_ROWS={int(r['n'])}")
-              print(f"WAVE_COMMIT_ONCE_DB_RACES={int(r['races'])}")
-          except Exception as exc:
-              print(f'WAVE_COMMIT_ONCE_VERIFY_ERROR={type(exc).__name__}')
+          rows=fetch_all('''select count(*)::bigint n, count(distinct race_id)::bigint races from v2_wave_venue_lane_final_shadow where race_date=%s and snapshot_label='final_ab' and profile_version='wave-vl-stable-v1-20260531' ''',(os.environ['TARGET_DATE'],))
+          r=rows[0] if rows else {'n':0,'races':0}
+          print(f"WAVE_COMMIT_ONCE_DB_ROWS={int(r['n'])}")
+          print(f"WAVE_COMMIT_ONCE_DB_RACES={int(r['races'])}")
+          if int(r['n']) <= 0 or int(r['races']) <= 0:
+              raise SystemExit('committed Shadow verification returned zero rows')
           PY
       - name: Build sanitized summary
         if: always()
