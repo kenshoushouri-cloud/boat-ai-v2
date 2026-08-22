@@ -7,8 +7,8 @@ one historical weather snapshot with stored official raw text, then reparses
 that raw text with the same parser used by the proven one-day repair pilot.
 
 When parsing is incomplete, it emits only aggregate/public race diagnostics:
-label presence and whether the same failed races have six result-entry rows.
-No raw page text is published.
+label/unit/numeric/placeholder presence and whether the same failed races have
+six result-entry rows. No raw page text is published.
 
 No HTTP requests, UPDATE/INSERT/DELETE, prediction logic, Railway settings, or
 LINE operations are performed.
@@ -16,6 +16,7 @@ LINE operations are performed.
 from __future__ import annotations
 
 import os
+import re
 from collections import Counter
 from datetime import date
 from typing import Any, Dict
@@ -45,6 +46,29 @@ def safe_int(value: Any) -> int:
 
 def compact_counter(counter: Counter[str]) -> str:
     return ",".join(f"{key}:{counter[key]}" for key in sorted(counter)) or "-"
+
+
+def label_segment(text: str, label: str, width: int = 48) -> str:
+    pos = text.find(label)
+    if pos < 0:
+        return ""
+    return text[pos : pos + width]
+
+
+def has_numeric_near_label(text: str, label: str) -> bool:
+    segment = label_segment(text, label)
+    return bool(re.search(r"[+\-]?\d+(?:\.\d+)?", segment[len(label) :]))
+
+
+def has_placeholder_near_label(text: str, label: str) -> bool:
+    segment = label_segment(text, label)
+    tail = segment[len(label) :]
+    return bool(
+        re.search(
+            r"(?:--+|―+|−+|ー{2,}|未計測|未測定|欠測|中止|取消|不成立)",
+            tail,
+        )
+    )
 
 
 def main() -> None:
@@ -121,6 +145,10 @@ def main() -> None:
     failed_water_label_present = 0
     failed_both_labels_present = 0
     failed_degree_c_present = 0
+    failed_temp_numeric_near = 0
+    failed_water_numeric_near = 0
+    failed_temp_placeholder_near = 0
+    failed_water_placeholder_near = 0
     failed_by_date: Counter[str] = Counter()
     failed_by_venue: Counter[str] = Counter()
 
@@ -142,8 +170,16 @@ def main() -> None:
                 failed_water_none += 1
             if has_temp:
                 failed_temp_label_present += 1
+                if has_numeric_near_label(text, "気温"):
+                    failed_temp_numeric_near += 1
+                if has_placeholder_near_label(text, "気温"):
+                    failed_temp_placeholder_near += 1
             if has_water:
                 failed_water_label_present += 1
+                if has_numeric_near_label(text, "水温"):
+                    failed_water_numeric_near += 1
+                if has_placeholder_near_label(text, "水温"):
+                    failed_water_placeholder_near += 1
             if has_temp and has_water:
                 failed_both_labels_present += 1
             if "°C" in text or "℃" in text:
@@ -209,6 +245,10 @@ def main() -> None:
     print(f"FAILED_WATER_LABEL_PRESENT={failed_water_label_present}", flush=True)
     print(f"FAILED_BOTH_LABELS_PRESENT={failed_both_labels_present}", flush=True)
     print(f"FAILED_DEGREE_C_PRESENT={failed_degree_c_present}", flush=True)
+    print(f"FAILED_TEMP_NUMERIC_NEAR={failed_temp_numeric_near}", flush=True)
+    print(f"FAILED_WATER_NUMERIC_NEAR={failed_water_numeric_near}", flush=True)
+    print(f"FAILED_TEMP_PLACEHOLDER_NEAR={failed_temp_placeholder_near}", flush=True)
+    print(f"FAILED_WATER_PLACEHOLDER_NEAR={failed_water_placeholder_near}", flush=True)
     print(f"FAILED_WITH_RESULT6={failed_with_result6}", flush=True)
     print(f"FAILED_WITHOUT_RESULT6={failed_without_result6}", flush=True)
     print(f"FAILED_BY_DATE={compact_counter(failed_by_date)}", flush=True)
