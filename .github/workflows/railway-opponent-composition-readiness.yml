@@ -69,7 +69,7 @@ jobs:
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Build sanitized summary
+      - name: Build and print sanitized summary
         if: always()
         env:
           AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
@@ -82,15 +82,16 @@ jobs:
           keep=[x[:700] for x in text.splitlines() if x.startswith(prefixes)]
           body=['## Opponent composition readiness audit','','**Read-only / no coefficients / no DB writes**','','```text',*keep[:120],'```','',f'Audit exit code: `{os.environ.get("AUDIT_EXIT_CODE","?")}`']
           Path('opponent-summary.md').write_text('\n'.join(body)+'\n',encoding='utf-8')
+          print('\n'.join(body))
           PY
-      - name: Remove temporary files
-        if: always()
-        run: rm -f railway-vars.json opponent-output.txt
       - name: Post result to control issue
         if: always() && github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file opponent-summary.md
+      - name: Remove temporary files
+        if: always()
+        run: rm -f railway-vars.json opponent-output.txt opponent-summary.md
       - name: Fail if audit failed
         if: steps.audit.outputs.exit_code != '0'
         run: exit 1
