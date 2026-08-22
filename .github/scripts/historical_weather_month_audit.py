@@ -6,12 +6,13 @@ It never writes to PostgreSQL. It verifies whether every base race has exactly
 one historical weather snapshot with stored official raw text, then reparses
 that raw text with the same parser used by the proven one-day repair pilot.
 
-When parsing is incomplete, it emits only aggregate/public race diagnostics:
-label/unit/numeric/placeholder presence and whether the same failed races have
-six result-entry rows. No raw page text is published.
+A stored-source gap is accepted only when both temperature labels exist but
+both parsed values are absent, no Celsius unit exists, and no numeric value is
+present near either label. Any other parse failure remains ambiguous and fails
+the audit. A separate live-page probe independently rechecks these source gaps.
 
 No HTTP requests, UPDATE/INSERT/DELETE, prediction logic, Railway settings, or
-LINE operations are performed.
+LINE operations are performed by this script.
 """
 from __future__ import annotations
 
@@ -137,6 +138,7 @@ def main() -> None:
     reparsed_rows_needing_fill = 0
     reparsed_temp_missing = 0
     reparsed_water_missing = 0
+    stored_source_gap_rows = 0
 
     failed_race_ids: list[str] = []
     failed_temp_none = 0
@@ -164,26 +166,39 @@ def main() -> None:
             text = norm(raw_text)
             has_temp = "気温" in text
             has_water = "水温" in text
+            has_degree = "°C" in text or "℃" in text
+            temp_numeric = has_temp and has_numeric_near_label(text, "気温")
+            water_numeric = has_water and has_numeric_near_label(text, "水温")
             if temp is None:
                 failed_temp_none += 1
             if water is None:
                 failed_water_none += 1
             if has_temp:
                 failed_temp_label_present += 1
-                if has_numeric_near_label(text, "気温"):
+                if temp_numeric:
                     failed_temp_numeric_near += 1
                 if has_placeholder_near_label(text, "気温"):
                     failed_temp_placeholder_near += 1
             if has_water:
                 failed_water_label_present += 1
-                if has_numeric_near_label(text, "水温"):
+                if water_numeric:
                     failed_water_numeric_near += 1
                 if has_placeholder_near_label(text, "水温"):
                     failed_water_placeholder_near += 1
             if has_temp and has_water:
                 failed_both_labels_present += 1
-            if "°C" in text or "℃" in text:
+            if has_degree:
                 failed_degree_c_present += 1
+            if (
+                temp is None
+                and water is None
+                and has_temp
+                and has_water
+                and not has_degree
+                and not temp_numeric
+                and not water_numeric
+            ):
+                stored_source_gap_rows += 1
             parts = race_id.split("_")
             if len(parts) >= 3:
                 failed_by_date[parts[0]] += 1
@@ -199,6 +214,8 @@ def main() -> None:
             reparsed_temp_missing += 1
         if row.get("water_temperature_c") is None:
             reparsed_water_missing += 1
+
+    ambiguous_parse_failures = parse_failed - stored_source_gap_rows
 
     result6_by_race: dict[str, int] = {}
     if failed_race_ids:
@@ -231,6 +248,8 @@ def main() -> None:
     print(f"PARSE_USABLE={parse_usable}", flush=True)
     print(f"PARSE_FAILED={parse_failed}", flush=True)
     print(f"PARSE_SANITY_FAILED={sanity_failed}", flush=True)
+    print(f"STORED_SOURCE_GAP_ROWS={stored_source_gap_rows}", flush=True)
+    print(f"AMBIGUOUS_PARSE_FAILURES={ambiguous_parse_failures}", flush=True)
     print(f"PRE_TEMP_FILLED={temp_filled}", flush=True)
     print(f"PRE_WATER_FILLED={water_filled}", flush=True)
     print(f"PRE_TEMP_MISSING={temp_missing}", flush=True)
@@ -261,19 +280,20 @@ def main() -> None:
         and duplicate_rows == 0
         and raw_rows == expected
         and len(source_rows) == expected
-        and parse_usable == expected
-        and parse_failed == 0
+        and parse_usable + stored_source_gap_rows == expected
+        and parse_failed == stored_source_gap_rows
+        and ambiguous_parse_failures == 0
         and sanity_failed == 0
-        and reparsed_rows_needing_fill == rows_needing_fill
-        and reparsed_temp_missing == temp_missing
-        and reparsed_water_missing == water_missing
+        and reparsed_rows_needing_fill + stored_source_gap_rows == rows_needing_fill
+        and reparsed_temp_missing + stored_source_gap_rows == temp_missing
+        and reparsed_water_missing + stored_source_gap_rows == water_missing
     )
 
     if not quality_ok:
         print("RESULT=FAIL_QUALITY_GATE", flush=True)
         raise SystemExit(2)
 
-    print("RESULT=PASS_MONTH_AUDIT", flush=True)
+    print("RESULT=PASS_MONTH_AUDIT_WITH_SOURCE_GAPS", flush=True)
 
 
 if __name__ == "__main__":
