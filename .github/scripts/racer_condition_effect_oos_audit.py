@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """Read-only OOS stability audit for racer/venue/lane weather effects.
 
-Purpose:
-- test whether wind/wave effects observed in an earlier period reproduce later
-- compare each condition bucket against the same group's own baseline
-- report aggregate stability only; do not emit racer-specific coefficients
-
+Tests whether wind/wave effects seen in an earlier period reproduce later.
+Each condition bucket is compared with the same group's own baseline.
+Only aggregate stability is reported; no racer coefficients are emitted.
 No DB writes, prediction changes, Shadow changes, or LINE operations.
 """
 from __future__ import annotations
@@ -35,18 +33,15 @@ DIMENSIONS = {
     "RACER_VENUE": ["racer_number", "venue_id"],
     "VENUE_LANE": ["venue_id", "lane"],
 }
-
 CONDITIONS = {
     "WIND": (
         "w.wind_speed_m",
-        "case when w.wind_speed_m < 2 then '<2' "
-        "when w.wind_speed_m < 4 then '2-<4' "
+        "case when w.wind_speed_m < 2 then '<2' when w.wind_speed_m < 4 then '2-<4' "
         "when w.wind_speed_m < 6 then '4-<6' else '6+' end",
     ),
     "WAVE": (
         "w.wave_height_cm",
-        "case when w.wave_height_cm < 3 then '<3' "
-        "when w.wave_height_cm < 6 then '3-<6' "
+        "case when w.wave_height_cm < 3 then '<3' when w.wave_height_cm < 6 then '3-<6' "
         "when w.wave_height_cm < 10 then '6-<10' else '10+' end",
     ),
 }
@@ -70,16 +65,17 @@ def columns(conn, table: str) -> set[str]:
 
 
 def table_exists(conn, table: str) -> bool:
-    row = fetch_one(
-        conn,
-        """select exists(select 1 from information_schema.tables
-           where table_schema='public' and table_name=%s) ok""",
-        (table,),
+    return bool(
+        fetch_one(
+            conn,
+            """select exists(select 1 from information_schema.tables
+               where table_schema='public' and table_name=%s) ok""",
+            (table,),
+        ).get("ok")
     )
-    return bool(row.get("ok"))
 
 
-def group_expr(name: str) -> sql.Composed:
+def group_expr(name: str) -> sql.SQL:
     if name == "racer_number":
         return sql.SQL("e.racer_number")
     if name == "lane":
@@ -89,27 +85,33 @@ def group_expr(name: str) -> sql.Composed:
     raise ValueError(name)
 
 
+def eq_join(left: str, right: str, count: int) -> sql.Composed:
+    return sql.SQL(" and ").join(
+        sql.SQL("{l}.g{n}={r}.g{n}").format(
+            l=sql.SQL(left), r=sql.SQL(right), n=sql.SQL(str(i + 1))
+        )
+        for i in range(count)
+    )
+
+
 def audit_one(conn, dimension: str, condition: str) -> dict:
     group_names = DIMENSIONS[dimension]
+    n_groups = len(group_names)
     group_select = sql.SQL(", ").join(
         sql.SQL("{} as g{}").format(group_expr(name), sql.SQL(str(i + 1)))
         for i, name in enumerate(group_names)
     )
     group_cols = sql.SQL(", ").join(
-        sql.Identifier(f"g{i + 1}") for i in range(len(group_names))
+        sql.Identifier(f"g{i + 1}") for i in range(n_groups)
     )
-    join_group = sql.SQL(" and ").join(
-        sql.SQL("t.g{n}=o.g{n} and t.g{n}=tb.g{n} and t.g{n}=ob.g{n}").format(
-            n=sql.SQL(str(i + 1))
-        )
-        for i in range(len(group_names))
-    )
+    t_o_join = eq_join("t", "o", n_groups)
+    t_tb_join = eq_join("t", "tb", n_groups)
+    o_ob_join = eq_join("o", "ob", n_groups)
     nonnull_expr, bucket_expr = CONDITIONS[condition]
 
     query = sql.SQL("""
       with base as (
-        select r.race_date, {group_select},
-               {bucket_expr} as bucket,
+        select r.race_date, {group_select}, {bucket_expr} as bucket,
                case when re.finish_position=1 then 1.0 else 0.0 end as win,
                case when re.finish_position between 1 and 3 then 1.0 else 0.0 end as top3
         from v2_race_entries e
@@ -127,38 +129,34 @@ def audit_one(conn, dimension: str, condition: str) -> dict:
       train_bucket as (
         select {group_cols}, bucket, count(*)::bigint n,
                avg(win)::float8 win_rate, avg(top3)::float8 top3_rate
-        from base where race_date <= %s
-        group by {group_cols}, bucket
+        from base where race_date <= %s group by {group_cols}, bucket
       ),
       train_base as (
         select {group_cols}, count(*)::bigint n,
                avg(win)::float8 win_rate, avg(top3)::float8 top3_rate
-        from base where race_date <= %s
-        group by {group_cols}
+        from base where race_date <= %s group by {group_cols}
       ),
       oos_bucket as (
         select {group_cols}, bucket, count(*)::bigint n,
                avg(win)::float8 win_rate, avg(top3)::float8 top3_rate
-        from base where race_date > %s
-        group by {group_cols}, bucket
+        from base where race_date > %s group by {group_cols}, bucket
       ),
       oos_base as (
         select {group_cols}, count(*)::bigint n,
                avg(win)::float8 win_rate, avg(top3)::float8 top3_rate
-        from base where race_date > %s
-        group by {group_cols}
+        from base where race_date > %s group by {group_cols}
       ),
       matched as (
         select t.n train_n, o.n oos_n, tb.n train_base_n, ob.n oos_base_n,
-               (t.win_rate-tb.win_rate) as train_win_lift,
-               (o.win_rate-ob.win_rate) as oos_win_lift,
-               (t.top3_rate-tb.top3_rate) as train_top3_lift,
-               (o.top3_rate-ob.top3_rate) as oos_top3_lift,
-               (t.n::float8/(t.n+%s)) as shrink_w
+               (t.win_rate-tb.win_rate) train_win_lift,
+               (o.win_rate-ob.win_rate) oos_win_lift,
+               (t.top3_rate-tb.top3_rate) train_top3_lift,
+               (o.top3_rate-ob.top3_rate) oos_top3_lift,
+               (t.n::float8/(t.n+%s)) shrink_w
         from train_bucket t
-        join oos_bucket o on t.bucket=o.bucket and {join_group}
-        join train_base tb on {tb_join}
-        join oos_base ob on {ob_join}
+        join oos_bucket o on t.bucket=o.bucket and {t_o_join}
+        join train_base tb on {t_tb_join}
+        join oos_base ob on {o_ob_join}
         where t.n >= %s and o.n >= %s and tb.n >= %s and ob.n >= %s
       )
       select count(*)::bigint matched,
@@ -176,24 +174,21 @@ def audit_one(conn, dimension: str, condition: str) -> dict:
         bucket_expr=sql.SQL(bucket_expr),
         nonnull_expr=sql.SQL(nonnull_expr),
         group_cols=group_cols,
-        join_group=join_group,
-        tb_join=sql.SQL(" and ").join(
-            sql.SQL("t.g{n}=tb.g{n}").format(n=sql.SQL(str(i + 1)))
-            for i in range(len(group_names))
-        ),
-        ob_join=sql.SQL(" and ").join(
-            sql.SQL("o.g{n}=ob.g{n}").format(n=sql.SQL(str(i + 1)))
-            for i in range(len(group_names))
+        t_o_join=t_o_join,
+        t_tb_join=t_tb_join,
+        o_ob_join=o_ob_join,
+    )
+    return fetch_one(
+        conn,
+        query,
+        (
+            HIST_LABEL, START_DATE, END_DATE,
+            SPLIT_DATE, SPLIT_DATE, SPLIT_DATE, SPLIT_DATE,
+            SHRINK_K,
+            TRAIN_BUCKET_MIN, OOS_BUCKET_MIN, TRAIN_BASE_MIN, OOS_BASE_MIN,
+            WIN_MEANINGFUL, WIN_MEANINGFUL, TOP3_MEANINGFUL, TOP3_MEANINGFUL,
         ),
     )
-    params = (
-        HIST_LABEL, START_DATE, END_DATE,
-        SPLIT_DATE, SPLIT_DATE, SPLIT_DATE, SPLIT_DATE,
-        SHRINK_K,
-        TRAIN_BUCKET_MIN, OOS_BUCKET_MIN, TRAIN_BASE_MIN, OOS_BASE_MIN,
-        WIN_MEANINGFUL, WIN_MEANINGFUL, TOP3_MEANINGFUL, TOP3_MEANINGFUL,
-    )
-    return fetch_one(conn, query, params)
 
 
 def pct(n: int, d: int) -> float:
@@ -232,13 +227,13 @@ def main() -> None:
         rc = columns(conn, "v2_races")
         rec = columns(conn, "v2_result_entries")
         wc = columns(conn, "v2_realtime_weather_snapshots")
-        required_cols = {
+        bad = {
             "v2_race_entries": {"race_id", "lane", "racer_number"} - ec,
             "v2_races": {"race_id", "race_date", "venue_id"} - rc,
             "v2_result_entries": {"race_id", "lane", "racer_number", "finish_position"} - rec,
             "v2_realtime_weather_snapshots": {"race_id", "snapshot_label", "wind_speed_m", "wave_height_cm"} - wc,
         }
-        bad = {k: v for k, v in required_cols.items() if v}
+        bad = {k: v for k, v in bad.items() if v}
         if bad:
             print("CONDITION_EFFECT_SCHEMA=FAIL", flush=True)
             raise SystemExit(3)
