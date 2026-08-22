@@ -87,6 +87,9 @@ jobs:
           lines=['## Racer condition wind/wave OOS effect audit','','**Read-only / aggregate only / no coefficients / no DB writes**','','```text',*keep[:120],'```','',f'Audit exit code: `{os.environ.get("AUDIT_EXIT_CODE","?")}`','','This audit tests sign stability between an earlier training period and later OOS period. It does not change prediction logic, Shadow, database rows, Railway settings, or LINE.']
           Path('effect-summary.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
           PY
+      - name: Show sanitized summary in Actions log
+        if: always()
+        run: cat effect-summary.md
       - name: Remove temporary files
         if: always()
         run: rm -f railway-vars.json railway-vars-error.txt effect-output.txt
