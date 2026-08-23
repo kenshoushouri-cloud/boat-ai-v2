@@ -216,6 +216,7 @@ def main():
         partial = 0
         skipped_existing = 0
         phase_drift = 0
+        unpairable = 0
 
         for r, ph, dl in targets:
             rid = str(r["race_id"])
@@ -230,6 +231,22 @@ def main():
                 if c.fetchone():
                     skipped_existing += 1
                     continue
+
+            if ph == "late":
+                with conn.cursor() as c:
+                    c.execute(
+                        "select 1 ok from v2_bao_market_shadow_snapshots "
+                        "where race_id=%s and phase='early'",
+                        (rid,),
+                    )
+                    if not c.fetchone():
+                        unpairable += 1
+                        print(
+                            f"BAO_SHADOW_SKIP race:{rid} phase:late "
+                            "reason:early_missing_unpairable",
+                            flush=True,
+                        )
+                        continue
 
             html = rt._fetch(rt._official_url("odds3t", TARGET_DATE, venue, rno))
             odds = parse_official_odds3t(html or "") if html else {}
@@ -329,7 +346,7 @@ def main():
     print(
         f"BAO_SHADOW_RUN saved_races:{saved_races} saved_rows:{saved_rows} "
         f"partial:{partial} phase_drift:{phase_drift} "
-        f"skipped_existing:{skipped_existing}",
+        f"skipped_existing:{skipped_existing} unpairable:{unpairable}",
         flush=True,
     )
     print(
