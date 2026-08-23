@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/bao_paired_forward_audit.py'
+      - '.github/scripts/bao_next_capture_plan.py'
       - '.github/workflows/bao-paired-forward-audit.yml'
   workflow_dispatch:
   issue_comment:
@@ -65,6 +66,12 @@ jobs:
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_paired_forward_audit.py 2>&1 | tee bao-paired-audit-output.txt
+      - name: Run read-only next capture planner
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_next_capture_plan.py 2>&1 | tee bao-plan-output.txt
       - name: Reply with sanitized diagnostics
         if: always() && github.event_name == 'issue_comment'
         env:
@@ -72,15 +79,16 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo '## Bao paired forward audit'
+            echo '## Bao paired forward audit + capture plan'
             echo
             echo '```text'
             grep '^BAO_PAIR_AUDIT_' bao-paired-audit-output.txt 2>/dev/null || echo 'BAO_PAIR_AUDIT_DIAGNOSTIC=no_prefixed_output'
+            grep '^BAO_PLAN_' bao-plan-output.txt 2>/dev/null || echo 'BAO_PLAN_DIAGNOSTIC=no_prefixed_output'
             echo '```'
             echo
-            echo 'Read-only audit. No Production or LINE changes.'
+            echo 'Read-only audit and planner. No Shadow writes, Production changes, or LINE changes.'
           } > bao-paired-audit-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-paired-audit-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json bao-paired-audit-output.txt bao-paired-audit-comment.md
+        run: rm -f railway-vars.json bao-paired-audit-output.txt bao-plan-output.txt bao-paired-audit-comment.md
