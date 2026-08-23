@@ -6,6 +6,7 @@ on:
       - '.github/scripts/bao_exhibition_live_timing_probe.py'
       - '.github/scripts/exhibition_timing_availability_audit.py'
       - '.github/workflows/bao-exhibition-live-timing-probe.yml'
+  workflow_dispatch:
   issue_comment:
     types:
       - created
@@ -15,25 +16,16 @@ permissions:
   issues: write
 
 jobs:
-  validate:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Static syntax validation
-        run: |
-          python -m py_compile .github/scripts/bao_exhibition_live_timing_probe.py
-          python -m py_compile .github/scripts/exhibition_timing_availability_audit.py
-
-  live-probe:
+  probe:
     if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.number == 42 &&
-      github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway bao-exhibition-live-probe'
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway bao-exhibition-live-probe'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -75,7 +67,7 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/bao_exhibition_live_timing_probe.py 2>&1 | tee bao-exlive-output.txt
       - name: Reply with sanitized diagnostics
-        if: always()
+        if: always() && github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
