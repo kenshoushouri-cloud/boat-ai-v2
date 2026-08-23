@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: read
-  issues: read
+  issues: write
 
 jobs:
   validate:
@@ -77,7 +77,26 @@ jobs:
         env:
           TARGET_DATE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_date || '' }}
           PYTHONPATH: ${{ github.workspace }}
-        run: python -u .github/scripts/bao_early_late_market_shadow.py
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_early_late_market_shadow.py 2>&1 | tee bao-shadow-output.txt
+      - name: Reply with sanitized smoke diagnostics
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Bao market Shadow smoke'
+            echo
+            echo 'Sanitized collector diagnostics:'
+            echo '```text'
+            grep '^BAO_SHADOW_' bao-shadow-output.txt 2>/dev/null || echo 'BAO_SHADOW_DIAGNOSTIC=no_prefixed_output'
+            echo '```'
+            echo
+            echo 'No secret values are included in this reply.'
+          } > bao-shadow-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-shadow-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json
+        run: rm -f railway-vars.json bao-shadow-output.txt bao-shadow-comment.md
