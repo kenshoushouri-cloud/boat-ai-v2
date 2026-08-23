@@ -9,8 +9,8 @@ from psycopg.rows import dict_row
 JST=timezone(timedelta(hours=9))
 DB=os.getenv('DATABASE_URL','').strip()
 TARGET_DATE=os.getenv('TARGET_DATE') or datetime.now(JST).strftime('%Y-%m-%d')
-# Second owner-only smoke was posted just after the 08:56:20 JST clock check.
-AUDIT_AT=datetime.fromisoformat(os.getenv('BAO_SMOKE_AUDIT_AT','2026-08-23T08:56:25+09:00'))
+# One-time late-window automation actually ran at about 09:27:02 JST.
+AUDIT_AT=datetime.fromisoformat(os.getenv('BAO_SMOKE_AUDIT_AT','2026-08-23T09:27:02+09:00'))
 
 
 def main():
