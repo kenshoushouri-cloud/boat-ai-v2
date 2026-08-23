@@ -63,10 +63,7 @@ jobs:
       - name: Probe official beforeinfo availability
         env:
           PYTHONPATH: ${{ github.workspace }}
-          HTTP_TIMEOUT: '8'
-          RETRY_MAX: '0'
-          RETRY_SLEEP: '0'
-          BAO_EXLIVE_MAX_RACES: '12'
+          BAO_EXLIVE_HTTP_TIMEOUT: '20'
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_exhibition_live_timing_probe.py 2>&1 | tee bao-exlive-output.txt
