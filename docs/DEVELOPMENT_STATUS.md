@@ -50,9 +50,13 @@ Smoke observations on 2026-08-23:
 - ~08:56: Shimonoseki 2R late had only 119/120 tickets in normal realtime snapshots; Shimonoseki 3R early had no snapshot yet; safe skips.
 - Live diagnosis then confirmed the current official odds page is a side-by-side table; the legacy hyphen-ticket parser returned 0 while the new table-token parser can recover the canonical 120 tickets.
 - 18:33 smoke after PR #127: 3/3 target races saved with exact 120-ticket vectors, `partial=0`, table size 49,152 bytes, and `BAO_SHADOW_RESULT=PASS`.
-- The same 18:33 smoke had 2 early rows and 1 late row but `paired_races=0`; genuine same-race early+late pairs are still the next data requirement.
+- 18:52 smoke: `20260823_07_09` late was captured at 2.83 minutes before deadline; `paired_races=1`, `partial=0`, `phase_drift=0`, PASS. This is the first genuine same-race early+late forward pair.
 
-Next market-Shadow goal: capture genuine paired early+late rows on later races where the official market is fully populated, then evaluate Motor2/exhibition residual versus actionable late odds.
+Forward audit direction:
+- compare frozen early de-vigged market probability against actionable late market probability;
+- apply the frozen current Motor2 beta 0.06 from PR #108 and exhibition-time beta 0.06 from PR #113 only when timestamp-safe realtime data exists;
+- treat fewer than 30 paired races as insufficient for a formal forward conclusion;
+- realized results are supplemental; no Production promotion from a tiny sample.
 
 ## Historical/data quality
 
@@ -71,7 +75,7 @@ Next market-Shadow goal: capture genuine paired early+late rows on later races w
 
 ## Immediate next work
 
-1. Continue Bao early/late forward capture on later-day races without relaxing the exact-120 gate; retain the post-fetch phase drift guard.
-2. Once paired samples exist, evaluate early market + Motor2 (+ exhibition when available) against late actionable odds and realized results.
-3. Continue one-feature-at-a-time residual OOS screening; reject features that do not add value beyond the stronger baseline.
-4. Keep this file updated after material design/promote/reject decisions so a new ChatGPT conversation can resume from GitHub with minimal handoff text.
+1. Continue Bao early/late forward capture without relaxing the exact-120 gate; accumulate paired races.
+2. Run the paired forward read-only audit as samples accumulate; require at least 30 valid pairs before formal evaluation.
+3. Evaluate Motor2 first and exhibition time only with timestamp-safe availability; do not promote from early tiny samples.
+4. Continue one-feature-at-a-time residual OOS screening and keep this file updated after material decisions.
