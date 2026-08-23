@@ -3,12 +3,16 @@
 
 Writes ONLY v2_bao_market_shadow_snapshots. One row stores one complete
 race/phase snapshot as a fixed canonical-order real[120] odds vector.
-For new early rows, a compact six-lane exhibition-time rank vector is frozen
-directly from the official beforeinfo page when available.
+
+Exhibition evidence is intentionally collected separately by
+`bao_exhibition_mid_shadow.py` in its own 8-15 minute window. The legacy
+nullable exhibition columns in this table remain only for schema compatibility
+and are no longer populated by this collector.
 
 Production prediction/decision/LINE tables are never touched.
 """
 from __future__ import annotations
+
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -34,7 +38,6 @@ CANONICAL_TICKETS = tuple(
     if c not in (a, b)
 )
 CANONICAL_SET = set(CANONICAL_TICKETS)
-LANES = {1, 2, 3, 4, 5, 6}
 assert len(CANONICAL_TICKETS) == 120 and len(CANONICAL_SET) == 120
 
 DDL = """
@@ -73,7 +76,11 @@ def parse_official_odds3t(html: str) -> dict[str, float]:
         return {}
     soup = rt.BeautifulSoup(html, "html.parser")
     text_lines = soup.get_text("\n", strip=True)
-    segment = text_lines.split("3連単オッズ", 1)[1] if "3連単オッズ" in text_lines else text_lines
+    segment = (
+        text_lines.split("3連単オッズ", 1)[1]
+        if "3連単オッズ" in text_lines
+        else text_lines
+    )
     for marker in ("締切時オッズは", "レース開始後", "PAGE TOP"):
         if marker in segment:
             segment = segment.split(marker, 1)[0]
@@ -140,34 +147,6 @@ def parse_official_odds3t(html: str) -> dict[str, float]:
     return out
 
 
-def frozen_exhibition_ranks(venue: str, race_no: int):
-    """Return [lane1..lane6] exhibition-time ranks from the official page.
-
-    Failure is non-fatal: market Shadow capture must remain independent from
-    exhibition availability.
-    """
-    html = rt._fetch(rt._official_url("beforeinfo", TARGET_DATE, venue, race_no))
-    if not html or rt._looks_no_data(html):
-        return None
-    rows = rt.parse_exhibition(html)
-    by = {
-        int(x.get("lane") or 0): x
-        for x in rows
-        if 1 <= int(x.get("lane") or 0) <= 6
-    }
-    if set(by) != LANES:
-        return None
-    ranks = []
-    for lane in range(1, 7):
-        rank = rt._safe_int(by[lane].get("exhibition_time_rank"), 0)
-        if rank not in LANES:
-            return None
-        ranks.append(rank)
-    if set(ranks) != LANES:
-        return None
-    return ranks
-
-
 def _assert_compact_schema(conn):
     with conn.cursor() as c:
         c.execute(
@@ -196,21 +175,13 @@ def main():
         f"late:{LATE_MIN_LO}-{LATE_MIN_HI}",
         flush=True,
     )
-    print("BAO_SHADOW_SCHEMA=v3_real120_plus_optional_early_exhibition_rank6", flush=True)
+    print("BAO_SHADOW_SCHEMA=v3_real120_market_only", flush=True)
     print("BAO_SHADOW_PARSER=official_table_tokens_v2", flush=True)
-    print("BAO_SHADOW_EXHIBITION_SOURCE=official_beforeinfo_frozen_early_only", flush=True)
+    print("BAO_SHADOW_EXHIBITION_SOURCE=dedicated_mid_shadow_separate", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
         with conn.cursor() as c:
             c.execute(DDL)
-            c.execute(
-                "alter table v2_bao_market_shadow_snapshots "
-                "add column if not exists exhibition_time_ranks smallint[]"
-            )
-            c.execute(
-                "alter table v2_bao_market_shadow_snapshots "
-                "add column if not exists exhibition_frozen_at timestamptz"
-            )
             c.execute(
                 "create index if not exists ix_v2_bao_market_shadow_phase_time "
                 "on v2_bao_market_shadow_snapshots(phase,captured_at)"
@@ -237,7 +208,7 @@ def main():
             mb = (dl - now).total_seconds() / 60.0
             ph = phase_for(mb)
             if ph:
-                targets.append((r, ph, mb, dl))
+                targets.append((r, ph, dl))
 
         print(f"BAO_SHADOW_TARGETS={len(targets)}", flush=True)
         saved_races = 0
@@ -245,10 +216,8 @@ def main():
         partial = 0
         skipped_existing = 0
         phase_drift = 0
-        exhibition_frozen = 0
-        exhibition_missing = 0
 
-        for r, ph, mb, dl in targets:
+        for r, ph, dl in targets:
             rid = str(r["race_id"])
             venue = str(r["venue_id"]).zfill(2)
             rno = int(r["race_no"])
@@ -273,7 +242,6 @@ def main():
                 )
                 continue
 
-            # Freeze the market timestamp immediately after the odds fetch.
             captured = datetime.now(JST)
             mb2 = (dl - captured).total_seconds() / 60.0
             captured_phase = phase_for(mb2)
@@ -287,30 +255,13 @@ def main():
                 )
                 continue
 
-            ex_ranks = None
-            ex_frozen_at = None
-            if ph == "early":
-                candidate_ranks = frozen_exhibition_ranks(venue, rno)
-                candidate_at = datetime.now(JST)
-                ex_mb = (dl - candidate_at).total_seconds() / 60.0
-                # Exhibition evidence counts only if it was actually obtained
-                # inside the same early window. A slow/missing beforeinfo fetch
-                # never invalidates the already valid market snapshot.
-                if candidate_ranks is not None and phase_for(ex_mb) == "early":
-                    ex_ranks = candidate_ranks
-                    ex_frozen_at = candidate_at
-                    exhibition_frozen += 1
-                else:
-                    exhibition_missing += 1
-
             odds_vec = [float(odds[t]) for t in CANONICAL_TICKETS]
             with conn.cursor() as c:
                 c.execute(
                     """insert into v2_bao_market_shadow_snapshots
                        (race_id,race_date,venue_id,race_no,phase,captured_at,
-                        deadline_at,minutes_before,odds,exhibition_time_ranks,
-                        exhibition_frozen_at,schema_version)
-                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,3)
+                        deadline_at,minutes_before,odds,schema_version)
+                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s,3)
                        on conflict (race_id,phase) do nothing""",
                     (
                         rid,
@@ -322,8 +273,6 @@ def main():
                         dl,
                         round(mb2, 3),
                         odds_vec,
-                        ex_ranks,
-                        ex_frozen_at,
                     ),
                 )
                 wrote = c.rowcount
@@ -333,7 +282,7 @@ def main():
                 saved_rows += 1
                 print(
                     f"BAO_SHADOW_SAVE race:{rid} phase:{ph} rows:1 odds_n:120 "
-                    f"minutes_before:{mb2:.2f} exhibition_rank_n:{len(ex_ranks or [])}",
+                    f"minutes_before:{mb2:.2f}",
                     flush=True,
                 )
             else:
@@ -369,7 +318,7 @@ def main():
                      and cardinality(exhibition_time_ranks)=6"""
             )
             print(
-                f"BAO_SHADOW_FROZEN_EXHIBITION_EARLY={c.fetchone()['n']}",
+                f"BAO_SHADOW_DEPRECATED_EXHIBITION_ROWS={c.fetchone()['n']}",
                 flush=True,
             )
             c.execute(
@@ -380,8 +329,7 @@ def main():
     print(
         f"BAO_SHADOW_RUN saved_races:{saved_races} saved_rows:{saved_rows} "
         f"partial:{partial} phase_drift:{phase_drift} "
-        f"skipped_existing:{skipped_existing} exhibition_frozen:{exhibition_frozen} "
-        f"exhibition_missing:{exhibition_missing}",
+        f"skipped_existing:{skipped_existing}",
         flush=True,
     )
     print(
