@@ -6,6 +6,8 @@ on:
       - '.github/workflows/bao-forward-shadow-auto-capture.yml'
       - '.github/scripts/bao_early_late_market_shadow.py'
       - '.github/scripts/bao_exhibition_mid_shadow.py'
+      - '.github/scripts/bao_paired_forward_audit.py'
+      - '.github/scripts/bao_next_capture_plan.py'
   workflow_dispatch:
   schedule:
     # Temporary 5-minute forward collection for 2026-08-24..25 JST.
@@ -33,6 +35,8 @@ jobs:
           set -euo pipefail
           python -m py_compile .github/scripts/bao_exhibition_mid_shadow.py
           python -m py_compile .github/scripts/bao_early_late_market_shadow.py
+          python -m py_compile .github/scripts/bao_paired_forward_audit.py
+          python -m py_compile .github/scripts/bao_next_capture_plan.py
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/workflows/bao-forward-shadow-auto-capture.yml').read_text(encoding='utf-8')
@@ -40,6 +44,8 @@ jobs:
           assert "2026-08-24" in p and "2026-08-25" in p
           assert 'bao_exhibition_mid_shadow.py' in p
           assert 'bao_early_late_market_shadow.py' in p
+          assert 'bao_paired_forward_audit.py' in p
+          assert 'bao_next_capture_plan.py' in p
           assert "HTTP_TIMEOUT: '10'" in p
           assert "RETRY_MAX: '1'" in p
           assert "RETRY_SLEEP: '0.5'" in p
@@ -129,6 +135,18 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -u .github/scripts/bao_early_late_market_shadow.py
+
+      - name: Run read-only paired Forward audit
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -u .github/scripts/bao_paired_forward_audit.py
+
+      - name: Run read-only next capture planner
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -u .github/scripts/bao_next_capture_plan.py
 
       - name: Clean temporary files
         if: always()
