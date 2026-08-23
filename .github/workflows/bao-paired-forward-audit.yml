@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/bao_paired_forward_audit.py'
+      - '.github/scripts/bao_next_capture_plan.py'
       - '.github/workflows/bao-paired-forward-audit.yml'
   workflow_dispatch:
   issue_comment:
@@ -12,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   issues: write
 
 jobs:
@@ -40,6 +42,32 @@ jobs:
           set -euo pipefail
           pip install -r requirements.txt
           npm install --global @railway/cli
+      - name: Inspect recent scheduled auto-capture runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run list \
+            --workflow bao-forward-shadow-auto-capture.yml \
+            --event schedule \
+            --limit 20 \
+            --json databaseId,status,conclusion,createdAt,headSha,event \
+            > bao-auto-runs.json
+          python - <<'PY' | tee bao-auto-runs-output.txt
+          import json
+          from pathlib import Path
+          rows=json.loads(Path('bao-auto-runs.json').read_text(encoding='utf-8'))
+          print(f"BAO_AUTO_RUNS=count:{len(rows)}")
+          for row in rows[:20]:
+              print(
+                  "BAO_AUTO_RUN="
+                  f"id:{row.get('databaseId')} "
+                  f"status:{row.get('status')} "
+                  f"conclusion:{row.get('conclusion') or 'none'} "
+                  f"created_at:{row.get('createdAt')} "
+                  f"sha:{row.get('headSha')}"
+              )
+          PY
       - name: Load public database URL without publishing it
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -65,6 +93,12 @@ jobs:
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_paired_forward_audit.py 2>&1 | tee bao-paired-audit-output.txt
+      - name: Run read-only next capture planner
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_next_capture_plan.py 2>&1 | tee bao-plan-output.txt
       - name: Reply with sanitized diagnostics
         if: always() && github.event_name == 'issue_comment'
         env:
@@ -72,15 +106,17 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo '## Bao paired forward audit'
+            echo '## Bao paired forward audit + capture plan'
             echo
             echo '```text'
+            grep '^BAO_AUTO_' bao-auto-runs-output.txt 2>/dev/null || echo 'BAO_AUTO_RUNS_DIAGNOSTIC=no_prefixed_output'
             grep '^BAO_PAIR_AUDIT_' bao-paired-audit-output.txt 2>/dev/null || echo 'BAO_PAIR_AUDIT_DIAGNOSTIC=no_prefixed_output'
+            grep '^BAO_PLAN_' bao-plan-output.txt 2>/dev/null || echo 'BAO_PLAN_DIAGNOSTIC=no_prefixed_output'
             echo '```'
             echo
-            echo 'Read-only audit. No Production or LINE changes.'
+            echo 'Read-only schedule history, audit and planner. No Shadow writes, Production changes, or LINE changes.'
           } > bao-paired-audit-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-paired-audit-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json bao-paired-audit-output.txt bao-paired-audit-comment.md
+        run: rm -f railway-vars.json bao-auto-runs.json bao-auto-runs-output.txt bao-paired-audit-output.txt bao-plan-output.txt bao-paired-audit-comment.md
