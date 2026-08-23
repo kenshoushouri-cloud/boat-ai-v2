@@ -1,0 +1,125 @@
+name: Bao forward Shadow auto capture
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/bao-forward-shadow-auto-capture.yml'
+      - '.github/scripts/bao_early_late_market_shadow.py'
+      - '.github/scripts/bao_exhibition_mid_shadow.py'
+  workflow_dispatch:
+  schedule:
+    # Temporary 5-minute forward collection for 2026-08-24..25 JST.
+    # :02 offset avoids the busiest top-of-hour scheduler slot.
+    - cron: '2-57/5 22,23,0-14 23-25 8 *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bao-forward-shadow-auto-capture
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate collector syntax and schedule guard
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/bao_exhibition_mid_shadow.py
+          python -m py_compile .github/scripts/bao_early_late_market_shadow.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/bao-forward-shadow-auto-capture.yml').read_text(encoding='utf-8')
+          assert "2-57/5 22,23,0-14 23-25 8 *" in p
+          assert "2026-08-24" in p and "2026-08-25" in p
+          assert 'bao_exhibition_mid_shadow.py' in p
+          assert 'bao_early_late_market_shadow.py' in p
+          print('BAO_AUTOCAP_VALIDATE=PASS')
+          PY
+
+  capture:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Gate temporary JST collection period
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            echo 'BAO_AUTOCAP_GATE=manual_dispatch'
+            exit 0
+          fi
+          jst_date="$(TZ=Asia/Tokyo date +%F)"
+          jst_hour="$(TZ=Asia/Tokyo date +%H)"
+          if [[ "$jst_date" == '2026-08-24' || "$jst_date" == '2026-08-25' ]] && (( 10#$jst_hour >= 7 && 10#$jst_hour <= 23 )); then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            echo "BAO_AUTOCAP_GATE=scheduled_active jst_date:${jst_date} jst_hour:${jst_hour}"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo "BAO_AUTOCAP_GATE=scheduled_inactive jst_date:${jst_date} jst_hour:${jst_hour}"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        if: steps.gate.outputs.run == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run dedicated exhibition mid Shadow
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -u .github/scripts/bao_exhibition_mid_shadow.py
+
+      - name: Run early-late market Shadow
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -u .github/scripts/bao_early_late_market_shadow.py
+
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json
