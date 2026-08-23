@@ -10,8 +10,9 @@ on:
       - '.github/scripts/bao_next_capture_plan.py'
   workflow_dispatch:
   schedule:
-    # Temporary 5-minute forward collection for 2026-08-24..25 JST.
-    # :02 offset avoids the busiest top-of-hour scheduler slot.
+    # Temporary trigger source for 2026-08-24..25 JST.
+    # GitHub scheduled events can be delayed; scheduled jobs therefore keep a
+    # short-lived 2-minute capture loop alive after they actually start.
     - cron: '2-57/5 22,23,0-14 23-25 8 *'
 
 permissions:
@@ -49,20 +50,21 @@ jobs:
           assert "HTTP_TIMEOUT: '10'" in p
           assert "RETRY_MAX: '1'" in p
           assert "RETRY_SLEEP: '0.5'" in p
+          assert 'BAO_AUTOCAP_LOOP_SECONDS=2400' in p
+          assert 'BAO_AUTOCAP_LOOP_SLEEP=120' in p
           print('BAO_AUTOCAP_VALIDATE=PASS')
           PY
 
   capture:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    # Forward capture windows are only 7-10 minutes wide. Do not let one slow
-    # official request hold the concurrency slot for multiple scheduled runs;
-    # fail fast and let the next 5-minute run retry inside the same window.
+    timeout-minutes: 48
     env:
       HTTP_TIMEOUT: '10'
       RETRY_MAX: '1'
       RETRY_SLEEP: '0.5'
+      BAO_AUTOCAP_LOOP_SECONDS: '2400'
+      BAO_AUTOCAP_LOOP_SLEEP: '120'
     steps:
       - name: Gate temporary JST collection period
         id: gate
@@ -124,17 +126,48 @@ jobs:
               fh.write(f'DATABASE_URL={value}\n')
           PY
 
-      - name: Run dedicated exhibition mid Shadow
-        if: steps.gate.outputs.run == 'true'
+      - name: Run scheduled Shadow capture loop
+        if: steps.gate.outputs.run == 'true' && github.event_name == 'schedule'
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python -u .github/scripts/bao_exhibition_mid_shadow.py
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          stop_at="$((started + BAO_AUTOCAP_LOOP_SECONDS))"
+          iteration=0
+          while (( $(date +%s) < stop_at )); do
+            jst_date="$(TZ=Asia/Tokyo date +%F)"
+            jst_hour="$(TZ=Asia/Tokyo date +%H)"
+            if [[ "$jst_date" != '2026-08-24' && "$jst_date" != '2026-08-25' ]]; then
+              echo "BAO_AUTOCAP_LOOP_STOP=outside_reviewed_date jst_date:${jst_date}"
+              break
+            fi
+            if (( 10#$jst_hour < 7 || 10#$jst_hour > 23 )); then
+              echo "BAO_AUTOCAP_LOOP_STOP=outside_active_hours jst_hour:${jst_hour}"
+              break
+            fi
+            iteration=$((iteration + 1))
+            echo "BAO_AUTOCAP_LOOP_ITERATION=${iteration} now:$(TZ=Asia/Tokyo date --iso-8601=seconds)"
+            python -u .github/scripts/bao_exhibition_mid_shadow.py
+            python -u .github/scripts/bao_early_late_market_shadow.py
+            remaining="$((stop_at - $(date +%s)))"
+            if (( remaining <= 0 )); then
+              break
+            fi
+            sleep_for="$BAO_AUTOCAP_LOOP_SLEEP"
+            if (( remaining < sleep_for )); then sleep_for="$remaining"; fi
+            sleep "$sleep_for"
+          done
+          echo "BAO_AUTOCAP_LOOP_RESULT=PASS iterations:${iteration}"
 
-      - name: Run early-late market Shadow
-        if: steps.gate.outputs.run == 'true'
+      - name: Run one-pass Shadow capture for manual dispatch
+        if: steps.gate.outputs.run == 'true' && github.event_name == 'workflow_dispatch'
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python -u .github/scripts/bao_early_late_market_shadow.py
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_exhibition_mid_shadow.py
+          python -u .github/scripts/bao_early_late_market_shadow.py
 
       - name: Run read-only paired Forward audit
         if: steps.gate.outputs.run == 'true'
