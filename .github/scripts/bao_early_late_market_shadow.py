@@ -141,7 +141,7 @@ def main():
             ph=phase_for(mb)
             if ph: targets.append((r,ph,mb,dl))
         print(f'BAO_SHADOW_TARGETS={len(targets)}',flush=True)
-        saved_races=0;saved_rows=0;partial=0;skipped_existing=0
+        saved_races=0;saved_rows=0;partial=0;skipped_existing=0;phase_drift=0
         for r,ph,mb,dl in targets:
             rid=str(r['race_id']);venue=str(r['venue_id']).zfill(2);rno=int(r['race_no'])
             with conn.cursor() as c:
@@ -155,6 +155,11 @@ def main():
                 continue
             captured=datetime.now(JST)
             mb2=(dl-captured).total_seconds()/60.0
+            captured_phase=phase_for(mb2)
+            if captured_phase!=ph:
+                phase_drift+=1
+                print(f'BAO_SHADOW_SKIP race:{rid} phase:{ph} odds:120 reason:phase_drift captured_phase:{captured_phase or "none"} minutes_before:{mb2:.2f}',flush=True)
+                continue
             odds_vec=[float(odds[t]) for t in CANONICAL_TICKETS]
             with conn.cursor() as c:
                 c.execute("""insert into v2_bao_market_shadow_snapshots
@@ -179,7 +184,7 @@ def main():
             print(f"BAO_SHADOW_PAIRED_RACES={c.fetchone()['paired_races']}",flush=True)
             c.execute("select pg_total_relation_size('v2_bao_market_shadow_snapshots')::bigint bytes")
             print(f"BAO_SHADOW_TABLE_BYTES={c.fetchone()['bytes']}",flush=True)
-    print(f'BAO_SHADOW_RUN saved_races:{saved_races} saved_rows:{saved_rows} partial:{partial} skipped_existing:{skipped_existing}',flush=True)
+    print(f'BAO_SHADOW_RUN saved_races:{saved_races} saved_rows:{saved_rows} partial:{partial} phase_drift:{phase_drift} skipped_existing:{skipped_existing}',flush=True)
     print('BAO_SHADOW_POLICY=isolated_compact_table_only_no_production_decision_change',flush=True)
     print('BAO_SHADOW_RESULT=PASS',flush=True)
 
