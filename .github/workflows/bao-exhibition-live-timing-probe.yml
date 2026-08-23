@@ -27,7 +27,7 @@ jobs:
         github.event.comment.body == '/railway bao-exhibition-live-probe'
       )
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,6 +63,10 @@ jobs:
       - name: Probe official beforeinfo availability
         env:
           PYTHONPATH: ${{ github.workspace }}
+          HTTP_TIMEOUT: '8'
+          RETRY_MAX: '0'
+          RETRY_SLEEP: '0'
+          BAO_EXLIVE_MAX_RACES: '12'
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_exhibition_live_timing_probe.py 2>&1 | tee bao-exlive-output.txt
