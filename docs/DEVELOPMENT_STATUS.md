@@ -62,6 +62,7 @@ Important observations on 2026-08-23:
 - 20:31 combined smoke captured `20260823_20_12` late at 6.14 minutes before deadline, increasing paired market races to 12.
 - `20260823_24_08` early was attempted inside its 20-30 minute window, but the official page returned zero usable odds; exact-120 gate correctly rejected it and no partial row was saved.
 - 20:42 combined smoke captured `20260823_19_12` late at 2.69 minutes before deadline, increasing paired market races to 13.
+- No further manual combined smoke ran between 20:48 and the end of the Omura midnight card. At the 22:48 audit, Omura 9R-12R (`20260823_24_09`..`24_12`) were confirmed as missed early-market windows and therefore cannot be reconstructed as valid forward evidence after the fact.
 
 ## Bao dedicated exhibition mid Shadow
 
@@ -92,18 +93,25 @@ Verified captures by 20:42 JST include:
 - `20260823_19_12`: exhibition mid at 13.34 minutes before deadline.
 - every stored dedicated row requires six times and a complete six-rank permutation.
 
-## Combined Bao forward smoke
+## Bao forward collection operations
 
-To reduce manual capture overhead without adding any recurring schedule:
+Manual combined smoke:
 - PR #136 added the explicit owner-only Issue #42 command `/railway bao-forward-shadow-smoke CONFIRM`.
 - The command loads the Railway DB connection once, runs dedicated exhibition-mid Shadow first, then market early/late Shadow.
 - PR #137 extended the same explicit command to run `bao_paired_forward_audit.py` immediately afterward and return sanitized audit diagnostics.
-- PR #139 added a read-only next-capture planner. After every combined smoke it reports the next missing market-early, exhibition-mid, and paired-late window plus `BAO_PLAN_NEXT_COMBINED`, reducing no-target manual executions without adding a scheduler.
+- PR #139 added a read-only next-capture planner. After every combined smoke it reports the next missing market-early, exhibition-mid, and paired-late window plus `BAO_PLAN_NEXT_COMBINED`.
 - The planner was tightened so exhibition-mid recommendations prioritize races with an already frozen early market row.
 - PR #142 added supplemental realized-result log-loss summaries to the read-only forward audit. It compares early vs Motor2 and Motor2 vs Motor2+dedicated-exhibition on the same result-ready subsets while leaving the 30-pair gates unchanged.
-- There is still no recurring Bao scheduler; captures occur only through an explicit smoke command.
-- Only the two isolated Bao Shadow tables are writable; paired audit and capture planner are read-only.
-- No Production decision/BUY/WATCH/SKIP/LINE or Railway configuration change is performed.
+- PR #144 added read-only missed-window diagnostics so closed missing early, pairable exhibition-mid, and paired-late opportunities remain visible after their windows expire.
+
+Temporary automatic capture after the 2026-08-23 manual-gap finding:
+- PR #145 added `.github/workflows/bao-forward-shadow-auto-capture.yml`.
+- It is date-gated to 2026-08-24 and 2026-08-25 JST only.
+- During the active period it is scheduled every five minutes at `:02/:07/.../:57`, covering 07:00-23:59 JST.
+- It runs the already-reviewed dedicated exhibition-mid collector first and the market early/late collector second.
+- It writes only through the existing isolated Bao Shadow collectors; exact-120, six-lane exhibition completeness, first-capture freeze, and post-fetch window guards are unchanged.
+- The schedule performs no automatic paired-audit promotion and does not change Production BUY/WATCH/SKIP, LINE, Railway service configuration/Variables, or promotion thresholds.
+- After the temporary dates the schedule gate becomes inactive; any extension requires a reviewed code change.
 
 ## Forward audit status
 
@@ -114,14 +122,15 @@ Coefficients under forward observation:
 - Exhibition-time beta: 0.06 from PR #113, evaluated only with the dedicated 8-15 minute frozen exhibition row.
 - Feature definitions were rechecked against PR #108/#113: both forward Motor2 and exhibition score construction match the historical robustness definitions.
 
-Current forward sample after the 20:42 combined smoke:
+Final 2026-08-23 forward sample at the 22:48 audit:
 - market pairs: 13;
 - Motor2-ready: 13;
 - Motor2 improved distance to late market on 9/13, average cross-entropy delta `-0.004529`;
 - safe dedicated exhibition-ready pairs: 7;
 - dedicated exhibition improved over Motor2 on 6/7, average additional cross-entropy delta `-0.005281`;
 - `20260823_20_12` is the first dedicated exhibition non-improvement example in this Forward sample: exhibition additional delta `+0.003090`; keep it unchanged as genuine Forward evidence.
-- realized-result coverage at this observation point: 0; PR #142 will summarize realized outcome log loss automatically once `v2_results` rows are available.
+- realized-result coverage at 22:48 remained 0; PR #142 will summarize realized outcome log loss once `v2_results` rows are available.
+- read-only missed-window diagnostics at 22:48 reported six missed market-early races since tracking start (`24_06`, `24_08`, `24_09`, `24_10`, `24_11`, `24_12`), one missed pairable exhibition-mid (`19_11`), and two missed paired-late opportunities (`07_10`, `20_10`). These are coverage diagnostics, not reconstructed evidence.
 
 Forward evidence rules:
 - earlier tiny-sample exhibition outputs derived from mutable realtime snapshots are invalidated and do not count;
@@ -147,7 +156,8 @@ Forward evidence rules:
 
 ## Immediate next work
 
-1. Continue market early/late and dedicated exhibition-mid forward capture without relaxing exact/completeness gates; next planner target after the 20:42 smoke is `20260823_24_09` market-early at 20:55 JST.
+1. Let the temporary PR #145 auto-capture workflow collect 2026-08-24..25 forward windows without relaxing exact/completeness gates; verify the first scheduled live run and sample growth.
 2. Run the paired read-only audit as samples accumulate; require 30 Motor2 pairs and separately 30 dedicated exhibition pairs before formal evaluation.
 3. After nightly result ingestion, use the PR #142 realized-result summaries as supplemental Forward evidence; do not promote from late-market proxy alone.
-4. Continue one-feature-at-a-time residual OOS screening and keep this file updated after material decisions.
+4. Remove or explicitly extend the temporary auto-capture schedule after 2026-08-25; do not leave silent recurring collection beyond the reviewed window.
+5. Continue one-feature-at-a-time residual OOS screening and keep this file updated after material decisions.
