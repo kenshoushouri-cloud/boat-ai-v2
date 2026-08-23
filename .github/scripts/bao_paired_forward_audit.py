@@ -4,9 +4,10 @@
 Compares the frozen early de-vigged market distribution with the actionable late
 market distribution. Motor2 uses the frozen research coefficient from PR #108.
 
-Exhibition-time evaluation uses ONLY the six-lane rank vector frozen on the Bao
-early market row. The mutable v2_realtime_exhibition_snapshots table is
-intentionally not consulted, because its upsert key can move snapshot_at later.
+Exhibition-time evaluation uses ONLY the dedicated isolated mid-window table
+`v2_bao_exhibition_shadow_snapshots`. The mutable realtime exhibition table and
+the deprecated exhibition fields on market-early rows are intentionally ignored.
+A usable exhibition row must be frozen after market-early and before market-late.
 
 No DB writes, no Production decision changes, no LINE changes.
 """
@@ -24,6 +25,8 @@ DB = os.getenv("DATABASE_URL", "").strip()
 MOTOR_BETA = 0.06
 EX_TIME_BETA = 0.06
 MIN_FORWARD_PAIRS = 30
+EX_MID_LO = 8.0
+EX_MID_HI = 15.0
 EPS = 1e-15
 POS_W = (1.0, 0.6, 0.3)
 LANES = {1, 2, 3, 4, 5, 6}
@@ -79,17 +82,17 @@ def ticket_scores(z):
 
 def frozen_exhibition_scores(ranks):
     if ranks is None or len(ranks) != 6:
-        return None, "frozen_exhibition_missing"
+        return None, "mid_exhibition_missing"
     vals = []
     ints = []
     for x in ranks:
         v = sf(x)
         if v is None or int(v) not in LANES:
-            return None, "invalid_frozen_exhibition_rank"
+            return None, "invalid_mid_exhibition_rank"
         ints.append(int(v))
         vals.append(-float(v))
     if set(ints) != LANES:
-        return None, "invalid_frozen_exhibition_permutation"
+        return None, "invalid_mid_exhibition_permutation"
     z = zscore(vals)
     return (ticket_scores(z), "ok") if z else (None, "zero_variance")
 
@@ -141,30 +144,30 @@ def top_ticket(p):
     return max(p, key=p.get)
 
 
-def table_has_column(conn, table, column):
+def table_exists(conn, table):
     with conn.cursor() as c:
-        c.execute(
-            """select 1
-               from information_schema.columns
-               where table_schema='public' and table_name=%s and column_name=%s""",
-            (table, column),
-        )
-        return c.fetchone() is not None
+        c.execute("select to_regclass(%s) is not null ok", (f"public.{table}",))
+        return bool(c.fetchone()["ok"])
 
 
 def load_pairs(conn):
-    # PR CI can run before the collector has migrated the isolated table to v3.
-    # In that case, expose NULL frozen ranks and keep the audit read-only.
-    has_frozen = table_has_column(
-        conn, "v2_bao_market_shadow_snapshots", "exhibition_time_ranks"
-    )
+    # PR CI runs before the isolated exhibition collector has necessarily created
+    # its table. Keep the audit read-only and expose NULLs until the first smoke.
+    has_ex_mid = table_exists(conn, "v2_bao_exhibition_shadow_snapshots")
     ex_select = (
-        "e.exhibition_time_ranks early_exhibition_ranks,"
-        "e.exhibition_frozen_at early_exhibition_frozen_at,"
-        if has_frozen
+        "x.exhibition_time_ranks mid_exhibition_ranks,"
+        "x.captured_at mid_exhibition_at,"
+        "x.minutes_before mid_exhibition_mb,"
+        if has_ex_mid
         else
-        "null::smallint[] early_exhibition_ranks,"
-        "null::timestamptz early_exhibition_frozen_at,"
+        "null::smallint[] mid_exhibition_ranks,"
+        "null::timestamptz mid_exhibition_at,"
+        "null::real mid_exhibition_mb,"
+    )
+    ex_join = (
+        "left join v2_bao_exhibition_shadow_snapshots x on x.race_id=e.race_id"
+        if has_ex_mid
+        else ""
     )
     query = f"""select e.race_id,e.race_date,e.venue_id,e.race_no,
                        e.captured_at early_at,e.minutes_before early_mb,
@@ -174,11 +177,24 @@ def load_pairs(conn):
                        l.odds late_odds
                 from v2_bao_market_shadow_snapshots e
                 join v2_bao_market_shadow_snapshots l on l.race_id=e.race_id
+                {ex_join}
                 where e.phase='early' and l.phase='late'
                 order by e.race_date,e.race_id"""
     with conn.cursor() as c:
         c.execute(query)
-        return [dict(x) for x in c.fetchall()], has_frozen
+        return [dict(x) for x in c.fetchall()], has_ex_mid
+
+
+def exhibition_timing_reason(row):
+    mid_at = row.get("mid_exhibition_at")
+    if mid_at is None:
+        return "mid_exhibition_missing"
+    if not (row["early_at"] < mid_at < row["late_at"]):
+        return "mid_exhibition_not_between_market_snapshots"
+    mb = sf(row.get("mid_exhibition_mb"))
+    if mb is None or not (EX_MID_LO <= mb <= EX_MID_HI):
+        return "mid_exhibition_outside_8_15_window"
+    return "ok"
 
 
 def main():
@@ -191,15 +207,16 @@ def main():
         flush=True,
     )
     print(f"BAO_PAIR_AUDIT_MIN_PAIRS={MIN_FORWARD_PAIRS}", flush=True)
-    print("BAO_PAIR_AUDIT_EXHIBITION_SOURCE=frozen_bao_early_only", flush=True)
+    print("BAO_PAIR_AUDIT_EXHIBITION_SOURCE=dedicated_mid_shadow_8_15", flush=True)
+    print("BAO_PAIR_AUDIT_DEPRECATED_MARKET_EXHIBITION=ignored", flush=True)
     print("BAO_PAIR_AUDIT_MUTABLE_REALTIME_EXHIBITION=ignored", flush=True)
     print("BAO_PAIR_AUDIT_POLICY=no_writes_no_production_no_line", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
-        pairs, frozen_column_ready = load_pairs(conn)
+        pairs, ex_mid_ready = load_pairs(conn)
         print(
-            "BAO_PAIR_AUDIT_FROZEN_COLUMN="
-            + ("ready" if frozen_column_ready else "not_migrated_yet"),
+            "BAO_PAIR_AUDIT_EXHIBITION_TABLE="
+            + ("ready" if ex_mid_ready else "not_created_yet"),
             flush=True,
         )
 
@@ -293,9 +310,14 @@ def main():
                     flush=True,
                 )
 
-            ex_score, ex_reason = frozen_exhibition_scores(
-                row.get("early_exhibition_ranks")
-            )
+            timing_reason = exhibition_timing_reason(row)
+            ex_score = None
+            ex_reason = timing_reason
+            if timing_reason == "ok":
+                ex_score, ex_reason = frozen_exhibition_scores(
+                    row.get("mid_exhibition_ranks")
+                )
+
             qj = None
             if motor_score is not None and ex_score is not None:
                 exhibition_ready += 1
@@ -308,12 +330,12 @@ def main():
                 joint_delta = cross_entropy(ql, qj) - base
                 sum_joint_delta += joint_delta
                 exhibition_improved += int(joint_delta < 0)
-                frozen_at = row.get("early_exhibition_frozen_at")
                 print(
                     f"BAO_PAIR_AUDIT_EXHIBITION=race:{rid} "
+                    f"mid_mb:{float(row['mid_exhibition_mb']):.2f} "
                     f"ce_delta_vs_motor:{joint_delta:.6f} "
                     f"top_joint:{top_ticket(qj)} "
-                    f"status:frozen_early frozen_at:{frozen_at}",
+                    f"status:frozen_mid mid_at:{row.get('mid_exhibition_at')}",
                     flush=True,
                 )
             else:
@@ -381,7 +403,6 @@ def main():
         f"BAO_PAIR_AUDIT_EXHIBITION_VERDICT={exhibition_verdict}",
         flush=True,
     )
-    # Backward-compatible overall marker follows the market/Motor2 pair gate.
     print(f"BAO_PAIR_AUDIT_VERDICT={motor_verdict}", flush=True)
     print("BAO_PAIR_AUDIT_RESULT=PASS_READ_ONLY", flush=True)
 
