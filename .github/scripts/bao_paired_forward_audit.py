@@ -9,6 +9,10 @@ Exhibition-time evaluation uses ONLY the dedicated isolated mid-window table
 the deprecated exhibition fields on market-early rows are intentionally ignored.
 A usable exhibition row must be frozen after market-early and before market-late.
 
+When realized trifecta results are available, supplemental outcome log-loss
+summaries compare early vs Motor2 and Motor2 vs Motor2+exhibition. These outcome
+summaries do not alter the forward sample gates or promotion verdicts.
+
 No DB writes, no Production decision changes, no LINE changes.
 """
 from __future__ import annotations
@@ -133,6 +137,10 @@ def l1(target, pred):
     return sum(abs(target[t] - pred[t]) for t in target)
 
 
+def outcome_logloss(p, ticket):
+    return -math.log(max(p[ticket], EPS))
+
+
 def rank_of(p, ticket):
     if ticket not in p:
         return None
@@ -210,6 +218,7 @@ def main():
     print("BAO_PAIR_AUDIT_EXHIBITION_SOURCE=dedicated_mid_shadow_8_15", flush=True)
     print("BAO_PAIR_AUDIT_DEPRECATED_MARKET_EXHIBITION=ignored", flush=True)
     print("BAO_PAIR_AUDIT_MUTABLE_REALTIME_EXHIBITION=ignored", flush=True)
+    print("BAO_PAIR_AUDIT_OUTCOME_SUMMARY=supplemental_logloss_no_verdict_change", flush=True)
     print("BAO_PAIR_AUDIT_POLICY=no_writes_no_production_no_line", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
@@ -252,6 +261,18 @@ def main():
         exhibition_improved = 0
         sum_motor_delta = 0.0
         sum_joint_delta = 0.0
+
+        result_motor_ready = 0
+        result_motor_improved = 0
+        sum_result_ll_early = 0.0
+        sum_result_ll_motor = 0.0
+        sum_result_ll_late_motor_subset = 0.0
+
+        result_exhibition_ready = 0
+        result_exhibition_improved = 0
+        sum_result_ll_motor_ex_subset = 0.0
+        sum_result_ll_joint = 0.0
+        sum_result_ll_late_ex_subset = 0.0
 
         print(f"BAO_PAIR_AUDIT_PAIRED={len(pairs)}", flush=True)
         for row in pairs:
@@ -357,14 +378,32 @@ def main():
                     f"late_rank:{rank_of(ql, actual)}",
                 ]
                 if qm is not None:
+                    ll_early = outcome_logloss(qe, actual)
+                    ll_motor = outcome_logloss(qm, actual)
+                    ll_late = outcome_logloss(ql, actual)
+                    result_motor_ready += 1
+                    result_motor_improved += int(ll_motor < ll_early)
+                    sum_result_ll_early += ll_early
+                    sum_result_ll_motor += ll_motor
+                    sum_result_ll_late_motor_subset += ll_late
                     parts += [
                         f"motor_p:{qm[actual]:.8f}",
                         f"motor_rank:{rank_of(qm, actual)}",
+                        f"result_ll_delta_motor:{ll_motor - ll_early:.6f}",
                     ]
                 if qj is not None:
+                    ll_motor_ex = outcome_logloss(qm, actual)
+                    ll_joint = outcome_logloss(qj, actual)
+                    ll_late_ex = outcome_logloss(ql, actual)
+                    result_exhibition_ready += 1
+                    result_exhibition_improved += int(ll_joint < ll_motor_ex)
+                    sum_result_ll_motor_ex_subset += ll_motor_ex
+                    sum_result_ll_joint += ll_joint
+                    sum_result_ll_late_ex_subset += ll_late_ex
                     parts += [
                         f"joint_p:{qj[actual]:.8f}",
                         f"joint_rank:{rank_of(qj, actual)}",
+                        f"result_ll_delta_joint:{ll_joint - ll_motor_ex:.6f}",
                     ]
                 print(" ".join(parts), flush=True)
 
@@ -387,6 +426,44 @@ def main():
         f"avg_ce_delta_vs_motor:{joint_avg:.6f}",
         flush=True,
     )
+
+    if result_motor_ready:
+        avg_ll_early = sum_result_ll_early / result_motor_ready
+        avg_ll_motor = sum_result_ll_motor / result_motor_ready
+        avg_ll_late_motor = sum_result_ll_late_motor_subset / result_motor_ready
+        print(
+            f"BAO_PAIR_AUDIT_RESULT_MOTOR_SUMMARY=ready:{result_motor_ready} "
+            f"improved:{result_motor_improved}/{result_motor_ready} "
+            f"avg_logloss_early:{avg_ll_early:.6f} "
+            f"avg_logloss_motor:{avg_ll_motor:.6f} "
+            f"avg_logloss_late:{avg_ll_late_motor:.6f} "
+            f"avg_delta_motor_vs_early:{avg_ll_motor - avg_ll_early:.6f}",
+            flush=True,
+        )
+    else:
+        print(
+            "BAO_PAIR_AUDIT_RESULT_MOTOR_SUMMARY=ready:0 improved:0/0 status:no_realized_results",
+            flush=True,
+        )
+
+    if result_exhibition_ready:
+        avg_ll_motor_ex = sum_result_ll_motor_ex_subset / result_exhibition_ready
+        avg_ll_joint = sum_result_ll_joint / result_exhibition_ready
+        avg_ll_late_ex = sum_result_ll_late_ex_subset / result_exhibition_ready
+        print(
+            f"BAO_PAIR_AUDIT_RESULT_EXHIBITION_SUMMARY=ready:{result_exhibition_ready} "
+            f"improved:{result_exhibition_improved}/{result_exhibition_ready} "
+            f"avg_logloss_motor:{avg_ll_motor_ex:.6f} "
+            f"avg_logloss_joint:{avg_ll_joint:.6f} "
+            f"avg_logloss_late:{avg_ll_late_ex:.6f} "
+            f"avg_delta_joint_vs_motor:{avg_ll_joint - avg_ll_motor_ex:.6f}",
+            flush=True,
+        )
+    else:
+        print(
+            "BAO_PAIR_AUDIT_RESULT_EXHIBITION_SUMMARY=ready:0 improved:0/0 status:no_realized_results",
+            flush=True,
+        )
 
     motor_verdict = (
         "INSUFFICIENT_FORWARD_PAIRS"
