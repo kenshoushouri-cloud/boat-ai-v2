@@ -74,6 +74,21 @@ def parse_complete(html: str | None):
     return times, ranks
 
 
+def has_early_market(conn, race_id: str) -> bool:
+    with conn.cursor() as c:
+        c.execute(
+            "select to_regclass('public.v2_bao_market_shadow_snapshots') tbl"
+        )
+        if not c.fetchone()["tbl"]:
+            return False
+        c.execute(
+            "select 1 ok from v2_bao_market_shadow_snapshots "
+            "where race_id=%s and phase='early'",
+            (race_id,),
+        )
+        return c.fetchone() is not None
+
+
 def main():
     if not DB:
         raise RuntimeError("DATABASE_URL is required")
@@ -118,6 +133,7 @@ def main():
         missing = 0
         drift = 0
         existing = 0
+        unpairable = 0
 
         for r, deadline, _ in targets:
             rid = str(r["race_id"])
@@ -131,6 +147,14 @@ def main():
                 if c.fetchone():
                     existing += 1
                     continue
+
+            if not has_early_market(conn, rid):
+                unpairable += 1
+                print(
+                    f"BAO_EXSHADOW_SKIP race:{rid} reason:early_missing_unpairable",
+                    flush=True,
+                )
+                continue
 
             html = rt._fetch(rt._official_url("beforeinfo", TARGET_DATE, venue, rno))
             captured = datetime.now(JST)
@@ -204,7 +228,8 @@ def main():
             print(f"BAO_EXSHADOW_TABLE_BYTES={c.fetchone()['bytes']}", flush=True)
 
     print(
-        f"BAO_EXSHADOW_RUN saved:{saved} missing:{missing} drift:{drift} existing:{existing}",
+        f"BAO_EXSHADOW_RUN saved:{saved} missing:{missing} drift:{drift} "
+        f"existing:{existing} unpairable:{unpairable}",
         flush=True,
     )
     print("BAO_EXSHADOW_POLICY=isolated_table_only_no_production_decision_change", flush=True)
