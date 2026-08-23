@@ -6,7 +6,7 @@ race/phase snapshot as a fixed canonical-order real[120] odds vector.
 Production prediction/decision/LINE tables are never touched.
 """
 from __future__ import annotations
-import os
+import os,re
 from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
@@ -20,7 +20,8 @@ EARLY_MIN_HI=float(os.getenv('BAO_EARLY_MIN_HI','30'))
 LATE_MIN_LO=float(os.getenv('BAO_LATE_MIN_LO','0'))
 LATE_MIN_HI=float(os.getenv('BAO_LATE_MIN_HI','7'))
 CANONICAL_TICKETS=tuple(f'{a}-{b}-{c}' for a in range(1,7) for b in range(1,7) if b!=a for c in range(1,7) if c not in (a,b))
-assert len(CANONICAL_TICKETS)==120 and len(set(CANONICAL_TICKETS))==120
+CANONICAL_SET=set(CANONICAL_TICKETS)
+assert len(CANONICAL_TICKETS)==120 and len(CANONICAL_SET)==120
 
 DDL="""
 create table if not exists v2_bao_market_shadow_snapshots (
@@ -48,6 +49,64 @@ def phase_for(minutes_before: float):
     return None
 
 
+def parse_official_odds3t(html: str) -> dict[str,float]:
+    """Parse current BOAT RACE table-layout 3T odds, exact tickets only.
+
+    The live page lays six first-place columns side-by-side rather than printing
+    `1-2-3 12.3`. This token-layout parser is adapted from the already validated
+    historical repair parser. It intentionally returns partial/empty data when
+    the official table is not fully populated; the caller keeps the exact-120
+    safety gate.
+    """
+    if not html or rt.BeautifulSoup is None:
+        return {}
+    soup=rt.BeautifulSoup(html,'html.parser')
+    text_lines=soup.get_text('\n',strip=True)
+    segment=text_lines.split('3連単オッズ',1)[1] if '3連単オッズ' in text_lines else text_lines
+    for marker in ('締切時オッズは','レース開始後','PAGE TOP'):
+        if marker in segment:
+            segment=segment.split(marker,1)[0]
+    tokens=re.findall(r'\d+(?:\.\d+)?',segment)
+    firsts=(1,2,3,4,5,6)
+    expected=[]
+    for first in firsts:
+        second=next(x for x in firsts if x!=first)
+        third=next(x for x in firsts if x not in (first,second))
+        expected.append((second,third))
+    def lane_token(token,value):
+        return bool(re.fullmatch(r'[1-6]',token or '')) and int(token)==value
+    start=None
+    needed=270
+    for i in range(max(0,len(tokens)-needed+1)):
+        if all(lane_token(tokens[i+col*3],second) and lane_token(tokens[i+col*3+1],third)
+               for col,(second,third) in enumerate(expected)):
+            start=i;break
+    if start is None:
+        return {}
+    out={};idx=start
+    try:
+        for second_group in range(5):
+            second_by_first={first:[x for x in firsts if x!=first][second_group] for first in firsts}
+            for third_row in range(4):
+                for first in firsts:
+                    second=second_by_first[first]
+                    if third_row==0:
+                        second_token=tokens[idx];third_token=tokens[idx+1];odd_token=tokens[idx+2];idx+=3
+                        if lane_token(second_token,second): second=int(second_token)
+                    else:
+                        third_token=tokens[idx];odd_token=tokens[idx+1];idx+=2
+                    if not re.fullmatch(r'[1-6]',third_token or ''): continue
+                    third=int(third_token)
+                    if len({first,second,third})!=3: continue
+                    try: odd=float(odd_token)
+                    except Exception: continue
+                    ticket=f'{first}-{second}-{third}'
+                    if ticket in CANONICAL_SET and odd>0: out[ticket]=odd
+    except (IndexError,ValueError):
+        return {}
+    return out
+
+
 def _assert_compact_schema(conn):
     with conn.cursor() as c:
         c.execute("""select data_type,udt_name from information_schema.columns
@@ -63,6 +122,7 @@ def main():
     print(f'BAO_SHADOW_MODE=isolated_compact_write target:{TARGET_DATE} now:{now.isoformat()}',flush=True)
     print(f'BAO_SHADOW_WINDOWS=early:{EARLY_MIN_LO}-{EARLY_MIN_HI} late:{LATE_MIN_LO}-{LATE_MIN_HI}',flush=True)
     print('BAO_SHADOW_SCHEMA=v2_one_row_per_race_phase_real120',flush=True)
+    print('BAO_SHADOW_PARSER=official_table_tokens_v2',flush=True)
     with psycopg.connect(DB,row_factory=dict_row,autocommit=True) as conn:
         with conn.cursor() as c:
             c.execute(DDL)
@@ -88,8 +148,8 @@ def main():
                 c.execute("select 1 ok from v2_bao_market_shadow_snapshots where race_id=%s and phase=%s",(rid,ph))
                 if c.fetchone(): skipped_existing+=1;continue
             html=rt._fetch(rt._official_url('odds3t',TARGET_DATE,venue,rno))
-            odds=rt.parse_odds3t(html or '') if html else {}
-            if len(odds)!=120 or set(odds)!=set(CANONICAL_TICKETS):
+            odds=parse_official_odds3t(html or '') if html else {}
+            if len(odds)!=120 or set(odds)!=CANONICAL_SET:
                 partial+=1
                 print(f'BAO_SHADOW_SKIP race:{rid} phase:{ph} odds:{len(odds)} reason:not_exact120',flush=True)
                 continue
@@ -106,8 +166,7 @@ def main():
             if wrote:
                 saved_races+=1;saved_rows+=1
                 print(f'BAO_SHADOW_SAVE race:{rid} phase:{ph} rows:1 odds_n:120 minutes_before:{mb2:.2f}',flush=True)
-            else:
-                skipped_existing+=1
+            else: skipped_existing+=1
         with conn.cursor() as c:
             c.execute("""select phase,count(*) rows,count(distinct race_id) races,min(captured_at) first_at,max(captured_at) last_at,
                                 min(cardinality(odds)) min_n,max(cardinality(odds)) max_n
