@@ -55,6 +55,8 @@ Important observations on 2026-08-23:
 - 19:04: paired market races increased to 3 with `partial=0`, `phase_drift=0`.
 - Later captures increased the sample to 5 market pairs; Motor2 improved distance to late market on 4/5, average cross-entropy delta `-0.007092`.
 - 19:41: `20260823_19_10` late was captured at 6.70 minutes before deadline, increasing market pairs to 6.
+- Subsequent combined smokes increased the market sample to 7 pairs.
+- 20:09 combined smoke saved `20260823_20_11` late at 0.25 minutes before deadline plus `20260823_07_12` early at 21.08 minutes and `20260823_20_12` early at 27.92 minutes, increasing paired market races to 8; exact-120 remained intact.
 
 ## Bao dedicated exhibition mid Shadow
 
@@ -75,8 +77,21 @@ Safety/design:
 - mutable realtime exhibition timestamps and deprecated market-row exhibition fields are ignored;
 - no Production decision/LINE changes.
 
-First verified capture:
-- 19:38 smoke: `20260823_19_10` saved at 9.74 minutes before deadline with six lanes, six times, rank_n=6, `missing=0`, `drift=0`, PASS; dedicated table size 49,152 bytes.
+Verified captures by 20:09 JST:
+- `20260823_19_10`: exhibition mid at 9.74 minutes before deadline.
+- `20260823_07_11`: exhibition mid at 14.63 minutes before deadline.
+- `20260823_20_11`: exhibition mid at 14.74 minutes before deadline.
+- dedicated table rows: 3; every stored row has six times and a six-rank permutation.
+
+## Combined Bao forward smoke
+
+To reduce manual capture overhead without adding any recurring schedule:
+- PR #136 added the explicit owner-only Issue #42 command `/railway bao-forward-shadow-smoke CONFIRM`.
+- The command loads the Railway DB connection once, runs dedicated exhibition-mid Shadow first, then market early/late Shadow.
+- PR #137 extended the same explicit command to run `bao_paired_forward_audit.py` immediately afterward and return sanitized audit diagnostics.
+- There is still no recurring Bao scheduler; captures occur only through an explicit smoke command.
+- Only the two isolated Bao Shadow tables are writable; the paired audit is read-only.
+- No Production decision/BUY/WATCH/SKIP/LINE or Railway configuration change is performed.
 
 ## Forward audit status
 
@@ -86,13 +101,15 @@ Coefficients under forward observation:
 - Motor2 beta: 0.06 from PR #108.
 - Exhibition-time beta: 0.06 from PR #113, evaluated only with the dedicated 8-15 minute frozen exhibition row.
 
-Current forward sample after the first fully time-ordered example:
-- market pairs: 6;
-- Motor2-ready: 6;
-- Motor2 improved distance to late market on 5/6, average cross-entropy delta `-0.006204`;
-- safe dedicated exhibition-ready pairs: 1;
-- on `20260823_19_10`, chronology was early market 23.74 min -> exhibition mid 9.74 min -> late market 6.70 min;
-- on that race Motor2 delta was `-0.001762`, and adding exhibition improved a further `-0.000434` versus Motor2 alone;
+Current forward sample after the 20:09 combined smoke:
+- market pairs: 8;
+- Motor2-ready: 8;
+- Motor2 improved distance to late market on 6/8, average cross-entropy delta `-0.004827`;
+- safe dedicated exhibition-ready pairs: 3;
+- dedicated exhibition improved over Motor2 on 3/3, average additional cross-entropy delta `-0.005819`;
+- `20260823_19_10`: early market 23.74 min -> exhibition mid 9.74 min -> late market 6.70 min; exhibition delta vs Motor2 `-0.000434`.
+- `20260823_07_11`: exhibition mid 14.63 min; exhibition delta vs Motor2 `-0.004131`.
+- `20260823_20_11`: early market 28.24 min -> exhibition mid 14.74 min -> late market 0.25 min; Motor2 worsened slightly (`+0.001915`) but adding exhibition improved `-0.012892` versus Motor2.
 - realized-result coverage at this observation point: 0.
 
 Forward evidence rules:
@@ -100,7 +117,7 @@ Forward evidence rules:
 - require at least 30 Motor2-ready paired races for formal Motor2 forward evaluation;
 - separately require at least 30 dedicated exhibition-ready paired races for formal exhibition evaluation;
 - realized results are required as supplemental evidence before any Production promotion decision;
-- 6 market pairs / 1 exhibition pair are only early observations and are not promotion evidence.
+- 8 market pairs / 3 exhibition pairs are only early observations and are not promotion evidence.
 
 ## Historical/data quality
 
