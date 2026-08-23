@@ -2,9 +2,9 @@
 """Read-only planner for the next useful Bao forward-capture windows.
 
 Uses only race deadlines plus the isolated Bao Shadow tables to report the next
-missing market-early, dedicated exhibition-mid, and paired market-late capture
-opportunities. It never writes to the database and never touches Production
-predictions/decisions or LINE.
+missing market-early, pairable dedicated exhibition-mid, and paired market-late
+capture opportunities. It never writes to the database and never touches
+Production predictions/decisions or LINE.
 """
 from __future__ import annotations
 
@@ -135,12 +135,15 @@ def main():
             EARLY_CLOSE,
             lambda rid: (rid, "early") not in market_rows,
         )
+        # Exhibition evidence can only contribute to the current forward audit
+        # when an early market row already exists. Prioritize those races so the
+        # planner does not recommend an orphan exhibition-only capture.
         exmid = choose(
             races,
             now,
             EX_OPEN,
             EX_CLOSE,
-            lambda rid: rid not in exhibition_races,
+            lambda rid: rid in early_races and rid not in exhibition_races,
         )
         late_pair = choose(
             races,
