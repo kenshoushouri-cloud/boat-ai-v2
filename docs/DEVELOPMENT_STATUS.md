@@ -18,7 +18,7 @@ Core idea retained: separate probability estimation from market price/value judg
 ### Strong candidates
 
 - Motor2 market residual: robust candidate. PR #108: positive beta across 4 splits (0.08/0.08/0.08/0.06), 7/8 months improved, aggregate OOS improvement on 34,193 races.
-- Exhibition time residual: robust candidate. PR #113: additional beta 0.06 across 4 splits, 8/8 months improved, aggregate stability around z=-4.92.
+- Exhibition time residual: robust historical/OOS candidate. PR #113: additional beta 0.06 across 4 splits, 8/8 months improved, aggregate stability around z=-4.92. Forward evidence must use the frozen Bao early capture described below.
 - Market baseline: de-vigged market probability is substantially stronger than the current standalone v24 probability; use market as FINAL price baseline, not as PRE ability truth.
 
 ### Not promoted / rejected
@@ -38,7 +38,9 @@ Safety:
 - one compact row per race/phase with `real[120]` odds vector;
 - exact 120-ticket gate; 119/120 is rejected;
 - first early/late capture is frozen;
-- re-check phase after the official odds fetch so a slow request cannot save a snapshot after its intended window;
+- re-check phase after the official odds fetch so a slow request cannot save a market snapshot after its intended window;
+- new early rows optionally freeze six exhibition-time ranks directly from official `beforeinfo` in the same early window;
+- failure/missing exhibition never blocks a valid market snapshot;
 - no Production decision/LINE changes.
 
 Target windows:
@@ -51,12 +53,21 @@ Smoke observations on 2026-08-23:
 - Live diagnosis then confirmed the current official odds page is a side-by-side table; the legacy hyphen-ticket parser returned 0 while the new table-token parser can recover the canonical 120 tickets.
 - 18:33 smoke after PR #127: 3/3 target races saved with exact 120-ticket vectors, `partial=0`, table size 49,152 bytes, and `BAO_SHADOW_RESULT=PASS`.
 - 18:52 smoke: `20260823_07_09` late was captured at 2.83 minutes before deadline; `paired_races=1`, `partial=0`, `phase_drift=0`, PASS. This is the first genuine same-race early+late forward pair.
+- 18:59 smoke: `20260823_24_04` late captured at 3.00 minutes before deadline; paired races increased to 2.
+- 19:04 smoke: `20260823_20_09` late captured at 5.33 minutes and `20260823_24_05` early captured at 25.16 minutes; paired races increased to 3 with `partial=0`, `phase_drift=0`.
 
 Forward audit direction:
 - compare frozen early de-vigged market probability against actionable late market probability;
-- apply the frozen current Motor2 beta 0.06 from PR #108 and exhibition-time beta 0.06 from PR #113 only when timestamp-safe realtime data exists;
-- treat fewer than 30 paired races as insufficient for a formal forward conclusion;
+- Motor2 beta 0.06 from PR #108 is evaluated on valid market pairs;
+- exhibition-time beta 0.06 from PR #113 is evaluated ONLY when the six-lane exhibition rank vector was frozen on the Bao early row;
+- never reconstruct forward exhibition availability from `v2_realtime_exhibition_snapshots` because rows are upserted by `(race_id,snapshot_label,lane)` and later collection can move `snapshot_at`;
+- the earlier tiny-sample exhibition forward outputs that used the mutable realtime table are invalidated as forward evidence; they do not count toward the sample floor;
+- require at least 30 Motor2-ready paired races for formal Motor2 forward evaluation and separately at least 30 frozen-exhibition-ready pairs for formal exhibition forward evaluation;
 - realized results are supplemental; no Production promotion from a tiny sample.
+
+Current safe tiny-sample observation before the frozen-exhibition fix:
+- 3 market pairs exist; Motor2 improved distance to the late market on 2/3 with average cross-entropy delta `-0.007170`.
+- no existing exhibition result is counted as safe forward evidence until a frozen Bao early rank vector exists.
 
 ## Historical/data quality
 
@@ -76,6 +87,6 @@ Forward audit direction:
 ## Immediate next work
 
 1. Continue Bao early/late forward capture without relaxing the exact-120 gate; accumulate paired races.
-2. Run the paired forward read-only audit as samples accumulate; require at least 30 valid pairs before formal evaluation.
-3. Evaluate Motor2 first and exhibition time only with timestamp-safe availability; do not promote from early tiny samples.
+2. After the frozen-exhibition schema is active, collect new early rows with six frozen exhibition ranks where official beforeinfo is available.
+3. Run the paired forward read-only audit as samples accumulate; require 30 Motor2 pairs and separately 30 frozen-exhibition pairs before formal evaluation.
 4. Continue one-feature-at-a-time residual OOS screening and keep this file updated after material decisions.
