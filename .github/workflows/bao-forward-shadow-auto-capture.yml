@@ -40,6 +40,9 @@ jobs:
           assert "2026-08-24" in p and "2026-08-25" in p
           assert 'bao_exhibition_mid_shadow.py' in p
           assert 'bao_early_late_market_shadow.py' in p
+          assert "HTTP_TIMEOUT: '10'" in p
+          assert "RETRY_MAX: '1'" in p
+          assert "RETRY_SLEEP: '0.5'" in p
           print('BAO_AUTOCAP_VALIDATE=PASS')
           PY
 
@@ -47,6 +50,13 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Forward capture windows are only 7-10 minutes wide. Do not let one slow
+    # official request hold the concurrency slot for multiple scheduled runs;
+    # fail fast and let the next 5-minute run retry inside the same window.
+    env:
+      HTTP_TIMEOUT: '10'
+      RETRY_MAX: '1'
+      RETRY_SLEEP: '0.5'
     steps:
       - name: Gate temporary JST collection period
         id: gate
