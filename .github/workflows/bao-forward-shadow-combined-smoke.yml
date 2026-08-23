@@ -6,6 +6,7 @@ on:
       - '.github/workflows/bao-forward-shadow-combined-smoke.yml'
       - '.github/scripts/bao_early_late_market_shadow.py'
       - '.github/scripts/bao_exhibition_mid_shadow.py'
+      - '.github/scripts/bao_paired_forward_audit.py'
   workflow_dispatch:
     inputs:
       target_date:
@@ -33,6 +34,7 @@ jobs:
         run: |
           python -m py_compile .github/scripts/bao_exhibition_mid_shadow.py
           python -m py_compile .github/scripts/bao_early_late_market_shadow.py
+          python -m py_compile .github/scripts/bao_paired_forward_audit.py
 
   combined-smoke:
     if: >-
@@ -92,6 +94,12 @@ jobs:
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_early_late_market_shadow.py 2>&1 | tee bao-market-output.txt
+      - name: Run paired read-only audit
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_paired_forward_audit.py 2>&1 | tee bao-paired-audit-output.txt
       - name: Reply with sanitized diagnostics
         if: always() && github.event_name == 'issue_comment'
         env:
@@ -104,11 +112,12 @@ jobs:
             echo '```text'
             grep '^BAO_EXSHADOW_' bao-exshadow-output.txt 2>/dev/null || echo 'BAO_EXSHADOW_DIAGNOSTIC=no_prefixed_output'
             grep '^BAO_SHADOW_' bao-market-output.txt 2>/dev/null || echo 'BAO_SHADOW_DIAGNOSTIC=no_prefixed_output'
+            grep '^BAO_PAIR_AUDIT_' bao-paired-audit-output.txt 2>/dev/null || echo 'BAO_PAIR_AUDIT_DIAGNOSTIC=no_prefixed_output'
             echo '```'
             echo
-            echo 'Only isolated Bao Shadow tables are writable in these collectors; no Production decision or LINE changes.'
+            echo 'Only isolated Bao Shadow tables are writable in the collectors; the paired audit is read-only. No Production decision or LINE changes.'
           } > bao-forward-shadow-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-forward-shadow-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json bao-exshadow-output.txt bao-market-output.txt bao-forward-shadow-comment.md
+        run: rm -f railway-vars.json bao-exshadow-output.txt bao-market-output.txt bao-paired-audit-output.txt bao-forward-shadow-comment.md
