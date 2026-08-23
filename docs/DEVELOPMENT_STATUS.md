@@ -38,6 +38,7 @@ Safety:
 - one compact row per race/phase with `real[120]` odds vector;
 - exact 120-ticket gate; 119/120 is rejected;
 - first early/late capture is frozen;
+- re-check phase after the official odds fetch so a slow request cannot save a snapshot after its intended window;
 - no Production decision/LINE changes.
 
 Target windows:
@@ -47,7 +48,9 @@ Target windows:
 Smoke observations on 2026-08-23:
 - 08:08: Shimonoseki 1R was early-eligible, but no contemporaneous complete 120-ticket snapshot existed; safe skip.
 - ~08:56: Shimonoseki 2R late had only 119/120 tickets in normal realtime snapshots; Shimonoseki 3R early had no snapshot yet; safe skips.
-- Interpretation: the collector's exact-120 gate is behaving correctly; early morning official odds availability is the current bottleneck, not evidence of a collector failure.
+- Live diagnosis then confirmed the current official odds page is a side-by-side table; the legacy hyphen-ticket parser returned 0 while the new table-token parser can recover the canonical 120 tickets.
+- 18:33 smoke after PR #127: 3/3 target races saved with exact 120-ticket vectors, `partial=0`, table size 49,152 bytes, and `BAO_SHADOW_RESULT=PASS`.
+- The same 18:33 smoke had 2 early rows and 1 late row but `paired_races=0`; genuine same-race early+late pairs are still the next data requirement.
 
 Next market-Shadow goal: capture genuine paired early+late rows on later races where the official market is fully populated, then evaluate Motor2/exhibition residual versus actionable late odds.
 
@@ -68,7 +71,7 @@ Next market-Shadow goal: capture genuine paired early+late rows on later races w
 
 ## Immediate next work
 
-1. Continue Bao early/late forward capture on later-day races without relaxing the exact-120 gate.
+1. Continue Bao early/late forward capture on later-day races without relaxing the exact-120 gate; retain the post-fetch phase drift guard.
 2. Once paired samples exist, evaluate early market + Motor2 (+ exhibition when available) against late actionable odds and realized results.
 3. Continue one-feature-at-a-time residual OOS screening; reject features that do not add value beyond the stronger baseline.
 4. Keep this file updated after material design/promote/reject decisions so a new ChatGPT conversation can resume from GitHub with minimal handoff text.
