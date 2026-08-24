@@ -34,7 +34,8 @@ jobs:
           low=Path('.github/scripts/opponent_pressure_forward_realized.py').read_text(encoding='utf-8').lower()
           assert 'opp_pressure_realized_mode=read_only' in low
           assert 'v2_opponent_pressure_shadow_v2' in low
-          assert 'v2_result_entries' in low
+          assert 'v2_results' in low
+          assert 'first_lane' in low and 'sixth_lane' in low
           for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert','send_line'):
               assert token not in low, token
           print('OPP_PRESSURE_REALIZED_VALIDATE=PASS')
