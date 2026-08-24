@@ -1,0 +1,106 @@
+name: Motor probability historical stability read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/motor-ablation-history-stability-readonly.yml'
+      - 'backtest_prob_motor_boat_ablation_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate historical stability workflow
+        run: |
+          set -euo pipefail
+          python -m py_compile backtest_prob_motor_boat_ablation_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backtest_prob_motor_boat_ablation_pg.py').read_text(encoding='utf-8')
+          assert 'MODES = ("BASE", "MOTOR", "BOAT", "BOTH")' in p
+          assert 'fixed_ablation_no_coefficient_tuning_read_only' in p
+          assert 'from db_pg import fetch_all' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('MOTOR_HISTORY_STABILITY_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && github.event.issue.number == 42 && github.actor == github.repository_owner && github.event.comment.body == '/railway motor-ablation-history-stability')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run historical stability comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ABLATION_START_DATE: '2026-04-01'
+          ABLATION_END_DATE: '2026-06-30'
+        run: |
+          set -euo pipefail
+          python -u backtest_prob_motor_boat_ablation_pg.py 2>&1 | tee stability-output.txt
+      - name: Reply with sanitized report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Motor probability historical stability read-only report'
+            echo
+            echo '```text'
+            grep -E '^(✅ backtest_prob_motor_boat_ablation_pg.py|PERIOD=|POLICY=|COVERAGE=|=== OVERALL ===|BASE:|MOTOR:|BOAT:|BOTH:|DELTA_|=== MONTHLY ===|2026-04\||2026-05\||2026-06\||INTERPRETATION=|RESULT=)' stability-output.txt 2>/dev/null || echo 'MOTOR_HISTORY_STABILITY_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Historical stability evidence only; no tuning and no Production/LINE/Railway/rule/threshold/Bao changes.'
+          } > stability-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file stability-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json stability-output.txt stability-comment.md
