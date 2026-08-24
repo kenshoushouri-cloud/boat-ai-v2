@@ -1,0 +1,114 @@
+name: Phase4 N01 N02 live read-only compare
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/phase4-n01-n02-live-readonly.yml'
+      - '.github/scripts/phase4_n01_n02_live_compare.py'
+      - '.github/scripts/n02_live_opportunity_plan.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Phase4 live comparison read-only policy
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/phase4_n01_n02_live_compare.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/phase4_n01_n02_live_compare.py').read_text(encoding='utf-8')
+          assert 'os.environ["DRY_RUN"] = "1"' in p
+          assert 'os.environ["TEST_MODE"] = "1"' in p
+          assert 'PHASE4_LIVE_POLICY=no_ddl_no_db_write_no_line_no_shadow_save_no_prod_change_no_rule_activation_no_promotion' in p
+          assert 'hypothetical_not_activated' in p
+          assert 'reviewed_active_shadow_rule' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('PHASE4_LIVE_COMPARE_VALIDATE=PASS')
+          PY
+
+  compare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway phase4-live-compare'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run Phase4 live comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/.github/scripts
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/phase4_n01_n02_live_compare.py 2>&1 | tee phase4-live-output.txt
+      - name: Reply with sanitized comparison
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Phase4 N01 vs N02 live read-only comparison'
+            echo
+            echo '```text'
+            grep '^PHASE4_LIVE_' phase4-live-output.txt 2>/dev/null || echo 'PHASE4_LIVE_DIAGNOSTIC=no_compare_output'
+            echo '```'
+            echo
+            echo 'N01 is hypothetical only and was not activated. Current/future comparison only; no DB update, Shadow save, LINE, Production decision, Railway setting, rule activation, model parameter, or promotion state was changed.'
+          } > phase4-live-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file phase4-live-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json phase4-live-output.txt phase4-live-comment.md
