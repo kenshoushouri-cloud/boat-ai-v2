@@ -1,0 +1,82 @@
+name: Opponent pressure meet-day Forward diagnostic read-only
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/opponent_pressure_meet_day_forward.py'
+      - '.github/workflows/opponent-pressure-meet-day-forward-readonly.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only script
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/opponent_pressure_meet_day_forward.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('.github/scripts/opponent_pressure_meet_day_forward.py').read_text(encoding='utf-8').lower()
+          assert 'opp_meet_forward_mode=read_only' in low
+          assert 'head_only_fixed_coef' in low and 'unit_pressure_coef = 1.0' in low
+          assert 'date_2026_08_24_r05_08_by_meet_day' in low
+          assert 'no_meet_day_filter' in low and 'no_coefficient_search' in low
+          assert 'buffer_days = 7' in low and 'max_meet_days = 7' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
+              assert token not in low, token
+          print('OPP_MEET_FORWARD_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run meet-day Forward diagnostic
+        id: audit
+        run: |
+          set +e
+          python -u .github/scripts/opponent_pressure_meet_day_forward.py > opp-meet-forward.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^OPP_MEET_FORWARD' opp-meet-forward.txt 2>/dev/null || true
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json opp-meet-forward.txt
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
