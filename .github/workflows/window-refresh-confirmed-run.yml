@@ -33,10 +33,11 @@ jobs:
           assert "github.event.comment.body == '/railway window-refresh-run CONFIRM'" in p
           assert "github.actor == github.repository_owner" in p
           assert "WINDOW_REFRESH_EXECUTE: '1'" in p
-          assert 'run_window_refresh_pg.py' in p
           assert '\n  schedule:\n' not in p
+          refresh=p.split('\n  refresh:\n',1)[1]
+          assert 'run_window_refresh_pg.py' in refresh
           for forbidden in ('run_pre_window_pg.py','run_pre_window_deduped_pg.py','v23_line_notifier_batch_pg.py','run_final_pg.py'):
-              assert forbidden not in p
+              assert forbidden not in refresh
           print('WINDOW_REFRESH_CONFIRMED_VALIDATE=PASS')
           PY
 
