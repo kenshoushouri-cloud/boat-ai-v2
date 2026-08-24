@@ -4,9 +4,16 @@ on:
   pull_request:
     paths:
       - '.github/workflows/window-refresh-auto.yml'
+      - '.github/scripts/window_refresh_plan.py'
       - 'run_window_refresh_pg.py'
       - 'run_odds_window_pg.py'
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type CONFIRM to run the temporary live base-odds refresh'
+        required: true
+        default: ''
+        type: string
   schedule:
     - cron: '3-53/10 22,23,0-14 23-25 8 *'
 
@@ -30,18 +37,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile run_window_refresh_pg.py run_odds_window_pg.py
+          python -m py_compile run_window_refresh_pg.py run_odds_window_pg.py .github/scripts/window_refresh_plan.py
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/workflows/window-refresh-auto.yml').read_text(encoding='utf-8')
           assert "3-53/10 22,23,0-14 23-25 8 *" in p
           assert "2026-08-24" in p and "2026-08-25" in p
+          assert "github.event.inputs.confirm" in p
+          assert "CONFIRM" in p
           assert "WINDOW_REFRESH_EXECUTE: '1'" in p
           assert "WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE: '10'" in p
           assert "WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE: '60'" in p
           assert "WINDOW_WORKERS: '2'" in p
           assert "WINDOW_ODDS_RETRIES: '1'" in p
           assert 'run_window_refresh_pg.py' in p
+          assert '.github/scripts/window_refresh_plan.py' in p
           refresh=p.split('\n  refresh:\n',1)[1]
           for forbidden in ('run_pre_window_pg.py','run_pre_window_deduped_pg.py','v23_line_notifier_batch_pg.py','run_final_pg.py'):
               assert forbidden not in refresh
@@ -66,20 +76,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-            echo 'WINDOW_REFRESH_AUTO_GATE=manual_dispatch'
-            exit 0
-          fi
           jst_date="$(TZ=Asia/Tokyo date +%F)"
           jst_hour="$(TZ=Asia/Tokyo date +%H)"
-          if [[ "$jst_date" == '2026-08-24' || "$jst_date" == '2026-08-25' ]] && (( 10#$jst_hour >= 7 && 10#$jst_hour <= 23 )); then
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-            echo "WINDOW_REFRESH_AUTO_GATE=scheduled_active jst_date:${jst_date} jst_hour:${jst_hour}"
-          else
+
+          if [[ "$jst_date" != '2026-08-24' && "$jst_date" != '2026-08-25' ]]; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
-            echo "WINDOW_REFRESH_AUTO_GATE=scheduled_inactive jst_date:${jst_date} jst_hour:${jst_hour}"
+            echo "WINDOW_REFRESH_AUTO_GATE=inactive_date jst_date:${jst_date}"
+            exit 0
           fi
+          if (( 10#$jst_hour < 7 || 10#$jst_hour > 23 )); then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo "WINDOW_REFRESH_AUTO_GATE=inactive_hour jst_date:${jst_date} jst_hour:${jst_hour}"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.event.inputs.confirm }}" != 'CONFIRM' ]]; then
+              echo 'run=false' >> "$GITHUB_OUTPUT"
+              echo 'WINDOW_REFRESH_AUTO_GATE=manual_blocked_missing_confirm'
+              exit 0
+            fi
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            echo "WINDOW_REFRESH_AUTO_GATE=manual_confirmed jst_date:${jst_date} jst_hour:${jst_hour}"
+            exit 0
+          fi
+
+          echo 'run=true' >> "$GITHUB_OUTPUT"
+          echo "WINDOW_REFRESH_AUTO_GATE=scheduled_active jst_date:${jst_date} jst_hour:${jst_hour}"
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
       - uses: actions/setup-python@v5
@@ -124,6 +147,13 @@ jobs:
         run: |
           set -euo pipefail
           python -u run_window_refresh_pg.py
+      - name: Verify remaining base-odds gaps read-only
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/window_refresh_plan.py
       - name: Clean temporary files
         if: always()
         run: rm -f railway-vars.json
