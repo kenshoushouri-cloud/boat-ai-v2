@@ -1,0 +1,113 @@
+name: N02 Phase9 OOS extension read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/n02-phase9-oos-readonly.yml'
+      - 'analyze_n02_phase9_frequency_extension_pg.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Phase9 report read-only policy
+        run: |
+          set -euo pipefail
+          python -m py_compile analyze_n02_phase9_frequency_extension_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('analyze_n02_phase9_frequency_extension_pg.py').read_text(encoding='utf-8')
+          assert 'from db_pg import fetch_all' in p
+          assert 'CORE候補がないレースだけ N01 extension' in p
+          assert 'IMPORTANT: EXTENSIONがTEST/OOSで弱ければ頻度目的でも採用しません。' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('PHASE9_OOS_READONLY_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway phase9-oos-extension-report'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run fixed Phase9 OOS comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          P9_START_DATE: '2026-07-01'
+          P9_END_DATE: '2026-08-15'
+        run: |
+          set -euo pipefail
+          python -u analyze_n02_phase9_frequency_extension_pg.py 2>&1 | tee phase9-oos-output.txt
+      - name: Reply with sanitized OOS report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## N02 Phase9 OOS extension read-only report'
+            echo
+            echo '```text'
+            grep -E '^(✅ analyze_n02_phase9_frequency_extension_pg.py|固定比較のみ。|month=|=== OVERALL|CORE_ONLY:|EXTENSION_ONLY:|CORE_PLUS_EXTENSION:|=== PERIOD|--- OOS1 ---|--- OOS2 ---|CORE:|EXT:|UNION:|=== MONTHLY|2026-07 |2026-08 |IMPORTANT:|=== phase9 finished ===)' phase9-oos-output.txt 2>/dev/null || echo 'PHASE9_OOS_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Historical-odds OOS reference only: v2_odds_trifecta is not frozen exact PRE evidence. N01 remains inactive. No DB update, LINE, Production decision, Railway setting, rule activation, model parameter, Bao state, or promotion state was changed.'
+          } > phase9-oos-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file phase9-oos-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json phase9-oos-output.txt phase9-oos-comment.md
