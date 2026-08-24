@@ -1,0 +1,117 @@
+name: Probability rank calibration OOS read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/prob-rank-calibration-oos-readonly.yml'
+      - 'backtest_prob_rank_calibration_oos_pg.py'
+      - 'backtest_prob_actual_motor_shadow_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only rank calibration
+        run: |
+          set -euo pipefail
+          python -m py_compile backtest_prob_rank_calibration_oos_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backtest_prob_rank_calibration_oos_pg.py').read_text(encoding='utf-8')
+          assert 'from db_pg import fetch_all' in p
+          assert 'TRAIN=' in p and 'OOS=' in p
+          assert 'rank_calibration' in p
+          assert 'no_tuning_no_production_no_line' in p
+          assert 'RESULT=PASS_READ_ONLY' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('PROB_RANK_CAL_OOS_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway prob-rank-calibration-oos'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run fixed train OOS rank calibration
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          RANK_CAL_TRAIN_START: '2026-01-01'
+          RANK_CAL_TRAIN_END: '2026-06-30'
+          RANK_CAL_OOS_START: '2026-07-01'
+          RANK_CAL_OOS_END: '2026-08-15'
+        run: |
+          set -euo pipefail
+          python -u backtest_prob_rank_calibration_oos_pg.py 2>&1 | tee rank-cal-output.txt
+      - name: Reply with sanitized report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Probability rank calibration OOS read-only report'
+            echo
+            echo '```text'
+            grep -E '^(✅ backtest_prob_rank_calibration_oos_pg.py|TRAIN=|MODEL=|POLICY=|TRAIN_COVERAGE=|R0[147]|R11_20:|R21_40:|R41_80:|R81_120:|TRAIN_EMPIRICAL_TOTAL_MASS=|OOS_COVERAGE=|LOGLOSS=|BRIER=|WINNER_RANK_AVG=|=== OOS WINNER|=== RAW PROB|=== RANK-CALIBRATED|<0.8:|0.8-1.0:|1.0-1.2:|1.2-1.5:|1.5-2.0:|2.0\+:|INTERPRETATION=|HISTORICAL_ODDS_CAVEAT=|RESULT=)' rank-cal-output.txt 2>/dev/null || echo 'PROB_RANK_CAL_OOS_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Strict train-before-OOS rank calibration research only. Historical base odds are not guaranteed frozen exact PRE. No DB update, LINE, Production decision, Railway setting, threshold/model coefficient change, Bao promotion, or PR #169 state change.'
+          } > rank-cal-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file rank-cal-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json rank-cal-output.txt rank-cal-comment.md
