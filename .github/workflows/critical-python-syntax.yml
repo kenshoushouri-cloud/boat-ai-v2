@@ -28,6 +28,7 @@ jobs:
             repair_month_all_pg.py \
             run_daily_data_prepare_pg.py \
             run_odds_window_pg.py \
+            run_window_refresh_pg.py \
             collect_racer_course_stats_pg.py \
             run_window_pipeline_pg.py \
             run_pre_window_pg.py \

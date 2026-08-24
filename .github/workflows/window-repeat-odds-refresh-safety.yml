@@ -1,0 +1,49 @@
+name: Window repeat odds refresh safety
+
+on:
+  pull_request:
+    paths:
+      - 'run_window_refresh_pg.py'
+      - 'run_odds_window_pg.py'
+      - '.github/workflows/window-repeat-odds-refresh-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile refresh runner
+        run: python -m py_compile run_window_refresh_pg.py run_odds_window_pg.py
+      - name: Verify default run is plan-only and DB-free
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DATABASE_URL || true
+          export TARGET_DATE="$(TZ=Asia/Tokyo date +%F)"
+          output="$(python -u run_window_refresh_pg.py)"
+          printf '%s\n' "$output"
+          grep -q '^WINDOW_REFRESH_EXECUTE=False$' <<< "$output"
+          grep -q '^WINDOW_REFRESH_POLICY=base_odds_only_no_pre_no_line_no_final_no_promotion$' <<< "$output"
+          grep -q '^WINDOW_REFRESH_RESULT=PLAN_ONLY_DISABLED_BY_DEFAULT$' <<< "$output"
+      - name: Verify reviewed safety defaults
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('run_window_refresh_pg.py').read_text(encoding='utf-8')
+          assert 'WINDOW_REFRESH_EXECUTE' in text
+          assert 'WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE", 10.0' in text
+          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 90.0' in text
+          assert 'WINDOW_SKIP_FULL_ODDS' in text
+          assert 'odds.main()' in text
+          assert 'run_pre_window_pg' not in text
+          assert 'run_pre_window_deduped_pg' not in text
+          assert 'LINE_CHANNEL_ACCESS_TOKEN' not in text
+          print('WINDOW_REFRESH_SAFETY=PASS')
+          PY
