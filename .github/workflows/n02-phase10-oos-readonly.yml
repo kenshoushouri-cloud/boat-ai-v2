@@ -1,0 +1,116 @@
+name: N02 Phase10 OOS fixed-filter read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/n02-phase10-oos-readonly.yml'
+      - 'analyze_n02_phase10_extension_filters_pg.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Phase10 report read-only policy
+        run: |
+          set -euo pipefail
+          python -m py_compile analyze_n02_phase10_extension_filters_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('analyze_n02_phase10_extension_filters_pg.py').read_text(encoding='utf-8')
+          assert 'from db_pg import fetch_all' in p
+          assert 'OOS1/OOS2を見て閾値は変更しません。' in p
+          assert 'COREは一切変更していません。' in p
+          assert 'TH_MOTOR_EDGE = 5.3096' in p
+          assert 'TH_HEAD_MOTOR3 = 54.2408' in p
+          assert 'TH_HEAD_AVG_ST = 0.1500' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('PHASE10_OOS_READONLY_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway phase10-oos-fixed-filters-report'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run fixed Phase10 OOS comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          P10_START_DATE: '2026-07-01'
+          P10_END_DATE: '2026-08-15'
+        run: |
+          set -euo pipefail
+          python -u analyze_n02_phase10_extension_filters_pg.py 2>&1 | tee phase10-oos-output.txt
+      - name: Reply with sanitized OOS report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## N02 Phase10 OOS fixed-filter read-only report'
+            echo
+            echo '```text'
+            grep -E '^(✅ analyze_n02_phase10_extension_filters_pg.py|PERIOD=|Phase9 EXT母集団を固定し|month=|=== EXTENSION FILTER COMPARISON|EXT_BASE:|EXT_A:|EXT_B:|EXT_C:|EXT_A_OR_B:|EXT_A_OR_C:|EXT_B_OR_C:|EXT_ANY:|EXT_SCORE_2P:|EXT_SCORE_3:|--- OOS1 ---|--- OOS2 ---|=== CORE \+ FILTERED EXT ===|CORE_ONLY:|CORE_PLUS_|=== FIXED-FILTER OOS CHECK ===|IMPORTANT:|- OOS1/OOS2|- EXT_BASEより|- COREは一切|=== phase10 finished ===)' phase10-oos-output.txt 2>/dev/null || echo 'PHASE10_OOS_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Historical-odds OOS reference only: v2_odds_trifecta is not frozen exact PRE evidence. Fixed Phase7/8 thresholds only; no new search. N01 remains inactive. No DB update, LINE, Production decision, Railway setting, rule activation, model parameter, Bao state, or promotion state was changed.'
+          } > phase10-oos-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file phase10-oos-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json phase10-oos-output.txt phase10-oos-comment.md
