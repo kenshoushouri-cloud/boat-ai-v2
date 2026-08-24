@@ -1,0 +1,92 @@
+name: Opponent pressure head-only trifecta Forward daily stability read-only
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/opponent_pressure_v24_trifecta_head_only_forward_daily.py'
+      - '.github/workflows/opponent-pressure-v24-trifecta-head-only-forward-daily-readonly.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only script
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/opponent_pressure_v24_trifecta_head_only_forward_daily.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('.github/scripts/opponent_pressure_v24_trifecta_head_only_forward_daily.py').read_text(encoding='utf-8').lower()
+          assert 'opp_v24_head_daily_mode=read_only' in low
+          assert 'unit_pressure_coef = 1.0' in low
+          assert 'head_only_trifecta' in low
+          assert 'no_date_selection' in low
+          assert 'date_band' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
+              assert token not in low, token
+          print('OPP_V24_HEAD_DAILY_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Resolve JST end date
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime,timezone,timedelta
+          target=datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'OPP_V24_HEAD_DAILY_END={target}\n')
+          print(f'OPP_V24_HEAD_DAILY_TARGET={target}')
+          PY
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run daily Forward stability audit
+        id: audit
+        run: |
+          set +e
+          python -u .github/scripts/opponent_pressure_v24_trifecta_head_only_forward_daily.py > opp-v24-head-daily.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^OPP_V24_HEAD_DAILY' opp-v24-head-daily.txt 2>/dev/null || true
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json opp-v24-head-daily.txt
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
