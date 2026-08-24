@@ -4,6 +4,9 @@
 Compares the stored train-only baseline probabilities with the stored
 opponent-pressure adjusted probabilities on realized race outcomes.
 
+Current production nightly results are stored one row per race in v2_results
+(first_lane..sixth_lane), so this report reads that table directly.
+
 Metrics:
 - lane-level binary Brier for win and top3;
 - normalized winner log loss (win probabilities normalized within race);
@@ -98,6 +101,21 @@ def _print_metrics(prefix: str, m: dict[str, float]) -> None:
     )
 
 
+def _finish_map(row: dict[str, Any]) -> dict[int, int]:
+    out: dict[int, int] = {}
+    for pos, key in enumerate(
+        ("first_lane", "second_lane", "third_lane", "fourth_lane", "fifth_lane", "sixth_lane"),
+        start=1,
+    ):
+        lane = row.get(key)
+        if lane is None:
+            continue
+        lane_i = int(lane)
+        if 1 <= lane_i <= 6 and lane_i not in out:
+            out[lane_i] = pos
+    return out
+
+
 def main() -> None:
     if not DB:
         raise RuntimeError("DATABASE_URL required")
@@ -106,6 +124,7 @@ def main() -> None:
 
     print("OPP_PRESSURE_REALIZED_MODE=read_only", flush=True)
     print(f"OPP_PRESSURE_REALIZED_PERIOD={START}..{END}", flush=True)
+    print("OPP_PRESSURE_REALIZED_RESULT_SOURCE=v2_results_first_to_sixth_lane", flush=True)
     print("OPP_PRESSURE_REALIZED_POLICY=frozen_shadow_vs_realized_no_writes_no_production_no_line", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
@@ -126,23 +145,28 @@ def main() -> None:
             shadows = [dict(r) for r in cur.fetchall()]
 
         ids = [str(r["race_id"]) for r in shadows]
-        results: dict[str, dict[int, int]] = defaultdict(dict)
+        results: dict[str, dict[int, int]] = {}
         if ids:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    select race_id,lane,finish_position
-                    from v2_result_entries
-                    where race_id=any(%s) and lane between 1 and 6
-                    order by race_id,lane
+                    select race_id,result_status,race_status,
+                           first_lane,second_lane,third_lane,
+                           fourth_lane,fifth_lane,sixth_lane
+                    from v2_results
+                    where race_id=any(%s)
+                    order by race_id
                     """,
                     (ids,),
                 )
                 for row in cur.fetchall():
-                    if row["finish_position"] is not None:
-                        results[str(row["race_id"])][int(row["lane"])] = int(row["finish_position"])
+                    d = dict(row)
+                    if str(d.get("result_status") or "") != "official":
+                        continue
+                    results[str(d["race_id"])] = _finish_map(d)
 
     print(f"OPP_PRESSURE_REALIZED_SHADOW_ROWS={len(shadows)}", flush=True)
+    print(f"OPP_PRESSURE_REALIZED_RESULT_ROWS={len(results)}", flush=True)
 
     records: list[dict[str, Any]] = []
     pending = malformed = integrity_skip = 0
@@ -152,7 +176,7 @@ def main() -> None:
         if len(rr) < 6:
             pending += 1
             continue
-        if sorted(rr.values()) != [1, 2, 3, 4, 5, 6]:
+        if sorted(rr.keys()) != [1, 2, 3, 4, 5, 6] or sorted(rr.values()) != [1, 2, 3, 4, 5, 6]:
             malformed += 1
             continue
         arrays = [s[k] for k in ("matched_opponents", "base_win", "base_top3", "adj_win", "adj_top3")]
