@@ -32,6 +32,7 @@ os.environ["DRY_RUN"] = "1"
 import v24_pre_candidate_notifier_pg as v24  # noqa: E402
 
 JST = timezone(timedelta(hours=9))
+VERSION = "2026-08-24 low-core-verdict-v2"
 END_DATE = os.getenv("DIAG_END_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 DIAG_DAYS = max(1, int(os.getenv("DIAG_DAYS", "5")))
 SAMPLE_LIMIT = max(1, int(os.getenv("DIAG_SAMPLE_LIMIT", "20")))
@@ -196,7 +197,7 @@ def main() -> None:
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です。")
 
-    print("✅ diagnose_v24_low_candidates_pg.py VERSION 2026-07-14", flush=True)
+    print(f"✅ diagnose_v24_low_candidates_pg.py VERSION {VERSION}", flush=True)
     print(
         f"DIAG_END_DATE={END_DATE} DIAG_DAYS={DIAG_DAYS} "
         f"MIN_ODDS_ROWS={v24.MIN_ODDS_ROWS} PROB_TEMP={v24.PROB_TEMP}",
@@ -256,10 +257,25 @@ def main() -> None:
 
     print("\n判定目安", flush=True)
     if total["low_core"] > 0:
+        ready = total["ready_races"]
+        low_core = total["low_core"]
+        excluded = total["core_excluded_r10_12"]
+        rate = low_core / ready * 100.0 if ready else 0.0
         print(
-            "low_coreは存在します。low_base_candidateとの差があれば、主因は10〜12R除外です。",
+            f"low_core={low_core}/{ready} ({rate:.3f}%) です。",
             flush=True,
         )
+        if excluded > 0:
+            print(
+                f"このうちR10〜12除外は{excluded}件です。low_base_candidateとの差に影響しています。",
+                flush=True,
+            )
+        else:
+            print(
+                "R10〜12除外は0件です。候補減少の主因はレース番号除外ではなく、"
+                "prob_rank 11〜20・market_rank 1・odds 3〜5の同一買い目での交差自体が希少なことです。",
+                flush=True,
+            )
     elif total["market1_odds3_5"] == 0:
         print(
             "market_rank=1のオッズが3〜5倍に入っていません。主因はオッズ帯です。",
