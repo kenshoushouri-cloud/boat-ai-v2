@@ -59,6 +59,11 @@ def _in_window(deadline: str, name: str) -> bool:
     return False
 
 
+def _sample(values: list[str], limit: int = 20) -> tuple[str, int]:
+    shown = values[:limit]
+    return (",".join(shown) if shown else "none", max(0, len(values) - len(shown)))
+
+
 def main() -> None:
     if not DB:
         raise RuntimeError("DATABASE_URL is required")
@@ -141,6 +146,25 @@ def main() -> None:
             complete = sum(1 for rid in ids if _odds_complete(odds_by.get(rid, [])))
             print(
                 f"TODAY_HEALTH_WINDOW=name:{name} races:{len(ids)} entries_full6:{full6} odds_complete:{complete}",
+                flush=True,
+            )
+
+            entry_missing = [
+                f"{r['race_id']}@{str(r.get('deadline_time') or '')[:5]}"
+                for r in selected
+                if entries_by.get(str(r["race_id"])) != ALL_LANES
+            ]
+            odds_missing = [
+                f"{r['race_id']}@{str(r.get('deadline_time') or '')[:5]}"
+                for r in selected
+                if not _odds_complete(odds_by.get(str(r["race_id"]), []))
+            ]
+            entry_sample, entry_more = _sample(entry_missing)
+            odds_sample, odds_more = _sample(odds_missing)
+            print(
+                f"TODAY_HEALTH_WINDOW_INCOMPLETE=name:{name} "
+                f"entries_missing:{len(entry_missing)} entry_races:{entry_sample} entry_more:{entry_more} "
+                f"odds_missing:{len(odds_missing)} odds_races:{odds_sample} odds_more:{odds_more}",
                 flush=True,
             )
 
