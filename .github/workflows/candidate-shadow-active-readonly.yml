@@ -35,7 +35,9 @@ jobs:
           assert 'execute(' not in p
           assert 'upsert' not in p.lower()
           assert 'send_line' not in p.lower()
-          assert "('S01', 'S02', 'S03', 'S04', 'S05', 'N02')" in p
+          assert 'RULE_IDS = (' in p
+          for rule_id in ('S01','S02','S03','S04','S05','N02'):
+              assert f'"{rule_id}"' in p
           print('ACTIVE_SHADOW_READONLY_VALIDATE=PASS')
           PY
 
