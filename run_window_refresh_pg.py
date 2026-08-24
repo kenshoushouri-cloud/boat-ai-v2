@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import run_odds_window_pg as odds
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-24 repeat-odds-refresh-v1"
+VERSION = "2026-08-24 repeat-odds-refresh-v2-60min-default"
 VALID_WINDOWS = ("morning", "day", "night")
 
 
@@ -103,7 +103,7 @@ def _scoped_selector(
     rows = _ORIGINAL_SELECTOR(target_date, start, end)
     now_jst = datetime.now(JST)
     min_before = max(0.0, _env_float("WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE", 10.0))
-    max_before = max(min_before, _env_float("WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 90.0))
+    max_before = max(min_before, _env_float("WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 60.0))
 
     kept: List[Dict[str, Any]] = []
     missing_deadline = 0
