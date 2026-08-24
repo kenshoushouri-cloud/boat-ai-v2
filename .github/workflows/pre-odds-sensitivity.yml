@@ -1,0 +1,128 @@
+name: PRE missing odds sensitivity
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/pre_missing_odds_sensitivity.py'
+      - '.github/workflows/pre-odds-sensitivity.yml'
+      - 'repair_month_all_pg.py'
+      - 'run_odds_window_pg.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only sensitivity policy
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/pre_missing_odds_sensitivity.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/pre_missing_odds_sensitivity.py').read_text(encoding='utf-8')
+          low=p.lower()
+          assert 'PRE_ODDS_SENSITIVITY_MODE=read_only_official_http_in_memory_v24' in p
+          assert 'no_db_writes_no_line_no_shadow_no_final_no_promotion' in p
+          assert 'repair._fetch' in p and 'repair.parse_odds3t' in p
+          for forbidden in (
+              'from db_pg import execute',
+              'db_pg.execute',
+              '_send_line_message(',
+              '_save_pre_notification(',
+              'collect_candidate_filter_shadow_pg.py',
+              'run_final_pg.py',
+              'run_window_refresh_pg.py',
+              'upsert_rows(',
+          ):
+              assert forbidden not in p, forbidden
+          for sql_write in ('insert into ', 'update v2_', 'delete from ', 'alter table ', 'create table ', 'create unique index '):
+              assert sql_write not in low, sql_write
+          print('PRE_ODDS_SENSITIVITY_VALIDATE=PASS')
+          PY
+
+  probe:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway pre-odds-sensitivity'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run PRE missing-odds sensitivity probe
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SELECTOR_MODE: balanced
+          WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE: '10'
+          WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE: '60'
+          PRE_ODDS_SENSITIVITY_LIMIT: '10'
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/pre_missing_odds_sensitivity.py 2>&1 | tee pre-odds-sensitivity-output.txt
+      - name: Reply with sanitized sensitivity result
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## PRE missing odds sensitivity'
+            echo
+            echo '```text'
+            grep '^PRE_ODDS_SENSITIVITY_' pre-odds-sensitivity-output.txt 2>/dev/null || echo 'PRE_ODDS_SENSITIVITY_DIAGNOSTIC=no_prefixed_output'
+            echo '```'
+            echo
+            echo 'Read-only PostgreSQL inspection plus official HTTP GET and in-memory v24 selection only. No fetched odds, notifications, LINE, Shadow, FINAL decisions, Railway settings, or promotion state were changed.'
+          } > pre-odds-sensitivity-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file pre-odds-sensitivity-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json pre-odds-sensitivity-output.txt pre-odds-sensitivity-comment.md
