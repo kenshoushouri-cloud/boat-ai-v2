@@ -1,0 +1,112 @@
+name: Candidate Shadow active read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/candidate-shadow-active-readonly.yml'
+      - 'report_candidate_shadow_active_comparison_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate active Shadow report read-only policy
+        run: |
+          set -euo pipefail
+          python -m py_compile report_candidate_shadow_active_comparison_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('report_candidate_shadow_active_comparison_pg.py').read_text(encoding='utf-8')
+          assert 'from db_pg import fetch_all' in p
+          assert 'ACTIVE_SHADOW_POLICY=read_only_no_db_write_no_line_no_prod_change_no_rule_change_no_promotion' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          assert "('S01', 'S02', 'S03', 'S04', 'S05', 'N02')" in p
+          print('ACTIVE_SHADOW_READONLY_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway candidate-shadow-active-report'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run active Shadow comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ACTIVE_SHADOW_REPORT_DAYS: '30'
+          ACTIVE_SHADOW_UNIT_YEN: '100'
+        run: |
+          set -euo pipefail
+          python -u report_candidate_shadow_active_comparison_pg.py 2>&1 | tee candidate-shadow-active-output.txt
+      - name: Reply with sanitized report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate Shadow active read-only report'
+            echo
+            echo '```text'
+            grep -E '^(OK report_candidate_shadow_active_comparison_pg.py|ACTIVE_SHADOW_)' candidate-shadow-active-output.txt 2>/dev/null || echo 'ACTIVE_SHADOW_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Observed PRE Shadow rows only. No DB update, LINE, Production decision, Railway setting, rule activation, model parameter, or promotion state was changed.'
+          } > candidate-shadow-active-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-shadow-active-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json candidate-shadow-active-output.txt candidate-shadow-active-comment.md
