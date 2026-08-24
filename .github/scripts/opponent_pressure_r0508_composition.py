@@ -60,6 +60,11 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "winner_delta": mean([r["winner_delta"] for r in rows]),
         "winner_delta_positive": mean([1.0 if r["winner_delta"] > 0 else 0.0 for r in rows]),
         "winner_delta_is_max": mean([1.0 if r["winner_delta_is_max"] else 0.0 for r in rows]),
+        "delta_sum": mean([r["delta_sum"] for r in rows]),
+        "winner_norm_change": mean([r["winner_norm_change"] for r in rows]),
+        "winner_norm_positive": mean([1.0 if r["winner_norm_change"] > 0 else 0.0 for r in rows]),
+        "lane_raw_delta": [mean([r["lane_deltas"][i] for r in rows]) for i in range(6)],
+        "lane_norm_change": [mean([r["lane_norm_changes"][i] for r in rows]) for i in range(6)],
         "avg_abs_delta": mean([r["avg_abs_delta"] for r in rows]),
         "max_abs_delta": mean([r["max_abs_delta"] for r in rows]),
         "winner_base_p": mean([r["winner_base_p"] for r in rows]),
@@ -68,8 +73,8 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "winner_first_rank_adj": mean([r["winner_first_rank_adj"] for r in rows]),
         "v24_entropy": mean([r["v24_entropy"] for r in rows]),
         "v24_top_gap": mean([r["v24_top_gap"] for r in rows]),
-        "support_all": mean([r["support_all"] for r in rows]),
-        "support_winner": mean([r["support_winner"] for r in rows]),
+        "matched_opponents_all": mean([r["matched_opponents_all"] for r in rows]),
+        "matched_opponents_winner": mean([r["matched_opponents_winner"] for r in rows]),
         "a1_count": mean([r["a1_count"] for r in rows]),
         "unique_venues": len(set(venues)),
         "venue_hhi": hhi(venues),
@@ -84,15 +89,20 @@ def emit(label: str, m: dict[str, Any]) -> None:
         return
     lane_text = ",".join(f"{k}:{m['winner_lanes'].get(k,0)}" for k in range(1,7))
     venue_text = ",".join(f"{k}:{v}" for k,v in sorted(m["venue_counts"].items()))
+    raw_lane = ",".join(f"{i+1}:{m['lane_raw_delta'][i]:+.5f}" for i in range(6))
+    norm_lane = ",".join(f"{i+1}:{m['lane_norm_change'][i]:+.5f}" for i in range(6))
     print(
         f"OPP_R0508_COMP={label} n:{m['n']} "
         f"brier_delta:{m['brier_delta']:+.8f} logloss_delta:{m['logloss_delta']:+.8f} rank_delta:{m['rank_delta']:+.3f} "
-        f"winner_pressure_delta:{m['winner_delta']:+.6f} winner_delta_positive:{m['winner_delta_positive']*100:.1f}% "
-        f"winner_delta_is_max:{m['winner_delta_is_max']*100:.1f}% avg_abs_delta:{m['avg_abs_delta']:.6f} max_abs_delta:{m['max_abs_delta']:.6f} "
+        f"winner_raw_delta:{m['winner_delta']:+.6f} winner_raw_positive:{m['winner_delta_positive']*100:.1f}% "
+        f"winner_raw_is_max:{m['winner_delta_is_max']*100:.1f}% raw_delta_sum:{m['delta_sum']:+.6f} "
+        f"winner_norm_change:{m['winner_norm_change']:+.6f} winner_norm_positive:{m['winner_norm_positive']*100:.1f}% "
+        f"raw_lane_delta:{raw_lane} norm_lane_change:{norm_lane} "
+        f"avg_abs_delta:{m['avg_abs_delta']:.6f} max_abs_delta:{m['max_abs_delta']:.6f} "
         f"winner_first_p:{m['winner_base_p']:.4f}->{m['winner_adj_p']:.4f} "
         f"winner_first_rank:{m['winner_first_rank_base']:.3f}->{m['winner_first_rank_adj']:.3f} "
         f"v24_entropy:{m['v24_entropy']:.4f} v24_top_gap:{m['v24_top_gap']:.4f} "
-        f"support_all:{m['support_all']:.2f} support_winner:{m['support_winner']:.2f} a1_count:{m['a1_count']:.2f} "
+        f"matched_opponents_all:{m['matched_opponents_all']:.2f} matched_opponents_winner:{m['matched_opponents_winner']:.2f} a1_count:{m['a1_count']:.2f} "
         f"unique_venues:{m['unique_venues']} venue_hhi:{m['venue_hhi']:.4f} winner_lanes:{lane_text} venues:{venue_text}",
         flush=True,
     )
@@ -104,6 +114,7 @@ def main() -> None:
     print("OPP_R0508_COMP_MODE=read_only_fixed_group_composition_no_tuning", flush=True)
     print(f"OPP_R0508_COMP_PERIOD={START}..{END}", flush=True)
     print("OPP_R0508_COMP_GROUPS=2026-08-22_R05_08,2026-08-23_R05_08,2026-08-24_R05_08,2026-08-22_23_R05_08,2026-08-24_R09_12", flush=True)
+    print("OPP_R0508_COMP_DELTA_SEMANTICS=adj_win_minus_base_win_is_lane_independent_effect_not_zero_sum_distribution_delta", flush=True)
     print("OPP_R0508_COMP_POLICY=descriptive_only_no_date_filter_no_race_band_filter_no_coefficient_search_no_writes_no_production_no_line", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
@@ -158,6 +169,7 @@ def main() -> None:
             skipped += 1; continue
         delta=[tri.sf(s["adj_win"][i])-tri.sf(s["base_win"][i]) for i in range(6)]
         adj=tri.norm([max(1e-12,min(.999,base[i]+delta[i])) for i in range(6)])
+        norm_changes=[adj[i]-base[i] for i in range(6)]
         pb=tri.pl_trifecta(base); ph=head.head_only_trifecta(base,adj)
         ticket=f"{lanes[0]}-{lanes[1]}-{lanes[2]}"; idx=lanes[0]-1
         sorted_base=sorted(base,reverse=True)
@@ -169,11 +181,13 @@ def main() -> None:
             "ll_base":-math.log(max(EPS,pb.get(ticket,0.0))),"ll_plus":-math.log(max(EPS,ph.get(ticket,0.0))),
             "rank_base":float(tri.ticket_rank(pb,ticket)),"rank_plus":float(tri.ticket_rank(ph,ticket)),
             "winner_delta":delta[idx],"winner_delta_is_max":delta[idx] >= max(delta)-1e-15,
+            "delta_sum":sum(delta),"winner_norm_change":norm_changes[idx],
+            "lane_deltas":delta,"lane_norm_changes":norm_changes,
             "avg_abs_delta":mean([abs(x) for x in delta]),"max_abs_delta":max(abs(x) for x in delta),
             "winner_base_p":base[idx],"winner_adj_p":adj[idx],
             "winner_first_rank_base":float(rank_desc(base,idx)),"winner_first_rank_adj":float(rank_desc(adj,idx)),
             "v24_entropy":entropy(base),"v24_top_gap":sorted_base[0]-sorted_base[1],
-            "support_all":mean([float(x) for x in supports]),"support_winner":float(supports[idx]),"a1_count":float(a1),
+            "matched_opponents_all":mean([float(x) for x in supports]),"matched_opponents_winner":float(supports[idx]),"a1_count":float(a1),
         })
 
     print(f"OPP_R0508_COMP_COVERAGE=shadow:{len(shadows)} evaluated:{len(records)} skipped:{skipped}", flush=True)
