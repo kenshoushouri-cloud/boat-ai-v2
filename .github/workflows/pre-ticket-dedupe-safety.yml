@@ -1,0 +1,38 @@
+name: PRE ticket dedupe safety
+
+on:
+  pull_request:
+    paths:
+      - 'run_pre_window_deduped_pg.py'
+      - '.github/workflows/pre-ticket-dedupe-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile PRE dedupe wrapper
+        run: python -m py_compile run_pre_window_deduped_pg.py
+      - name: Verify opt-in and ticket-level safety invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('run_pre_window_deduped_pg.py').read_text(encoding='utf-8')
+          assert 'PRE_NOTIFICATION_DEDUPE_ENABLED", "0"' in text
+          assert 'v2_pre_notification_claims' in text
+          assert 'ux_v2_pre_notification_claims_active' in text
+          assert 'race_date, pre_session, selector_mode, test_mode, dry_run, race_id, ticket' in text
+          assert 'backfilled_from_v2_line_notifications' in text
+          assert 'selected[:] = claimed' in text
+          assert '"dry_run": bool(core.DRY_RUN)' in text
+          assert 'SKIPPED_ALL_ALREADY_SENT' in text
+          assert "status in ('pending','sent')" in text
+          print('PRE_TICKET_DEDUPE_SAFETY=PASS')
+          PY
