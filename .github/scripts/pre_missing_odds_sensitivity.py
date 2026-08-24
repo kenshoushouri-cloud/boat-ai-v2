@@ -163,14 +163,10 @@ def main() -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select race_id,race_date,coalesce(venue_id,venue_code) venue_id,
-                       venue_code,race_no,deadline_time,deadline_at,race_name,race_title,title,
-                       event_title,event_name,series_title,series_name,tournament_title,
-                       tournament_name,meeting_title,meet_title,grade,grade_type,category,
-                       race_category,race_type,program_name,subtitle,session_type
+                select *
                 from v2_races
                 where race_date=%s
-                order by deadline_at,venue_id,race_no
+                order by venue_id asc, race_no asc
                 """,
                 (TARGET_DATE,),
             )
@@ -190,6 +186,7 @@ def main() -> None:
             row["minutes_before"] = mb
             row["active_windows"] = windows
             eligible.append(row)
+        eligible.sort(key=lambda row: (_deadline_at(row) or datetime.max.replace(tzinfo=JST), str(row.get("race_id") or "")))
 
         ids = [str(row["race_id"]) for row in eligible]
         tickets_by: Dict[str, List[str]] = defaultdict(list)
@@ -234,7 +231,7 @@ def main() -> None:
 
     for row in targets:
         rid = str(row["race_id"])
-        venue = str(row.get("venue_id") or "").zfill(2)
+        venue = str(row.get("venue_id") or row.get("venue_code") or "").zfill(2)
         rno = int(row.get("race_no") or 0)
         mb = float(row.get("minutes_before") or 0.0)
         html = repair._fetch(repair._official_url("odds3t", TARGET_DATE, venue, rno))
