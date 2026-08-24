@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/scripts/bao_paired_forward_audit.py'
       - '.github/scripts/bao_next_capture_plan.py'
+      - '.github/scripts/bao_promotion_readiness_gate.py'
       - '.github/workflows/bao-paired-forward-audit.yml'
   workflow_dispatch:
   issue_comment:
@@ -42,6 +43,12 @@ jobs:
           set -euo pipefail
           pip install -r requirements.txt
           npm install --global @railway/cli
+      - name: Validate audit scripts
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/bao_paired_forward_audit.py
+          python -m py_compile .github/scripts/bao_next_capture_plan.py
+          python -m py_compile .github/scripts/bao_promotion_readiness_gate.py
       - name: Inspect recent scheduled auto-capture runs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,6 +100,12 @@ jobs:
         run: |
           set -euo pipefail
           python -u .github/scripts/bao_paired_forward_audit.py 2>&1 | tee bao-paired-audit-output.txt
+      - name: Run read-only promotion readiness gate
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_promotion_readiness_gate.py 2>&1 | tee bao-promotion-gate-output.txt
       - name: Run read-only next capture planner
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -111,12 +124,13 @@ jobs:
             echo '```text'
             grep '^BAO_AUTO_' bao-auto-runs-output.txt 2>/dev/null || echo 'BAO_AUTO_RUNS_DIAGNOSTIC=no_prefixed_output'
             grep '^BAO_PAIR_AUDIT_' bao-paired-audit-output.txt 2>/dev/null || echo 'BAO_PAIR_AUDIT_DIAGNOSTIC=no_prefixed_output'
+            grep '^BAO_PROMOTION_GATE_' bao-promotion-gate-output.txt 2>/dev/null || echo 'BAO_PROMOTION_GATE_DIAGNOSTIC=no_prefixed_output'
             grep '^BAO_PLAN_' bao-plan-output.txt 2>/dev/null || echo 'BAO_PLAN_DIAGNOSTIC=no_prefixed_output'
             echo '```'
             echo
-            echo 'Read-only schedule history, audit and planner. No Shadow writes, Production changes, or LINE changes.'
+            echo 'Read-only schedule history, audit, promotion gate and planner. No Shadow writes, Production changes, or LINE changes.'
           } > bao-paired-audit-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-paired-audit-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json bao-auto-runs.json bao-auto-runs-output.txt bao-paired-audit-output.txt bao-plan-output.txt bao-paired-audit-comment.md
+        run: rm -f railway-vars.json bao-auto-runs.json bao-auto-runs-output.txt bao-paired-audit-output.txt bao-promotion-gate-output.txt bao-plan-output.txt bao-paired-audit-comment.md
