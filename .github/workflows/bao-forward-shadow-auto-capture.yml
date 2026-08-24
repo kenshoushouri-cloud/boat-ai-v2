@@ -53,9 +53,9 @@ jobs:
           assert "HTTP_TIMEOUT: '10'" in p
           assert "RETRY_MAX: '1'" in p
           assert "RETRY_SLEEP: '0.5'" in p
-          assert 'BAO_AUTOCAP_LOOP_SECONDS=3600' in p
+          assert 'BAO_AUTOCAP_LOOP_SECONDS=7200' in p
           assert 'BAO_AUTOCAP_LOOP_SLEEP=120' in p
-          assert 'timeout-minutes: 70' in p
+          assert 'timeout-minutes: 130' in p
           assert 'bao-forward-shadow-auto-capture-pr-' in p
           print('BAO_AUTOCAP_VALIDATE=PASS')
           PY
@@ -63,12 +63,12 @@ jobs:
   capture:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 130
     env:
       HTTP_TIMEOUT: '10'
       RETRY_MAX: '1'
       RETRY_SLEEP: '0.5'
-      BAO_AUTOCAP_LOOP_SECONDS: '3600'
+      BAO_AUTOCAP_LOOP_SECONDS: '7200'
       BAO_AUTOCAP_LOOP_SLEEP: '120'
     steps:
       - name: Gate temporary JST collection period
