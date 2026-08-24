@@ -34,7 +34,8 @@ jobs:
           assert 'opp_r0508_comp_mode=read_only' in low
           assert 'unit_pressure_coef = 1.0' in low
           assert 'no_date_filter' in low and 'no_race_band_filter' in low
-          assert 'winner_delta_positive' in low and 'support_winner' in low
+          assert 'winner_delta_positive' in low and 'matched_opponents_winner' in low
+          assert 'delta_semantics' in low and 'winner_norm_change' in low
           assert '2026-08-24_r05_08' in low and '2026-08-24_r09_12' in low
           for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
               assert token not in low, token
