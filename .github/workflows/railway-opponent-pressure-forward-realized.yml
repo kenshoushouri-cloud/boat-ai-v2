@@ -1,0 +1,122 @@
+name: Railway opponent pressure forward realized
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/scripts/opponent_pressure_forward_realized.py'
+      - '.github/workflows/railway-opponent-pressure-forward-realized.yml'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only report
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/opponent_pressure_forward_realized.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('.github/scripts/opponent_pressure_forward_realized.py').read_text(encoding='utf-8').lower()
+          assert 'opp_pressure_realized_mode=read_only' in low
+          assert 'v2_opponent_pressure_shadow_v2' in low
+          assert 'v2_result_entries' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert','send_line'):
+              assert token not in low, token
+          print('OPP_PRESSURE_REALIZED_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway opponent-pressure-forward-realized'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Resolve JST end date
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime,timezone,timedelta
+          target=datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'OPP_PRESSURE_REALIZED_END={target}\n')
+          print(f'OPP_PRESSURE_REALIZED_TARGET={target}')
+          PY
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run realized Forward report
+        id: audit
+        run: |
+          set +e
+          python -u .github/scripts/opponent_pressure_forward_realized.py > opponent-pressure-realized.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Reply with sanitized report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Opponent pressure realized Forward report'
+            echo
+            echo '```text'
+            grep '^OPP_PRESSURE_REALIZED_' opponent-pressure-realized.txt 2>/dev/null || echo 'OPP_PRESSURE_REALIZED_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Read-only realized Forward evaluation. No DB write, Production/LINE, Railway setting, threshold, coefficient, or promotion change.'
+          } > opponent-pressure-realized-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file opponent-pressure-realized-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json opponent-pressure-realized.txt opponent-pressure-realized-comment.md
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
