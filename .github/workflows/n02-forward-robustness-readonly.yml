@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/n02-forward-robustness-readonly.yml'
       - 'report_n02_forward_robustness_pg.py'
+      - 'report_n02_forward_performance_pg.py'
   workflow_dispatch:
   issue_comment:
     types:
@@ -23,19 +24,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate N02 report read-only policy
+      - name: Validate N02 reports read-only policy
         run: |
           set -euo pipefail
-          python -m py_compile report_n02_forward_robustness_pg.py
+          python -m py_compile report_n02_forward_robustness_pg.py report_n02_forward_performance_pg.py
           python - <<'PY'
           from pathlib import Path
-          p=Path('report_n02_forward_robustness_pg.py').read_text(encoding='utf-8')
-          assert 'from db_pg import fetch_all' in p
-          assert 'READ_ONLY=1 DB_UPDATE=0 LINE=0 PROD_CHANGE=0 N02_RULE_CHANGE=0' in p
-          assert 'execute(' not in p
-          assert 'upsert' not in p.lower()
-          assert 'send_line' not in p.lower()
-          print('N02_FORWARD_ROBUSTNESS_VALIDATE=PASS')
+          checks = [
+              ('report_n02_forward_robustness_pg.py', 'READ_ONLY=1 DB_UPDATE=0 LINE=0 PROD_CHANGE=0 N02_RULE_CHANGE=0'),
+              ('report_n02_forward_performance_pg.py', 'READ_ONLY=1 DB_UPDATE=0 LINE=0 PROD_CHANGE=0'),
+          ]
+          for name, marker in checks:
+              p=Path(name).read_text(encoding='utf-8')
+              assert 'from db_pg import fetch_all' in p
+              assert marker in p
+              assert 'execute(' not in p
+              assert 'upsert' not in p.lower()
+              assert 'send_line' not in p.lower()
+          print('N02_FORWARD_REPORTS_VALIDATE=PASS')
           PY
 
   report:
@@ -82,7 +88,7 @@ jobs:
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
               fh.write(f'DATABASE_URL={value}\n')
           PY
-      - name: Run N02 forward robustness report
+      - name: Run N02 forward reports
         env:
           PYTHONPATH: ${{ github.workspace }}
           N02_FORWARD_START_DATE: '2026-08-18'
@@ -90,6 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           python -u report_n02_forward_robustness_pg.py 2>&1 | tee n02-forward-output.txt
+          python -u report_n02_forward_performance_pg.py 2>&1 | tee n02-performance-output.txt
       - name: Reply with sanitized report
         if: always() && github.event_name == 'issue_comment'
         env:
@@ -101,11 +108,13 @@ jobs:
             echo
             echo '```text'
             grep -E '^(OK report_n02_forward_robustness_pg.py|PERIOD=|READ_ONLY=|raw_evaluated_rows=|=== N02 UNIQUE OVERALL ===|N02: |=== N02 BY ODDS BUCKET ===|3-4: |4-5: |5-6: |=== N02 BY RACE NO ===|R0[7-9]: |R10: |RESULT=)' n02-forward-output.txt 2>/dev/null || echo 'N02_FORWARD_ROBUSTNESS_DIAGNOSTIC=no_report_output'
+            echo '--- coverage ---'
+            grep -E '^(OK report_n02_forward_performance_pg.py|N02 FORWARD: |pending_rows=|invalid_result_rows=|STATUS=|evaluated=|next_review_target=|remaining_to_next_review=|RESULT=)' n02-performance-output.txt 2>/dev/null || echo 'N02_FORWARD_COVERAGE_DIAGNOSTIC=no_report_output'
             echo '```'
             echo
-            echo 'Read-only report from v2_candidate_filter_shadow. No DB update, LINE, production setting, N02 rule, or promotion state was changed.'
+            echo 'Read-only reports from v2_candidate_filter_shadow. No DB update, LINE, production setting, N02 rule, or promotion state was changed.'
           } > n02-forward-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file n02-forward-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json n02-forward-output.txt n02-forward-comment.md
+        run: rm -f railway-vars.json n02-forward-output.txt n02-performance-output.txt n02-forward-comment.md
