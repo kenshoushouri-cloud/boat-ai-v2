@@ -12,7 +12,8 @@ on:
   schedule:
     # Temporary trigger source for 2026-08-24..25 JST.
     # GitHub scheduled events can be delayed; scheduled jobs therefore keep a
-    # short-lived 2-minute capture loop alive after they actually start.
+    # 2-minute capture loop alive long enough to overlap the observed scheduler
+    # gaps and hand off through the concurrency queue.
     - cron: '2-57/5 22,23,0-14 23-25 8 *'
 
 permissions:
@@ -50,20 +51,21 @@ jobs:
           assert "HTTP_TIMEOUT: '10'" in p
           assert "RETRY_MAX: '1'" in p
           assert "RETRY_SLEEP: '0.5'" in p
-          assert 'BAO_AUTOCAP_LOOP_SECONDS=2400' in p
+          assert 'BAO_AUTOCAP_LOOP_SECONDS=3600' in p
           assert 'BAO_AUTOCAP_LOOP_SLEEP=120' in p
+          assert 'timeout-minutes: 70' in p
           print('BAO_AUTOCAP_VALIDATE=PASS')
           PY
 
   capture:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 48
+    timeout-minutes: 70
     env:
       HTTP_TIMEOUT: '10'
       RETRY_MAX: '1'
       RETRY_SLEEP: '0.5'
-      BAO_AUTOCAP_LOOP_SECONDS: '2400'
+      BAO_AUTOCAP_LOOP_SECONDS: '3600'
       BAO_AUTOCAP_LOOP_SLEEP: '120'
     steps:
       - name: Gate temporary JST collection period
