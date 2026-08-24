@@ -32,7 +32,7 @@ jobs:
           assert 'WINDOW_REFRESH_PLAN_MODE=read_only' in text
           assert 'no_writes_no_pre_no_line_no_final_no_promotion' in text
           assert 'WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE", 10.0' in text
-          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 90.0' in text
+          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 60.0' in text
           assert '_evaluate_ticket_snapshot' in text
           print('WINDOW_REFRESH_PLAN_VALIDATE=PASS')
           PY
