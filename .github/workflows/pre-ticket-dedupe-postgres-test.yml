@@ -1,0 +1,43 @@
+name: PRE ticket dedupe PostgreSQL integration
+
+on:
+  pull_request:
+    paths:
+      - 'run_pre_window_deduped_pg.py'
+      - 'tests/test_pre_ticket_dedupe_pg.py'
+      - '.github/workflows/pre-ticket-dedupe-postgres-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: boat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d boat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/boat_test
+      PRE_NOTIFICATION_DEDUPE_ENABLED: '1'
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run disposable PostgreSQL integration test
+        run: python -u tests/test_pre_ticket_dedupe_pg.py
