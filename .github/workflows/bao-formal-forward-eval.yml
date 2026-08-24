@@ -1,0 +1,92 @@
+name: Railway Bao formal Forward evaluation
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/bao_formal_realized_report.py'
+      - '.github/scripts/bao_paired_forward_audit.py'
+      - '.github/workflows/bao-formal-forward-eval.yml'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  formal-eval:
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway bao-formal-forward-eval'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Validate formal report syntax
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/bao_formal_realized_report.py
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run formal realized Forward report
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/bao_formal_realized_report.py 2>&1 | tee bao-formal-output.txt
+      - name: Reply with sanitized formal evaluation
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Bao formal realized Forward evaluation'
+            echo
+            echo '```text'
+            grep '^BAO_FORMAL_' bao-formal-output.txt 2>/dev/null || echo 'BAO_FORMAL_DIAGNOSTIC=no_prefixed_output'
+            echo '```'
+            echo
+            echo 'Read-only realized-result evaluation. No DB writes, Production changes, LINE changes, coefficient changes or automatic promotion.'
+          } > bao-formal-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file bao-formal-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json bao-formal-output.txt bao-formal-comment.md
