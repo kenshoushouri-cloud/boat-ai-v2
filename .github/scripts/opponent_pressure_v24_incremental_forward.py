@@ -19,12 +19,19 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+
+# The audit lives under .github/scripts while v24 is at repository root.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import v24_pre_candidate_notifier_pg as v24
 
