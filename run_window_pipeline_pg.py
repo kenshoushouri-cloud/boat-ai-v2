@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 JST = timezone(timedelta(hours=9))
-VERSION = "2026-08-20 window-pipeline-motor2-shadow-v4"
+VERSION = "2026-08-24 window-pipeline-pre-dedupe-opt-in-v1"
 
 def _today_jst():
     return datetime.now(JST).strftime("%Y-%m-%d")
@@ -27,6 +27,7 @@ def main():
     run_odds=_bool_env("WINDOW_RUN_ODDS","1")
     run_motor2=_bool_env("WINDOW_RUN_MOTOR2_SHADOW","1")
     run_pre=_bool_env("WINDOW_RUN_PRE","1")
+    pre_dedupe=_bool_env("PRE_NOTIFICATION_DEDUPE_ENABLED","0")
     sleep_after_odds=float(os.getenv("WINDOW_SLEEP_AFTER_ODDS_SEC","0"))
 
     os.environ.setdefault("WINDOW_SKIP_FULL_ODDS","1")
@@ -38,6 +39,7 @@ def main():
     print(f"WINDOW_RUN_ODDS={run_odds}",flush=True)
     print(f"WINDOW_RUN_MOTOR2_SHADOW={run_motor2}",flush=True)
     print(f"WINDOW_RUN_PRE={run_pre}",flush=True)
+    print(f"PRE_NOTIFICATION_DEDUPE_ENABLED={pre_dedupe}",flush=True)
     print(f"DATABASE_URL={'OK' if os.getenv('DATABASE_URL') else 'MISSING'}",flush=True)
 
     base_dir=Path(__file__).resolve().parent
@@ -69,9 +71,10 @@ def main():
             print("=== STEP 1.5: Motor2 Forward Shadow done ===",flush=True)
 
     if run_pre:
-        p=base_dir/"run_pre_window_pg.py"
+        pre_name="run_pre_window_deduped_pg.py" if pre_dedupe else "run_pre_window_pg.py"
+        p=base_dir/pre_name
         if not p.exists(): raise FileNotFoundError(p)
-        print("=== STEP 2: pre window start ===",flush=True)
+        print(f"=== STEP 2: pre window start ({pre_name}) ===",flush=True)
         runpy.run_path(str(p),run_name="__main__")
         print("=== STEP 2: pre window done ===",flush=True)
 

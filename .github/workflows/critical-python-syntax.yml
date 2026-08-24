@@ -31,6 +31,7 @@ jobs:
             collect_racer_course_stats_pg.py \
             run_window_pipeline_pg.py \
             run_pre_window_pg.py \
+            run_pre_window_deduped_pg.py \
             v24_pre_candidate_notifier_pg.py \
             run_final_pg.py \
             v25_final_realtime_pipeline_pg.py \
