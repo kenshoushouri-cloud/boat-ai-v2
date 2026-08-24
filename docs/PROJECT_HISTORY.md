@@ -778,3 +778,51 @@ Material decisionごとに以下を追記する。
 数値が更新されるだけで判断が変わらない場合は `DEVELOPMENT_STATUS.md` を更新し、判断が変わる時だけこのdecision logへ追記する。
 
 以上。
+
+
+---
+
+<!-- HANDOFF_MILESTONE_20260824_OPP_MOTOR -->
+## 2026-08-24 20:49〜21:10 JST — 相手構成Forwardとモーター交換成熟度を再検証
+
+### Opponent Pressure: historical OOSから実結果Forwardへ
+過去チャットで検討していた「自選手のコース × 相手コース × 相手級別」の相性を、既存Opponent Pressure Shadowで実結果評価。
+
+- PR #191: realized Forward evaluator追加。
+- 初回0評価から、現行nightly結果の正本が `v2_results(first_lane..sixth_lane)` であることを再確認。
+- PR #192: evaluatorの結果結合先だけを現行構造へ修正。
+- 292Rでwin Brier / top3 Brier / winner logloss / winner rankのOverall 4指標がすべて改善。
+
+**Decision:** `PROMISING_FORWARD_RESEARCH_ONLY`。通常予想系の有力補助候補だが、2日中心の292RではProduction採用しない。Forward継続。
+
+### モーター交換時期の扱いを明示
+ユーザー指摘「モーターは交換時期に注意」を受け、DB first-seenではなく公式使用開始日を使う方針を再確認。
+
+2026-08-24公式確認subset:
+- 江戸川 2026-05-11
+- 多摩川 2026-04-18
+- 住之江 2026-03-23
+- 鳴門 2026-04-11
+- 唐津 2025-09-05
+
+Source policyは **公式一次 / 艇国DB二次照合 / DB first-seen診断のみ**。
+
+### PR #193: 世代開始後の日数別
+5,095Rでactual motor2の効果を固定比較。
+0–14日から121日+まで全age binのOverall loglossが改善。
+
+**Decision:** 「交換直後を一律に弱める」補正を却下。venue×ageには悪化区間があるため、より直接的な個体母数へ進む。
+
+### PR #194: 個体の事前出走回数別
+6艇のうち最もprior appearanceが少ないmotorを基準に固定bin化。current raceを加算する前に評価し、same-race leakageなし。
+
+- P00–04 n438: logloss -0.00240089、rank +0.0776
+- P05–09 n377: -0.00719944
+- P10–19 n573: -0.00454600
+- P20–39 n1081: -0.00439443
+- P40+ n2626: -0.00205133
+
+**Decision:** 全binでlogloss改善のため、低母数を理由にactual motor2を一律除外しない。一方、場別には低母数で悪化例があるため、このデータから後付けcutoff/shrinkage係数を作らない。Forwardで場別再現性を確認する。
+
+### Production safety
+PR #191〜#194はすべてread-only audit/評価。Production予想、LINE、Railway Variables/settings、v24/N02 threshold、Bao係数/promotion、PR #169は変更していない。
