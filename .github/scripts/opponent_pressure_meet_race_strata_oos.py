@@ -49,11 +49,11 @@ def infer_days(rows:list[dict[str,Any]])->dict[tuple[str,date],int]:
 def metric(rows:list[dict[str,Any]])->tuple[int,float,float,float,float]:
     if not rows:return 0,0,0,0,0
     n=len(rows)
-    wb=sum((r['win']-r['pwin'])**2 for r in rows)/n
-    wa=sum((r['win']-r['pwin_adj'])**2 for r in rows)/n
-    winners=[r for r in rows if r['win']==1.0]
-    lb=sum(-math.log(max(EPS,r['pwin_norm_base'])) for r in winners)/len(winners)
-    la=sum(-math.log(max(EPS,r['pwin_norm_adj'])) for r in winners)/len(winners)
+    wb=sum((float(r['win'])-float(r['pwin']))**2 for r in rows)/n
+    wa=sum((float(r['win'])-float(r['pwin_adj']))**2 for r in rows)/n
+    winners=[r for r in rows if float(r['win'])==1.0]
+    lb=sum(-math.log(max(EPS,float(r['pwin_norm_base']))) for r in winners)/len(winners)
+    la=sum(-math.log(max(EPS,float(r['pwin_norm_adj']))) for r in winners)/len(winners)
     return len(winners),wb,wa,lb,la
 
 def load_venue_dates(conn)->list[dict[str,Any]]:
