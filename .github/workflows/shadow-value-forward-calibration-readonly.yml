@@ -1,0 +1,113 @@
+name: Shadow value forward calibration read-only report
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/shadow-value-forward-calibration-readonly.yml'
+      - 'report_shadow_value_forward_calibration_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only Shadow value report
+        run: |
+          set -euo pipefail
+          python -m py_compile report_shadow_value_forward_calibration_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('report_shadow_value_forward_calibration_pg.py').read_text(encoding='utf-8')
+          assert 'from db_pg import fetch_all' in p
+          assert 'v2_candidate_filter_shadow' in p
+          assert 'prob * frozen_candidate_odds' in p
+          assert 'RESULT=PASS_READ_ONLY' in p
+          assert 'execute(' not in p
+          assert 'upsert' not in p.lower()
+          assert 'send_line' not in p.lower()
+          print('SHADOW_VALUE_FORWARD_VALIDATE=PASS')
+          PY
+
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway shadow-value-forward-calibration'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run frozen-candidate value calibration
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SHADOW_VALUE_START_DATE: '2026-08-01'
+          SHADOW_VALUE_END_DATE: '2026-08-24'
+        run: |
+          set -euo pipefail
+          python -u report_shadow_value_forward_calibration_pg.py 2>&1 | tee shadow-value-output.txt
+      - name: Reply with sanitized report
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Shadow value forward calibration read-only report'
+            echo
+            echo '```text'
+            grep -E '^(✅ report_shadow_value_forward_calibration_pg.py|PERIOD=|POLICY=|COVERAGE=|=== BY RULE ===|=== VALUE RATIO BUCKETS|=== MODEL RANK VS MARKET RANK ===|=== RULE x VALUE RATIO ===|S0[1-5]:|N02:|<0.05:|0.05-0.10:|0.10-0.20:|0.20-0.40:|0.40-0.70:|0.70-1.00:|1.00\+:|model_worse_|near_rank:|model_better_|S0[1-5]\||N02\||INTERPRETATION=|RESULT=)' shadow-value-output.txt 2>/dev/null || echo 'SHADOW_VALUE_FORWARD_DIAGNOSTIC=no_report_output'
+            echo '```'
+            echo
+            echo 'Uses frozen candidate-shadow prob/odds and realized evaluation only. Raw v24 probability remains uncalibrated; this is research evidence only. No DB update, LINE, Production decision, Railway setting, rule activation, threshold/model coefficient, Bao promotion, or PR #169 state was changed.'
+          } > shadow-value-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file shadow-value-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json shadow-value-output.txt shadow-value-comment.md
