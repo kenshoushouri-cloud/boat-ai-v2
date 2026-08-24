@@ -1,0 +1,113 @@
+name: V24 low-candidate read-only diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v24-low-candidate-readonly.yml'
+      - 'diagnose_v24_low_candidates_pg.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only diagnostic policy
+        run: |
+          set -euo pipefail
+          python -m py_compile diagnose_v24_low_candidates_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('diagnose_v24_low_candidates_pg.py').read_text(encoding='utf-8')
+          assert 'os.environ["DRY_RUN"] = "1"' in p
+          assert 'LINE送信・DB更新は行いません' in p
+          assert 'execute(' not in p
+          assert '_ensure_line_notification_columns' not in p
+          assert '_send_line_message' not in p
+          assert '_save_pre_notification' not in p
+          print('V24_LOW_CANDIDATE_DIAG_VALIDATE=PASS')
+          PY
+
+  diagnose:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway v24-low-candidate-diagnostic'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run v24 low-candidate frequency diagnostic
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          DIAG_DAYS: '7'
+          DIAG_SAMPLE_LIMIT: '20'
+        run: |
+          set -euo pipefail
+          python -u diagnose_v24_low_candidates_pg.py 2>&1 | tee v24-low-candidate-output.txt
+      - name: Reply with sanitized diagnostic
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V24 low-candidate read-only diagnostic'
+            echo
+            echo '```text'
+            tail -n 160 v24-low-candidate-output.txt 2>/dev/null || echo 'V24_LOW_CANDIDATE_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Frequency diagnostic only. Historical v2_odds_trifecta is not PRE-time frozen evidence, so this output must not be used alone to loosen production thresholds. No DB update, LINE, Production decision, Railway setting, or model parameter was changed.'
+          } > v24-low-candidate-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file v24-low-candidate-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json v24-low-candidate-output.txt v24-low-candidate-comment.md
