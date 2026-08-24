@@ -1,0 +1,780 @@
+# boat-ai-v2 Project History / Decision Log
+
+更新日時: 2026-08-24 JST
+
+このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
+
+現在地は `docs/PROJECT_HANDOFF.md` を優先してください。
+このファイルは過去の判断を同じデータで再検討し直したり、却下済み案を理由なく復活させたりしないために使います。
+
+---
+
+## 0. 長期方針
+
+プロジェクトは当初から最終的に以下を目指している。
+
+- 全場のデータ収集
+- 事前予想
+- 直前情報による再判定
+- オッズを考慮した買い/見送り
+- 結果照合
+- 学習/バックテスト
+- LINE通知
+- 過学習を避けたForward/OOS検証
+
+2026年春以降、予想は大きく2トラックで研究してきた。
+
+1. 通常/安定予想系
+2. 馬王型（理論価格・期待値型）
+
+2026-08-24時点では、通常予想を主軸、馬王型をプラスアルファとする。
+
+---
+
+## 1. 2026-04-29: 馬王Z的な考え方を競艇へ応用
+
+ユーザー要望:
+- 条件別成績
+- 指数化
+- 期待値買い
+- 見送り
+
+を競艇AIへ入れる方向を検討。
+
+この段階から「当たりそうな艇を選ぶ」だけでなく、**市場価格に対して割安か**を見る研究が始まった。
+
+---
+
+## 2. 2026-05-04: 安定モード / 馬王モードの2系統
+
+過去設計:
+
+### 安定モード
+- 通常予想
+- 比較的高い的中性/安定性を優先
+
+### 馬王モード
+- 穴狙い
+- probabilityとoddsから期待値を見て選ぶ
+
+当時の歴史的な例:
+- stable EV >= 1.10
+- ana/馬王 EV >= 1.35
+- stable odds 3.5–25
+- ana odds 12–80
+
+これらは**当時の研究値**であり、現在のProduction閾値ではない。
+
+関連古いコード:
+- `runner_no_odds.py`
+- `backtest_multi_patterns_v3.py`
+- `daily_selector_v19.py`
+- `UPGRADE_PLAN.md`
+
+重要な設計思想:
+- 着順/組合せ確率
+- オッズ/EV
+- 資金配分
+
+を分離する。
+
+---
+
+## 3. 2026-05〜06: 全場データ/補修の拡大
+
+全場全Rの履歴を増やし、旧5場1R等の欠損補修を実施。
+
+旧ログ例:
+- 2025-05旧5場1R補修
+- races 120
+- odds 14,400
+- success 82
+
+その後、月次全場補修へ拡大。
+
+重要な学び:
+- 非開催/データなしとparser失敗を区別する。
+- race_id / venue code / race_noの正規化が重要。
+
+---
+
+## 4. 2026-06〜07: Supabase → Railway PostgreSQL 移行
+
+Supabase Free容量問題を受け、本番DBをRailway PostgreSQLへ移行。
+
+決定:
+- Supabaseは削除。
+- Railway PostgreSQLを唯一の本番DB Source of Truthとする。
+
+Production:
+- Railway project `boat-v2-postgres`
+- PostgreSQL service `postgres`
+
+正しいentries table:
+- `v2_race_entries`
+
+`v2_entries` は存在しない/誤りとして何度か修正した。
+
+---
+
+## 5. 2026-07: 締切時刻/場コード/取得基盤の修正
+
+### deadline parser bug
+`parse_deadline_time(html)` が対象race_noではなく最初の締切時刻を拾う問題を修正。
+
+結果:
+- 同一場の1R〜12Rが同じ締切で上書きされる問題を解消。
+
+`v2_races`へ:
+- `deadline_time`
+- `deadline_at`
+
+を追加。
+
+### venue code
+公式場コードの辞書誤りを修正。
+
+例:
+- 06 浜名湖
+- 08 常滑
+- 09 津
+- 23 芦屋
+
+---
+
+## 6. 2026-07: morning/day/night window pipeline
+
+締切の早いレースへ対応するため、1日1回の取得から時間帯分割へ。
+
+設計:
+- morning
+- day
+- night
+
+各枠:
+1. odds取得
+2. PRE
+3. notification
+
+DRY_RUNで3枠すべて正常完走を確認。
+
+代表テスト:
+- morning success 12
+- day success 68
+- night success 69
+
+---
+
+## 7. 2026-07-30: FINAL chain / invalid trifecta修正
+
+FINAL chainを追跡:
+
+`run_final_pg.py`
+→ `v25_final_realtime_pipeline_pg.py`
+→ `v21_realtime_collector_pg.py`
+→ `run_v22_targeted_pg.py`
+→ `v22_exhibition_shadow_pg.py`
+→ `v23_line_notifier_batch_pg.py`
+
+`v21_realtime_collector_pg.py`:
+- invalid trifecta ticket filteringを追加
+- version `2026-07-30 ticket-validation-v1`
+
+目的:
+- 不正ticketが後工程へ入らないようにする。
+
+---
+
+## 8. 2026-08: historical quality / feature researchへ移行
+
+単にデータを集める段階から、
+- どの特徴が実際にOOSで効くか
+- Productionへ入れる価値があるか
+
+を厳密に分けて検証する方針へ。
+
+原則:
+- 1 feature at a time
+- train-only learning
+- chronological OOS
+- Forward Shadow
+- Production isolation
+
+---
+
+## 9. PR #80: モーター成熟度のsource readiness
+
+テーマ:
+- モーター2連率等を使う際、交換/使用開始からの成熟度をどう扱うか。
+
+重要決定:
+
+**DB first-seen dateを公式のmotor use-start dateとして扱わない。**
+
+理由:
+- project historical boundaryのleft censoringがある。
+- DBに最初に現れた日 != 本当の使用開始日。
+
+次gate:
+- official use-start dateを取得してからmaturity weightingを考える。
+
+このルールは2026-08-24のモーター実測値改善後も有効。
+
+---
+
+## 10. PR #83 / #84: 艇国DBと公式のモーター開始日照合
+
+### PR #83
+BOAT RACE公式と艇国DBのautomated cross-checkを試行。
+
+結果:
+- 公式: HTTP 200
+- 艇国DB: GitHub Actions環境からtimeout
+
+データ不一致ではなくexecution pathの問題。
+PRはmergeせずclose。
+
+### PR #84
+外部確認済み艇国DBcheckpointを使い、公式event/motor pageで再確認する方式へ。
+
+Source policy確立:
+- BOAT RACE official = automated primary
+- 艇国DB = secondary externally verified cross-check
+
+この方針を今後も維持。
+
+---
+
+## 11. PR #85: 相手構成feature readiness
+
+ユーザーが以前から検討していた:
+
+**選手がそのコースに入った時、他コースの選手ランク構成との相性**
+
+をデータ化。
+
+評価粒度:
+- racer × own lane × opponent lane × opponent class
+- exact five-opponent pattern
+- aggregate opponent class pattern
+- global own-class × own-lane × opponent-class × opponent-lane
+
+readiness結果:
+- participant rows 384,660
+- racers 1,649
+- individual pair median n=9
+- global class/lane median n=3,387
+
+判断:
+- exact/individualは母数不足になりやすい。
+- global class/lane interactionは十分強い母数。
+
+---
+
+## 12. PR #86 / #87 / #93: Opponent Pressure OOS
+
+racer-specificおよびglobal opponent effectsをchronological OOSで検証。
+
+### global Opponent Pressure
+train-onlyで:
+- own_class
+- own_lane
+- opponent_lane
+- opponent_class
+
+のeffectを学習し、5人の相手から平均pressure scoreを作る。
+
+Splits:
+- 2026-03-31
+- 2026-04-30
+- 2026-05-31
+
+3splitすべてで:
+- win Brier改善
+- top3 Brier改善
+- quartile ordering良好
+
+例:
+- win improve 約0.00135
+- top3 improve 約0.0038
+- low-score vs high-score actual win spread 約0.137
+- top3 spread 約0.21
+
+判断:
+- racer-specificよりglobal baseline + shrinkageが安全。
+- Shadow候補へ進める価値あり。
+
+---
+
+## 13. PR #88〜#94: Opponent Pressure Shadow
+
+### PR #88
+Shadow-only collector。
+
+### PR #90〜#92
+JSONBよりcompact typed arraysの方がstorage効率が高いことを実測。
+
+### PR #91
+`v2_opponent_pressure_shadow_v2` を作成。
+
+### PR #94
+日次Forward収集を追加。
+
+Schedule:
+- 07:15 JST
+- morning data preparation後
+- earliest 08:30 race前
+
+安全設計:
+- complete six-lane cards必須
+- dry-run preflight
+- post-write verification
+- Production consumerなし
+- LINEなし
+
+2026-08-24 PR #189で再health確認:
+- 8/22 156/156
+- 8/23 168/168
+- 8/24 144/144
+- total 468 rows
+
+つまりこの研究は今も継続中。
+
+---
+
+## 14. Bao research: モーター/展示をForwardで検証
+
+Baoではmodel probabilityを市場のearly/late priceと比較するShadow researchを構築。
+
+重要な設計:
+- exact complete snapshotsのみ
+- early market
+- Motor2 adjustment
+- exhibition adjustment
+- late market proxy
+- realized result
+
+係数:
+- Motor2 beta 0.06
+- Exhibition beta 0.06
+
+重要:
+- tiny sampleでProductionへ入れない。
+- mutable realtime timestampをformal frozen evidenceにしない。
+
+Gate:
+- Motor2 market pair 30
+- exhibition pair 30
+- Motor2 realized 30
+- exhibition realized 30
+
+2026-08-24夕方:
+- market 52
+- exhibition proxy 43
+- Motor2 realized 13
+- exhibition realized 7
+
+Promotion BLOCK。
+
+---
+
+## 15. 2026-08-23〜24: Bao auto capture
+
+手動smokeだけではcapture windowを逃すため、一時的なauto captureを追加。
+
+特徴:
+- every 5 minutes schedule
+- internal loop
+- exact date gate
+- concurrency control
+- frozen completeness gates
+
+目的:
+- Forward sample確保
+
+Production predictionとは隔離。
+
+---
+
+## 16. PR #159 / #163 / #165: PRE repeat safety
+
+PREを再実行する際のLINE重複防止研究。
+
+- notification dedupe scaffold
+- race-ticket dedupe
+- PostgreSQL integration test
+
+Productionでの再実行を軽率に有効化せず、安全性を先に作る方針。
+
+---
+
+## 17. PR #162 / #164 / #166〜#174: base odds completeness
+
+課題:
+- PRE前にbase oddsが未完全なraceがある。
+
+作成:
+- window refresh runner
+- read-only planner
+- Bao/base odds gap comparison
+- manual confirmed refresh
+- live parser probe
+- PRE repeat read-only plan
+- missing odds sensitivity
+- low-core observability
+
+重要結果:
+- official pageからmemory上でexact120を取れるケースは多い。
+- つまりparser固定バグよりtemporary/timing fetch gapの可能性。
+
+しかし:
+- incomplete raceをmemory exact120で補ってもPRE candidate 0。
+- ready racesでも low_core_total=0。
+
+結論:
+- base odds完全性 = 改善価値あり
+- prediction/notification value = まだ証拠なし
+
+PR #169 temporary 10-min refreshはDraft保持。
+
+---
+
+## 18. PR #175〜#180: N02 scarcity診断
+
+N02 Forwardがほぼ増えない原因を追跡。
+
+N02:
+- pr11–20
+- mr2–5
+- odds3–6
+- R07–10
+
+### #175/#176
+Forward evaluator backlogではなく、実際にrowが少ないと判明。
+
+### #177 v24 low candidate diagnostic
+7日:
+- total 1056
+- ready 1049
+- low_core 4
+
+triple intersectionが非常に希少。
+
+### #180 live opportunity
+rank条件を満たすticketはあるが、odds3–6がほぼない。
+
+ボトルネック = **odds band**。
+
+---
+
+## 19. PR #181: N01へ広げても解決しない
+
+N01:
+- pr11–25
+- mr2–5
+- odds3–6
+- R07–12
+
+live compare:
+- rank-compatibleは増える
+- exact odds3–6は0
+
+判断:
+- race/rank range拡張だけではscarcity解消しない。
+- N01 inactive維持。
+
+---
+
+## 20. PR #182 Phase9 OOS extension
+
+N02 COREがない場合だけN01 range extensionを使うfixed test。
+
+Overall:
+- CORE n13 hits4 ROI173.8%
+- EXT n15 hits2 ROI65.3%
+- UNION n28 hits6 ROI115.7%
+
+OOS1:
+- EXT ROI 0%
+
+OOS2:
+- EXT ROI 122.5%
+
+期間で正反対。
+
+判断:
+- 頻度を増やすためだけにN01 extensionを採用しない。
+
+---
+
+## 21. PR #183 Phase10 fixed filters
+
+Phase9 extensionを:
+- motor edge
+- head motor3
+- head avg ST
+
+等の事前固定フィルタで救えるか検証。
+
+結果:
+- 全filters OOS1 0 hit / ROI0
+- OOS2は高ROI
+
+一部overallでは良く見えるがperiod robustnessなし。
+
+判断:
+- 採用しない。
+- N02 COREを変えない。
+- 同じOOSでthreshold searchをしない。
+
+---
+
+## 22. PR #184: 馬王型 probability/value calibration OOS
+
+v24 probabilityとmarket priceを使った理論価格の妥当性を確認。
+
+重要結果:
+- 高value ratioほどROIが上がる関係がない。
+- value ratio 1.5+など高value域でむしろ悪化。
+- model probabilityはabsolute calibrationが不足。
+
+N02は条件抽出としてpositiveな可能性があるが、model absolute probabilityとは別問題。
+
+判断:
+- v24 raw probabilityを馬王型理論確率として直接使わない。
+
+---
+
+## 23. PR #185: frozen PRE Shadow value calibration
+
+実際のPRE時点frozen Shadowで再検証。
+
+傾向:
+- value ratioが高くなるほど成績改善しない。
+- AI順位がmarket順位より大きく上のticketsも成績が悪い。
+
+ユーザー認識:
+- 「馬王型はAI評価が高いほど悪くなったと思う」
+
+検証結果と整合。
+
+2026-08-24方針:
+- 馬王型は通常予想のプラスアルファ。
+
+---
+
+## 24. PR #186: actual motor/boat rate OOS
+
+v24比較式内のfixed:
+- motor=33
+- boat=34
+
+を、entry actual ratesへ置き換えた固定formula comparison。
+
+2026-07-01..2026-08-15:
+- n=7,184
+- BASE LL 4.40602095
+- MOTOR 4.40303973
+- BOAT 4.40531781
+- BOTH 4.40232791
+
+モーターが主要改善要因。
+
+ただしProduction変更はしない。
+
+---
+
+## 25. PR #187: motor vs boat ablation
+
+motorだけ / boatだけ / bothを分離。
+
+7,184R:
+- motor delta LL -0.00298123
+- boat delta -0.00070314
+- both -0.00369304
+
+winner rankもmotorで明確に改善。
+
+判断:
+- motor actual rateはpromising。
+- boatの寄与は小さい。
+
+---
+
+## 26. PR #188: prior-month stability
+
+2026-04-01..2026-06-30の別期間で固定ablation。
+
+n=13,525:
+- BASE LL 4.41818166
+- MOTOR 4.41508752
+- BOAT 4.41811265
+- BOTH 4.41501772
+
+Delta:
+- motor -0.00309414
+- boat -0.00006902
+- both -0.00316395
+
+winner rank:
+- BASE 29.9449
+- MOTOR 29.7396
+- BOAT 29.9488
+- BOTH 29.7353
+
+結論:
+- motor改善は7–8月だけの偶然ではなく、4–6月でも再現。
+- boat単独はほぼ価値なし。
+
+ただし、ここでユーザーから重要な指摘:
+- **モーター交換時期に注意**
+
+よって次はmaturity-adjusted OOS。
+
+---
+
+## 27. PR #189: Opponent Pressureの流れを再発見/再接続
+
+別チャットの内容を見直した結果、
+「選手×他コース選手ランク相性」は既にShadow化・日次収集済みと再確認。
+
+新しいread-only health command:
+- `/railway opponent-pressure-forward-health`
+
+結果:
+- 8/22 156/156
+- 8/23 168/168
+- 8/24 144/144
+- integrity all pass
+
+判断:
+- 既存研究を重複開発せず、realized Forward evaluationへ進める。
+
+---
+
+## 28. 2026-08-24: 常設引き継ぎを作る決定
+
+チャットが長くなり、別チャット間で:
+- モーター交換時期
+- 艇国DB
+- Opponent Pressure
+- 馬王型の位置付け
+
+等の重要な過去判断を拾い直す必要が発生。
+
+ユーザー要望:
+- いつでも引き継ぎできる形にしたい。
+
+決定:
+- `docs/PROJECT_HANDOFF.md` = current state
+- `docs/PROJECT_HISTORY.md` = decision history
+- `docs/DEVELOPMENT_STATUS.md` = detailed experiment status
+- Issue #42 = Railway runtime/audit log
+
+この4層で管理する。
+
+---
+
+# 採用済み判断まとめ
+
+## 採用/維持
+- GitHub main = code Source of Truth
+- Railway PostgreSQL = production data Source of Truth
+- `v2_race_entries`が正しいentries table
+- morning/day/night window architecture
+- invalid trifecta validation
+- opponent pressure Shadow daily forward
+- Bao frozen Forward evidence collection
+- strict chronological OOS / Forward
+- BOAT RACE公式をmotor use-start primary source
+- 艇国DBをsecondary cross-check
+- motor actual rateを次の重要研究候補とする
+- 馬王型は通常予想のプラスアルファ
+
+---
+
+# 現在却下/保留している判断
+
+## N01 activation
+却下/保留理由:
+- Phase9 extension overall weak
+- OOS期間不安定
+
+## Phase10 extension filters
+却下理由:
+- OOS1全滅、OOS2のみ強い
+- robustnessなし
+
+## N02 odds/rank threshold loosening
+保留理由:
+- scarcityだけを理由に同じデータで調整するとoverfit
+
+## 馬王型 raw v24 probability EV
+却下理由:
+- calibration/value monotonicityがない
+- AI高評価側の実績悪化
+
+## motor actual rate Production直投入
+保留理由:
+- 強いOOS改善は確認
+- しかし交換/使用開始/maturityをまだ組み込んでいない
+
+## boat actual rate feature
+優先度低:
+- motorに比べ寄与極小
+- prior periodではwinner rankもわずかに悪化
+
+## PR #169 auto base refresh
+Draft hold:
+- completeness改善
+- PRE candidate recovery evidenceなし
+
+## Bao Production promotion
+BLOCK:
+- realized result gates未達
+
+---
+
+# 失敗からの重要ルール
+
+1. **DB first-seenを公式開始日と決めつけない。**
+2. historical final oddsをPRE-time frozen oddsとして扱わない。
+3. mutable realtime snapshotをfrozen Forward evidenceとして扱わない。
+4. partial 120 ticket dataをcompleteとして使わない。
+5. 候補が少ないだけでthresholdを緩めない。
+6. OOSを見た後に同じOOSへ合わせてtuneしない。
+7. proxy improvementだけでProduction promotionしない。
+8. LINE/BUY/WATCH/SKIPをShadow研究から直接変更しない。
+9. Railway Variables/settingsを研究PRで変更しない。
+10. 過去に同じ研究が存在しないか、repo/PROJECT_HISTORYを確認してから新規実装する。
+
+---
+
+# 今後のhistory追記形式
+
+Material decisionごとに以下を追記する。
+
+```markdown
+## YYYY-MM-DD: テーマ
+
+### 仮説
+...
+
+### 検証
+- train:
+- OOS:
+- Forward:
+
+### 結果
+...
+
+### 決定
+- ADOPT / KEEP_SHADOW / REJECT / HOLD
+
+### Production影響
+- none / manual review required / changed via PR #...
+```
+
+数値が更新されるだけで判断が変わらない場合は `DEVELOPMENT_STATUS.md` を更新し、判断が変わる時だけこのdecision logへ追記する。
+
+以上。
