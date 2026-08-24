@@ -33,11 +33,13 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/scripts/pre_missing_odds_sensitivity.py').read_text(encoding='utf-8')
+          low=p.lower()
           assert 'PRE_ODDS_SENSITIVITY_MODE=read_only_official_http_in_memory_v24' in p
           assert 'no_db_writes_no_line_no_shadow_no_final_no_promotion' in p
           assert 'repair._fetch' in p and 'repair.parse_odds3t' in p
           for forbidden in (
-              'execute(',
+              'from db_pg import execute',
+              'db_pg.execute',
               '_send_line_message(',
               '_save_pre_notification(',
               'collect_candidate_filter_shadow_pg.py',
@@ -46,6 +48,8 @@ jobs:
               'upsert_rows(',
           ):
               assert forbidden not in p, forbidden
+          for sql_write in ('insert into ', 'update v2_', 'delete from ', 'alter table ', 'create table ', 'create unique index '):
+              assert sql_write not in low, sql_write
           print('PRE_ODDS_SENSITIVITY_VALIDATE=PASS')
           PY
 
