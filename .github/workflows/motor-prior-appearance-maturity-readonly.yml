@@ -1,0 +1,81 @@
+name: Motor prior-appearance maturity read-only
+
+on:
+  pull_request:
+    paths:
+      - 'backtest_prob_motor_prior_appearance_maturity_pg.py'
+      - '.github/workflows/motor-prior-appearance-maturity-readonly.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only script
+        run: |
+          set -euo pipefail
+          python -m py_compile backtest_prob_motor_prior_appearance_maturity_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('backtest_prob_motor_prior_appearance_maturity_pg.py').read_text(encoding='utf-8').lower()
+          assert 'motor_prior_mode=read_only' in low
+          assert 'prior_appearances_strictly_before_race' in low
+          assert 'db_first_seen_forbidden' in low
+          assert 'no_tuning' in low and 'no_production' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
+              assert token not in low, token
+          print('MOTOR_PRIOR_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run motor prior-appearance audit
+        id: audit
+        run: |
+          set +e
+          python -u backtest_prob_motor_prior_appearance_maturity_pg.py > motor-prior-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^MOTOR_PRIOR' motor-prior-output.txt 2>/dev/null || true
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json motor-prior-output.txt
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
