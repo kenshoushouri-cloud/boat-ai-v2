@@ -120,6 +120,30 @@ def _run_child(window_name: str) -> int:
             "result:PASS_READ_ONLY",
             flush=True,
         )
+
+        low_core_match = re.search(r"low_core_total=(\d+)", output)
+        if low_core_match:
+            low_core_total = int(low_core_match.group(1))
+            if values[2] > 0:
+                zero_cause = "candidate_present"
+            elif low_core_total == 0:
+                zero_cause = "no_low_core"
+            else:
+                zero_cause = "post_core_strategy_filter"
+            print(
+                f"PRE_REPEAT_PLAN_LOW_CORE=window:{window_name} count:{low_core_total} "
+                "rule:prob_rank_11_20+market_rank_1+odds_3_to_lt5",
+                flush=True,
+            )
+            print(
+                f"PRE_REPEAT_PLAN_ZERO_CAUSE=window:{window_name} classification:{zero_cause}",
+                flush=True,
+            )
+        else:
+            print(
+                f"PRE_REPEAT_PLAN_LOW_CORE=window:{window_name} count:unavailable rule:core_output_missing",
+                flush=True,
+            )
     else:
         guard = re.search(r"LINE送信上限ガード: ([^\n]+)", output)
         if guard:
