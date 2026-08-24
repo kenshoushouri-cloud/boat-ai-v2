@@ -39,7 +39,7 @@ jobs:
           text=Path('run_window_refresh_pg.py').read_text(encoding='utf-8')
           assert 'WINDOW_REFRESH_EXECUTE' in text
           assert 'WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE", 10.0' in text
-          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 90.0' in text
+          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 60.0' in text
           assert 'WINDOW_SKIP_FULL_ODDS' in text
           assert 'odds.main()' in text
           assert 'run_pre_window_pg' not in text

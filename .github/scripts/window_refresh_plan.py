@@ -94,7 +94,7 @@ def main() -> None:
     now_jst = datetime.now(JST)
     today = now_jst.strftime("%Y-%m-%d")
     min_before = max(0.0, _env_float("WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE", 10.0))
-    max_before = max(min_before, _env_float("WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 90.0))
+    max_before = max(min_before, _env_float("WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE", 60.0))
     active = _active_windows(now_jst)
 
     print("WINDOW_REFRESH_PLAN_MODE=read_only", flush=True)
