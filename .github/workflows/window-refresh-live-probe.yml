@@ -1,0 +1,118 @@
+name: Railway window refresh live probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/window_refresh_live_probe.py'
+      - '.github/workflows/window-refresh-live-probe.yml'
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only probe policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/window_refresh_live_probe.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/window_refresh_live_probe.py').read_text(encoding='utf-8')
+          assert 'WINDOW_REFRESH_PROBE_MODE=read_only_http_get' in text
+          assert 'no_db_writes_no_pre_no_line_no_final_no_promotion' in text
+          assert 'WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE' in text
+          assert 'WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE' in text
+          assert 'repair.parse_odds3t' in text
+          assert 'repair._fetch' in text
+          for forbidden in ('upsert_rows(', 'insert into ', 'update v2_', 'delete from ', 'run_pre_window', 'v23_line_notifier', 'run_final_pg'):
+              assert forbidden not in text.lower()
+          print('WINDOW_REFRESH_LIVE_PROBE_VALIDATE=PASS')
+          PY
+
+  probe:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway window-refresh-live-probe'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HTTP_TIMEOUT: '10'
+      HTTP_MAX_RETRIES: '1'
+      WINDOW_REFRESH_MIN_MINUTES_BEFORE_DEADLINE: '10'
+      WINDOW_REFRESH_MAX_MINUTES_BEFORE_DEADLINE: '60'
+      WINDOW_REFRESH_PROBE_LIMIT: '10'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load masked public database URL
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Probe official pages with base parser, no writes
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/window_refresh_live_probe.py 2>&1 | tee window-refresh-live-probe-output.txt
+      - name: Reply with sanitized probe result
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Window refresh live parser probe'
+            echo
+            echo '```text'
+            grep '^WINDOW_REFRESH_PROBE_' window-refresh-live-probe-output.txt 2>/dev/null || echo 'WINDOW_REFRESH_PROBE_DIAGNOSTIC=no_prefixed_output'
+            echo '```'
+            echo
+            echo 'Read-only DB inspection plus official HTTP GET only. No odds rows, PRE/LINE, FINAL decisions, Railway settings or model parameters were changed.'
+          } > window-refresh-live-probe-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file window-refresh-live-probe-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json window-refresh-live-probe-output.txt window-refresh-live-probe-comment.md
