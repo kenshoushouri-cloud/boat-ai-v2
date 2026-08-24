@@ -1,0 +1,117 @@
+name: PRE repeat read-only plan
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/pre_repeat_readonly_plan.py'
+      - '.github/workflows/pre-repeat-readonly-plan.yml'
+      - 'run_pre_window_pg.py'
+      - 'v24_pre_candidate_notifier_pg.py'
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate read-only planner policy
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/pre_repeat_readonly_plan.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/pre_repeat_readonly_plan.py').read_text(encoding='utf-8')
+          assert 'PRE_REPEAT_PLAN_MODE=read_only_existing_v24_selection' in p
+          assert 'no_ddl_no_db_writes_no_line_no_candidate_shadow_no_final' in p
+          assert 'core._ensure_line_notification_columns = lambda: None' in p
+          assert 'core._send_line_message = _suppress_send' in p
+          assert 'core._save_pre_notification = _suppress_save' in p
+          assert 'collect_candidate_filter_shadow_pg.py' not in p
+          assert 'run_final_pg.py' not in p
+          assert 'execute(' not in p
+          print('PRE_REPEAT_PLAN_VALIDATE=PASS')
+          PY
+
+  plan:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway pre-repeat-plan'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run repeated PRE read-only planner
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          DRY_RUN: '1'
+          TEST_MODE: '1'
+          SELECTOR_MODE: balanced
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/pre_repeat_readonly_plan.py 2>&1 | tee pre-repeat-plan-output.txt
+      - name: Reply with sanitized plan
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## PRE repeat read-only plan'
+            echo
+            echo '```text'
+            grep '^PRE_REPEAT_PLAN_' pre-repeat-plan-output.txt 2>/dev/null || echo 'PRE_REPEAT_PLAN_DIAGNOSTIC=no_prefixed_output'
+            echo '```'
+            echo
+            echo 'Existing v24 selection logic was evaluated read-only. DDL, DB writes, LINE, candidate Shadow and FINAL were suppressed.'
+          } > pre-repeat-plan-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file pre-repeat-plan-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json pre-repeat-plan-output.txt pre-repeat-plan-comment.md
