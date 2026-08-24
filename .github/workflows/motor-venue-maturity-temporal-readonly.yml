@@ -1,0 +1,80 @@
+name: Motor venue maturity temporal read-only
+
+on:
+  pull_request:
+    paths:
+      - 'backtest_prob_motor_venue_maturity_temporal_pg.py'
+      - '.github/workflows/motor-venue-maturity-temporal-readonly.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only audit
+        run: |
+          set -euo pipefail
+          python -m py_compile backtest_prob_motor_venue_maturity_temporal_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('backtest_prob_motor_venue_maturity_temporal_pg.py').read_text(encoding='utf-8').lower()
+          assert 'motor_vm_mode=read_only' in low
+          assert 'no_tuning' in low and 'no_selection' in low
+          assert 'db_first_seen_forbidden' in low
+          assert 'young_p00_05' in low and 'mature_p21_plus' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
+              assert token not in low, token
+          print('MOTOR_VM_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run audit
+        id: audit
+        run: |
+          set +e
+          python -u backtest_prob_motor_venue_maturity_temporal_pg.py > motor-vm.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^MOTOR_VM' motor-vm.txt 2>/dev/null || true
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json motor-vm.txt
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
