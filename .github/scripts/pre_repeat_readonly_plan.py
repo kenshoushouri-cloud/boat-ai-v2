@@ -15,7 +15,7 @@ import subprocess
 import sys
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 JST = timezone(timedelta(hours=9))
 WINDOWS = {
@@ -40,10 +40,9 @@ def _active_windows(now: datetime, date_str: str) -> List[str]:
 
 
 def _run_child(window_name: str) -> int:
-    # Import the window selector first; it only reads DB when explicitly called.
     import run_pre_window_pg as win
 
-    target_date = os.environ["TARGET_DATE"]
+    target_date = (os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")).strip()
     start, end = WINDOWS[window_name]
     raw = win.select_window_races(target_date, start, end)
     races, run_class, skipped = win._apply_live_guard(raw, target_date)
@@ -57,6 +56,7 @@ def _run_child(window_name: str) -> int:
 
     race_ids = [str(r.get("race_id") or "") for r in races if str(r.get("race_id") or "")]
     session = "night" if window_name == "night" else "day"
+    os.environ["TARGET_DATE"] = target_date
     os.environ["WINDOW_NAME"] = window_name
     os.environ["PRE_SESSION"] = session
     os.environ["TARGET_RACE_IDS"] = ",".join(race_ids)
@@ -77,10 +77,8 @@ def _run_child(window_name: str) -> int:
         )
         return 0
 
-    # Import after all environment values are fixed because v24 resolves them at import time.
     import v24_pre_candidate_notifier_pg as core
 
-    # Hard read-only patch points. Selection/fetch logic remains the production implementation.
     core._ensure_line_notification_columns = lambda: None
     core.DRY_RUN = True
     core.TEST_MODE = True
@@ -195,6 +193,7 @@ def main() -> int:
     rc = 0
     for name in active:
         env = os.environ.copy()
+        env["TARGET_DATE"] = target_date
         env["PRE_REPEAT_CHILD_WINDOW"] = name
         proc = subprocess.run(
             [sys.executable, "-u", __file__],
