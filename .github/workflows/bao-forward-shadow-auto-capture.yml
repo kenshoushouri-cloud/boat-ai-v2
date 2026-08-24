@@ -118,7 +118,7 @@ jobs:
           railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
           python - <<'PY'
           import json, os
-          from pathlib import import Path
+          from pathlib import Path
           data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
           value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
           if isinstance(data,list):
