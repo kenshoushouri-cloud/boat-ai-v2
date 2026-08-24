@@ -77,6 +77,16 @@ def _sample(values: List[str], limit: int = 20) -> tuple[str, int]:
     return (",".join(shown) if shown else "none", max(0, len(values) - len(shown)))
 
 
+def _lead_band(minutes_before: float) -> str:
+    if minutes_before < 20.0:
+        return "10_20"
+    if minutes_before < 30.0:
+        return "20_30"
+    if minutes_before < 60.0:
+        return "30_60"
+    return "60_90"
+
+
 def main() -> None:
     if not DB:
         raise RuntimeError("DATABASE_URL is required")
@@ -106,6 +116,7 @@ def main() -> None:
         print("WINDOW_REFRESH_PLAN_RESULT=PASS_READ_ONLY", flush=True)
         return
 
+    shadow_early_exact120: set[str] = set()
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -155,21 +166,47 @@ def main() -> None:
                 for row in cur.fetchall():
                     tickets_by[str(row["race_id"])].append(str(row.get("ticket") or ""))
 
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select race_id
+                    from v2_bao_market_shadow_snapshots
+                    where race_id=any(%s)
+                      and phase='early'
+                      and cardinality(odds)=120
+                    """,
+                    (race_ids,),
+                )
+                shadow_early_exact120 = {str(row["race_id"]) for row in cur.fetchall()}
+
     complete: List[str] = []
     incomplete: List[str] = []
+    shadow_ready_incomplete: List[str] = []
     incomplete_by_window: Dict[str, List[str]] = {name: [] for name in active}
     eligible_by_window: Dict[str, int] = {name: 0 for name in active}
+    bands = {
+        "10_20": {"eligible": 0, "incomplete": 0, "shadow": 0},
+        "20_30": {"eligible": 0, "incomplete": 0, "shadow": 0},
+        "30_60": {"eligible": 0, "incomplete": 0, "shadow": 0},
+        "60_90": {"eligible": 0, "incomplete": 0, "shadow": 0},
+    }
 
     for row in eligible:
         rid = str(row["race_id"])
         status = odds._evaluate_ticket_snapshot(tickets_by.get(rid, []))
         label = f"{rid}@{str(row.get('deadline_time') or '')[:5]}"
+        band = _lead_band(float(row.get("minutes_before") or 0.0))
+        bands[band]["eligible"] += 1
         for name in memberships.get(rid, []):
             eligible_by_window[name] += 1
         if status.get("complete"):
             complete.append(label)
             continue
         incomplete.append(label)
+        bands[band]["incomplete"] += 1
+        if rid in shadow_early_exact120:
+            shadow_ready_incomplete.append(label)
+            bands[band]["shadow"] += 1
         for name in memberships.get(rid, []):
             incomplete_by_window[name].append(label)
 
@@ -190,6 +227,25 @@ def main() -> None:
         f"WINDOW_REFRESH_PLAN_INCOMPLETE=count:{len(incomplete)} races:{sample} more:{more}",
         flush=True,
     )
+    shadow_sample, shadow_more = _sample(shadow_ready_incomplete)
+    print(
+        "WINDOW_REFRESH_PLAN_SHADOW_EVIDENCE="
+        f"incomplete:{len(incomplete)} early_exact120:{len(shadow_ready_incomplete)} "
+        f"without_early_exact120:{len(incomplete)-len(shadow_ready_incomplete)}",
+        flush=True,
+    )
+    print(
+        f"WINDOW_REFRESH_PLAN_SHADOW_READY=count:{len(shadow_ready_incomplete)} "
+        f"races:{shadow_sample} more:{shadow_more}",
+        flush=True,
+    )
+    for band in ("10_20", "20_30", "30_60", "60_90"):
+        stats = bands[band]
+        print(
+            f"WINDOW_REFRESH_PLAN_LEAD_BAND=name:{band} eligible:{stats['eligible']} "
+            f"incomplete:{stats['incomplete']} shadow_early_exact120:{stats['shadow']}",
+            flush=True,
+        )
     print(
         "WINDOW_REFRESH_PLAN_FETCH_BUDGET="
         f"initial_race_fetches:{len(incomplete)} "
