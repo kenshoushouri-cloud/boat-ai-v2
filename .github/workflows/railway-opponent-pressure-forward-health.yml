@@ -28,12 +28,12 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/scripts/opponent_pressure_forward_health.py').read_text(encoding='utf-8')
-          assert 'OPP_PRESSURE_HEALTH_MODE=read_only' in p
-          assert 'v2_opponent_pressure_shadow_v2' in p
-          assert 'v2_races' in p
-          assert 'execute(' not in p
-          assert 'upsert' not in p.lower()
-          assert 'send_line' not in p.lower()
+          low=p.lower()
+          assert 'opp_pressure_health_mode=read_only' in low
+          assert 'v2_opponent_pressure_shadow_v2' in low
+          assert 'v2_races' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert','send_line'):
+              assert token not in low, token
           print('OPP_PRESSURE_HEALTH_VALIDATE=PASS')
           PY
 
