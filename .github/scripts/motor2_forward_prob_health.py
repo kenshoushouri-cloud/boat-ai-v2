@@ -12,9 +12,18 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
+
+# This file lives under .github/scripts, while db_pg.py lives at repo root.
+# Add the repository root explicitly so owner-only issue_comment runs work
+# regardless of the script's directory on sys.path.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from db_pg import fetch_all
 
