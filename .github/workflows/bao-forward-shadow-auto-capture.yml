@@ -20,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: bao-forward-shadow-auto-capture
+  # Keep scheduled/manual capture serialized, but never let a live capture block
+  # pull-request validation of this workflow itself.
+  group: "${{ github.event_name == 'pull_request' && format('bao-forward-shadow-auto-capture-pr-{0}', github.event.pull_request.number) || 'bao-forward-shadow-auto-capture' }}"
   cancel-in-progress: false
 
 jobs:
@@ -54,6 +56,7 @@ jobs:
           assert 'BAO_AUTOCAP_LOOP_SECONDS=3600' in p
           assert 'BAO_AUTOCAP_LOOP_SLEEP=120' in p
           assert 'timeout-minutes: 70' in p
+          assert 'bao-forward-shadow-auto-capture-pr-' in p
           print('BAO_AUTOCAP_VALIDATE=PASS')
           PY
 
@@ -115,7 +118,7 @@ jobs:
           railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
           python - <<'PY'
           import json, os
-          from pathlib import Path
+          from pathlib import import Path
           data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
           value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
           if isinstance(data,list):
