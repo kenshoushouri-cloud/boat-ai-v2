@@ -41,7 +41,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
       - name: Validate isolated collector safety
         run: |
           set -euo pipefail
@@ -58,20 +57,16 @@ jobs:
           assert 'v2_exhibition_st_forward_shadow' in c
           assert 'snapshot_at < deadline_at' in c
           assert 'no_results_no_odds_no_line_no_buy_no_prod_v24_change' in c
-          assert 'v2_results' not in c
-          assert 'v2_odds' not in c
-          assert 'send_line' not in c
+          assert 'v2_results' not in c and 'v2_odds' not in c and 'send_line' not in c
           assert 'insert into' not in h and 'update v2_' not in h and 'delete from' not in h
           assert 'block_manual_review_only' in h
           print('EXH_ST_FORWARD_VALIDATE=PASS')
           PY
-
       - name: Install dependencies
         run: |
           set -euo pipefail
           pip install -r requirements.txt
           npm install --global @railway/cli
-
       - name: Load public database URL without publishing it
         run: |
           set -euo pipefail
@@ -87,16 +82,16 @@ jobs:
                       value=item.get('value'); break
           if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
           print(f'::add-mask::{value}')
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
-              fh.write(f'DATABASE_URL={value}\n')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
           PY
-
       - name: Run collector
         id: collect
         run: |
           set +e
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            export TARGET_DATE=2026-08-22
+            # 2026-08-22 has no stored historical ST rows. Use a populated pre-cutoff
+            # fixture date only to exercise the frozen computation with zero writes.
+            export TARGET_DATE=2026-07-15
             export EXH_ST_FORWARD_ENABLED=1
             export EXH_ST_FORWARD_DRY_RUN=1
             export EXH_ST_FORWARD_ALLOW_PAST_DRY_RUN=1
@@ -111,20 +106,17 @@ jobs:
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
-
       - name: Run post-write health check
         if: github.event_name == 'issue_comment' && steps.collect.outputs.exit_code == '0'
         run: |
           set +e
           python -u report_exhibition_st_forward_health_pg.py > exhibition-st-forward-health.txt 2>&1
           exit 0
-
       - name: Print sanitized results
         if: always()
         run: |
           grep '^EXH_ST_FORWARD_' exhibition-st-forward-output.txt 2>/dev/null || true
           grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || true
-
       - name: Verify PR dry-run
         if: github.event_name == 'pull_request'
         run: |
@@ -133,28 +125,22 @@ jobs:
           grep -q '^EXH_ST_FORWARD_WRITE_ROWS=0$' exhibition-st-forward-output.txt
           grep -Eq '^EXH_ST_FORWARD_PREVIEW=payloads:[1-9][0-9]* ' exhibition-st-forward-output.txt
           grep -q 'stored_historical_dryrun_only:' exhibition-st-forward-output.txt
-
       - name: Reply to bridge command
         if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo '## Exhibition ST Forward collection report'
-            echo
-            echo '```text'
+            echo '## Exhibition ST Forward collection report'; echo; echo '```text'
             grep '^EXH_ST_FORWARD_' exhibition-st-forward-output.txt 2>/dev/null || echo 'EXH_ST_FORWARD_DIAGNOSTIC=no_output'
             grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || true
-            echo '```'
-            echo
-            echo 'Isolated first-write-wins Forward Shadow only. beta=-0.02 and the 8-15 minute capture window are frozen. No Production v24/FINAL, LINE, BUY/WATCH/SKIP, Railway settings, N02/Bao promotion, results, or odds are changed/read by the collector.'
+            echo '```'; echo
+            echo 'Isolated first-write-wins Forward Shadow only. beta=-0.02 and 8-15 minute capture are frozen. No Production v24/FINAL, LINE, BUY/WATCH/SKIP, Railway settings, N02/Bao promotion, results, or odds are changed/read by the collector.'
           } > exhibition-st-forward-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file exhibition-st-forward-comment.md
-
       - name: Clean temporary files
         if: always()
         run: rm -f railway-vars.json exhibition-st-forward-output.txt exhibition-st-forward-health.txt exhibition-st-forward-comment.md
-
       - name: Fail if collector failed
         if: steps.collect.outputs.exit_code != '0'
         run: exit 1
@@ -197,8 +183,7 @@ jobs:
                       value=item.get('value'); break
           if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
           print(f'::add-mask::{value}')
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
-              fh.write(f'DATABASE_URL={value}\n')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
           PY
       - name: Run read-only health report
         id: health
@@ -216,12 +201,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo '## Exhibition ST Forward health report'
-            echo
-            echo '```text'
+            echo '## Exhibition ST Forward health report'; echo; echo '```text'
             grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || echo 'EXH_ST_FORWARD_HEALTH_DIAGNOSTIC=no_output'
-            echo '```'
-            echo
+            echo '```'; echo
             echo 'Read-only realized evaluation of the frozen exhibition-ST Forward Shadow. Promotion remains manual-review-only.'
           } > exhibition-st-forward-health-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file exhibition-st-forward-health-comment.md
