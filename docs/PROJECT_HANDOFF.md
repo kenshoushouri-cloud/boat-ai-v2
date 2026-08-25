@@ -1,6 +1,6 @@
 # boat-ai-v2 Permanent Project Handoff
 
-更新日時: 2026-08-24 21:10 JST
+更新日時: 2026-08-25 JST
 
 このファイルは、新しいChatGPTチャット・新しい担当者・長時間中断後でも、`boat-ai-v2` の現在地から安全に再開するための常設引き継ぎです。
 
@@ -415,8 +415,7 @@ Source policy:
 全履歴 readiness audit:
 - participant rows: 384,660
 - racers: 1,649
-- individual pair groups: 181,490
-- individual median n: 9
+- individual pair median n: 9
 - individual ge30: 4,177
 - exact pattern median n: 1
 - global class/lane groups: 480
@@ -756,3 +755,148 @@ Coverage:
 3. 公式motor generation startの場カバレッジを増やす。艇国DBは補助照合に使う。
 4. Baoは既存gateを維持。馬王型は通常予想のプラスアルファ。
 5. PR #169はDraft維持。Production/LINE/threshold/Railway設定は未変更。
+
+---
+
+<!-- HANDOFF_MILESTONE_20260825_GUARD05_FORWARD -->
+## 追記: 2026-08-25 — GUARD05交換直後保護 / 独立Forward Shadow
+
+この節は PR #225〜#229 完了後の重要マイルストーン。通常予想Aのモーター研究だが、**Production v24にはまだ反映していない**。
+
+### この追記直前のmain基準点
+- `7bdbf059bfaa9c665c5b94afa3386977214163b4`
+- PR #229 `Shadow: schedule daily GUARD05 Forward collection` マージ後。
+
+再開時は必ずcurrent mainを再取得する。
+
+### GUARD05の固定ルール
+公式current-generation startが確認済みの5場（03/05/12/14/23）のみ対象。
+
+Forwardで採用した成熟度定義:
+- **COUNT_MODE = PRIOR_DAY**
+- current generation内で、対象モーターが**TARGET_DATEより前の日付**の完全な出走表へ登場した回数を数える。
+- 同日の前半R、当日の結果、当日後から確定する情報は成熟度カウントに使わない。
+
+レーン単位の固定処理:
+- prior-day appearances `<= 5` → motor2を **33.0** として確率計算
+- `>= 6` → 出走表の実測 `motor_place2_rate` を使用
+- threshold 5をForward開始後に動かさない。
+
+### PR #225 — 一律shrinkageは採用しない
+BASE=33%固定、FULL=実測、K03/K06/K12/K24の縮約を3期間×5場で比較。
+
+2,963R全体では:
+- FULL LL `4.41551617`
+- K03 LL `4.41560430`
+- K06 LL `4.41570894`
+- K12 LL `4.41590176`
+- K24 LL `4.41620132`
+
+K系はBASEより改善するが、FULLには3期間すべてLogLoss/Brierで負けた。
+
+一方 P00–05 の103RではFULLがBASEより悪化:
+- BASE LL `4.57884059`
+- FULL LL `4.58098931`
+
+**判断:** 全モーターへ一律shrinkageは採用しない。交換直後だけを保護する候補へ進む。
+
+### PR #226 — GUARD05候補生成
+2,963Rでlane-local GUARD05を固定比較。
+
+Overall GUARD05 vs FULL:
+- LogLoss delta **-0.00017390**
+- Brier delta **-0.00000432**
+- 的中券rank delta **-0.0145**
+
+P00–05 / 103R:
+- GUARD05 vs BASE LL **-0.00285388**
+- GUARD05 vs FULL LL **-0.00500259**
+- Brier vs FULL **-0.00012438**
+- rank vs FULL **-0.4175**
+
+P06+ではGUARD05はFULLと同じ。
+
+**判断:** 歴史データ上は有望。ただし同じ歴史データから導いた候補なのでProduction採用不可。新規Forward必須。
+
+### PR #227 — 時系列安全性
+結果を成熟度カウントへ一切使わない2方式で再検証:
+- `CARD_ORDER`
+- `PRIOR_DAY`
+
+2,963R Overall、FULL比:
+- CARD_ORDER: LL **-0.00014907** / Brier **-0.00000398** / rank **-0.0152**
+- PRIOR_DAY: LL **-0.00009457** / Brier **-0.00000291** / rank **-0.0084**
+
+両方式とも3期間すべてでFULLよりLogLoss/Brier/rank改善。
+
+より保守的でPRE時点に確実に既知な情報だけを使う **PRIOR_DAYをForward定義として固定**。
+
+### PR #228 — 独立compact Forward Shadow
+既存 `v2_v24_motor2_forward_shadow` の疎保存/候補ROI研究へ混ぜず、専用テーブルを新設:
+- **`v2_motor_guard05_forward_shadow`**
+
+1 race = 1 row。
+保存:
+- model_version
+- count_mode=`PRIOR_DAY`
+- guard_max_prior=5
+- official generation_start
+- deadline_at / snapshot_at
+- motor_nos[6]
+- prior_day_counts[6]
+- actual_motor2[6]
+- guard_flags[6]
+- BASE/FULL/GUARD05の三連単120確率配列
+
+安全条件:
+- collector default disabled + DRY_RUN
+- collectorは結果/オッズを読まない
+- write時はdeadline 3分以上前のみ
+- DB constraint `snapshot_at < deadline_at`
+- `ON CONFLICT (race_id) DO NOTHING`
+- **first snapshot wins**。後から結果を見て確率を上書きしない。
+- Production/LINE/BUY/WATCH/SKIP consumerなし。
+
+Issue #42:
+- write: `/railway motor-guard05-forward-collect CONFIRM`
+- read-only: `/railway motor-guard05-forward-health`
+
+### 2026-08-25 最初のForward書込み
+PR #228 merge後、Issue #42からconfirmed writeを1回実行。
+
+結果:
+- payloads: **12R**
+- write rows: **12**
+- invalid: **0**
+- pending results: **12**
+- affected races: **0**
+- guard lanes: **0**
+
+当日の残り対象では交換直後条件が無かったためGUARD05=FULL。これは失敗ではなく、affected sampleがまだ0という意味。
+
+### PR #229 — 毎朝自動収集
+独立GitHub Actions scheduleを追加:
+- cron `20 22 * * *`
+- **07:20 JST daily**
+
+これはGitHub Actions側のShadow収集であり、Railway service schedule/Variables/settingsは変更していない。
+
+毎日:
+1. TARGET_DATE当日の対象5場を確認
+2. deadline前の確率をfirst snapshotとして保存
+3. BASE/FULL/GUARD05の120確率を凍結
+4. post-write healthはread-only
+
+### 現在の決定
+- **GUARD05 = KEEP_SHADOW / Production BLOCK**
+- 8/25のunaffected 12RはGUARD05効果判定の母数に数えない。
+- **affected Forward rows**が十分に蓄積し、実結果でFULLより再現性ある改善を示すまでProductionへ入れない。
+- threshold 5、PRIOR_DAY定義、v24係数をForward途中で調整しない。
+- 既存Production v24のmotor2固定33.0は現時点で変更しない。
+
+### 次の確認ポイント
+1. daily Shadowのcollection/integrityが継続しているか。
+2. affected Forward rowsが何件になったか。
+3. affectedでBASE/FULL/GUARD05のLogLoss/Brier/actual-ticket rankを比較。
+4. 日別・場別の符号が安定するか。
+5. 十分な新規Forward証拠が集まった時点だけmanual reviewする。
