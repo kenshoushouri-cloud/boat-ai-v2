@@ -1,0 +1,71 @@
+name: Racer course top3 current-v24 OOS
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/racer_course_top3_v24_oos.py'
+      - '.github/workflows/racer-course-top3-v24-oos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate fixed OOS design
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/racer_course_top3_v24_oos.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/racer_course_top3_v24_oos.py').read_text(encoding='utf-8').lower()
+          assert 'official_course_top3_rate_only_lane_as_course_proxy' in p
+          assert 'exact_date_all6_created_by_0815_jst_and_before_deadline' in p
+          assert 'coefs = (0.00, 0.05, 0.10, 0.20, 0.30, 0.50)' in p
+          assert '2026, 8, 1' in p and '2026, 8, 24' in p
+          assert 'no_test_tuning_no_subgroup_selection_no_writes_no_production_no_line' in p
+          assert 'block_no_production_change' in p
+          assert 'insert into' not in p and 'update ' not in p and 'delete from' not in p
+          print('RACER_COURSE_OOS_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run fixed expanding OOS
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_top3_v24_oos.py | tee racer-course-oos.txt
+          grep -q '^RACER_COURSE_OOS_RESULT=PASS_READ_ONLY$' racer-course-oos.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json racer-course-oos.txt
