@@ -86,7 +86,9 @@ jobs:
           exit 0
       - name: Print sanitized results
         if: always()
-        run: grep '^MOTOR_GUARD_' motor-guard-output.txt 2>/dev/null || true
+        run: |
+          grep '^MOTOR_GUARD_' motor-guard-output.txt 2>/dev/null || true
+          grep '^MOTOR_SHRINK_SCOPE=' motor-guard-output.txt 2>/dev/null | sed 's/^MOTOR_SHRINK_SCOPE=/MOTOR_GUARD_SCOPE=/' || true
       - name: Reply to bridge command
         if: github.event_name == 'issue_comment'
         env:
@@ -96,7 +98,9 @@ jobs:
             echo '## Motor young-lane guard05 read-only report'
             echo
             echo '```text'
-            grep '^MOTOR_GUARD_' motor-guard-output.txt 2>/dev/null || echo 'MOTOR_GUARD_DIAGNOSTIC=no_output'
+            grep '^MOTOR_GUARD_' motor-guard-output.txt 2>/dev/null || true
+            grep '^MOTOR_SHRINK_SCOPE=' motor-guard-output.txt 2>/dev/null | sed 's/^MOTOR_SHRINK_SCOPE=/MOTOR_GUARD_SCOPE=/' || true
+            if ! grep -q '^MOTOR_GUARD_' motor-guard-output.txt 2>/dev/null; then echo 'MOTOR_GUARD_DIAGNOSTIC=no_output'; fi
             echo '```'
             echo
             echo 'Exploratory reused-historical screen of one frozen P00-05 lane guard. No threshold search, DB write, Production/LINE, Railway setting, coefficient, or promotion change. New Forward evidence is required before any Production consideration.'
