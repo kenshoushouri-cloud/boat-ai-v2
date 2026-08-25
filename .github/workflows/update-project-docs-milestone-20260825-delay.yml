@@ -1,0 +1,37 @@
+name: Update project docs scheduler-delay milestone 20260825
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/update_project_docs_milestone_20260825_delay.py'
+      - '.github/workflows/update-project-docs-milestone-20260825-delay.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply idempotent milestone update
+        run: python .github/scripts/update_project_docs_milestone_20260825_delay.py
+      - name: Commit docs when changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/PROJECT_HANDOFF.md docs/PROJECT_HISTORY.md; then
+            echo 'PROJECT_DOCS_NO_CHANGE=1'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/PROJECT_HANDOFF.md docs/PROJECT_HISTORY.md
+          git commit -m 'docs: record exhibition ST scheduler-delay milestone'
+          git push origin HEAD:${{ github.head_ref }}
