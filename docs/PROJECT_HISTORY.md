@@ -1,6 +1,6 @@
 # boat-ai-v2 Project History / Decision Log
 
-更新日時: 2026-08-25 18:28 JST
+更新日時: 2026-08-25 19:01 JST
 
 このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
 
@@ -8,6 +8,17 @@
 このファイルは過去の判断を同じデータで再検討し直したり、却下済み案を理由なく復活させたりしないために使います。
 
 ---
+
+
+<!-- RACER_COURSE_TOP3_FORWARD_MILESTONE_20260825 -->
+## 0A. 2026-08-25 — Racer course top3: fixed OOS support → isolated Forward
+
+- #241 decision: `NOT_READY_FOR_UNFILTERED_OOS`; mutable exact-date snapshot timestamps and uneven daily coverage prevent treating all stored rows as frozen morning evidence.
+- #242 pre-registered complete-case OOS decision: `SUPPORTS_FIXED_FORWARD_SHADOW_RESEARCH_ONLY`. Three non-overlapping Aug windows all improved Brier/LogLoss/rank; aggregate n=2,299, Brier `-0.00608767`, LogLoss `-0.21143915`, rank `-5.0170`. Train-only selected coefficient was 0.50 in all three splits.
+- Because 0.50 was the pre-registered grid ceiling, **do not** search larger coefficients on the same OOS. Freeze 0.50 for Forward.
+- #243 decision: `KEEP_ISOLATED_FORWARD_SHADOW`. Dedicated first-write-wins table freezes BASE/COURSE 120-probability vectors plus all six source timestamps before outcomes. Automatic GitHub collection starts 06:45 JST and polls every 2 minutes for 2 hours; no Railway schedule/settings change.
+- First live Forward capture: 9R written, invalid 0, pending 9. Promotion remains manual-review-only / Production BLOCK.
+- No Production v24/FINAL/LINE/BUY-WATCH-SKIP, N02/N01, Bao, scoring-weight, Railway Variable/service schedule, or PR #169 change.
 
 ## 0. 長期方針
 
