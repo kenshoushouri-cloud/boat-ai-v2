@@ -1,6 +1,6 @@
 # boat-ai-v2 Project History / Decision Log
 
-更新日時: 2026-08-25 JST
+更新日時: 2026-08-25 12:45 JST
 
 このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
 
@@ -962,3 +962,49 @@ GUARD05 status:
 - 日別・場別でも大きく崩れないこと
 - threshold=5 / PRIOR_DAY / probability coefficientsを途中で変更しないこと
 - 十分な証拠後も自動昇格せずmanual reviewすること
+
+---
+
+<!-- HISTORY_MILESTONE_20260825_OPP_HEAD_MOTOR_V12 -->
+## 2026-08-25 12:45 JST — Opponent Pressure統合方式とMotor V12反転の判断
+
+### Opponent Pressure: head-only mappingを研究本線として維持
+既存PRを再監査し、v24三連単への統合はPR #202/#203の固定head-only mappingが最も根拠が強いことを再確認。
+
+historical OOS 3splitではOverall Brier / LogLoss / ticket rankが全て改善したが、realized Forward 468Rでは:
+- Brier **-0.00006135**
+- LogLoss **-0.00183905**
+- rank **+0.284**
+
+R05-08と8/24に弱さがある。
+
+**Decision:** `KEEP_FORWARD_RESEARCH`。日付/R帯/場を後付け除外しない。ProductionはBLOCK。
+
+PR #231/#232で既存固定監査をIssue #42から再実行できるread-only bridgeとして整備した。
+
+### PR #207 fixed log-odds transportを再評価
+468R Overallでv24比:
+- Brier **+0.00006538**
+- LogLoss **+0.00093481**
+- rank **+0.577**
+
+**Decision:** `HOLD / NO_FORWARD_SUPPORT`。R09-12だけの良さからsubgroup採用しない。
+
+### Motor V12 recent reversal
+PR #220 holdoutでは5場Overall actual motor2が改善した一方、V12 / 36Rが3指標悪化。
+
+PR #219を再確認するとV12 mature P21+はpre-holdout 3期間すべてLogLoss改善。
+PR #233でvenue×dateを全セル固定表示した結果、V12 36Rは8/16-18の1節だけで:
+- 8/16: 改善
+- 8/17: 悪化
+- 8/18: 悪化
+
+**Decision:** V12を除外しない。直近小標本を見てvenue filterを作らない。actual motor2 / GUARD05はForward継続し、ProductionはBLOCK。
+
+### Production impact
+- none
+- v24 / LINE / BUY-WATCH-SKIP unchanged
+- Railway Variables/settings/schedules unchanged
+- N02/Bao unchanged
+- PR #169 Draft hold unchanged
+
