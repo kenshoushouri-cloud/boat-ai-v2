@@ -1,6 +1,6 @@
 # boat-ai-v2 Project History / Decision Log
 
-更新日時: 2026-08-24 JST
+更新日時: 2026-08-25 JST
 
 このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
 
@@ -826,3 +826,139 @@ Source policyは **公式一次 / 艇国DB二次照合 / DB first-seen診断の�
 
 ### Production safety
 PR #191〜#194はすべてread-only audit/評価。Production予想、LINE、Railway Variables/settings、v24/N02 threshold、Bao係数/promotion、PR #169は変更していない。
+
+---
+
+<!-- HISTORY_MILESTONE_20260825_GUARD05_FORWARD -->
+## 2026-08-25 — 交換直後Motor2を保護するGUARD05をForward研究へ固定
+
+### 仮説
+actual motor2は長期間・別期間でv24 probabilityを改善したが、交換直後の個体では母数不足による不安定性があり得る。
+
+ユーザー要件「モーターは交換時期に注意」に沿い、成熟したモーターの実測値の利点を残したまま、非常に若い個体だけを保護できるか検証する。
+
+### PR #225: 一律shrinkage family
+事前固定:
+- BASE=33.0
+- FULL=actual motor2
+- K03/K06/K12/K24=`33 + n/(n+K)*(actual-33)`
+
+3期間×公式generation確認済み5場、2,963R。
+
+結果:
+- K03〜K24はBASEより改善。
+- しかしLogLoss/Brierでは**FULLに3/3期間負け**。
+- 一律shrinkageは支持されない。
+
+一方、固定maturity slice P00–05 / 103Rでは:
+- BASE LL `4.57884059`
+- FULL LL `4.58098931`
+
+つまり交換直後sliceだけではactual motor2をそのまま信じる方が悪かった。
+
+**Decision:** `REJECT_GLOBAL_SHRINKAGE`。一律補正は採用しない。
+
+### PR #226: lane-local GUARD05候補
+固定候補:
+- lane motor prior appearances <=5 → motor2=33.0
+- 6+ → actual motor2
+
+2,963R Overall:
+- GUARD05 vs FULL LogLoss **-0.00017390**
+- Brier **-0.00000432**
+- actual ticket rank **-0.0145**
+
+P00–05 / 103R:
+- vs FULL LogLoss **-0.00500259**
+- Brier **-0.00012438**
+- rank **-0.4175**
+
+P06+はFULLと同じなので、成熟motorのメリットを壊さない。
+
+ただしこのルールは同じhistorical screenから生まれたため独立validationではない。
+
+**Decision:** `FREEZE_CANDIDATE_REQUIRE_NEW_FORWARD`。
+
+### PR #227: 結果に依存しない成熟度カウント
+歴史評価のprior counterに同日進行の影響が混ざる可能性を排除するため、結果を一切使わない2方式を固定比較。
+
+- CARD_ORDER: race-card順で先に存在するカードを数える
+- PRIOR_DAY: TARGET_DATEより前の日付だけ数える
+
+Overall FULL比:
+- CARD_ORDER LL **-0.00014907** / Brier **-0.00000398** / rank **-0.0152**
+- PRIOR_DAY LL **-0.00009457** / Brier **-0.00000291** / rank **-0.0084**
+
+両方式とも3/3期間でFULLよりLogLoss/Brier/rank改善。
+
+**Decision:** Forwardでは最も保守的な **PRIOR_DAY** を固定。same-day未実施raceを成熟度に数えない。
+
+### PR #228: 独立Forward Shadow
+新テーブル:
+- `v2_motor_guard05_forward_shadow`
+
+既存Motor2 candidate Shadowへ混ぜる案は却下した。既存レポートがrun_classを完全隔離しておらず、同じテーブルへ別モデルを入れると集計を汚す可能性があったため。
+
+1 race 1 rowで保存:
+- official generation metadata
+- prior_day_counts[6]
+- actual_motor2[6]
+- guard_flags[6]
+- BASE/FULL/GUARD05 probabilities[120]
+
+Forward integrity:
+- collectorはresults/oddsを読まない
+- deadlineより3分以上前のみwrite
+- `snapshot_at < deadline_at`
+- first snapshot wins (`ON CONFLICT DO NOTHING`)
+- collector default disabled / DRY_RUN
+- health reportはread-only
+
+Issue #42 commands:
+- `/railway motor-guard05-forward-collect CONFIRM`
+- `/railway motor-guard05-forward-health`
+
+**Decision:** `KEEP_ISOLATED_SHADOW`。
+
+### 2026-08-25: 最初のconfirmed Forward snapshot
+PR #228 merge後、owner-only Issue #42 commandからwrite。
+
+- payloads 12
+- write rows 12
+- invalid 0
+- pending 12
+- affected races 0
+- guard lanes 0
+
+この12RはGUARD05=FULL。効果比較のaffected母数ではない。
+
+**Decision:** collector/integrityの初回writeは成功。効果判断は保留。
+
+### PR #229: 毎朝07:20 JST自動収集
+GitHub Actions schedule:
+- `20 22 * * *`
+- 07:20 JST daily
+
+Railway service scheduleを増やさず、独立GitHub Actionsから既存confirmed collectorを実行する。
+Concurrencyで重複runを直列化し、first snapshot ruleを維持。
+
+**Decision:** `ADOPT_FORWARD_COLLECTION_ONLY`。
+
+### Production影響 / 現在のgate
+- Production v24: **変更なし**
+- motor2 fixed33 in Production: **変更なし**
+- LINE / BUY / WATCH / SKIP: **変更なし**
+- Railway Variables/settings/schedules: **変更なし**
+- N02/N01/Bao: **変更なし**
+- PR #169: Draft hold継続
+
+GUARD05 status:
+- **KEEP_SHADOW**
+- **Production promotion = BLOCK**
+
+次のgate:
+- 新規chronological Forwardの**affected races**が蓄積すること
+- affectedでFULLよりLogLoss/Brier/actual-ticket rankが再現して改善すること
+- 日別・場別でも大きく崩れないこと
+- threshold=5 / PRIOR_DAY / probability coefficientsを途中で変更しないこと
+- 十分な証拠後も自動昇格せずmanual reviewすること
