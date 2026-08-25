@@ -1,0 +1,233 @@
+name: Exhibition ST Forward Shadow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'collect_exhibition_st_forward_shadow_pg.py'
+      - 'report_exhibition_st_forward_health_pg.py'
+      - '.github/workflows/exhibition-st-forward-shadow.yml'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+concurrency:
+  group: exhibition-st-forward-shadow
+  cancel-in-progress: false
+
+jobs:
+  collector:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 42 &&
+       github.actor == github.repository_owner &&
+       github.event.comment.body == '/railway exhibition-st-forward-collect CONFIRM')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate isolated collector safety
+        run: |
+          set -euo pipefail
+          python -m py_compile collect_exhibition_st_forward_shadow_pg.py report_exhibition_st_forward_health_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          c=Path('collect_exhibition_st_forward_shadow_pg.py').read_text(encoding='utf-8').lower()
+          h=Path('report_exhibition_st_forward_health_pg.py').read_text(encoding='utf-8').lower()
+          assert 'exh_st_forward_enabled", "0"' in c
+          assert 'exh_st_forward_dry_run", "1"' in c
+          assert 'fixed_st_beta = -0.02' in c
+          assert 'window_lo_min = 8.0' in c and 'window_hi_min = 15.0' in c
+          assert 'on conflict (race_id) do nothing' in c
+          assert 'v2_exhibition_st_forward_shadow' in c
+          assert 'snapshot_at < deadline_at' in c
+          assert 'no_results_no_odds_no_line_no_buy_no_prod_v24_change' in c
+          assert 'v2_results' not in c
+          assert 'v2_odds' not in c
+          assert 'send_line' not in c
+          assert 'insert into' not in h and 'update v2_' not in h and 'delete from' not in h
+          assert 'block_manual_review_only' in h
+          print('EXH_ST_FORWARD_VALIDATE=PASS')
+          PY
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run collector
+        id: collect
+        run: |
+          set +e
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            export TARGET_DATE=2026-08-22
+            export EXH_ST_FORWARD_ENABLED=1
+            export EXH_ST_FORWARD_DRY_RUN=1
+            export EXH_ST_FORWARD_ALLOW_PAST_DRY_RUN=1
+            export EXH_ST_FORWARD_DRYRUN_STORED_HISTORICAL=1
+          else
+            export EXH_ST_FORWARD_ENABLED=1
+            export EXH_ST_FORWARD_DRY_RUN=0
+            export EXH_ST_FORWARD_ALLOW_PAST_DRY_RUN=0
+            export EXH_ST_FORWARD_DRYRUN_STORED_HISTORICAL=0
+          fi
+          python -u collect_exhibition_st_forward_shadow_pg.py > exhibition-st-forward-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run post-write health check
+        if: github.event_name == 'issue_comment' && steps.collect.outputs.exit_code == '0'
+        run: |
+          set +e
+          python -u report_exhibition_st_forward_health_pg.py > exhibition-st-forward-health.txt 2>&1
+          exit 0
+
+      - name: Print sanitized results
+        if: always()
+        run: |
+          grep '^EXH_ST_FORWARD_' exhibition-st-forward-output.txt 2>/dev/null || true
+          grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || true
+
+      - name: Verify PR dry-run
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          grep -q '^EXH_ST_FORWARD_RESULT=PASS_DRY_RUN$' exhibition-st-forward-output.txt
+          grep -q '^EXH_ST_FORWARD_WRITE_ROWS=0$' exhibition-st-forward-output.txt
+          grep -Eq '^EXH_ST_FORWARD_PREVIEW=payloads:[1-9][0-9]* ' exhibition-st-forward-output.txt
+          grep -q 'stored_historical_dryrun_only:' exhibition-st-forward-output.txt
+
+      - name: Reply to bridge command
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Exhibition ST Forward collection report'
+            echo
+            echo '```text'
+            grep '^EXH_ST_FORWARD_' exhibition-st-forward-output.txt 2>/dev/null || echo 'EXH_ST_FORWARD_DIAGNOSTIC=no_output'
+            grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || true
+            echo '```'
+            echo
+            echo 'Isolated first-write-wins Forward Shadow only. beta=-0.02 and the 8-15 minute capture window are frozen. No Production v24/FINAL, LINE, BUY/WATCH/SKIP, Railway settings, N02/Bao promotion, results, or odds are changed/read by the collector.'
+          } > exhibition-st-forward-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file exhibition-st-forward-comment.md
+
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json exhibition-st-forward-output.txt exhibition-st-forward-health.txt exhibition-st-forward-comment.md
+
+      - name: Fail if collector failed
+        if: steps.collect.outputs.exit_code != '0'
+        run: exit 1
+
+  health:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway exhibition-st-forward-health'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run read-only health report
+        id: health
+        run: |
+          set +e
+          python -u report_exhibition_st_forward_health_pg.py > exhibition-st-forward-health.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || true
+      - name: Reply to bridge command
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Exhibition ST Forward health report'
+            echo
+            echo '```text'
+            grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-forward-health.txt 2>/dev/null || echo 'EXH_ST_FORWARD_HEALTH_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Read-only realized evaluation of the frozen exhibition-ST Forward Shadow. Promotion remains manual-review-only.'
+          } > exhibition-st-forward-health-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file exhibition-st-forward-health-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json exhibition-st-forward-health.txt exhibition-st-forward-health-comment.md
+      - name: Fail if health report failed
+        if: steps.health.outputs.exit_code != '0'
+        run: exit 1
