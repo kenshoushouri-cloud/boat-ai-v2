@@ -1,6 +1,6 @@
 # boat-ai-v2 Permanent Project Handoff
 
-更新日時: 2026-08-25 18:28 JST
+更新日時: 2026-08-25 19:01 JST
 
 このファイルは、新しいChatGPTチャット・新しい担当者・長時間中断後でも、`boat-ai-v2` の現在地から安全に再開するための常設引き継ぎです。
 
@@ -12,6 +12,17 @@
 - GitHub Issue #42: owner-only Railway Bridge control/audit log
 
 ---
+
+
+<!-- RACER_COURSE_TOP3_FORWARD_MILESTONE_20260825 -->
+## 0A. 2026-08-25 選手×コース3連対率 Forward 追加
+
+- PR #241: `v2_racer_course_stats_snapshots` のForward readinessを結果非参照で監査。42日、4,005R full6はあるが timing-safe 97.54%・日別欠損ありのため、無条件のincremental OOSは `INSUFFICIENT_FOR_INCREMENTAL_OOS`。同日snapshotはupsertで後から更新され得るため、可変sourceを結果評価へ直接使わない。
+- PR #242: source integrityを事前固定し、6艇すべてが当日08:15 JSTまで・deadline前のcomplete-caseだけで `course top3 rate` をcurrent v24へ追加するtrain-only expanding OOSを実施。係数grid `0/0.05/0.10/0.20/0.30/0.50`、3つの非重複OOSすべてでtrain選択係数=0.50。全OOS 2,299Rで Brier delta `-0.00608767`、LogLoss delta `-0.21143915`、ticket rank delta `-5.0170`、Top10 `31.62% -> 38.76%`。3/3 splitでBrier/LogLoss/rank改善。0.50はgrid上端のため同じOOSで係数を拡張探索せず、**0.50固定**。
+- PR #243: `v2_racer_course_top3_forward_shadow` を追加。BASE=current Production PRE v24（motor2/boat2 defaults 33/34, PROB_TEMP=2.20）、COURSE=`BASE raw strength + 0.50*z(official course top3 rate)`、lane=course early-PRE proxy。exact-date official source、6艇必須、source `created_at <=08:15 JST`・deadline前、write時3分以上lead、1 race 1 row、`ON CONFLICT (race_id) DO NOTHING` first-write-wins。
+- 自動収集: GitHub Actions 06:45 JST開始、2分間隔・2時間loop。Railway `cron-racer-course-stats` 07:15 JSTの完了遅延を吸収する。Railway service schedule自体は変更していない。
+- 初回confirmed Forward write（2026-08-25 19:00 JST前後）: payload 9R / write 9R / invalid 0 / pending 9。初回healthは evaluated 0、promotion=`BLOCK_MANUAL_REVIEW_ONLY`。
+- 決定: `KEEP_FIXED_FORWARD_SHADOW_RESEARCH_ONLY`。Production v24/FINAL/LINE/BUY-WATCH-SKIPへは未昇格。係数0.50、08:15 cutoff、lane=course proxyをForward中に変更しない。
 
 ## 1. 新しいチャットで最初に渡す指示
 
