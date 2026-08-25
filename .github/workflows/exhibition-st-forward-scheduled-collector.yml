@@ -1,0 +1,96 @@
+name: Exhibition ST Forward scheduled collector
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/exhibition-st-forward-scheduled-collector.yml'
+  schedule:
+    # Every 5 minutes during 08:00-21:59 JST (23:00-12:59 UTC).
+    # The frozen capture window is only 8-15 minutes wide; <=7 minute cadence is
+    # required to avoid deterministic gaps, and 5 minutes leaves runner-delay margin.
+    - cron: '*/5 0-12,23 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exhibition-st-forward-shadow
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate scheduled collector isolation
+        run: |
+          set -euo pipefail
+          python -m py_compile collect_exhibition_st_forward_shadow_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          c=Path('collect_exhibition_st_forward_shadow_pg.py').read_text(encoding='utf-8').lower()
+          w=Path('.github/workflows/exhibition-st-forward-scheduled-collector.yml').read_text(encoding='utf-8').lower()
+          assert 'fixed_st_beta = -0.02' in c
+          assert 'window_lo_min = 8.0' in c and 'window_hi_min = 15.0' in c
+          assert 'on conflict (race_id) do nothing' in c
+          assert 'no_results_no_odds_no_line_no_buy_no_prod_v24_change' in c
+          assert "cron: '*/5 0-12,23 * * *'" in w
+          assert 'cancel-in-progress: false' in w
+          assert 'exh_st_forward_dry_run=0' in w
+          assert 'send_line' not in w
+          print('EXH_ST_FORWARD_SCHEDULE_VALIDATE=PASS')
+          PY
+
+  collect:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      EXH_ST_FORWARD_ENABLED: '1'
+      EXH_ST_FORWARD_DRY_RUN: '0'
+      EXH_ST_FORWARD_ALLOW_PAST_DRY_RUN: '0'
+      EXH_ST_FORWARD_DRYRUN_STORED_HISTORICAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Collect frozen exhibition ST Forward rows
+        run: |
+          set -euo pipefail
+          python -u collect_exhibition_st_forward_shadow_pg.py > exhibition-st-forward-scheduled.txt 2>&1
+          grep '^EXH_ST_FORWARD_' exhibition-st-forward-scheduled.txt || true
+          grep -q '^EXH_ST_FORWARD_RESULT=PASS_WRITE$' exhibition-st-forward-scheduled.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json exhibition-st-forward-scheduled.txt
