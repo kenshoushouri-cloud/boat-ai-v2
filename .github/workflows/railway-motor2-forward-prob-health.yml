@@ -30,7 +30,9 @@ jobs:
           low=Path('.github/scripts/motor2_forward_prob_health.py').read_text(encoding='utf-8').lower()
           assert 'motor2_forward_prob_mode=read_only' in low
           assert 'v2_v24_motor2_forward_shadow' in low
-          assert 'latest_complete_pre_snapshot_per_race' in low
+          assert 'latest_sparse_pre_snapshot_per_race' in low
+          assert 'candidate_or_prob_rank_boundary' in low
+          assert 'brier_unavailable_without_full_vector' in low
           assert 'no_threshold_or_coefficient_search' in low
           for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert','send_line'):
               assert token not in low, token
@@ -107,7 +109,7 @@ jobs:
             grep '^MOTOR2_FORWARD_PROB_' motor2-forward-prob.txt 2>/dev/null || echo 'MOTOR2_FORWARD_PROB_DIAGNOSTIC=no_output'
             echo '```'
             echo
-            echo 'Read-only existing-Shadow probability-quality report. No DB update, LINE, Production decision, Railway setting, rule/threshold/coefficient, or promotion change.'
+            echo 'Read-only existing sparse-Shadow health report. Candidate ROI uses one latest valid PRE snapshot per race; conditional log-loss/rank is diagnostic only because result-ticket inclusion is selection-biased. No DB update, LINE, Production decision, Railway setting, rule/threshold/coefficient, or promotion change.'
           } > motor2-forward-prob-comment.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file motor2-forward-prob-comment.md
       - name: Clean temporary files
