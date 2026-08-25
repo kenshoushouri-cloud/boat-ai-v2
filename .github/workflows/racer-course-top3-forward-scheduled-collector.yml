@@ -1,0 +1,113 @@
+name: Racer course top3 Forward scheduled collector
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/racer-course-top3-forward-scheduled-collector.yml'
+  schedule:
+    # Start before the Railway 07:15 JST racer-course collector. GitHub schedule
+    # delay is absorbed by the 2-minute loop below; newly complete six-lane source
+    # snapshots are frozen as soon as they become available.
+    - cron: '45 21 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: racer-course-top3-forward-shadow
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate scheduled collector isolation
+        run: |
+          set -euo pipefail
+          python -m py_compile collect_racer_course_top3_forward_shadow_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          c=Path('collect_racer_course_top3_forward_shadow_pg.py').read_text(encoding='utf-8').lower()
+          w=Path('.github/workflows/racer-course-top3-forward-scheduled-collector.yml').read_text(encoding='utf-8').lower()
+          assert 'fixed_coef = 0.50' in c
+          assert 'source_cutoff = time(8, 15)' in c
+          assert 'on conflict (race_id) do nothing' in c
+          assert "cron: '45 21 * * *'" in w
+          assert "racer_course_autocap_loop_seconds: '7200'" in w
+          assert "racer_course_autocap_loop_sleep: '120'" in w
+          assert 'timeout-minutes: 130' in w
+          assert 'cancel-in-progress: false' in w
+          assert ('send' + '_line') not in w
+          print('RACER_COURSE_FORWARD_SCHEDULE_VALIDATE=PASS')
+          PY
+
+  collect:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 130
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RACER_COURSE_FORWARD_ENABLED: '1'
+      RACER_COURSE_FORWARD_DRY_RUN: '0'
+      RACER_COURSE_FORWARD_ALLOW_PAST_DRY_RUN: '0'
+      RACER_COURSE_AUTOCAP_LOOP_SECONDS: '7200'
+      RACER_COURSE_AUTOCAP_LOOP_SLEEP: '120'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run source-readiness resilient collection loop
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          stop_at="$((started + RACER_COURSE_AUTOCAP_LOOP_SECONDS))"
+          iteration=0
+          while (( $(date +%s) < stop_at )); do
+            iteration=$((iteration + 1))
+            echo "RACER_COURSE_AUTOCAP_ITERATION=${iteration} now:$(TZ=Asia/Tokyo date --iso-8601=seconds)"
+            python -u collect_racer_course_top3_forward_shadow_pg.py > racer-course-forward-scheduled.txt 2>&1
+            grep '^RACER_COURSE_FORWARD_' racer-course-forward-scheduled.txt || true
+            grep -q '^RACER_COURSE_FORWARD_RESULT=PASS_WRITE$' racer-course-forward-scheduled.txt
+            remaining="$((stop_at - $(date +%s)))"
+            if (( remaining <= 0 )); then
+              break
+            fi
+            sleep_for="$RACER_COURSE_AUTOCAP_LOOP_SLEEP"
+            if (( remaining < sleep_for )); then sleep_for="$remaining"; fi
+            sleep "$sleep_for"
+          done
+          echo "RACER_COURSE_AUTOCAP_RESULT=PASS iterations:${iteration}"
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json racer-course-forward-scheduled.txt
