@@ -1,0 +1,69 @@
+name: Racer course stats Forward readiness
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/racer_course_stats_forward_readiness.py'
+      - '.github/workflows/racer-course-stats-forward-readiness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate audit isolation
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/racer_course_stats_forward_readiness.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/racer_course_stats_forward_readiness.py').read_text(encoding='utf-8').lower()
+          assert 'read_only_no_results_no_coefficients' in p
+          assert 'no_writes_no_production_no_line_no_threshold_tuning' in p
+          assert 'v2_results' not in p
+          assert 'insert into' not in p and 'update ' not in p and 'delete from' not in p
+          assert 'ready_for_fixed_incremental_oos' in p
+          print('RACER_COURSE_READY_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run read-only readiness audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_stats_forward_readiness.py | tee racer-course-ready.txt
+          grep -q '^RACER_COURSE_READY_RESULT=PASS_READ_ONLY$' racer-course-ready.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json racer-course-ready.txt
