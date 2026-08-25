@@ -5,19 +5,30 @@ on:
     paths:
       - '.github/scripts/opponent_pressure_v24_trifecta_head_only_forward.py'
       - '.github/workflows/opponent-pressure-v24-trifecta-head-only-forward-readonly.yml'
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
 
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
 jobs:
   audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 42 &&
+       github.actor == github.repository_owner &&
+       github.event.comment.body == '/railway opponent-pressure-v24-head-forward')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -85,9 +96,24 @@ jobs:
       - name: Print sanitized results
         if: always()
         run: grep '^OPP_V24_HEAD_TRI_' opp-v24-head-tri.txt 2>/dev/null || true
+      - name: Reply to bridge command
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Opponent Pressure v24 head-only Forward report'
+            echo
+            echo '```text'
+            grep '^OPP_V24_HEAD_TRI_' opp-v24-head-tri.txt 2>/dev/null || echo 'OPP_V24_HEAD_TRI_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Read-only fixed head-only Forward evaluation. Coefficient remains 1.0; second/third conditionals remain current v24. No DB write, Production/LINE, Railway setting, threshold, coefficient, or promotion change.'
+          } > opp-v24-head-tri-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file opp-v24-head-tri-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json opp-v24-head-tri.txt
+        run: rm -f railway-vars.json opp-v24-head-tri.txt opp-v24-head-tri-comment.md
       - name: Fail if audit failed
         if: steps.audit.outputs.exit_code != '0'
         run: exit 1
