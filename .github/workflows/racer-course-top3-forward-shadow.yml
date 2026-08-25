@@ -1,0 +1,210 @@
+name: Racer course top3 Forward Shadow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'collect_racer_course_top3_forward_shadow_pg.py'
+      - 'report_racer_course_top3_forward_health_pg.py'
+      - '.github/workflows/racer-course-top3-forward-shadow.yml'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+concurrency:
+  group: racer-course-top3-forward-shadow
+  cancel-in-progress: false
+
+jobs:
+  collector:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 42 &&
+       github.actor == github.repository_owner &&
+       github.event.comment.body == '/railway racer-course-top3-forward-collect CONFIRM')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate isolated collector safety
+        run: |
+          set -euo pipefail
+          python -m py_compile collect_racer_course_top3_forward_shadow_pg.py report_racer_course_top3_forward_health_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          c=Path('collect_racer_course_top3_forward_shadow_pg.py').read_text(encoding='utf-8').lower()
+          h=Path('report_racer_course_top3_forward_health_pg.py').read_text(encoding='utf-8').lower()
+          assert 'racer_course_forward_enabled", "0"' in c
+          assert 'racer_course_forward_dry_run", "1"' in c
+          assert 'fixed_coef = 0.50' in c
+          assert 'source_cutoff = time(8, 15)' in c
+          assert 'min_lead_minutes = 3.0' in c
+          assert 'on conflict (race_id) do nothing' in c
+          assert 'v2_racer_course_top3_forward_shadow' in c
+          assert 'first_snapshot_wins' in c
+          assert 'v2_results' not in c and 'v2_odds' not in c and ('send' + '_line') not in c
+          assert 'insert into' not in h and 'update v2_' not in h and 'delete from' not in h
+          assert 'block_manual_review_only' in h
+          print('RACER_COURSE_FORWARD_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run collector
+        id: collect
+        run: |
+          set +e
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            export TARGET_DATE=2026-08-24
+            export RACER_COURSE_FORWARD_ENABLED=1
+            export RACER_COURSE_FORWARD_DRY_RUN=1
+            export RACER_COURSE_FORWARD_ALLOW_PAST_DRY_RUN=1
+          else
+            export RACER_COURSE_FORWARD_ENABLED=1
+            export RACER_COURSE_FORWARD_DRY_RUN=0
+            export RACER_COURSE_FORWARD_ALLOW_PAST_DRY_RUN=0
+          fi
+          python -u collect_racer_course_top3_forward_shadow_pg.py > racer-course-forward-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Run post-write health check
+        if: github.event_name == 'issue_comment' && steps.collect.outputs.exit_code == '0'
+        run: |
+          set +e
+          python -u report_racer_course_top3_forward_health_pg.py > racer-course-forward-health.txt 2>&1
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: |
+          grep '^RACER_COURSE_FORWARD_' racer-course-forward-output.txt 2>/dev/null || true
+          grep '^RACER_COURSE_FORWARD_HEALTH_' racer-course-forward-health.txt 2>/dev/null || true
+      - name: Verify PR dry-run
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          grep -q '^RACER_COURSE_FORWARD_RESULT=PASS_DRY_RUN$' racer-course-forward-output.txt
+          grep -q '^RACER_COURSE_FORWARD_WRITE_ROWS=0$' racer-course-forward-output.txt
+          grep -Eq '^RACER_COURSE_FORWARD_PREVIEW=.*payloads:[1-9][0-9]*' racer-course-forward-output.txt
+      - name: Reply to bridge command
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Racer course top3 Forward collection report'; echo; echo '```text'
+            grep '^RACER_COURSE_FORWARD_' racer-course-forward-output.txt 2>/dev/null || echo 'RACER_COURSE_FORWARD_DIAGNOSTIC=no_output'
+            grep '^RACER_COURSE_FORWARD_HEALTH_' racer-course-forward-health.txt 2>/dev/null || true
+            echo '```'; echo
+            echo 'Isolated first-write-wins Forward Shadow only. Coefficient 0.50 and 08:15 JST source cutoff are frozen from the pre-registered OOS. No Production v24/FINAL, LINE, BUY/WATCH/SKIP, Railway settings, N02/Bao promotion, outcome data, or market data are read by the collector.'
+          } > racer-course-forward-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-course-forward-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json racer-course-forward-output.txt racer-course-forward-health.txt racer-course-forward-comment.md
+      - name: Fail if collector failed
+        if: steps.collect.outputs.exit_code != '0'
+        run: exit 1
+
+  health:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-course-top3-forward-health'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run read-only health report
+        id: health
+        run: |
+          set +e
+          python -u report_racer_course_top3_forward_health_pg.py > racer-course-forward-health.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^RACER_COURSE_FORWARD_HEALTH_' racer-course-forward-health.txt 2>/dev/null || true
+      - name: Reply to bridge command
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Racer course top3 Forward health report'; echo; echo '```text'
+            grep '^RACER_COURSE_FORWARD_HEALTH_' racer-course-forward-health.txt 2>/dev/null || echo 'RACER_COURSE_FORWARD_HEALTH_DIAGNOSTIC=no_output'
+            echo '```'; echo
+            echo 'Read-only realized evaluation of the frozen racer-course-top3 Forward Shadow. Promotion remains manual-review-only.'
+          } > racer-course-forward-health-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-course-forward-health-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json racer-course-forward-health.txt racer-course-forward-health-comment.md
+      - name: Fail if health report failed
+        if: steps.health.outputs.exit_code != '0'
+        run: exit 1
