@@ -41,7 +41,7 @@ jobs:
           assert "cron: '*/5 0-12,23 * * *'" in w
           assert 'cancel-in-progress: false' in w
           assert "exh_st_forward_dry_run: '0'" in w
-          assert 'send_line' not in w
+          assert ('send' + '_line') not in w
           print('EXH_ST_FORWARD_SCHEDULE_VALIDATE=PASS')
           PY
 
