@@ -5,10 +5,11 @@ on:
     paths:
       - '.github/workflows/exhibition-st-forward-scheduled-collector.yml'
   schedule:
-    # Every 5 minutes during 08:00-21:59 JST (23:00-12:59 UTC).
-    # The frozen capture window is only 8-15 minutes wide; <=7 minute cadence is
-    # required to avoid deterministic gaps, and 5 minutes leaves runner-delay margin.
-    - cron: '*/5 0-12,23 * * *'
+    # Trigger every 5 minutes during 07:00-21:59 JST (22:00-12:59 UTC).
+    # GitHub scheduled events can be delayed. Each scheduled job therefore keeps
+    # a 2-minute collection loop alive for 90 minutes; the shared concurrency
+    # group serializes hand-off between delayed triggers.
+    - cron: '*/5 22,23,0-12 * * *'
 
 permissions:
   contents: read
@@ -38,9 +39,12 @@ jobs:
           assert 'window_lo_min = 8.0' in c and 'window_hi_min = 15.0' in c
           assert 'on conflict (race_id) do nothing' in c
           assert 'no_results_no_odds_no_line_no_buy_no_prod_v24_change' in c
-          assert "cron: '*/5 0-12,23 * * *'" in w
+          assert "cron: '*/5 22,23,0-12 * * *'" in w
           assert 'cancel-in-progress: false' in w
           assert "exh_st_forward_dry_run: '0'" in w
+          assert "exh_st_autocap_loop_seconds: '5400'" in w
+          assert "exh_st_autocap_loop_sleep: '120'" in w
+          assert 'timeout-minutes: 100' in w
           assert ('send' + '_line') not in w
           print('EXH_ST_FORWARD_SCHEDULE_VALIDATE=PASS')
           PY
@@ -48,13 +52,15 @@ jobs:
   collect:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 100
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       EXH_ST_FORWARD_ENABLED: '1'
       EXH_ST_FORWARD_DRY_RUN: '0'
       EXH_ST_FORWARD_ALLOW_PAST_DRY_RUN: '0'
       EXH_ST_FORWARD_DRYRUN_STORED_HISTORICAL: '0'
+      EXH_ST_AUTOCAP_LOOP_SECONDS: '5400'
+      EXH_ST_AUTOCAP_LOOP_SLEEP: '120'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,12 +91,27 @@ jobs:
           print(f'::add-mask::{value}')
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
           PY
-      - name: Collect frozen exhibition ST Forward rows
+      - name: Run delayed-schedule resilient collection loop
         run: |
           set -euo pipefail
-          python -u collect_exhibition_st_forward_shadow_pg.py > exhibition-st-forward-scheduled.txt 2>&1
-          grep '^EXH_ST_FORWARD_' exhibition-st-forward-scheduled.txt || true
-          grep -q '^EXH_ST_FORWARD_RESULT=PASS_WRITE$' exhibition-st-forward-scheduled.txt
+          started="$(date +%s)"
+          stop_at="$((started + EXH_ST_AUTOCAP_LOOP_SECONDS))"
+          iteration=0
+          while (( $(date +%s) < stop_at )); do
+            iteration=$((iteration + 1))
+            echo "EXH_ST_AUTOCAP_ITERATION=${iteration} now:$(TZ=Asia/Tokyo date --iso-8601=seconds)"
+            python -u collect_exhibition_st_forward_shadow_pg.py > exhibition-st-forward-scheduled.txt 2>&1
+            grep '^EXH_ST_FORWARD_' exhibition-st-forward-scheduled.txt || true
+            grep -q '^EXH_ST_FORWARD_RESULT=PASS_WRITE$' exhibition-st-forward-scheduled.txt
+            remaining="$((stop_at - $(date +%s)))"
+            if (( remaining <= 0 )); then
+              break
+            fi
+            sleep_for="$EXH_ST_AUTOCAP_LOOP_SLEEP"
+            if (( remaining < sleep_for )); then sleep_for="$remaining"; fi
+            sleep "$sleep_for"
+          done
+          echo "EXH_ST_AUTOCAP_RESULT=PASS iterations:${iteration}"
       - name: Clean temporary files
         if: always()
         run: rm -f railway-vars.json exhibition-st-forward-scheduled.txt
