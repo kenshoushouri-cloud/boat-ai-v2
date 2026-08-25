@@ -1,6 +1,6 @@
 # boat-ai-v2 Project History / Decision Log
 
-更新日時: 2026-08-25 12:45 JST
+更新日時: 2026-08-25 17:54 JST
 
 このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
 
@@ -1007,4 +1007,70 @@ PR #233でvenue×dateを全セル固定表示した結果、V12 36Rは8/16-18の
 - Railway Variables/settings/schedules unchanged
 - N02/Bao unchanged
 - PR #169 Draft hold unchanged
+
+---
+
+<!-- HISTORY_MILESTONE_20260825_EXHIBITION_ST_FORWARD -->
+## 2026-08-25 17:54 JST — Exhibition STをcurrent v24上の固定Forward研究へ昇格
+
+### 仮説
+展示ST順位が古いBao market baselineだけでなく、current v24の三連単確率へincremental valueを持つかを、過去に確定した係数を動かさず検証する。
+
+### PR #235: fixed future OOS
+BASE=current Production PRE v24相当（motor2=33、boat2=34、PROB_TEMP=2.20）。
+ST scoreはPR #122の最初のtraining cutoffで決まった:
+- z(-start_timing_rank)
+- 1着/2着/3着 weight 1.0/0.6/0.3
+- beta **-0.02固定**
+
+2026-01-01..08-22 / 34,697R:
+- Brier **-0.00001292**
+- LogLoss **-0.00041811**
+- rank **-0.0142**
+- LogLoss改善 4/4 fixed windows、8/8 months
+
+**Decision:** `PROMISING_FIXED_OOS_REQUIRE_FORWARD`。効果量は小さいが期間一貫性がある。race-band/venue差を見た後のfilterや係数調整はしない。
+
+### PR #236: isolated frozen Forward Shadow
+専用 `v2_exhibition_st_forward_shadow` を追加。
+
+Forward integrity:
+- official beforeinfoのみ
+- deadline 8〜15分前
+- results/odds非参照
+- beta=-0.02固定
+- BASE/ST 120確率を保存
+- first snapshot wins
+- Production/LINE consumerなし
+
+初回confirmed collectionは3R、invalid/timing/source error 0、all pending。
+
+**Decision:** `KEEP_ISOLATED_FORWARD_SHADOW`。
+
+### PR #237: scheduled collection
+8〜15分前の7分幅windowを手動実行だけで取りこぼさないため、GitHub Actionsを08:00〜21:59 JSTに5分間隔で追加。
+
+初回専用CI failureはworkflow内の禁止語assertが自分自身へmatchする検査バグ。Production/collector不具合ではない。self-matchを除去後、主要5 CIが全PASSしsquash merge。
+
+**Decision:** `ADOPT_FORWARD_COLLECTION_ONLY`。
+
+### 同時点の既存研究gate
+Opponent Pressure head-only 468RはBrier/LogLoss改善、rank悪化でmixed。
+- `KEEP_FORWARD_RESEARCH`
+- Production BLOCK
+- R05-08/date filterを後付けしない。
+
+GUARD05は12 frozen rowsすべてpending、affected evaluated 0。
+- `KEEP_SHADOW`
+- manual review only
+- PRIOR_DAY / threshold 5固定。
+
+### Production impact
+- Production v24 / FINAL: **変更なし**
+- LINE / BUY / WATCH / SKIP: **変更なし**
+- Railway Variables/settings/service schedules: **変更なし**
+- N02/N01/Bao: **変更なし**
+- PR #169: **Draft hold継続**
+
+次のgateは、Opponent Pressure / GUARD05 / Exhibition STの各fixed Forwardが新規結果で再現性を示すこと。十分な証拠後も自動昇格せずmanual reviewする。
 
