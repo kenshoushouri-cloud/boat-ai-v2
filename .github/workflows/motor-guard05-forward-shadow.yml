@@ -9,6 +9,9 @@ on:
       - '.github/workflows/motor-guard05-forward-shadow.yml'
   issue_comment:
     types: [created]
+  schedule:
+    # 07:20 JST every day. Early enough to freeze before normal race starts.
+    - cron: '20 22 * * *'
 
 permissions:
   contents: read
@@ -17,10 +20,15 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
+concurrency:
+  group: motor-guard05-forward-shadow
+  cancel-in-progress: false
+
 jobs:
   collector:
     if: >-
       github.event_name == 'pull_request' ||
+      github.event_name == 'schedule' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.number == 42 &&
        github.actor == github.repository_owner &&
@@ -101,7 +109,7 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
       - name: Run post-write health check
-        if: github.event_name == 'issue_comment' && steps.collect.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.collect.outputs.exit_code == '0'
         run: |
           set +e
           python -u report_motor_guard05_forward_health_pg.py > motor-guard-forward-health.txt 2>&1
