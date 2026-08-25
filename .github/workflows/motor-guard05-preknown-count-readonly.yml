@@ -1,0 +1,110 @@
+name: Motor guard05 preknown-count read-only
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'backtest_prob_motor_guard05_preknown_count_pg.py'
+      - '.github/workflows/motor-guard05-preknown-count-readonly.yml'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 42 &&
+       github.actor == github.repository_owner &&
+       github.event.comment.body == '/railway motor-guard05-preknown-count')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only temporal-safety audit
+        run: |
+          set -euo pipefail
+          python -m py_compile backtest_prob_motor_guard05_preknown_count_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('backtest_prob_motor_guard05_preknown_count_pg.py').read_text(encoding='utf-8').lower()
+          assert 'motor_preknown_mode=read_only' in low
+          assert 'no_threshold_search' in low
+          assert 'counts_from_race_cards_only' in low
+          assert 'results_labels_only' in low
+          assert 'card_order,prior_day' in low
+          assert 'block_no_production_change_no_forward_write_yet' in low
+          for token in ('insert into','update v2_','delete from','create table','alter table','drop table','upsert_rows','send_line'):
+              assert token not in low, token
+          print('MOTOR_PREKNOWN_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run temporal-safety audit
+        id: audit
+        run: |
+          set +e
+          python -u backtest_prob_motor_guard05_preknown_count_pg.py > motor-preknown-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Print sanitized results
+        if: always()
+        run: grep '^MOTOR_PREKNOWN_' motor-preknown-output.txt 2>/dev/null || true
+      - name: Reply to bridge command
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Motor GUARD05 preknown-count temporal-safety report'
+            echo
+            echo '```text'
+            grep '^MOTOR_PREKNOWN_' motor-preknown-output.txt 2>/dev/null || echo 'MOTOR_PREKNOWN_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Read-only temporal-safety screen. Maturity counts use race-card information only; race results are labels only. No threshold search, DB write, Production/LINE, Railway setting, coefficient, or promotion change.'
+          } > motor-preknown-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file motor-preknown-comment.md
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json motor-preknown-output.txt motor-preknown-comment.md
+      - name: Fail if audit failed
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
