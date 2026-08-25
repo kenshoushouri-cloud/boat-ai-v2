@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Read-only Forward probability-quality audit for existing Motor2 Shadow.
+"""Read-only Forward health audit for the existing sparse Motor2 Shadow.
 
-Compares current v24 fixed motor2=33 baseline against the already-collected
-actual motor_place2_rate Shadow on realized PRE observations. The latest complete
-PRE snapshot per race is used so overlapping morning/day/night windows do not
-multiply-weight a race.
+The production Shadow intentionally stores only candidate tickets or probability-
+rank boundary tickets (save_policy=candidate_or_prob_rank_boundary), not all 120
+trifecta tickets. Therefore a full-vector Brier score cannot be recovered from
+this table alone.
 
-No DB writes, no Production/LINE changes, no coefficient or threshold search.
+This audit uses one latest valid PRE snapshot per race to avoid multiplying a
+race across overlapping morning/day/night windows. It reports:
+- sparse snapshot coverage and row-count distribution;
+- candidate hit/ROI comparison, which is valid for the saved candidate set;
+- conditional log-loss / probability-rank comparison only when the realized
+  result ticket happened to be present in the sparse saved set. That conditional
+  metric is selection-biased and must not be used as promotion evidence.
+
+No DB writes, no Production/LINE changes, no threshold/coefficient search.
 """
 from __future__ import annotations
 
@@ -19,8 +27,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 # This file lives under .github/scripts, while db_pg.py lives at repo root.
-# Add the repository root explicitly so owner-only issue_comment runs work
-# regardless of the script's directory on sys.path.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -30,6 +36,7 @@ from db_pg import fetch_all
 JST = timezone(timedelta(hours=9))
 START_DATE = (os.getenv("MOTOR2_FORWARD_PROB_START") or "2026-08-20").strip()
 END_DATE = (os.getenv("MOTOR2_FORWARD_PROB_END") or datetime.now(JST).strftime("%Y-%m-%d")).strip()
+UNIT_YEN = 100
 EPS = 1e-15
 
 
@@ -40,26 +47,54 @@ def sf(v: Any, d: float = 0.0) -> float:
         return d
 
 
+def si(v: Any, d: int = 0) -> int:
+    try:
+        return int(float(v)) if v not in (None, "") else d
+    except Exception:
+        return d
+
+
+def as_dt(v: Any) -> datetime | None:
+    if isinstance(v, datetime):
+        return v
+    if v in (None, ""):
+        return None
+    try:
+        x = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        if x.tzinfo is None:
+            x = x.replace(tzinfo=timezone.utc)
+        return x
+    except Exception:
+        return None
+
+
 def fetch_rows() -> List[Dict[str, Any]]:
     return [dict(r) for r in fetch_all(
         """
-        select race_id,race_date::date race_date,venue_id,race_no,ticket,
-               base_prob,motor2_prob,window_name,run_class,snapshot_key,snapshot_at,
-               result_ticket,evaluated_at
-          from v2_v24_motor2_forward_shadow
-         where race_date between %s and %s
-           and window_name in ('morning','day','night')
-           and evaluated_at is not null
-           and result_ticket is not null
-           and base_prob is not null
-           and motor2_prob is not null
-         order by race_date,race_id,snapshot_at,id
+        select s.race_id,s.race_date::date race_date,s.venue_id,s.race_no,s.ticket,
+               s.odds,s.market_rank,
+               s.base_prob,s.base_prob_rank,s.motor2_prob,s.motor2_prob_rank,
+               s.base_low_candidate,s.motor2_low_candidate,
+               s.base_mid_candidate,s.motor2_mid_candidate,
+               s.candidate_transition,
+               s.window_name,s.run_class,s.snapshot_key,s.snapshot_at,
+               s.result_ticket,s.payout_yen,s.evaluated_at,
+               r.deadline_at
+          from v2_v24_motor2_forward_shadow s
+          left join v2_races r on r.race_id=s.race_id
+         where s.race_date between %s and %s
+           and s.window_name in ('morning','day','night')
+           and s.evaluated_at is not null
+           and s.result_ticket is not null
+           and s.base_prob is not null
+           and s.motor2_prob is not null
+         order by s.race_date,s.race_id,s.snapshot_at,s.id
         """,
         (START_DATE, END_DATE),
     )]
 
 
-def snapshot_groups(rows: Iterable[Dict[str, Any]]):
+def snapshot_groups(rows: Iterable[Dict[str, Any]]) -> Dict[Tuple[str, str, str, str], List[Dict[str, Any]]]:
     groups: Dict[Tuple[str, str, str, str], List[Dict[str, Any]]] = defaultdict(list)
     for r in rows:
         key = (
@@ -72,100 +107,194 @@ def snapshot_groups(rows: Iterable[Dict[str, Any]]):
     return groups
 
 
-def latest_complete_per_race(rows: Iterable[Dict[str, Any]]):
+def group_time(rs: List[Dict[str, Any]]) -> datetime | None:
+    vals = [as_dt(r.get("snapshot_at")) for r in rs]
+    vals = [x for x in vals if x is not None]
+    return max(vals) if vals else None
+
+
+def group_deadline(rs: List[Dict[str, Any]]) -> datetime | None:
+    vals = [as_dt(r.get("deadline_at")) for r in rs]
+    vals = [x for x in vals if x is not None]
+    return min(vals) if vals else None
+
+
+def latest_sparse_pre_per_race(rows: Iterable[Dict[str, Any]]):
     groups = snapshot_groups(rows)
-    complete: List[Tuple[str, Any, List[Dict[str, Any]]]] = []
-    incomplete_groups = 0
+    by_race: Dict[str, Tuple[datetime, List[Dict[str, Any]]]] = {}
+    no_time = no_deadline = after_deadline = bad_result = 0
+
     for key, rs in groups.items():
-        tickets = {str(r.get("ticket") or "") for r in rs}
         actuals = {str(r.get("result_ticket") or "") for r in rs if r.get("result_ticket")}
-        if len(rs) != 120 or len(tickets) != 120 or len(actuals) != 1:
-            incomplete_groups += 1
+        if len(actuals) != 1:
+            bad_result += 1
             continue
-        latest_at = max(str(r.get("snapshot_at") or "") for r in rs)
-        complete.append((key[0], latest_at, rs))
+        sat = group_time(rs)
+        deadline = group_deadline(rs)
+        if sat is None:
+            no_time += 1
+            continue
+        if deadline is None:
+            no_deadline += 1
+            continue
+        if sat >= deadline:
+            after_deadline += 1
+            continue
+        rid = key[0]
+        if rid not in by_race or sat >= by_race[rid][0]:
+            by_race[rid] = (sat, rs)
 
-    by_race: Dict[str, Tuple[str, List[Dict[str, Any]]]] = {}
-    for race_id, latest_at, rs in complete:
-        if race_id not in by_race or latest_at >= by_race[race_id][0]:
-            by_race[race_id] = (latest_at, rs)
-    return [x[1] for x in by_race.values()], len(groups), incomplete_groups
+    return [x[1] for x in by_race.values()], len(groups), no_time, no_deadline, after_deadline, bad_result
 
 
-def race_metric(rs: List[Dict[str, Any]]) -> Dict[str, Any] | None:
-    base = {str(r["ticket"]): sf(r.get("base_prob")) for r in rs}
-    motor = {str(r["ticket"]): sf(r.get("motor2_prob")) for r in rs}
-    actual = str(rs[0].get("result_ticket") or "")
-    if actual not in base or actual not in motor:
-        return None
-    sb = sum(base.values())
-    sm = sum(motor.values())
-    if sb <= 0 or sm <= 0:
-        return None
-    base = {k: v / sb for k, v in base.items()}
-    motor = {k: v / sm for k, v in motor.items()}
-    pb = max(base[actual], EPS)
-    pm = max(motor[actual], EPS)
-    br_b = sum((p - (1.0 if t == actual else 0.0)) ** 2 for t, p in base.items())
-    br_m = sum((p - (1.0 if t == actual else 0.0)) ** 2 for t, p in motor.items())
-    rank_b = 1 + sum(1 for t, p in base.items() if (p > base[actual]) or (p == base[actual] and t < actual))
-    rank_m = 1 + sum(1 for t, p in motor.items() if (p > motor[actual]) or (p == motor[actual] and t < actual))
-    first = rs[0]
+def percentile(values: List[int], q: float) -> int:
+    if not values:
+        return 0
+    xs = sorted(values)
+    idx = int(round((len(xs) - 1) * q))
+    return xs[max(0, min(idx, len(xs) - 1))]
+
+
+def selected(row: Dict[str, Any], model: str) -> bool:
+    if model == "base":
+        return bool(row.get("base_low_candidate")) or bool(row.get("base_mid_candidate"))
+    return bool(row.get("motor2_low_candidate")) or bool(row.get("motor2_mid_candidate"))
+
+
+def candidate_stat(groups: List[List[Dict[str, Any]]], model: str) -> Dict[str, float]:
+    bets = hits = returned = 0
+    for rs in groups:
+        actual = str(rs[0].get("result_ticket") or "")
+        payout = si(rs[0].get("payout_yen"), 0)
+        for r in rs:
+            if not selected(r, model):
+                continue
+            bets += 1
+            if str(r.get("ticket") or "") == actual:
+                hits += 1
+                returned += payout
+    investment = bets * UNIT_YEN
+    roi = (returned / investment * 100.0) if investment else 0.0
     return {
-        "race_id": str(first.get("race_id") or ""),
-        "race_date": first.get("race_date"),
-        "venue": str(first.get("venue_id") or ""),
-        "window": str(first.get("window_name") or ""),
-        "ll_b": -math.log(pb),
-        "ll_m": -math.log(pm),
-        "br_b": br_b,
-        "br_m": br_m,
-        "rk_b": float(rank_b),
-        "rk_m": float(rank_m),
-        "sum_b": sb,
-        "sum_m": sm,
+        "bets": float(bets),
+        "hits": float(hits),
+        "returned": float(returned),
+        "investment": float(investment),
+        "roi": roi,
     }
 
 
-def summarize(label: str, metrics: List[Dict[str, Any]]) -> None:
-    n = len(metrics)
+def conditional_result_metrics(groups: List[List[Dict[str, Any]]]) -> Dict[str, float]:
+    n = 0
+    sum_ll_b = sum_ll_m = 0.0
+    sum_rk_b = sum_rk_m = 0.0
+    ll_improve = rank_improve = 0
+    for rs in groups:
+        actual = str(rs[0].get("result_ticket") or "")
+        row = next((r for r in rs if str(r.get("ticket") or "") == actual), None)
+        if row is None:
+            continue
+        pb = max(sf(row.get("base_prob"), 0.0), EPS)
+        pm = max(sf(row.get("motor2_prob"), 0.0), EPS)
+        rb = sf(row.get("base_prob_rank"), 0.0)
+        rm = sf(row.get("motor2_prob_rank"), 0.0)
+        if rb <= 0 or rm <= 0:
+            continue
+        llb = -math.log(pb)
+        llm = -math.log(pm)
+        n += 1
+        sum_ll_b += llb
+        sum_ll_m += llm
+        sum_rk_b += rb
+        sum_rk_m += rm
+        ll_improve += int(llm < llb)
+        rank_improve += int(rm < rb)
     if not n:
-        print(f"MOTOR2_FORWARD_PROB_SCOPE={label} n:0", flush=True)
-        return
-    def avg(k: str) -> float:
-        return sum(float(x[k]) for x in metrics) / n
-    dll = avg("ll_m") - avg("ll_b")
-    dbr = avg("br_m") - avg("br_b")
-    drk = avg("rk_m") - avg("rk_b")
-    improve_ll = sum(1 for x in metrics if x["ll_m"] < x["ll_b"])
-    improve_br = sum(1 for x in metrics if x["br_m"] < x["br_b"])
-    improve_rk = sum(1 for x in metrics if x["rk_m"] < x["rk_b"])
+        return {"n": 0.0}
+    return {
+        "n": float(n),
+        "base_ll": sum_ll_b / n,
+        "motor_ll": sum_ll_m / n,
+        "delta_ll": (sum_ll_m - sum_ll_b) / n,
+        "base_rank": sum_rk_b / n,
+        "motor_rank": sum_rk_m / n,
+        "delta_rank": (sum_rk_m - sum_rk_b) / n,
+        "ll_improve": float(ll_improve),
+        "rank_improve": float(rank_improve),
+    }
+
+
+def fmt_scope(label: str, groups: List[List[Dict[str, Any]]]) -> None:
+    base = candidate_stat(groups, "base")
+    motor = candidate_stat(groups, "motor")
+    cond = conditional_result_metrics(groups)
+    n = len(groups)
+    rows = sum(len(rs) for rs in groups)
+    saved_actual = int(cond.get("n", 0.0))
+    if saved_actual:
+        cond_text = (
+            f"conditional_saved_result:{saved_actual}/{n} "
+            f"base_ll:{cond['base_ll']:.8f} motor_ll:{cond['motor_ll']:.8f} delta_ll:{cond['delta_ll']:+.8f} "
+            f"ll_improve:{int(cond['ll_improve'])}/{saved_actual} "
+            f"base_rank:{cond['base_rank']:.4f} motor_rank:{cond['motor_rank']:.4f} delta_rank:{cond['delta_rank']:+.4f} "
+            f"rank_improve:{int(cond['rank_improve'])}/{saved_actual}"
+        )
+    else:
+        cond_text = f"conditional_saved_result:0/{n} conditional_ll:NA conditional_rank:NA"
     print(
-        f"MOTOR2_FORWARD_PROB_SCOPE={label} n:{n} "
-        f"base_ll:{avg('ll_b'):.8f} motor_ll:{avg('ll_m'):.8f} delta_ll:{dll:+.8f} ll_improve:{improve_ll}/{n} "
-        f"base_brier:{avg('br_b'):.8f} motor_brier:{avg('br_m'):.8f} delta_brier:{dbr:+.8f} brier_improve:{improve_br}/{n} "
-        f"base_rank:{avg('rk_b'):.4f} motor_rank:{avg('rk_m'):.4f} delta_rank:{drk:+.4f} rank_improve:{improve_rk}/{n}",
+        f"MOTOR2_FORWARD_PROB_SCOPE={label} races:{n} sparse_rows:{rows} "
+        f"base_bets:{int(base['bets'])} base_hits:{int(base['hits'])} base_roi:{base['roi']:.2f}% "
+        f"motor_bets:{int(motor['bets'])} motor_hits:{int(motor['hits'])} motor_roi:{motor['roi']:.2f}% "
+        f"candidate_roi_delta:{motor['roi'] - base['roi']:+.2f}pt {cond_text}",
         flush=True,
     )
 
 
 def main() -> None:
-    print("MOTOR2_FORWARD_PROB_MODE=read_only_existing_shadow_probability_quality_no_tuning", flush=True)
+    print("MOTOR2_FORWARD_PROB_MODE=read_only_existing_sparse_shadow_health_no_tuning", flush=True)
     print(f"MOTOR2_FORWARD_PROB_PERIOD={START_DATE}..{END_DATE}", flush=True)
-    print("MOTOR2_FORWARD_PROB_POLICY=latest_complete_pre_snapshot_per_race_no_writes_no_production_no_line_no_threshold_or_coefficient_search", flush=True)
-    rows = fetch_rows()
-    snapshots, group_count, incomplete_groups = latest_complete_per_race(rows)
-    metrics = [m for rs in snapshots if (m := race_metric(rs)) is not None]
     print(
-        f"MOTOR2_FORWARD_PROB_COVERAGE=raw_rows:{len(rows)} snapshot_groups:{group_count} incomplete_groups:{incomplete_groups} latest_complete_races:{len(snapshots)} evaluated_races:{len(metrics)}",
+        "MOTOR2_FORWARD_PROB_POLICY=latest_sparse_pre_snapshot_per_race_"
+        "save_policy_candidate_or_prob_rank_boundary_no_writes_no_production_no_line_"
+        "no_threshold_or_coefficient_search",
         flush=True,
     )
-    summarize("OVERALL", metrics)
-    for d in sorted({str(x["race_date"]) for x in metrics}):
-        summarize(f"DATE:{d}", [x for x in metrics if str(x["race_date"]) == d])
-    for v in sorted({x["venue"] for x in metrics}):
-        summarize(f"VENUE:{v}", [x for x in metrics if x["venue"] == v])
-    print("MOTOR2_FORWARD_PROB_INTERPRETATION=FORWARD_EVIDENCE_ONLY_NO_AUTOMATIC_PRODUCTION_PROMOTION", flush=True)
+    rows = fetch_rows()
+    snapshots, group_count, no_time, no_deadline, after_deadline, bad_result = latest_sparse_pre_per_race(rows)
+    counts = [len({str(r.get('ticket') or '') for r in rs}) for rs in snapshots]
+    full120 = sum(1 for x in counts if x == 120)
+    print(
+        f"MOTOR2_FORWARD_PROB_COVERAGE=raw_rows:{len(rows)} snapshot_groups:{group_count} "
+        f"latest_valid_pre_races:{len(snapshots)} no_snapshot_time_groups:{no_time} "
+        f"no_deadline_groups:{no_deadline} at_or_after_deadline_groups:{after_deadline} bad_result_groups:{bad_result}",
+        flush=True,
+    )
+    print(
+        f"MOTOR2_FORWARD_PROB_SPARSE_ROWS=min:{min(counts) if counts else 0} "
+        f"median:{percentile(counts,0.5)} p90:{percentile(counts,0.9)} max:{max(counts) if counts else 0} "
+        f"full120_latest:{full120}",
+        flush=True,
+    )
+    print(
+        "MOTOR2_FORWARD_PROB_VECTOR=brier:NA reason:sparse_save_policy_candidate_or_prob_rank_boundary_"
+        "brier_unavailable_without_full_vector",
+        flush=True,
+    )
+
+    fmt_scope("OVERALL", snapshots)
+    dates = sorted({str(rs[0].get("race_date")) for rs in snapshots})
+    for d in dates:
+        fmt_scope(f"DATE:{d}", [rs for rs in snapshots if str(rs[0].get("race_date")) == d])
+    venues = sorted({str(rs[0].get("venue_id") or "") for rs in snapshots})
+    for v in venues:
+        fmt_scope(f"VENUE:{v}", [rs for rs in snapshots if str(rs[0].get("venue_id") or "") == v])
+
+    print(
+        "MOTOR2_FORWARD_PROB_INTERPRETATION=candidate_roi_is_forward_for_latest_sparse_pre_snapshot;"
+        "conditional_ll_rank_is_selection_biased_diagnostic_only;brier_unavailable;"
+        "no_automatic_production_promotion",
+        flush=True,
+    )
     print("MOTOR2_FORWARD_PROB_RESULT=PASS_READ_ONLY", flush=True)
 
 
