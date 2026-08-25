@@ -1,6 +1,6 @@
 # boat-ai-v2 Permanent Project Handoff
 
-更新日時: 2026-08-25 17:54 JST
+更新日時: 2026-08-25 18:28 JST
 
 このファイルは、新しいChatGPTチャット・新しい担当者・長時間中断後でも、`boat-ai-v2` の現在地から安全に再開するための常設引き継ぎです。
 
@@ -1131,4 +1131,62 @@ GUARD05:
 3. Exhibition ST beta=-0.02 fixed Forwardを自動蓄積。
 4. 3系統とも十分な新規Forward証拠なしにProductionへ入れない。
 5. PR #169は唯一のopen PRとしてDraft hold継続。
+
+---
+
+<!-- HANDOFF_MILESTONE_20260825_EXH_ST_DELAY_RESILIENCE -->
+## 追記: 2026-08-25 18:28 JST — Exhibition ST Forward scheduler遅延対策
+
+### main基準点
+この追記直前の main:
+- `71166721f6dc7f5037eea37a1648c676274f6407`
+- PR #239 `Ops: make exhibition ST Forward schedule delay-resilient` マージ後。
+
+再開時は必ずcurrent mainを再取得する。
+
+### 観測した問題
+PR #237 merge後の最初のscheduled runは **18:21 JST** に開始。
+workflow自体は成功したが:
+- target races: 156
+- 8〜15分window内 payloads: **0**
+- outside_window: **156**
+- write rows: **0**
+
+manual confirmed collectorも同時刻帯ではpayload 0だった。
+collector/parserの失敗ではなく、GitHub scheduled eventが約20分遅れて起動したため、7分幅のfrozen capture windowを5分cronだけでは保証できないことを確認した。
+
+### PR #239 — delay-resilient loop
+既存Bao auto captureの実績ある設計をExhibition STへ限定適用。
+
+変更:
+- trigger開始を **07:00 JST**へ前倒し
+- cron: `*/5 22,23,0-12 * * *`
+- scheduled job内で **2分間隔 / 90分** collection loop
+- timeout 100分
+-既存concurrency groupを維持、`cancel-in-progress: false`
+
+固定のまま変更していないもの:
+- beta = **-0.02**
+- capture window = **8〜15分前**
+- official beforeinfo only
+- BASE/ST 120 probability definition
+- `ON CONFLICT (race_id) DO NOTHING`
+- first snapshot wins
+- results/odds非参照
+- Production/LINE consumerなし
+
+PR #239 CI:
+- Exhibition ST Forward scheduled collector: PASS
+- Production shadow isolation: PASS
+- Critical Python syntax: PASS
+- Critical mojibake guard: PASS
+- V21 parser sanity: PASS
+
+### 現在の判断
+- **ADOPT_DELAY_RESILIENT_FORWARD_COLLECTION**
+- Production promotionは引き続きBLOCK。
+- scheduler遅延を特徴量やwindow変更で埋めない。
+- frozen 8〜15分window / beta=-0.02を維持したまま、新規Forward evidenceの欠損だけを減らす。
+- Railway Variables / service schedules / Production v24 / LINE / BUY-WATCH-SKIPは変更していない。
+- PR #169はDraft hold継続。
 
