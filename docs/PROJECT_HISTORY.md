@@ -1,6 +1,6 @@
 # boat-ai-v2 Project History / Decision Log
 
-更新日時: 2026-08-25 17:54 JST
+更新日時: 2026-08-25 18:28 JST
 
 このファイルは「何をやったか」だけでなく、**なぜ採用/却下したか**を残す常設decision logです。
 
@@ -1073,4 +1073,34 @@ GUARD05は12 frozen rowsすべてpending、affected evaluated 0。
 - PR #169: **Draft hold継続**
 
 次のgateは、Opponent Pressure / GUARD05 / Exhibition STの各fixed Forwardが新規結果で再現性を示すこと。十分な証拠後も自動昇格せずmanual reviewする。
+
+---
+
+<!-- HISTORY_MILESTONE_20260825_EXH_ST_DELAY_RESILIENCE -->
+## 2026-08-25 18:28 JST — Exhibition ST ForwardのGitHub scheduler遅延を収集loopで吸収
+
+### 観測
+PR #237の5分cronはmainへ正常mergeしたが、最初のschedule eventは18:21 JSTまで遅延した。
+jobは成功したものの156Rすべて8〜15分window外でwrite 0。
+
+**Decision:** 5分cron頻度だけでは7分幅Forward windowのchronological evidenceを保証できない。
+
+### PR #239
+既存Baoで使っているdelay-resilient internal loopを、Exhibition ST collectorだけへ適用。
+- 07:00 JSTからtrigger可能
+- 2分loop
+- 90分継続
+- concurrency serial hand-off
+
+collector自体のbeta=-0.02、8〜15分window、official-beforeinfo-only、first-write-winsは不変。
+
+**Decision:** `ADOPT_DELAY_RESILIENT_FORWARD_COLLECTION`。
+これはモデル調整ではなくForward evidence acquisitionの欠損対策。windowを広げたりpost-hoc dataを許可したりしない。
+
+### Production impact
+- Production v24 / FINAL: none
+- LINE / BUY / WATCH / SKIP: none
+- Railway Variables/settings/service schedules: none
+- coefficient / threshold / N02 / N01 / Bao: none
+- PR #169: Draft hold
 
