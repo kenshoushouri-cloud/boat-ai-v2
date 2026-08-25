@@ -2,22 +2,34 @@ name: Opponent pressure Forward stratified read-only
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - '.github/scripts/opponent_pressure_forward_stratified.py'
       - '.github/workflows/opponent-pressure-forward-stratified-readonly.yml'
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
 
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
 jobs:
   audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 42 &&
+       github.actor == github.repository_owner &&
+       github.event.comment.body == '/railway opponent-pressure-forward-stratified')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'issue_comment' && 'main' || '' }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -83,9 +95,24 @@ jobs:
       - name: Print sanitized results
         if: always()
         run: grep '^OPP_PRESSURE_STRAT_' opponent-pressure-stratified.txt 2>/dev/null || true
+      - name: Reply to bridge command
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Opponent pressure stratified Forward report'
+            echo
+            echo '```text'
+            grep '^OPP_PRESSURE_STRAT_' opponent-pressure-stratified.txt 2>/dev/null || echo 'OPP_PRESSURE_STRAT_DIAGNOSTIC=no_output'
+            echo '```'
+            echo
+            echo 'Read-only fixed-strata Forward stability audit. No threshold search, DB write, Production/LINE, Railway setting, coefficient, or promotion change.'
+          } > opponent-pressure-stratified-comment.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file opponent-pressure-stratified-comment.md
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json opponent-pressure-stratified.txt
+        run: rm -f railway-vars.json opponent-pressure-stratified.txt opponent-pressure-stratified-comment.md
       - name: Fail if audit failed
         if: steps.audit.outputs.exit_code != '0'
         run: exit 1
