@@ -1206,3 +1206,78 @@ Production判定/LINE/データ収集は正常運用とみなさない。
 
 Productionモデル、係数、閾値、LINE、N02/Bao、PR #169には触れない。
 
+
+
+---
+
+<!-- HISTORY_MILESTONE_20260830_POSTGRES_RECOVERY_PREFLIGHT -->
+## 2026-08-30 — Postgres 18/config回収、recovery preflight PASS、Stage 1はDraft hold
+
+### 仮説
+detached `postgres-volume` の中身を守ったまま、削除された元Postgresと同じmajor/configを再構成できれば、Production consumersを接続する前にisolated stagingでDB integrityを検証できる。
+
+### 検証
+read-only Railway CLI / GraphQL diagnosticsを段階追加。
+
+確認した事実:
+- `postgres` service absent
+- `postgres-volume` READY / detached / 約3761.75 MB / us-west2 / mount `/var/lib/postgresql/data`
+- `Pre-Security-Patch Backup` 3582 MB reference、2026-09-22まで有効
+- 2026-08-28にDeployment / ServiceInstance removed event
+- original image `ghcr.io/railwayapp-templates/postgres-ssl:18`
+- exact digest `sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c`
+- PGDATA `/var/lib/postgresql/data/pgdata`
+- restart ON_FAILURE / max 10
+- snapshot variable count 13 / credential continuity available internally
+- DB URLsはRailway dynamic referenceで、old literal host依存なし
+
+PR #270 preflight:
+- 25/25 guard PASS
+- `READY_FOR_MANUAL_REVIEW`
+
+PR #276 TCP schema:
+- `tcpProxyCreate` / `tcpProxyDelete` をread-only schemaで確認
+- staged DB auditの一時接続手段を確保
+
+### Stage 1設計
+PR #277をDraft作成:
+- owner-only Issue #42 exact CONFIRM
+- scheduleなし
+- workflow_dispatchなし
+- `postgres-recovery` isolated service
+- preserved volume attach
+- exact PG18 config
+- temporary TCP proxy
+- read-only DB integrity audit
+- proxy cleanup
+- Stage 2 promotionは別承認
+
+PR validation:
+- dedicated Stage 1 validation PASS
+- Critical Python syntax PASS
+- V21 parser sanity PASS
+- Production shadow isolation PASS
+- Critical mojibake guard PASS
+- recover jobはPR eventでSKIPPED
+
+### 追加reviewで見つけたhardening
+実行前に以下を必須修正:
+1. existing backupをmutation直前にも再guard
+2. TCP proxy作成前の `DATABASE_PUBLIC_URL` 設定を避ける
+3. config update後のunconditional redeployを避け、二重restartを防ぐ
+
+このhardeningはまだPR #277へ反映していないため、Stage 1 activationは引き続きBLOCKする。
+
+### 決定
+- `POSTGRES_RECOVERY_PREFLIGHT = PASS`
+- `PR_277 = BLOCK_DRAFT_ONLY`
+- `NO_RECOVERY_MUTATION_EXECUTED`
+- `NO_PRODUCTION_RECONNECT`
+- `REQUIRE_EXPLICIT_MANUAL_APPROVAL_AFTER_HARDENING`
+
+### Production影響
+none:
+- DB serviceはまだ復旧していない
+- Production consumersは未接続
+- model / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / thresholds unchanged
+- PR #169 Draft hold unchanged
