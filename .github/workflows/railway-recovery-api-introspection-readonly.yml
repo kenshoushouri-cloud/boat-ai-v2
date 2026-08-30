@@ -1,0 +1,237 @@
+name: Railway recovery API introspection read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway recovery-api-introspection'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Introspect Railway API schema read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          endpoint = "https://backboard.railway.com/graphql/v2"
+          token = os.environ["RAILWAY_TOKEN"]
+
+          query = r"""
+          query RecoveryIntrospection {
+            __schema {
+              queryType {
+                fields(includeDeprecated: true) {
+                  name
+                  args {
+                    name
+                    type {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
+                  }
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+              types {
+                kind
+                name
+                fields(includeDeprecated: true) {
+                  name
+                }
+              }
+            }
+          }
+          """
+
+          body = json.dumps({"query": query}).encode("utf-8")
+          req = urllib.request.Request(
+              endpoint,
+              data=body,
+              method="POST",
+              headers={
+                  "Project-Access-Token": token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "boat-ai-v2-readonly-recovery-audit",
+              },
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.loads(resp.read().decode("utf-8"))
+          except Exception as exc:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery API introspection read-only\n\n"
+                  "❌ GraphQL introspection request failed.\n\n"
+                  "No Railway setting or data was modified. Raw error details were not published.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          if payload.get("errors"):
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery API introspection read-only\n\n"
+                  "❌ GraphQL introspection returned an error.\n\n"
+                  "No Railway setting or data was modified. Raw error details were not published.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          schema = (payload.get("data") or {}).get("__schema") or {}
+          query_fields = ((schema.get("queryType") or {}).get("fields") or [])
+          types = schema.get("types") or []
+
+          candidate_re = re.compile(
+              r"(activity|history|event|change|audit|deployment|service|volume|project)",
+              re.I,
+          )
+          type_re = re.compile(r"(activity|history|event|change|audit)", re.I)
+
+          def type_sig(t):
+              if not isinstance(t, dict):
+                  return "?"
+              kind = t.get("kind")
+              name = t.get("name")
+              of1 = t.get("ofType")
+              if kind == "NON_NULL":
+                  return type_sig(of1) + "!"
+              if kind == "LIST":
+                  return "[" + type_sig(of1) + "]"
+              if name:
+                  return str(name)
+              if of1:
+                  return type_sig(of1)
+              return "?"
+
+          candidates = []
+          for field in query_fields:
+              name = field.get("name") or ""
+              if not candidate_re.search(name):
+                  continue
+              args = []
+              for arg in field.get("args") or []:
+                  args.append(f"{arg.get('name')}: {type_sig(arg.get('type'))}")
+              candidates.append(
+                  (name, ", ".join(args) if args else "-", type_sig(field.get("type")))
+              )
+
+          matching_types = []
+          for item in types:
+              name = item.get("name") or ""
+              if not type_re.search(name):
+                  continue
+              fields = sorted(
+                  f.get("name") for f in (item.get("fields") or [])
+                  if isinstance(f, dict) and f.get("name")
+              )
+              matching_types.append((name, item.get("kind") or "-", fields[:30]))
+
+          lines = [
+              "## Railway recovery API introspection read-only",
+              "",
+              "✅ Live Railway GraphQL schema introspection succeeded with the project token.",
+              "",
+              "No Railway setting, Variable, service, volume, backup, database, deployment, or file was modified.",
+              "No token, ID, URL, credential, or user data is published.",
+              "",
+              "### Candidate query fields",
+              "",
+              "| Field | Args | Return |",
+              "|---|---|---|",
+          ]
+
+          for name, args, ret in sorted(candidates):
+              safe_args = args.replace("|", "\\|")
+              lines.append(f"| \`{name}\` | \`{safe_args}\` | \`{ret}\` |")
+
+          if not candidates:
+              lines.append("| (none) | - | - |")
+
+          lines += [
+              "",
+              "### Matching schema types",
+              "",
+          ]
+          if matching_types:
+              for name, kind, fields in sorted(matching_types):
+                  field_text = ", ".join(fields) if fields else "(no fields)"
+                  lines.append(f"- \`{name}\` ({kind}): {field_text}")
+          else:
+              lines.append("- No activity/history/event/change/audit type names were exposed.")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
