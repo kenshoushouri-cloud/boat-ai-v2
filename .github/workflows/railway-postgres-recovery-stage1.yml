@@ -42,8 +42,9 @@ jobs:
           assert exact in workflow
           assert "github.actor == github.repository_owner" in workflow
           assert "github.event.issue.number == 42" in workflow
-          assert "schedule:" not in workflow
-          assert "workflow_dispatch:" not in workflow
+          trigger_header = workflow.split("permissions:", 1)[0]
+          assert "schedule:" not in trigger_header
+          assert "workflow_dispatch:" not in trigger_header
 
           assert 'STAGING_SERVICE = "postgres-recovery"' in script
           assert 'TARGET_SERVICE = "postgres"' in script
