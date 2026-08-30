@@ -49,7 +49,9 @@ jobs:
           assert 'STAGING_SERVICE = "postgres-recovery"' in script
           assert 'TARGET_SERVICE = "postgres"' in script
           assert 'EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"' in script
-          assert "Verify live Postgres image digest before Railway mutation" in workflow
+          assert 'PINNED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl@" + EXPECTED_DIGEST' in script
+          assert '"source": {"image": PINNED_IMAGE}' in script
+          assert "Verify pinned Postgres image before Railway mutation" in workflow
           assert "docker buildx imagetools inspect" in workflow
           assert "sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c" in workflow
           assert 'KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"' in script
@@ -82,18 +84,24 @@ jobs:
           print("POSTGRES_RECOVERY_STAGE1_VALIDATE=PASS")
           PY
 
-      - name: Verify expected Postgres image digest read-only
+      - name: Verify pinned Postgres image digest read-only
         shell: bash
         run: |
           set -euo pipefail
-          image='ghcr.io/railwayapp-templates/postgres-ssl:18'
+          repo='ghcr.io/railwayapp-templates/postgres-ssl'
+          tag_ref="$repo:18"
           expected='sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c'
-          manifest_json="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
-          actual="$(printf '%s' "$manifest_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
-          echo "Resolved live digest: $actual"
-          echo "Expected deleted-deployment digest: $expected"
-          test "$actual" = "$expected"
-          echo "POSTGRES_RECOVERY_IMAGE_DIGEST_READONLY=PASS"
+          pinned_ref="$repo@$expected"
+
+          tag_json="$(docker buildx imagetools inspect "$tag_ref" --format '{{json .Manifest}}')"
+          tag_digest="$(printf '%s' "$tag_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          echo "Current :18 tag digest: $tag_digest"
+          echo "Deleted-deployment digest: $expected"
+
+          pinned_json="$(docker buildx imagetools inspect "$pinned_ref" --format '{{json .Manifest}}')"
+          pinned_digest="$(printf '%s' "$pinned_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          test "$pinned_digest" = "$expected"
+          echo "POSTGRES_RECOVERY_PINNED_IMAGE_READONLY=PASS"
 
   recover:
     if: >-
@@ -118,16 +126,17 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check psycopg2-binary
 
-      - name: Verify live Postgres image digest before Railway mutation
+      - name: Verify pinned Postgres image before Railway mutation
         shell: bash
         run: |
           set -euo pipefail
-          image='ghcr.io/railwayapp-templates/postgres-ssl:18'
+          repo='ghcr.io/railwayapp-templates/postgres-ssl'
           expected='sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c'
-          manifest_json="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
-          actual="$(printf '%s' "$manifest_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
-          test "$actual" = "$expected"
-          echo "POSTGRES_RECOVERY_IMAGE_DIGEST_GUARD=PASS"
+          pinned_ref="$repo@$expected"
+          pinned_json="$(docker buildx imagetools inspect "$pinned_ref" --format '{{json .Manifest}}')"
+          pinned_digest="$(printf '%s' "$pinned_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          test "$pinned_digest" = "$expected"
+          echo "POSTGRES_RECOVERY_PINNED_IMAGE_GUARD=PASS"
 
       - name: Require Railway token
         shell: bash
