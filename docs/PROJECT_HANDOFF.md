@@ -1,6 +1,6 @@
 # boat-ai-v2 Permanent Project Handoff
 
-更新日時: 2026-08-25 19:01 JST
+更新日時: 2026-08-30 JST
 
 このファイルは、新しいChatGPTチャット・新しい担当者・長時間中断後でも、`boat-ai-v2` の現在地から安全に再開するための常設引き継ぎです。
 
@@ -1338,3 +1338,147 @@ detached volumeに対するCLI file APIが利用できない/失敗している�
 Railway新規Project/PostgreSQL作成は今回のRailway/boat DB問題のため一旦停止中。
 **boat-ai-v2の本番DB復旧・健全性確認を優先し、その後TOTO Railwayを再開する。**
 
+
+
+---
+
+<!-- POSTGRES_RECOVERY_PREFLIGHT_STAGE1_20260830 -->
+## 2026-08-30 — Railway Postgres recovery: exact config resolved / preflight PASS / Stage 1 Draft hold
+
+### 現在の最優先
+Production model改善ではなく、消失した Railway `postgres` service の安全な復旧を最優先とする。
+
+**現時点でも Production DB は復旧していない。**
+- current named service `postgres`: **absent**
+- services discovered: **13**
+- DB依存cronの多く: **CRASHED**
+- `postgres-volume`: preserved / READY / detached
+- Production consumerの `${{postgres.DATABASE_URL}}` は未解決のまま
+
+### preserved volume / backup の確定事実
+Issue #42 read-only diagnostics:
+- volume: `postgres-volume`
+- state: `READY`
+- pending deletion: false
+- attached service: none
+- region: `us-west2`
+- mount path: `/var/lib/postgresql/data`
+- configured size: 5000 MB
+- current size: 約 3761.75 MB
+- createdAt: 2026-07-05T08:10:05.694Z
+
+既存backup:
+- `Pre-Security-Patch Backup`
+- createdAt: 2026-08-23T04:57:09.850Z
+- referenced: 3582 MB
+- used: 270 MB
+- expiresAt: 2026-09-22T04:57:09.552Z
+
+**Volume / backup を wipe/delete/restore していない。**
+
+### service消失 evidence
+Railway events:
+- 2026-08-28T11:55:48.293Z: `Deployment` removed
+- 2026-08-28T11:55:49.648Z: `ServiceInstance` removed
+
+### 元Postgresのexact runtime/config
+deleted deployment + deployment snapshotからread-onlyで回収:
+- image: `ghcr.io/railwayapp-templates/postgres-ssl:18`
+- PostgreSQL major: **18**
+- image digest: `sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c`
+- builder: RAILPACK
+- replicas: 1
+- region config: `us-west2` / 1 replica
+- restart policy: `ON_FAILURE`
+- restart max retries: 10
+- required mount: `/var/lib/postgresql/data`
+- PGDATA: `/var/lib/postgresql/data/pgdata`
+- deployment snapshot variable count: 13
+- credential continuity inputs: internally available
+- secret valuesはIssue/文書/回答へ公開しない
+
+### DB variable topology
+old literal hostをコピーする必要はない。
+- `DATABASE_URL`: Railway referencesを使ったinterpolated value
+  - `PGUSER`
+  - `POSTGRES_PASSWORD`
+  - `RAILWAY_PRIVATE_DOMAIN`
+  - `PGDATABASE`
+  - port 5432
+- `PGHOST`: `RAILWAY_PRIVATE_DOMAIN` reference
+- `DATABASE_PUBLIC_URL`: `RAILWAY_TCP_PROXY_DOMAIN` / `RAILWAY_TCP_PROXY_PORT` references
+- literal stale-host risk: **NO**
+
+### Recovery preflight
+PR #270 merge後、Issue #42 `/railway postgres-recovery-preflight`:
+- **Overall recovery preflight: PASS**
+- 25/25 guards PASS
+- volume state/size/region/mount
+- backup presence/expiry/reference size
+- deletion event evidence
+- exact image + digest
+- original runtime config
+- snapshot variables
+- PGDATA
+- credential continuity
+
+Decision:
+- `READY_FOR_MANUAL_REVIEW`
+- これは**自動復旧承認ではない**
+
+### recovery API readiness
+read-only GraphQL schema introspectionで確認済み:
+- `serviceCreate`
+- `serviceInstanceUpdate`
+- `volumeInstanceUpdate`
+- `volumeInstanceBackupCreate`
+- `tcpProxyCreate(applicationPort, environmentId, serviceId)`
+- `tcpProxyDelete(id)`
+
+したがって staged recovery は技術的に構成可能:
+1. isolated `postgres-recovery` を作る
+2. preserved volumeをattach
+3. exact PostgreSQL 18 configで起動
+4. temporary TCP proxyでread-only DB integrity audit
+5. proxy削除
+6. integrity PASS後のみStage 2で `postgres` promotionを別承認
+
+### PR #277 — Stage 1 Draft
+Open Draft:
+- PR #277 `Draft: gated isolated Postgres recovery Stage 1`
+- **DO NOT MERGE / DO NOT EXECUTE YET**
+- PR eventではrecover jobはSKIP
+- dedicated Stage 1 validation +既存4 CI = PASS
+
+exact execution gate（将来、明示承認後のみ）:
+- Issue #42 owner-only exact command:
+  `/railway postgres-recovery-stage1 CONFIRM`
+
+Stage 1では禁止:
+- `postgres` へのrename/promotion
+- Production consumer Variables変更
+- service/volume delete
+- backup restore / PITR
+- Production model / LINE / N02 / Bao変更
+- PR #169 activation
+
+### PR #277 の現在のblocking review
+Stage 1 codeはDraftのまま、以下をhardeningしてからactivation reviewする:
+1. volume mutation直前に既存 `Pre-Security-Patch Backup` の存在・期限・reference-sizeをStage 1内でも再確認。
+2. staging起動前に `DATABASE_PUBLIC_URL` を設定しない。TCP proxy未作成時の `RAILWAY_TCP_PROXY_*` 参照を避ける。
+3. `serviceInstanceUpdate` 直後のunconditional `serviceInstanceRedeploy` を避け、不要な二重restartを防ぐ。
+
+このhardeningはまだmainへ入っていない。
+**PR #277はBLOCK / Draft hold。**
+
+### Open PR
+- #169: temporary base-odds refresh — **Draft hold**
+- #277: Postgres recovery Stage 1 — **Draft hold / manual recovery review**
+
+### Production safety
+以下は変更なし:
+- Production v24 / FINAL
+- LINE / BUY-WATCH-SKIP
+- N01 / N02 / Bao
+- coefficients / thresholds
+- PR #169
