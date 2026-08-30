@@ -27,6 +27,7 @@ import re
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,8 @@ EXPECTED_MOUNT = "/var/lib/postgresql/data"
 EXPECTED_PGDATA = "/var/lib/postgresql/data/pgdata"
 EXPECTED_REGION = "us-west2"
 EXPECTED_SIZE_MB = 5000
+KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"
+KNOWN_BACKUP_REFERENCED_MB = 3582
 PROTECTIVE_BACKUP_NAME = "Pre-Recovery-Stage1 Backup"
 
 UUID_RE = re.compile(
@@ -272,6 +275,42 @@ def list_backups(volume_instance_id: str) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict)]
 
 
+def parse_utc_timestamp(value: Any) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        raise RecoveryError("Backup expiry timestamp missing")
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        raise RecoveryError("Backup expiry timestamp invalid") from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def guard_known_backup(volume_instance_id: str) -> dict[str, Any]:
+    backups = list_backups(volume_instance_id)
+    known = next(
+        (row for row in backups if row.get("name") == KNOWN_BACKUP_NAME),
+        None,
+    )
+    if not known:
+        raise RecoveryError("Known Pre-Security-Patch Backup missing")
+
+    expiry = parse_utc_timestamp(known.get("expiresAt"))
+    referenced_mb = int(float(known.get("referencedMB") or 0))
+    guards = {
+        "not_expired": expiry > datetime.now(timezone.utc),
+        "reference_size": referenced_mb == KNOWN_BACKUP_REFERENCED_MB,
+    }
+    failed = [name for name, ok in guards.items() if not ok]
+    if failed:
+        raise RecoveryError("Known backup guard failed: " + ",".join(failed))
+    return known
+
+
 def ensure_protective_backup(volume_instance_id: str) -> dict[str, Any]:
     backups = list_backups(volume_instance_id)
     existing = next(
@@ -435,18 +474,6 @@ def build_recovery_variables(snapshot: dict[str, str]) -> dict[str, str]:
             + ":5432/"
             + ref("PGDATABASE")
         ),
-        "DATABASE_PUBLIC_URL": (
-            "postgresql://"
-            + ref("PGUSER")
-            + ":"
-            + ref("POSTGRES_PASSWORD")
-            + "@"
-            + ref("RAILWAY_TCP_PROXY_DOMAIN")
-            + ":"
-            + ref("RAILWAY_TCP_PROXY_PORT")
-            + "/"
-            + ref("PGDATABASE")
-        ),
     }
 
 
@@ -553,21 +580,6 @@ def configure_staging_service(
     )
     if data.get("serviceInstanceUpdate") is not True:
         raise RecoveryError("Service configuration mutation did not succeed")
-
-    redeploy = """
-    mutation RedeployRecoveryService($environmentId:String!, $serviceId:String!) {
-      serviceInstanceRedeploy(environmentId:$environmentId, serviceId:$serviceId)
-    }
-    """
-    data = gql(
-        redeploy,
-        {
-            "environmentId": environment_id,
-            "serviceId": service_id,
-        },
-    )
-    if data.get("serviceInstanceRedeploy") is not True:
-        raise RecoveryError("Staging service redeploy did not succeed")
 
 
 def wait_for_successful_deployment(service_id: str) -> dict[str, Any]:
@@ -788,6 +800,18 @@ def main() -> int:
             "",
         ]
 
+        known_backup = guard_known_backup(str(context["volume_instance_id"]))
+        known_backup_expiry = safe_detail(known_backup.get("expiresAt") or "-")
+        known_backup_ref = safe_detail(known_backup.get("referencedMB") or "-")
+        lines += [
+            "### Existing backup guard",
+            "",
+            f"- {KNOWN_BACKUP_NAME}: PRESENT / VALID",
+            f"- Referenced MB: {known_backup_ref}",
+            f"- Expires: {known_backup_expiry}",
+            "",
+        ]
+
         backup = ensure_protective_backup(str(context["volume_instance_id"]))
         backup_expiry = safe_detail(backup.get("expiresAt") or "-")
         backup_ref = safe_detail(backup.get("referencedMB") or "-")
@@ -820,6 +844,10 @@ def main() -> int:
             "- Production consumer Variables: UNCHANGED",
             "",
         ]
+
+        # Re-check the known independent backup immediately before the first
+        # preserved-volume attachment mutation. Abort on expiry/size drift.
+        guard_known_backup(str(context["volume_instance_id"]))
 
         attach_volume(
             str(context["volume_id"]),
