@@ -18,7 +18,9 @@ performed separately only after post-promotion read-only verification.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -246,14 +248,52 @@ def restore_public_url(
 
 
 def rename_service(service_id: str) -> None:
-    data = stage1.gql(
-        """
-        mutation Q($id:String!, $input:ServiceUpdateInput!) {
-          serviceUpdate(id:$id, input:$input) { id name }
-        }
-        """,
-        {"id": service_id, "input": {"name": TARGET_SERVICE}},
+    query = """
+    mutation Q($id:String!, $input:ServiceUpdateInput!) {
+      serviceUpdate(id:$id, input:$input) { id name }
+    }
+    """
+    req = urllib.request.Request(
+        stage1.ENDPOINT,
+        data=json.dumps({
+            "query": query,
+            "variables": {"id": service_id, "input": {"name": TARGET_SERVICE}},
+        }).encode("utf-8"),
+        method="POST",
+        headers={
+            "Project-Access-Token": stage1.TOKEN,
+            "Content-Type": "application/json",
+            "User-Agent": "boat-ai-v2-postgres-recovery-stage2",
+        },
     )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise PromotionError(
+            "Service rename request failed: " + type(exc).__name__
+        ) from None
+
+    errors = payload.get("errors") or []
+    if errors:
+        text = " ".join(
+            str(item.get("message") or "").lower()
+            for item in errors
+            if isinstance(item, dict)
+        )
+        if any(word in text for word in ("already exists", "already in use", "duplicate", "taken")):
+            reason = "name_conflict"
+        elif any(word in text for word in ("not authorized", "unauthorized", "permission", "forbidden")):
+            reason = "not_authorized"
+        elif any(word in text for word in ("invalid", "validation", "bad user input")):
+            reason = "invalid_input"
+        else:
+            reason = "other_graphql_rejection"
+        raise PromotionError("Service rename GraphQL rejected: " + reason)
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise PromotionError("Service rename returned no data")
     service = data.get("serviceUpdate")
     if not isinstance(service, dict):
         raise PromotionError("Service rename failed")
