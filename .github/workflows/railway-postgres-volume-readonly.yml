@@ -1,0 +1,153 @@
+name: Railway Postgres volume read-only diagnostic
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-volume-readonly'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Inspect detached postgres volume read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -f root.json pgdata.json pg-version.txt pg-version-alt.txt
+          root_rc=0
+          railway volume files --volume postgres-volume list / --json > root.json 2>/dev/null || root_rc=$?
+
+          pgdata_rc=0
+          railway volume files --volume postgres-volume list /pgdata --json > pgdata.json 2>/dev/null || pgdata_rc=$?
+
+          version=""
+          version_path=""
+
+          if railway volume files --volume postgres-volume download /pgdata/PG_VERSION pg-version.txt --overwrite --json >/dev/null 2>&1; then
+            version="$(tr -d '\r\n' < pg-version.txt)"
+            version_path="/pgdata/PG_VERSION"
+          elif railway volume files --volume postgres-volume download /PG_VERSION pg-version-alt.txt --overwrite --json >/dev/null 2>&1; then
+            version="$(tr -d '\r\n' < pg-version-alt.txt)"
+            version_path="/PG_VERSION"
+          fi
+
+          export ROOT_RC="$root_rc"
+          export PGDATA_RC="$pgdata_rc"
+          export VERSION="$version"
+          export VERSION_PATH="$version_path"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def names(path):
+              p = Path(path)
+              if not p.exists():
+                  return []
+              try:
+                  data = json.loads(p.read_text(encoding="utf-8"))
+              except Exception:
+                  return []
+              items = data if isinstance(data, list) else data.get("files", []) if isinstance(data, dict) else []
+              out = []
+              for item in items:
+                  if isinstance(item, str):
+                      name = item
+                  elif isinstance(item, dict):
+                      name = item.get("name") or item.get("path")
+                  else:
+                      continue
+                  if name:
+                      out.append(str(name).rsplit("/", 1)[-1])
+              return sorted(set(out))
+
+          root_names = names("root.json")
+          pgdata_names = names("pgdata.json")
+          version = os.environ.get("VERSION", "").strip()
+          version_path = os.environ.get("VERSION_PATH", "")
+
+          lines = [
+              "## Railway Postgres volume read-only diagnostic",
+              "",
+              "Volume: postgres-volume",
+              "",
+              "This diagnostic used only volume list/download operations. No volume, service, database, Variable, or file was modified.",
+              "",
+              f"Root listing: {'OK' if os.environ.get('ROOT_RC') == '0' else 'FAILED'}",
+              f"/pgdata listing: {'OK' if os.environ.get('PGDATA_RC') == '0' else 'FAILED'}",
+              "",
+          ]
+
+          safe_root = [n for n in root_names if n in {"pgdata", "lost+found", "PG_VERSION"}]
+          safe_pgdata = [n for n in pgdata_names if n in {"PG_VERSION", "base", "global", "pg_wal", "postgresql.conf", "pg_hba.conf"}]
+
+          if safe_root:
+              lines.append("Recognized root entries: " + ", ".join(safe_root))
+          if safe_pgdata:
+              lines.append("Recognized pgdata entries: " + ", ".join(safe_pgdata))
+
+          if version:
+              lines += [
+                  "",
+                  f"PostgreSQL major version marker: {version}",
+                  f"Source: {version_path}",
+              ]
+          else:
+              lines += [
+                  "",
+                  "PG_VERSION could not be read from the two expected locations.",
+              ]
+
+          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove downloaded diagnostics
+        if: always()
+        shell: bash
+        run: |
+          rm -f root.json pgdata.json pg-version.txt pg-version-alt.txt
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
