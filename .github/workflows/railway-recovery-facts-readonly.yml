@@ -1,0 +1,601 @@
+name: Railway recovery facts read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway recovery-facts-readonly'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Query safe Railway recovery facts read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          ENDPOINT = "https://backboard.railway.com/graphql/v2"
+          TOKEN = os.environ["RAILWAY_TOKEN"]
+          TARGET_SERVICE = "postgres"
+          TARGET_VOLUME = "postgres-volume"
+
+          def gql(query, variables=None):
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=json.dumps({
+                      "query": query,
+                      "variables": variables or {},
+                  }).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "Project-Access-Token": TOKEN,
+                      "Content-Type": "application/json",
+                      "User-Agent": "boat-ai-v2-readonly-recovery-facts",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode("utf-8"))
+              except Exception:
+                  return None, "request_failed"
+              if payload.get("errors"):
+                  return payload.get("data"), "graphql_error"
+              return payload.get("data"), None
+
+          def conn_nodes(conn):
+              if not isinstance(conn, dict):
+                  return []
+              out = []
+              for edge in conn.get("edges") or []:
+                  if isinstance(edge, dict) and isinstance(edge.get("node"), dict):
+                      out.append(edge["node"])
+              return out
+
+          def iso(v):
+              if not isinstance(v, str) or not v:
+                  return "-"
+              return v
+
+          def safe_scalar(v, default="-"):
+              if v is None or v == "":
+                  return default
+              return str(v).replace("|", "\\|").replace("\n", " ")
+
+          def recursive_contains(obj, needle):
+              needle = needle.lower()
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      if needle in str(k).lower():
+                          return True
+                      if recursive_contains(v, needle):
+                          return True
+                  return False
+              if isinstance(obj, list):
+                  return any(recursive_contains(v, needle) for v in obj)
+              if isinstance(obj, str):
+                  return needle in obj.lower()
+              return False
+
+          token_query = """
+          query RecoveryTokenContext {
+            projectToken {
+              projectId
+              environmentId
+              project {
+                workspaceId
+              }
+            }
+          }
+          """
+          token_data, token_err = gql(token_query)
+          token_obj = (token_data or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+          workspace_id = ((token_obj.get("project") or {}).get("workspaceId"))
+
+          if not project_id or not environment_id:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery facts read-only\n\n"
+                  "❌ Could not resolve project/environment context from the project token.\n\n"
+                  "No Railway setting or data was modified. IDs and raw errors were not published.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          project_query = """
+          query RecoveryProjectFacts($projectId: String!) {
+            project(id: $projectId) {
+              services(first: 100) {
+                edges {
+                  node {
+                    name
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                }
+              }
+              volumes(first: 100) {
+                edges {
+                  node {
+                    name
+                    createdAt
+                    volumeInstances(first: 100) {
+                      edges {
+                        node {
+                          id
+                          createdAt
+                          deletedAt
+                          currentSizeMB
+                          sizeMB
+                          mountPath
+                          region
+                          state
+                          isPendingDeletion
+                          serviceId
+                          service {
+                            name
+                            createdAt
+                            updatedAt
+                            deletedAt
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+          project_data, project_err = gql(project_query, {"projectId": project_id})
+          project = (project_data or {}).get("project") or {}
+
+          services = conn_nodes(project.get("services"))
+          current_postgres = [s for s in services if s.get("name") == TARGET_SERVICE]
+
+          volume = None
+          volume_instance = None
+          for v in conn_nodes(project.get("volumes")):
+              if v.get("name") == TARGET_VOLUME:
+                  volume = v
+                  instances = conn_nodes(v.get("volumeInstances"))
+                  if instances:
+                      volume_instance = sorted(
+                          instances,
+                          key=lambda x: x.get("createdAt") or "",
+                          reverse=True,
+                      )[0]
+                  break
+
+          backup_data = None
+          backup_err = None
+          schedule_data = None
+          schedule_err = None
+          if volume_instance and volume_instance.get("id"):
+              backup_query = """
+              query RecoveryBackups($volumeInstanceId: String!) {
+                volumeInstanceBackupList(volumeInstanceId: $volumeInstanceId) {
+                  createdAt
+                  expiresAt
+                  name
+                  referencedMB
+                  usedMB
+                  volumeInstanceSizeMB
+                }
+              }
+              """
+              backup_data, backup_err = gql(
+                  backup_query,
+                  {"volumeInstanceId": volume_instance["id"]},
+              )
+              schedule_query = """
+              query RecoveryBackupSchedules($volumeInstanceId: String!) {
+                volumeInstanceBackupScheduleList(volumeInstanceId: $volumeInstanceId) {
+                  createdAt
+                  cron
+                  kind
+                  name
+                  retentionSeconds
+                }
+              }
+              """
+              schedule_data, schedule_err = gql(
+                  schedule_query,
+                  {"volumeInstanceId": volume_instance["id"]},
+              )
+
+          deployments_query = """
+          query RecoveryDeployments($projectId: String!, $environmentId: String!) {
+            deployments(
+              first: 100,
+              input: {
+                projectId: $projectId,
+                environmentId: $environmentId,
+                includeDeleted: true
+              }
+            ) {
+              edges {
+                node {
+                  createdAt
+                  updatedAt
+                  status
+                  service {
+                    name
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                }
+              }
+            }
+          }
+          """
+          deployments_data, deployments_err = gql(
+              deployments_query,
+              {
+                  "projectId": project_id,
+                  "environmentId": environment_id,
+              },
+          )
+          deployments = conn_nodes((deployments_data or {}).get("deployments"))
+          postgres_deployments = [
+              d for d in deployments
+              if ((d.get("service") or {}).get("name") == TARGET_SERVICE)
+          ]
+          postgres_deployments.sort(
+              key=lambda x: x.get("createdAt") or "",
+              reverse=True,
+          )
+
+          events_query = """
+          query RecoveryEvents($projectId: String!, $environmentId: String!) {
+            events(
+              first: 100,
+              projectId: $projectId,
+              environmentId: $environmentId
+            ) {
+              edges {
+                node {
+                  createdAt
+                  action
+                  object
+                  severity
+                  payload
+                  activityPayload
+                }
+              }
+            }
+          }
+          """
+          events_data, events_err = gql(
+              events_query,
+              {
+                  "projectId": project_id,
+                  "environmentId": environment_id,
+              },
+          )
+          events = conn_nodes((events_data or {}).get("events"))
+          candidate_events = []
+          for e in events:
+              action = str(e.get("action") or "")
+              obj = str(e.get("object") or "")
+              payload = e.get("payload")
+              activity = e.get("activityPayload")
+              target_match = (
+                  recursive_contains(payload, TARGET_SERVICE)
+                  or recursive_contains(payload, TARGET_VOLUME)
+                  or recursive_contains(activity, TARGET_SERVICE)
+                  or recursive_contains(activity, TARGET_VOLUME)
+              )
+              structural_delete = (
+                  any(x in action.lower() for x in ("delete", "remove", "detach"))
+                  and any(x in obj.lower() for x in ("service", "volume"))
+              )
+              if target_match or structural_delete:
+                  candidate_events.append({
+                      "createdAt": e.get("createdAt"),
+                      "action": action,
+                      "object": obj,
+                      "severity": e.get("severity"),
+                      "target_match": target_match,
+                  })
+          candidate_events.sort(
+              key=lambda x: x.get("createdAt") or "",
+              reverse=True,
+          )
+
+          audit_rows = []
+          audit_err = "not_attempted"
+          if workspace_id:
+              audit_query = """
+              query RecoveryAudit(
+                $workspaceId: String!,
+                $projectId: String!,
+                $environmentId: String!
+              ) {
+                auditLogs(
+                  first: 100,
+                  workspaceId: $workspaceId,
+                  filter: {
+                    projectId: $projectId,
+                    environmentId: $environmentId,
+                    startDate: "2026-08-27T00:00:00Z",
+                    endDate: "2026-08-31T00:00:00Z"
+                  }
+                ) {
+                  edges {
+                    node {
+                      createdAt
+                      eventType
+                      payload
+                      context
+                    }
+                  }
+                }
+              }
+              """
+              audit_data, audit_err = gql(
+                  audit_query,
+                  {
+                      "workspaceId": workspace_id,
+                      "projectId": project_id,
+                      "environmentId": environment_id,
+                  },
+              )
+              for a in conn_nodes((audit_data or {}).get("auditLogs")):
+                  event_type = str(a.get("eventType") or "")
+                  payload = a.get("payload")
+                  context = a.get("context")
+                  target_match = (
+                      recursive_contains(payload, TARGET_SERVICE)
+                      or recursive_contains(payload, TARGET_VOLUME)
+                      or recursive_contains(context, TARGET_SERVICE)
+                      or recursive_contains(context, TARGET_VOLUME)
+                  )
+                  structural = any(
+                      x in event_type.lower()
+                      for x in ("delete", "remove", "detach", "volume", "service")
+                  )
+                  if target_match or structural:
+                      audit_rows.append({
+                          "createdAt": a.get("createdAt"),
+                          "eventType": event_type,
+                          "target_match": target_match,
+                      })
+              audit_rows.sort(
+                  key=lambda x: x.get("createdAt") or "",
+                  reverse=True,
+              )
+
+          lines = [
+              "## Railway recovery facts read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, database, deployment, or file was modified.",
+              "No token, ID, URL, credential, host, username, password, Variable value, raw event payload, or raw audit payload is published.",
+              "",
+              "### Current service / volume state",
+              "",
+              f"Project query: {'OK' if not project_err else 'FAILED'}",
+              f"Current named service \`postgres\` in project services: {'YES' if current_postgres else 'NO'}",
+              f"Volume \`postgres-volume\` found: {'YES' if volume else 'NO'}",
+          ]
+
+          if volume_instance:
+              svc = volume_instance.get("service") or {}
+              lines += [
+                  f"Volume instance createdAt: {safe_scalar(volume_instance.get('createdAt'))}",
+                  f"Volume instance deletedAt: {safe_scalar(volume_instance.get('deletedAt'))}",
+                  f"Volume state: {safe_scalar(volume_instance.get('state'))}",
+                  f"Volume pending deletion: {safe_scalar(volume_instance.get('isPendingDeletion'))}",
+                  f"Volume region: {safe_scalar(volume_instance.get('region'))}",
+                  f"Volume mount path: \`{safe_scalar(volume_instance.get('mountPath'))}\`",
+                  f"Volume current size MB: {safe_scalar(volume_instance.get('currentSizeMB'))}",
+                  f"Volume configured size MB: {safe_scalar(volume_instance.get('sizeMB'))}",
+                  f"Volume serviceId present: {'YES' if volume_instance.get('serviceId') else 'NO'}",
+                  f"Volume resolver service name: {safe_scalar(svc.get('name'))}",
+                  f"Volume resolver service createdAt: {safe_scalar(svc.get('createdAt'))}",
+                  f"Volume resolver service deletedAt: {safe_scalar(svc.get('deletedAt'))}",
+              ]
+          else:
+              lines.append("Volume instance metadata: NOT FOUND")
+
+          lines += [
+              "",
+              "### Backup metadata",
+              "",
+              f"Backup query: {'OK' if backup_err is None and backup_data is not None else 'FAILED'}",
+          ]
+
+          backups = []
+          if isinstance(backup_data, dict):
+              backups = backup_data.get("volumeInstanceBackupList") or []
+          if backups:
+              lines += [
+                  "| Created | Name | Used MB | Referenced MB | Volume size MB | Expires |",
+                  "|---|---|---:|---:|---:|---|",
+              ]
+              for b in sorted(
+                  [x for x in backups if isinstance(x, dict)],
+                  key=lambda x: x.get("createdAt") or "",
+                  reverse=True,
+              ):
+                  lines.append(
+                      "| "
+                      + " | ".join([
+                          safe_scalar(b.get("createdAt")),
+                          safe_scalar(b.get("name")),
+                          safe_scalar(b.get("usedMB")),
+                          safe_scalar(b.get("referencedMB")),
+                          safe_scalar(b.get("volumeInstanceSizeMB")),
+                          safe_scalar(b.get("expiresAt")),
+                      ])
+                      + " |"
+                  )
+          else:
+              lines.append("No backup rows returned.")
+
+          schedules = []
+          if isinstance(schedule_data, dict):
+              schedules = schedule_data.get("volumeInstanceBackupScheduleList") or []
+          lines += [
+              "",
+              f"Backup schedule query: {'OK' if schedule_err is None and schedule_data is not None else 'FAILED'}",
+          ]
+          if schedules:
+              for s in schedules:
+                  if not isinstance(s, dict):
+                      continue
+                  lines.append(
+                      "- "
+                      f"{safe_scalar(s.get('name'))}: "
+                      f"kind={safe_scalar(s.get('kind'))}, "
+                      f"cron=\`{safe_scalar(s.get('cron'))}\`, "
+                      f"retentionSeconds={safe_scalar(s.get('retentionSeconds'))}, "
+                      f"createdAt={safe_scalar(s.get('createdAt'))}"
+                  )
+          else:
+              lines.append("No backup schedule rows returned.")
+
+          lines += [
+              "",
+              "### Deleted-service / deployment evidence",
+              "",
+              f"Deployments includeDeleted query: {'OK' if not deployments_err else 'FAILED'}",
+              f"Deployments resolved for service name \`postgres\`: {len(postgres_deployments)}",
+          ]
+
+          if postgres_deployments:
+              lines += [
+                  "| Deployment created | Updated | Status | Service created | Service deleted |",
+                  "|---|---|---|---|---|",
+              ]
+              for d in postgres_deployments[:12]:
+                  s = d.get("service") or {}
+                  lines.append(
+                      "| "
+                      + " | ".join([
+                          safe_scalar(d.get("createdAt")),
+                          safe_scalar(d.get("updatedAt")),
+                          safe_scalar(d.get("status")),
+                          safe_scalar(s.get("createdAt")),
+                          safe_scalar(s.get("deletedAt")),
+                      ])
+                      + " |"
+                  )
+
+          lines += [
+              "",
+              "### Recent target event evidence",
+              "",
+              f"Events query: {'OK' if not events_err else 'FAILED'}",
+              f"Candidate service/volume events: {len(candidate_events)}",
+          ]
+
+          if candidate_events:
+              lines += [
+                  "| Created | Action | Object | Severity | Payload mentions postgres target |",
+                  "|---|---|---|---|---|",
+              ]
+              for e in candidate_events[:20]:
+                  lines.append(
+                      "| "
+                      + " | ".join([
+                          safe_scalar(e.get("createdAt")),
+                          safe_scalar(e.get("action")),
+                          safe_scalar(e.get("object")),
+                          safe_scalar(e.get("severity")),
+                          "YES" if e.get("target_match") else "NO",
+                      ])
+                      + " |"
+                  )
+
+          lines += [
+              "",
+              "### Audit-log evidence",
+              "",
+              f"Audit query: {'OK' if audit_err is None else 'FAILED'}",
+              f"Candidate audit rows: {len(audit_rows)}",
+          ]
+
+          if audit_rows:
+              lines += [
+                  "| Created | Event type | Payload/context mentions postgres target |",
+                  "|---|---|---|",
+              ]
+              for a in audit_rows[:20]:
+                  lines.append(
+                      "| "
+                      + " | ".join([
+                          safe_scalar(a.get("createdAt")),
+                          safe_scalar(a.get("eventType")),
+                          "YES" if a.get("target_match") else "NO",
+                      ])
+                      + " |"
+                  )
+
+          lines += [
+              "",
+              "Interpretation guard:",
+              "- Empty event/audit results do not prove that no deletion occurred.",
+              "- This diagnostic does not mount, restore, recreate, delete, redeploy, or alter anything.",
+              "- Postgres image/version is not inferred from these fields.",
+          ]
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
