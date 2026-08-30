@@ -1,0 +1,394 @@
+name: Railway Postgres original version read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-original-version'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Resolve deleted Postgres source image read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re, urllib.request
+          from pathlib import Path
+
+          ENDPOINT = "https://backboard.railway.com/graphql/v2"
+          TOKEN = os.environ["RAILWAY_TOKEN"]
+          TARGET = "postgres"
+          MAX_PAGES = 20
+          UUID_RE = re.compile(
+              r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+              r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          )
+
+          def gql(query, variables=None):
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=json.dumps({"query": query, "variables": variables or {}}).encode(),
+                  method="POST",
+                  headers={
+                      "Project-Access-Token": TOKEN,
+                      "Content-Type": "application/json",
+                      "User-Agent": "boat-ai-v2-readonly-postgres-original-version",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode())
+              except Exception:
+                  return None, "request_failed"
+              if payload.get("errors"):
+                  return payload.get("data"), "graphql_error"
+              return payload.get("data"), None
+
+          def nodes(conn):
+              if not isinstance(conn, dict):
+                  return []
+              return [
+                  e["node"] for e in (conn.get("edges") or [])
+                  if isinstance(e, dict) and isinstance(e.get("node"), dict)
+              ]
+
+          def page(conn):
+              p = (conn or {}).get("pageInfo") or {}
+              return bool(p.get("hasNextPage")), p.get("endCursor")
+
+          def contains_target(obj):
+              if isinstance(obj, dict):
+                  return any(
+                      TARGET in str(k).lower() or contains_target(v)
+                      for k, v in obj.items()
+                  )
+              if isinstance(obj, list):
+                  return any(contains_target(v) for v in obj)
+              return isinstance(obj, str) and TARGET in obj.lower()
+
+          def unique_add(dst, values):
+              for v in values:
+                  if v not in dst:
+                      dst.append(v)
+
+          def extract_ids(obj):
+              service_ids, deployment_ids, generic = [], [], []
+              def walk(v, path=()):
+                  if isinstance(v, dict):
+                      for k, x in v.items():
+                          walk(x, path + (str(k),))
+                  elif isinstance(v, list):
+                      for x in v:
+                          walk(x, path)
+                  elif isinstance(v, str) and UUID_RE.match(v):
+                      joined = ".".join(path).lower()
+                      leaf = path[-1].lower() if path else ""
+                      if "service" in joined and leaf.endswith("id"):
+                          unique_add(service_ids, [v])
+                      elif "deployment" in joined and leaf.endswith("id"):
+                          unique_add(deployment_ids, [v])
+                      else:
+                          unique_add(generic, [v])
+              walk(obj)
+              return service_ids, deployment_ids, generic
+
+          def collect_images(obj):
+              out = []
+              def walk(v, path=()):
+                  if isinstance(v, dict):
+                      for k, x in v.items():
+                          walk(x, path + (str(k),))
+                  elif isinstance(v, list):
+                      for x in v:
+                          walk(x, path)
+                  elif isinstance(v, str):
+                      s = v.strip()
+                      low = s.lower()
+                      joined = ".".join(path).lower()
+                      contextual = any(
+                          t in joined for t in
+                          ("image", "source", "docker", "container", "registry")
+                      )
+                      shaped = "/" in s or re.search(
+                          r":(?:[0-9]+|latest|[A-Za-z0-9._-]+)$", s
+                      )
+                      if (
+                          TARGET in low and len(s) <= 400 and
+                          "\n" not in s and "\r" not in s and
+                          "://" not in s and (contextual or shaped)
+                      ):
+                          unique_add(out, [s])
+              walk(obj)
+              return out
+
+          def infer_major(image):
+              base = image.split("@", 1)[0]
+              tail = base.rsplit("/", 1)[-1]
+              if ":" in tail:
+                  tag = tail.rsplit(":", 1)[1]
+                  m = re.match(r"^(\d{1,2})(?:\D|$)", tag)
+                  if m and 9 <= int(m.group(1)) <= 30:
+                      return int(m.group(1))
+              for pattern in (
+                  r"postgres(?:ql)?[-_:/](\d{1,2})(?:\D|$)",
+                  r"pg[-_:/]?(\d{1,2})(?:\D|$)",
+              ):
+                  m = re.search(pattern, image, re.I)
+                  if m and 9 <= int(m.group(1)) <= 30:
+                      return int(m.group(1))
+              return None
+
+          context_q = """
+          query {
+            projectToken { projectId environmentId }
+          }
+          """
+          context, err = gql(context_q)
+          token_obj = (context or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+          if err or not project_id or not environment_id:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres original version read-only\n\n"
+                  "Context resolution failed. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          events_q = """
+          query Q($p:String!, $e:String!, $a:String) {
+            events(first:100, after:$a, projectId:$p, environmentId:$e) {
+              pageInfo { hasNextPage endCursor }
+              edges {
+                node {
+                  createdAt action object payload activityPayload
+                }
+              }
+            }
+          }
+          """
+          target_events, scanned, after, events_err = [], 0, None, None
+          for _ in range(MAX_PAGES):
+              data, e = gql(events_q, {"p": project_id, "e": environment_id, "a": after})
+              if e:
+                  events_err = e
+                  break
+              conn = (data or {}).get("events") or {}
+              batch = nodes(conn)
+              scanned += len(batch)
+              for item in batch:
+                  if (
+                      str(item.get("action") or "").lower() == "removed" and
+                      str(item.get("object") or "") in ("Deployment", "ServiceInstance") and
+                      (
+                          contains_target(item.get("payload")) or
+                          contains_target(item.get("activityPayload"))
+                      )
+                  ):
+                      target_events.append(item)
+              more, cursor = page(conn)
+              if not more or not cursor:
+                  break
+              after = cursor
+
+          service_ids, deployment_ids, generic_ids, images = [], [], [], []
+          for event in target_events:
+              for raw in (event.get("payload"), event.get("activityPayload")):
+                  s, d, g = extract_ids(raw)
+                  unique_add(service_ids, s)
+                  unique_add(deployment_ids, d)
+                  unique_add(generic_ids, g)
+                  unique_add(images, collect_images(raw))
+
+          deployment_q = """
+          query Q($id:String!) {
+            deployment(id:$id) {
+              createdAt updatedAt status serviceId meta
+            }
+          }
+          """
+          resolved_deployments = 0
+          probe_ids = []
+          unique_add(probe_ids, deployment_ids)
+          unique_add(probe_ids, generic_ids)
+          for candidate in probe_ids[:60]:
+              data, e = gql(deployment_q, {"id": candidate})
+              if e:
+                  continue
+              dep = (data or {}).get("deployment")
+              if not isinstance(dep, dict):
+                  continue
+              resolved_deployments += 1
+              if dep.get("serviceId"):
+                  unique_add(service_ids, [dep["serviceId"]])
+              unique_add(images, collect_images(dep.get("meta")))
+
+          service_q = """
+          query Q($id:String!) {
+            service(id:$id) {
+              name createdAt updatedAt deletedAt
+              serviceInstances(first:50) {
+                edges {
+                  node {
+                    serviceName createdAt updatedAt deletedAt region startCommand
+                    source { image repo }
+                  }
+                }
+              }
+            }
+          }
+          """
+          resolved_services = []
+          service_probes = []
+          unique_add(service_probes, service_ids)
+          unique_add(service_probes, generic_ids)
+          for candidate in service_probes[:60]:
+              data, e = gql(service_q, {"id": candidate})
+              if e:
+                  continue
+              svc = (data or {}).get("service")
+              if not isinstance(svc, dict) or svc.get("name") != TARGET:
+                  continue
+              resolved_services.append(svc)
+              for inst in nodes(svc.get("serviceInstances")):
+                  image = (inst.get("source") or {}).get("image")
+                  if isinstance(image, str):
+                      unique_add(images, [image])
+
+          instance_q = """
+          query Q($e:String!, $s:String!) {
+            serviceInstance(environmentId:$e, serviceId:$s) {
+              serviceName createdAt updatedAt deletedAt region startCommand
+              source { image repo }
+            }
+          }
+          """
+          resolved_instances = []
+          for sid in service_ids[:60]:
+              data, e = gql(instance_q, {"e": environment_id, "s": sid})
+              if e:
+                  continue
+              inst = (data or {}).get("serviceInstance")
+              if not isinstance(inst, dict) or inst.get("serviceName") != TARGET:
+                  continue
+              resolved_instances.append(inst)
+              image = (inst.get("source") or {}).get("image")
+              if isinstance(image, str):
+                  unique_add(images, [image])
+
+          safe_images = []
+          for image in images:
+              if (
+                  isinstance(image, str) and TARGET in image.lower() and
+                  len(image) <= 400 and "://" not in image and
+                  "\n" not in image and "\r" not in image
+              ):
+                  unique_add(safe_images, [image.replace(chr(96), "")])
+
+          majors = sorted({
+              major for major in (infer_major(x) for x in safe_images)
+              if major is not None
+          })
+
+          lines = [
+              "## Railway Postgres original version read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential, Variable value, raw event payload, raw DeploymentMeta, or raw source object is published.",
+              "",
+              f"Events query: {'OK' if not events_err else 'FAILED'}",
+              f"Events scanned: {scanned}",
+              f"Target removed events: {len(target_events)}",
+          ]
+          if target_events:
+              lines += ["", "| Created | Object |", "|---|---|"]
+              for event in sorted(target_events, key=lambda x: x.get("createdAt") or ""):
+                  lines.append(
+                      f"| {event.get('createdAt') or '-'} | {event.get('object') or '-'} |"
+                  )
+
+          lines += [
+              "",
+              f"Deleted deployment records resolved internally: {resolved_deployments}",
+              f"Deleted postgres Service records resolved internally: {len(resolved_services)}",
+              f"Deleted postgres ServiceInstance records resolved internally: {len(resolved_instances)}",
+              "",
+              "### Postgres source image evidence",
+              "",
+          ]
+          if safe_images:
+              lines.extend(f"- {image}" for image in safe_images)
+          else:
+              lines.append("- No exact Postgres image string was resolved.")
+
+          lines += ["", "### Postgres major version evidence", ""]
+          if len(majors) == 1:
+              lines.append(f"Exact image-derived major candidate: PostgreSQL {majors[0]}")
+          elif len(majors) > 1:
+              lines.append(
+                  "Multiple image-derived major candidates: " +
+                  ", ".join(str(x) for x in majors) +
+                  ". Do not mount yet."
+              )
+          else:
+              lines.append("No major version can be safely inferred yet.")
+
+          deleted = sorted({
+              str(s.get("deletedAt")) for s in resolved_services if s.get("deletedAt")
+          })
+          if deleted:
+              lines += ["", "Deleted service timestamp(s): " + ", ".join(deleted)]
+
+          lines += [
+              "",
+              "Safety decision:",
+              "- Evidence only; this does not authorize mounting the preserved volume.",
+              "- If an exact image/major is resolved, confirm compatibility/config before any recreation or mount.",
+          ]
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
