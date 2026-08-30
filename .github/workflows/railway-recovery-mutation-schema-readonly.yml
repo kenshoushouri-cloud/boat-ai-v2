@@ -129,7 +129,11 @@ jobs:
                   return sig(inner) + "!"
               if kind == "LIST":
                   return "[" + sig(inner) + "]"
-              return str(name or sig(inner) if inner else "?")
+              if name:
+                  return str(name)
+              if inner:
+                  return sig(inner)
+              return "?"
 
           mutation_re = re.compile(
               r"(service|volume|variable|deployment).*(create|update|delete|remove|attach|connect|mount|restore|redeploy|restart|upsert|set)|"
