@@ -58,6 +58,7 @@ jobs:
           github.event.comment.body == '/railway apply-watchpaths CONFIRM' ||
           github.event.comment.body == '/railway postgres-recovery-stage2 CONFIRM' ||
           github.event.comment.body == '/railway postgres-recovery-stage2-relink CONFIRM' ||
+          github.event.comment.body == '/railway postgres-recovery-stage2-redeploy CONFIRM' ||
           startsWith(github.event.comment.body, '/railway vars ') ||
           startsWith(github.event.comment.body, '/railway vars-safe ') ||
           startsWith(github.event.comment.body, '/railway logs ') ||
@@ -121,6 +122,10 @@ jobs:
                 op="postgres-recovery-stage2-relink"
                 confirmed="1"
                 ;;
+              "/railway postgres-recovery-stage2-redeploy CONFIRM")
+                op="postgres-recovery-stage2-redeploy"
+                confirmed="1"
+                ;;
               "/railway vars-safe "*)
                 op="vars-safe"
                 service="${COMMENT_BODY#/railway vars-safe }"
@@ -154,7 +159,7 @@ jobs:
                   ;;
               esac
               ;;
-            status|inventory|config|apply-watchpaths|postgres-recovery-stage2|postgres-recovery-stage2-relink|help)
+            status|inventory|config|apply-watchpaths|postgres-recovery-stage2|postgres-recovery-stage2-relink|postgres-recovery-stage2-redeploy|help)
               service=""
               ;;
             *)
@@ -193,7 +198,7 @@ jobs:
           fi
 
       - name: Set up Python for Postgres recovery Stage 2
-        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' || steps.op.outputs.operation == 'postgres-recovery-stage2-relink' }}
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' || steps.op.outputs.operation == 'postgres-recovery-stage2-relink' || steps.op.outputs.operation == 'postgres-recovery-stage2-redeploy' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -271,6 +276,43 @@ jobs:
             } > railway-result-summary.md
           fi
           rm -f stage2-relink-result.md
+          exit "$rc"
+
+      - name: Execute guarded Postgres Stage 2 GraphQL consumer redeploy
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2-redeploy' }}
+        shell: bash
+        env:
+          CONFIRMED: ${{ steps.op.outputs.confirmed }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRMED" != "1" ]; then
+            {
+              echo "## Railway Postgres Stage 2 consumer GraphQL redeploy"
+              echo
+              echo "STAGE2_REDEPLOY_BLOCK_CONFIRMATION_REQUIRED"
+              echo
+              echo "No Railway mutation was executed."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          set +e
+          python -u .github/scripts/postgres_recovery_stage2_redeploy.py
+          rc=$?
+          set -e
+
+          if [ -f stage2-redeploy-result.md ]; then
+            cp stage2-redeploy-result.md railway-result-summary.md
+          else
+            {
+              echo "## Railway Postgres Stage 2 consumer GraphQL redeploy"
+              echo
+              echo "STAGE2_REDEPLOY_BLOCK_MANUAL_REVIEW_REQUIRED"
+              echo
+              echo "No sanitized redeploy result file was produced."
+            } > railway-result-summary.md
+          fi
+          rm -f stage2-redeploy-result.md
           exit "$rc"
 
       - name: Railway status snapshot
