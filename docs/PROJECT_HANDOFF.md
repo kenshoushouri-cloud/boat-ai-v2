@@ -1482,3 +1482,86 @@ Stage 1 codeはDraftのまま、以下をhardeningしてからactivation review�
 - N01 / N02 / Bao
 - coefficients / thresholds
 - PR #169
+
+
+---
+
+<!-- HANDOFF_MILESTONE_20260831_STAGE1_BACKUP_GUARD -->
+## 緊急引き継ぎ追記: 2026-08-31 — Postgres Recovery Stage 1 hardening完了 / manual backup mutation除外
+
+### 最新GitHub状態
+- code Source of Truth: `main`
+- この追記作成前のmain: `f1075fca4c77878458cc82369067405d895f44f3`
+- open PR:
+  - PR #277 Draft: gated isolated Postgres recovery Stage 1
+  - PR #169 Draft: temporary 10-minute base-odds refresh（hold継続）
+- Issue #42: Railway Bridge Control
+
+### Railway最新read-only状態
+Issue #42の直近確認:
+- Railway bridge status: SUCCESS
+- Railway CLI: `5.45.10`
+- services discovered: **13**
+- `postgres` service: **absent**
+- `/railway vars postgres`: FAIL
+- DB依存cronの多く: CRASHED
+- よってProduction DBはまだ復旧していない。
+
+### PR #277 hardening
+以前のreviewで要求された3点はDraft branchへ反映済み:
+1. 既存 `Pre-Security-Patch Backup` をStage 1内で再guard
+2. staging変数から `DATABASE_PUBLIC_URL` を除外
+3. explicit `serviceInstanceRedeploy` を除外し、二重restartを回避
+
+その後の追加監査で、Railway公式仕様の **manual volume backup = volume容量の50%まで** を確認。
+preserved `postgres-volume` は約 **3.76 GB / 5 GB** のため、Stage 1で新しいmanual backupを作る設計はineligibleになる可能性が高い。
+
+対応:
+- PR #277から `volumeInstanceBackupCreate` を完全除外
+- 新しい `Pre-Recovery-Stage1 Backup` 作成を廃止
+- 既存 `Pre-Security-Patch Backup` の:
+  - presence
+  - expiry
+  - exact referenced size = **3582 MB**
+  をguard
+- preserved volume attach直前に同backupをもう一度guard
+- validation workflowで `volumeInstanceBackupCreate` が存在しないことをassert
+
+PR #277 latest head:
+- `3a401f9d7e97beeb7ebb8470be50323a1d7b840b`
+
+CI:
+- Railway Postgres recovery Stage 1: SUCCESS
+  - validate: PASS
+  - recover: **SKIPPED**
+- Critical Python syntax: SUCCESS
+- V21 parser sanity: SUCCESS
+- Production shadow isolation: SUCCESS
+- Critical mojibake guard: SUCCESS
+
+### 現在の安全状態
+**NO_RECOVERY_MUTATION_EXECUTED**
+- PR #277 remains Draft
+- mergeしていない
+- Issue #42 exact Stage 1 commandは発行していない
+- `postgres-recovery` serviceは作成していない
+- preserved volume attachなし
+- DB startなし
+- TCP proxy作成なし
+- Production consumer Variables変更なし
+- service renameなし
+- restore/PITRなし
+- Production model / coefficients / thresholds / LINE / N01 / N02 / Bao変更なし
+- PR #169 hold継続
+
+### 次の判断
+Current decision:
+**STAGE1_DRAFT_READY_FOR_EXPLICIT_MANUAL_APPROVAL**
+
+次にStage 1を実行する場合でも、ユーザーの明示承認なしに:
+- PR #277 merge
+- `/railway postgres-recovery-stage1 CONFIRM`
+を行わない。
+
+承認後のStage 1目的は、isolated `postgres-recovery` にpreserved volumeをexact PostgreSQL 18 configで接続し、temporary TCP proxy経由でread-only DB integrity auditまで行うこと。
+Stage 2（`postgres`へのpromotion / Production reconnect）は必ず別承認とする。
