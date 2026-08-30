@@ -13,7 +13,7 @@ permissions:
   issues: write
 
 env:
-  RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_BRIDGE_ISSUE: "42"
 
 jobs:
@@ -124,7 +124,7 @@ jobs:
       - name: Post
         if: always()
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
       - name: Fail if audit failed
         if: steps.run.outputs.exit_code != '0'
@@ -153,7 +153,7 @@ jobs:
       - name: Resolve date
         id: target
         env:
-          COMMAND: \${{ github.event.comment.body }}
+          COMMAND: ${{ github.event.comment.body }}
         shell: bash
         run: |
           set -euo pipefail
@@ -193,7 +193,7 @@ jobs:
       - name: Repair fixed date
         id: run
         env:
-          OUTAGE_GAP_DATE: \${{ steps.target.outputs.date }}
+          OUTAGE_GAP_DATE: ${{ steps.target.outputs.date }}
         shell: bash
         run: |
           set +e
@@ -204,7 +204,7 @@ jobs:
       - name: Summarize
         if: always()
         env:
-          TARGET_DATE: \${{ steps.target.outputs.date }}
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         shell: bash
         run: |
           {
@@ -222,7 +222,7 @@ jobs:
       - name: Post
         if: always()
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
       - name: Fail if repair failed
         if: steps.run.outputs.exit_code != '0'
