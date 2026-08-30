@@ -1704,3 +1704,180 @@ Until Stage 2 approval:
 - do not restore/PITR/delete/wipe volume or backup
 - do not change Production v24 / FINAL / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / coefficients / thresholds
 - PR #169 remains hold
+
+
+---
+
+<!-- POSTGRES_RECOVERY_STAGE2_COMPLETE_20260831 -->
+## 2026-08-31 — Postgres Recovery Stage 2 COMPLETE / Production consumers復旧 / 当日catch-up完了
+
+### Source of Truth
+- code Source of Truth: `main`
+- この追記直前のmain: `25e7478bb2bbe3e9794e5bf5295186d901fc2db6`
+- Railway project: `boat-v2-postgres`
+- 本番データ本体: `postgres-recovery` service に接続された既存 `postgres-volume`
+- compatibility namespace: `postgres` service
+- Supabaseは使用しない。
+- 正しい出走表テーブルは `v2_race_entries`。
+
+### Stage 2の最終方式
+Railway Project Tokenでは既存serviceのrenameが `not_authorized` となったため、
+**DB本体をrename/move/restartせず、参照互換serviceを作る方式**へ変更した。
+
+実体:
+- `postgres-recovery`: PostgreSQL 18.6実体、preserved volume所有、pinned deleted-deployment digestでSUCCESS
+- `postgres`: 空のcompatibility service。Volumeを持たず、DB関連Variablesは `postgres-recovery` へのRailway Referenceのみ
+
+これにより旧来の `${{postgres.DATABASE_URL}}` 名前空間を復元しつつ、
+DB本体・Volumeを動かさない安全構成を維持している。
+
+### Stage 2 promotion
+Issue #42:
+- `/railway postgres-recovery-stage2 CONFIRM`
+
+最終成功:
+- public TCP proxyを `postgres-recovery` に作成
+- `DATABASE_PUBLIC_URL` をRailway dynamic referenceで復元
+- pre-promotion read-only DB integrity PASS
+- compatibility `postgres` service作成
+- compatibility serviceはVolumeを所有しない
+- `postgres-volume` は `postgres-recovery` に残存
+- pinned PostgreSQL 18 digest維持
+- existing backup guard PASS
+
+Decision:
+**STAGE2_PROMOTION_PASS_VERIFY_CONSUMERS**
+
+### Consumer DATABASE_URL relink
+Issue #42:
+- `/railway postgres-recovery-stage2-relink CONFIRM`
+
+13 services:
+- backtest-analysis
+- cron-daily-report
+- cron-data-prepare
+- cron-final-check
+- cron-learning-all
+- cron-monthly-report
+- cron-nightly-results
+- cron-racer-course-stats
+- cron-window-day
+- cron-window-morning
+- cron-window-night
+- historical-backfill
+- test-beforeinfo-extra
+
+変更:
+- `DATABASE_URL` のみ
+- target: `postgres-recovery.DATABASE_URL` Railway Reference
+- `skipDeploys=True`
+- secret literal copyなし
+- 他Variable変更なし
+
+### Consumer redeploy
+Issue #42:
+- `/railway postgres-recovery-stage2-redeploy CONFIRM`
+
+GraphQL redeploy accepted:
+- **10/10**
+
+対象:
+- cron-daily-report
+- cron-data-prepare
+- cron-final-check
+- cron-learning-all
+- cron-nightly-results
+- cron-racer-course-stats
+- cron-window-day
+- cron-window-morning
+- cron-window-night
+- test-beforeinfo-extra
+
+Volume / backup / DB service / model / LINEは変更していない。
+
+### Post-Stage-2 verification
+最新read-only inventory:
+- services discovered: **15**
+- `postgres-recovery`: SUCCESS
+- compatibility `postgres`: present / no deployment
+- application / cron services: **SUCCESS**
+
+DB reference diagnostic:
+- `postgres-recovery`
+- `postgres`
+- backtest-analysis
+- cron-daily-report
+- cron-data-prepare
+- cron-final-check
+- cron-learning-all
+- cron-monthly-report
+- cron-nightly-results
+- cron-racer-course-stats
+- cron-window-day
+- cron-window-morning
+- cron-window-night
+- historical-backfill
+- test-beforeinfo-extra
+
+上記すべて:
+- `DATABASE_URL state = resolved_url`
+- config layer resolved URL: **YES**
+
+`/railway vars postgres`:
+- 19 keys確認
+- DB関連keyが復元済み
+- secret値は公開していない
+
+### 2026-08-31 recovery catch-up
+fixed-date owner-only workflow:
+- `/railway postgres-recovery-catchup-20260831 CONFIRM`
+- scheduleなし
+- workflow_dispatchなし
+- TARGET_DATE固定 `2026-08-31`
+
+実行結果:
+- run_daily_data_prepare_pg.py exit 0
+- 保存レース: **144**
+- 保存出走表: **864**
+- 保存結果: **0**
+- 保存オッズ: **1,399**
+- success: **144**
+- NON_FINAL_UPSERT
+- result collectionなし
+
+07:55 JST read-only today-health:
+- races: **144 / deadline_ready 144**
+- entries: **864 / 144 races / full6 144**
+- odds: **1,399 rows / 65 races**
+- results: **0**
+- TODAY_HEALTH_RESULT=**PASS_READ_ONLY**
+
+この時点ではmorning/day/nightの締切前で、dynamic oddsはまだpartial。
+これは復旧失敗ではなく、通常window処理前の状態として扱う。
+
+### Current operational decision
+**POSTGRES_RECOVERY_STAGE2_COMPLETE_PRODUCTION_DB_REFERENCES_RESTORED**
+
+完了:
+- DB data integrity
+- PostgreSQL起動
+- compatibility namespace
+- Production consumer DATABASE_URL
+- consumer redeploy
+- 当日races / entries catch-up
+- read-only health
+
+未変更:
+- Production v24 / FINALロジック
+- LINE
+- BUY/WATCH/SKIP
+- N01 / N02 / Bao
+- coefficients / thresholds
+- PR #169（Draft hold）
+
+### 次の安全な確認
+1. 通常cronを追加変更せず稼働させる。
+2. 2026-08-31 morning window実行後に `/railway today-health` と `/railway inventory` をread-only確認。
+3. morning odds / PRE / FINALの通常パイプラインが復旧後DBで正常に進むことを確認。
+4. 異常がなければPostgres障害復旧フェーズを完了扱いとし、元の予測精度改善作業へ戻る。
+5. `postgres-recovery` / compatibility `postgres` の二層構成を、明確なmigration planなしに変更・削除・renameしない。
