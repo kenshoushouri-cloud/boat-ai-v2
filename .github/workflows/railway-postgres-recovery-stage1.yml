@@ -51,7 +51,6 @@ jobs:
           assert 'EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"' in script
           assert 'KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"' in script
           assert "KNOWN_BACKUP_REFERENCED_MB = 3582" in script
-          assert 'PROTECTIVE_BACKUP_NAME = "Pre-Recovery-Stage1 Backup"' in script
           assert "guard_known_backup" in script
           assert "expiresAt" in script
           assert "serviceCreate" in script
@@ -61,7 +60,7 @@ jobs:
           assert '"DATABASE_PUBLIC_URL"' not in script
           assert "tcpProxyCreate" in script
           assert "tcpProxyDelete" in script
-          assert "volumeInstanceBackupCreate" in script
+          assert "volumeInstanceBackupCreate" not in script
 
           # Stage 1 must stay isolated. Promotion/rename and Production consumer
           # variable writes are forbidden in this script.
