@@ -1,0 +1,281 @@
+name: Railway Postgres consumer reference rewire
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/railway-postgres-consumer-rewire.yml'
+      - '.github/scripts/postgres_recovery_consumer_rewire.py'
+      - '.github/scripts/postgres_recovery_stage1.py'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate consumer rewire safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/postgres_recovery_consumer_rewire.py
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/railway-postgres-consumer-rewire.yml').read_text(encoding='utf-8')
+          script = Path('.github/scripts/postgres_recovery_consumer_rewire.py').read_text(encoding='utf-8')
+
+          exact = "/railway postgres-consumer-rewire CONFIRM"
+          assert exact in workflow
+          assert "github.actor == github.repository_owner" in workflow
+          assert "github.event.issue.number == 42" in workflow
+          trigger = workflow.split("permissions:", 1)[0]
+          assert "schedule:" not in trigger
+          assert "workflow_dispatch:" not in trigger
+
+          assert 'REAL_DB_SERVICE = "postgres-recovery"' in script
+          assert 'COMPAT_SERVICE = "postgres"' in script
+          assert 'EXPECTED_REFERENCE = "$' + '{{postgres-recovery.DATABASE_URL}}"' in script
+          assert '"name": "DATABASE_URL"' in script
+          assert '"skipDeploys": True' in script
+          assert script.count('"DATABASE_URL"') >= 2
+
+          for forbidden in (
+              "serviceDelete",
+              "volumeDelete",
+              "volumeInstanceUpdate",
+              "volumeInstanceBackupCreate",
+              "volumeInstanceBackupRestore",
+              "volumeInstancePITRRestore",
+              "serviceInstanceRedeploy",
+              "serviceUpdate",
+              "tcpProxyDelete",
+          ):
+              assert forbidden not in script
+
+          expected = (
+              "backtest-analysis",
+              "cron-daily-report",
+              "cron-data-prepare",
+              "cron-final-check",
+              "cron-learning-all",
+              "cron-monthly-report",
+              "cron-nightly-results",
+              "cron-racer-course-stats",
+              "cron-window-day",
+              "cron-window-morning",
+              "cron-window-night",
+              "historical-backfill",
+              "test-beforeinfo-extra",
+          )
+          for name in expected:
+              assert f'"{name}"' in script
+
+          print("POSTGRES_CONSUMER_REWIRE_VALIDATE=PASS")
+          PY
+
+  rewire:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway postgres-consumer-rewire CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Rewire consumer DATABASE_URL references without deploy
+        id: write
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/postgres_recovery_consumer_rewire.py
+
+      - name: Verify all rendered consumer references
+        id: verify
+        if: steps.write.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          services=(
+            backtest-analysis
+            cron-daily-report
+            cron-data-prepare
+            cron-final-check
+            cron-learning-all
+            cron-monthly-report
+            cron-nightly-results
+            cron-racer-course-stats
+            cron-window-day
+            cron-window-morning
+            cron-window-night
+            historical-backfill
+            test-beforeinfo-extra
+          )
+
+          : > consumer-reference-states.tsv
+
+          for service in "${services[@]}"; do
+            file="consumer-vars-${service}.json"
+            if ! railway variable list --service "$service" --environment production --json > "$file" 2>/dev/null; then
+              printf '%s\tquery_failed\t0\n' "$service" >> consumer-reference-states.tsv
+              continue
+            fi
+
+            SERVICE="$service" FILE="$file" python - <<'PY' >> consumer-reference-states.tsv
+          import json
+          import os
+          from pathlib import Path
+
+          service = os.environ["SERVICE"]
+          data = json.loads(Path(os.environ["FILE"]).read_text(encoding="utf-8"))
+          value = None
+          if isinstance(data, dict):
+              value = data.get("DATABASE_URL")
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (
+                      item.get("name") == "DATABASE_URL"
+                      or item.get("key") == "DATABASE_URL"
+                  ):
+                      value = item.get("value")
+                      break
+
+          text = "" if value is None else str(value).strip()
+          if value is None:
+              state = "missing"
+          elif not text:
+              state = "empty"
+          elif text.startswith("postgresql://") or text.startswith("postgres://"):
+              state = "resolved_url"
+          elif text.startswith("$" + "{{") and text.endswith("}}"):
+              state = "reference_expression"
+          else:
+              state = "other_nonempty"
+
+          print(f"{service}\t{state}\t{len(text)}")
+          PY
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+
+          rows = []
+          for line in Path("consumer-reference-states.tsv").read_text(encoding="utf-8").splitlines():
+              parts = line.split("\t")
+              if len(parts) == 3:
+                  rows.append(parts)
+
+          passed = [service for service, state, _ in rows if state == "resolved_url"]
+          failed = [service for service, state, _ in rows if state != "resolved_url"]
+
+          lines = [
+              "### Rendered DATABASE_URL verification",
+              "",
+              "| Service | State | Non-empty length |",
+              "|---|---|---:|",
+          ]
+          for service, state, length in rows:
+              lines.append(f"| {service} | {state} | {length} |")
+
+          lines += [
+              "",
+              f"- Resolved consumers: **{len(passed)}/13**",
+              "- DATABASE_URL values and credentials are not published.",
+          ]
+
+          if failed:
+              lines += [
+                  "- Verification: **BLOCK**",
+                  "- Failed services: " + ", ".join(f"`{name}`" for name in failed),
+                  "",
+                  "**CONSUMER_REWIRE_VERIFY_BLOCK**",
+              ]
+          else:
+              lines += [
+                  "- Verification: **PASS**",
+                  "",
+                  "**CONSUMER_REWIRE_VERIFY_PASS_READY_FOR_REDEPLOY**",
+              ]
+
+          Path("consumer-rewire-verify.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          if failed:
+              raise SystemExit(1)
+          PY
+
+      - name: Build sanitized result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > railway-result-summary.md
+          if [ -f consumer-rewire-result.md ]; then
+            cat consumer-rewire-result.md >> railway-result-summary.md
+          else
+            {
+              echo "## Railway Postgres Stage 2 consumer rewire"
+              echo
+              echo "CONSUMER_REWIRE_BLOCK_NO_RESULT"
+            } >> railway-result-summary.md
+          fi
+          if [ -f consumer-rewire-verify.md ]; then
+            echo >> railway-result-summary.md
+            cat consumer-rewire-verify.md >> railway-result-summary.md
+          fi
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+
+      - name: Clean raw files
+        if: always()
+        shell: bash
+        run: |
+          rm -f consumer-vars-*.json consumer-reference-states.tsv consumer-rewire-result.md consumer-rewire-verify.md railway-result-summary.md
+
+      - name: Fail when write or verification failed
+        if: steps.write.outcome != 'success' || steps.verify.outcome != 'success'
+        shell: bash
+        run: exit 1
