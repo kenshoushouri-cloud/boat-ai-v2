@@ -1,0 +1,215 @@
+name: Railway Postgres recovery version schema read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway recovery-version-schema'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Introspect version-recovery schema only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          endpoint = "https://backboard.railway.com/graphql/v2"
+          token = os.environ["RAILWAY_TOKEN"]
+
+          query = r"""
+          query VersionRecoverySchema {
+            __schema {
+              types {
+                kind
+                name
+                fields(includeDeprecated: true) {
+                  name
+                  args {
+                    name
+                    type {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
+                  }
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          req = urllib.request.Request(
+              endpoint,
+              data=json.dumps({"query": query}).encode("utf-8"),
+              method="POST",
+              headers={
+                  "Project-Access-Token": token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "boat-ai-v2-readonly-postgres-version-schema",
+              },
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.loads(resp.read().decode("utf-8"))
+          except Exception:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres recovery version schema read-only\n\n"
+                  "❌ Schema request failed. No Railway data or setting was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          if payload.get("errors"):
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres recovery version schema read-only\n\n"
+                  "❌ Schema request returned an error. No Railway data or setting was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          types = ((payload.get("data") or {}).get("__schema") or {}).get("types") or []
+          wanted = re.compile(
+              r"(DeploymentMeta|DeploymentDeploymentInstance|DeploymentCreator|"
+              r"ServiceSource|ResolvedFileConfig|Railpack|Nixpacks|Docker|Image|"
+              r"Registry|TemplateService|ServiceServiceInstances|VolumeState)",
+              re.I,
+          )
+
+          def type_sig(t):
+              if not isinstance(t, dict):
+                  return "?"
+              kind = t.get("kind")
+              name = t.get("name")
+              of1 = t.get("ofType")
+              if kind == "NON_NULL":
+                  return type_sig(of1) + "!"
+              if kind == "LIST":
+                  return "[" + type_sig(of1) + "]"
+              if name:
+                  return str(name)
+              if of1:
+                  return type_sig(of1)
+              return "?"
+
+          def safe(v):
+              return str(v).replace("|", "\\|").replace("\n", " ")
+
+          selected = [
+              t for t in types
+              if isinstance(t, dict) and wanted.search(t.get("name") or "")
+          ]
+
+          lines = [
+              "## Railway Postgres recovery version schema read-only",
+              "",
+              "Only GraphQL schema names and type signatures are shown.",
+              "No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential, project data, or user data is published.",
+              "",
+          ]
+
+          if not selected:
+              lines.append("No matching schema types found.")
+
+          for item in sorted(selected, key=lambda x: x.get("name") or ""):
+              name = item.get("name") or "?"
+              kind = item.get("kind") or "?"
+              lines += [
+                  f"### \`{safe(name)}\` ({safe(kind)})",
+                  "",
+              ]
+              fields = item.get("fields") or []
+              if fields:
+                  lines += [
+                      "| Field | Args | Type |",
+                      "|---|---|---|",
+                  ]
+                  for f in sorted(fields, key=lambda x: x.get("name") or ""):
+                      args = ", ".join(
+                          f"{a.get('name')}: {type_sig(a.get('type'))}"
+                          for a in (f.get("args") or [])
+                      ) or "-"
+                      lines.append(
+                          f"| \`{safe(f.get('name') or '?')}\` | "
+                          f"\`{safe(args)}\` | "
+                          f"\`{safe(type_sig(f.get('type')))}\` |"
+                      )
+              else:
+                  lines.append("(no fields)")
+              lines.append("")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
