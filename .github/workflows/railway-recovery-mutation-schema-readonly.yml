@@ -1,0 +1,216 @@
+name: Railway recovery mutation schema read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway recovery-mutation-schema'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Introspect recovery mutation schema only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re, urllib.request
+          from pathlib import Path
+
+          endpoint = "https://backboard.railway.com/graphql/v2"
+          token = os.environ["RAILWAY_TOKEN"]
+
+          type_node = """
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                }
+              }
+            }
+          """
+
+          query = f"""
+          query RecoveryMutationSchema {{
+            __schema {{
+              mutationType {{
+                fields(includeDeprecated: true) {{
+                  name
+                  args {{
+                    name
+                    type {{ {type_node} }}
+                  }}
+                  type {{ {type_node} }}
+                }}
+              }}
+              types {{
+                kind
+                name
+                inputFields {{
+                  name
+                  type {{ {type_node} }}
+                }}
+                enumValues(includeDeprecated: true) {{
+                  name
+                }}
+              }}
+            }}
+          }}
+          """
+
+          req = urllib.request.Request(
+              endpoint,
+              data=json.dumps({"query": query}).encode(),
+              method="POST",
+              headers={
+                  "Project-Access-Token": token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "boat-ai-v2-readonly-recovery-mutation-schema",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.loads(resp.read().decode())
+          except Exception:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery mutation schema read-only\n\n"
+                  "Schema request failed. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          if payload.get("errors"):
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery mutation schema read-only\n\n"
+                  "Schema request returned an error. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          schema = (payload.get("data") or {}).get("__schema") or {}
+          fields = ((schema.get("mutationType") or {}).get("fields") or [])
+          types = schema.get("types") or []
+
+          def sig(t):
+              if not isinstance(t, dict):
+                  return "?"
+              kind, name, inner = t.get("kind"), t.get("name"), t.get("ofType")
+              if kind == "NON_NULL":
+                  return sig(inner) + "!"
+              if kind == "LIST":
+                  return "[" + sig(inner) + "]"
+              if name:
+                  return str(name)
+              if inner:
+                  return sig(inner)
+              return "?"
+
+          mutation_re = re.compile(
+              r"(service|volume|variable|deployment).*(create|update|delete|remove|attach|connect|mount|restore|redeploy|restart|upsert|set)|"
+              r"(create|update|delete|remove|attach|connect|mount|restore|redeploy|restart|upsert|set).*(service|volume|variable|deployment)",
+              re.I,
+          )
+          type_re = re.compile(
+              r"(Service.*Input|Volume.*Input|Variable.*Input|Deployment.*Input|"
+              r"ServiceSourceInput|VolumeState|RestartPolicyType)",
+              re.I,
+          )
+
+          selected_fields = [
+              f for f in fields
+              if mutation_re.search(f.get("name") or "")
+          ]
+          selected_types = [
+              t for t in types
+              if type_re.search(t.get("name") or "")
+              and (t.get("inputFields") or t.get("enumValues"))
+          ]
+
+          lines = [
+              "## Railway recovery mutation schema read-only",
+              "",
+              "Introspection only: mutation names, argument types, input fields, and enums.",
+              "No mutation was executed. No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential, project data, or user data is published.",
+              "",
+              "### Candidate mutation signatures",
+              "",
+              "| Mutation | Args | Return |",
+              "|---|---|---|",
+          ]
+
+          for f in sorted(selected_fields, key=lambda x: x.get("name") or ""):
+              args = ", ".join(
+                  f"{a.get('name')}: {sig(a.get('type'))}"
+                  for a in (f.get("args") or [])
+              ) or "-"
+              lines.append(
+                  f"| {f.get('name') or '?'} | {args} | {sig(f.get('type'))} |"
+              )
+
+          lines += ["", "### Relevant input/enums", ""]
+          for t in sorted(selected_types, key=lambda x: x.get("name") or ""):
+              name = t.get("name") or "?"
+              kind = t.get("kind") or "?"
+              lines.append(f"#### {name} ({kind})")
+              for field in sorted(t.get("inputFields") or [], key=lambda x: x.get("name") or ""):
+                  lines.append(f"- {field.get('name')}: {sig(field.get('type'))}")
+              enums = [x.get("name") for x in (t.get("enumValues") or []) if x.get("name")]
+              if enums:
+                  lines.append("- enum: " + ", ".join(enums))
+              lines.append("")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
