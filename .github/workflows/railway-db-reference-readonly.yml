@@ -80,7 +80,7 @@ jobs:
               state = "missing"
           elif not text:
               state = "empty"
-          elif text.startswith("${{") and text.endswith("}}"):
+          elif text.startswith("$" + "{{") and text.endswith("}}"):
               state = "reference_expression"
           elif text.startswith("postgresql://") or text.startswith("postgres://"):
               state = "resolved_url"
