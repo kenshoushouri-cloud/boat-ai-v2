@@ -1266,7 +1266,7 @@ PR validation:
 2. TCP proxy作成前の `DATABASE_PUBLIC_URL` 設定を避ける
 3. config update後のunconditional redeployを避け、二重restartを防ぐ
 
-このhardening updateはGitHub write safety gateでブロックされたため、無理に迂回しない。
+このhardeningはまだPR #277へ反映していないため、Stage 1 activationは引き続きBLOCKする。
 
 ### 決定
 - `POSTGRES_RECOVERY_PREFLIGHT = PASS`
