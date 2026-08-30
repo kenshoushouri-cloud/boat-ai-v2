@@ -1,0 +1,375 @@
+name: Railway Postgres recovery variable topology read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-recovery-variable-topology'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Inspect deleted Postgres variable topology read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          ENDPOINT = "https://backboard.railway.com/graphql/v2"
+          TOKEN = os.environ["RAILWAY_TOKEN"]
+          TARGET = "postgres"
+          UUID_RE = re.compile(
+              r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+              r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          )
+          REF_RE = re.compile(r"\$\{\{\s*([^}]+?)\s*\}\}")
+          TARGET_KEYS = [
+              "DATABASE_URL",
+              "DATABASE_PUBLIC_URL",
+              "PGHOST",
+              "PGPORT",
+              "PGUSER",
+              "PGPASSWORD",
+              "PGDATABASE",
+              "POSTGRES_USER",
+              "POSTGRES_PASSWORD",
+              "POSTGRES_DB",
+              "PGDATA",
+              "SSL_CERT_DAYS",
+          ]
+
+          def gql(query, variables=None):
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=json.dumps({
+                      "query": query,
+                      "variables": variables or {},
+                  }).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "Project-Access-Token": TOKEN,
+                      "Content-Type": "application/json",
+                      "User-Agent": "boat-ai-v2-readonly-postgres-variable-topology",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode("utf-8"))
+              except Exception:
+                  return None, "request_failed"
+              if payload.get("errors"):
+                  return payload.get("data"), "graphql_error"
+              return payload.get("data"), None
+
+          def nodes(conn):
+              if not isinstance(conn, dict):
+                  return []
+              return [
+                  e["node"] for e in (conn.get("edges") or [])
+                  if isinstance(e, dict) and isinstance(e.get("node"), dict)
+              ]
+
+          def page(conn):
+              p = (conn or {}).get("pageInfo") or {}
+              return bool(p.get("hasNextPage")), p.get("endCursor")
+
+          def contains_target(obj):
+              if isinstance(obj, dict):
+                  return any(
+                      TARGET in str(k).lower() or contains_target(v)
+                      for k, v in obj.items()
+                  )
+              if isinstance(obj, list):
+                  return any(contains_target(v) for v in obj)
+              return isinstance(obj, str) and TARGET in obj.lower()
+
+          def extract_uuids(obj):
+              out = []
+              def rec(v):
+                  if isinstance(v, dict):
+                      for x in v.values():
+                          rec(x)
+                  elif isinstance(v, list):
+                      for x in v:
+                          rec(x)
+                  elif isinstance(v, str) and UUID_RE.match(v) and v not in out:
+                      out.append(v)
+              rec(obj)
+              return out
+
+          def safe_shape(key, value):
+              if not isinstance(value, str):
+                  return {
+                      "present": value is not None,
+                      "kind": type(value).__name__,
+                      "length": 0,
+                      "refs": [],
+                      "scheme": "-",
+                      "has_literal_host_hint": False,
+                      "port_hint": "-",
+                  }
+
+              refs = sorted(set(x.strip() for x in REF_RE.findall(value)))
+              scheme = "-"
+              if "://" in value:
+                  scheme = value.split("://", 1)[0]
+                  if not re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*", scheme):
+                      scheme = "other"
+
+              has_literal_host_hint = False
+              if key in ("DATABASE_URL", "DATABASE_PUBLIC_URL", "PGHOST"):
+                  scrubbed = REF_RE.sub("<REF>", value)
+                  hostish = scrubbed
+                  if "://" in hostish:
+                      hostish = hostish.split("://", 1)[1]
+                  if "@" in hostish:
+                      hostish = hostish.split("@", 1)[1]
+                  hostish = hostish.split("/", 1)[0]
+                  host_part = hostish.split(":", 1)[0]
+                  host_part = host_part.strip()
+                  has_literal_host_hint = bool(
+                      host_part
+                      and host_part not in ("<REF>", "localhost", "127.0.0.1")
+                      and not host_part.startswith("<REF>")
+                  )
+
+              port_hint = "-"
+              if key == "PGPORT":
+                  if refs:
+                      port_hint = "reference"
+                  elif value.isdigit():
+                      port_hint = f"literal:{value}"
+                  else:
+                      port_hint = "other"
+              elif key in ("DATABASE_URL", "DATABASE_PUBLIC_URL"):
+                  scrubbed = REF_RE.sub("<REF>", value)
+                  m = re.search(r":(\d{2,5})(?:/|$)", scrubbed)
+                  if m:
+                      port_hint = f"literal:{m.group(1)}"
+                  elif ":<REF>" in scrubbed:
+                      port_hint = "reference"
+
+              if refs and value.strip().startswith("${{") and value.strip().endswith("}}") and len(refs) == 1:
+                  kind = "single_reference"
+              elif refs:
+                  kind = "interpolated_reference"
+              else:
+                  kind = "literal_or_secret"
+
+              return {
+                  "present": True,
+                  "kind": kind,
+                  "length": len(value),
+                  "refs": refs,
+                  "scheme": scheme,
+                  "has_literal_host_hint": has_literal_host_hint,
+                  "port_hint": port_hint,
+              }
+
+          context_q = """
+          query {
+            projectToken { projectId environmentId }
+          }
+          """
+          context, context_err = gql(context_q)
+          token_obj = (context or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+
+          if context_err or not project_id or not environment_id:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres recovery variable topology read-only\n\n"
+                  "Context resolution failed. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          events_q = """
+          query Q($p:String!, $e:String!, $a:String) {
+            events(first:100, after:$a, projectId:$p, environmentId:$e) {
+              pageInfo { hasNextPage endCursor }
+              edges { node { action object payload activityPayload } }
+            }
+          }
+          """
+          target_events = []
+          after = None
+          for _ in range(20):
+              data, err = gql(events_q, {"p": project_id, "e": environment_id, "a": after})
+              if err:
+                  break
+              conn = (data or {}).get("events") or {}
+              for item in nodes(conn):
+                  if (
+                      str(item.get("action") or "").lower() == "removed"
+                      and str(item.get("object") or "") == "Deployment"
+                      and (
+                          contains_target(item.get("payload"))
+                          or contains_target(item.get("activityPayload"))
+                      )
+                  ):
+                      target_events.append(item)
+              more, cursor = page(conn)
+              if not more or not cursor:
+                  break
+              after = cursor
+
+          candidate_ids = []
+          for event in target_events:
+              for raw in (event.get("payload"), event.get("activityPayload")):
+                  for value in extract_uuids(raw):
+                      if value not in candidate_ids:
+                          candidate_ids.append(value)
+
+          dep_q = """
+          query Q($id:String!) {
+            deployment(id:$id) { id meta }
+          }
+          """
+          deployment_id = None
+          for candidate in candidate_ids[:60]:
+              data, err = gql(dep_q, {"id": candidate})
+              dep = (data or {}).get("deployment")
+              if err or not isinstance(dep, dict):
+                  continue
+              if contains_target(dep.get("meta")):
+                  deployment_id = candidate
+                  break
+
+          variables = {}
+          if deployment_id:
+              snap_q = """
+              query Q($id:String!) {
+                deploymentSnapshot(deploymentId:$id) { variables }
+              }
+              """
+              data, err = gql(snap_q, {"id": deployment_id})
+              snap = (data or {}).get("deploymentSnapshot")
+              if not err and isinstance(snap, dict) and isinstance(snap.get("variables"), dict):
+                  variables = snap["variables"]
+
+          rows = []
+          for key in TARGET_KEYS:
+              value = variables.get(key)
+              shape = safe_shape(key, value)
+              rows.append((key, shape))
+
+          ref_targets = sorted({
+              ref
+              for _, shape in rows
+              for ref in shape["refs"]
+          })
+          stale_host_risk = any(
+              shape["has_literal_host_hint"]
+              for key, shape in rows
+              if key in ("DATABASE_URL", "DATABASE_PUBLIC_URL", "PGHOST")
+          )
+          private_domain_ref = any(
+              "RAILWAY_PRIVATE_DOMAIN" in ref
+              for _, shape in rows
+              for ref in shape["refs"]
+          )
+          tcp_proxy_refs = sorted({
+              ref
+              for _, shape in rows
+              for ref in shape["refs"]
+              if "TCP_PROXY" in ref
+          })
+
+          lines = [
+              "## Railway Postgres recovery variable topology read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential value, host value, username value, password value, or raw variable value is published.",
+              "",
+              f"Deleted deployment snapshot variables resolved: {'YES' if variables else 'NO'}",
+              f"Snapshot variable count: {len(variables)}",
+              "",
+              "| Variable | Present | Shape | Length | Railway references | Scheme | Port hint | Literal host risk |",
+              "|---|---|---|---:|---|---|---|---|",
+          ]
+
+          for key, shape in rows:
+              refs = ", ".join(shape["refs"]) if shape["refs"] else "-"
+              lines.append(
+                  "| "
+                  + " | ".join([
+                      key,
+                      "YES" if shape["present"] else "NO",
+                      shape["kind"],
+                      str(shape["length"]),
+                      refs.replace("|", "\\|"),
+                      shape["scheme"],
+                      shape["port_hint"],
+                      "YES" if shape["has_literal_host_hint"] else "NO",
+                  ])
+                  + " |"
+              )
+
+          lines += [
+              "",
+              "### Recovery topology assessment",
+              "",
+              f"RAILWAY_PRIVATE_DOMAIN reference present: {'YES' if private_domain_ref else 'NO'}",
+              f"TCP proxy references present: {', '.join(tcp_proxy_refs) if tcp_proxy_refs else 'NO'}",
+              f"Literal stale-host risk in DATABASE_URL/DATABASE_PUBLIC_URL/PGHOST: {'YES' if stale_host_risk else 'NO'}",
+              f"Referenced variable names: {', '.join(ref_targets) if ref_targets else '-'}",
+              "",
+              "Safety decision:",
+              "- If private/TCP host values are Railway references rather than literals, they can be reconstructed safely on a new staging service without copying an old host.",
+              "- Literal secret values remain unpublished and unchanged.",
+              "- No recovery execution is authorized by this diagnostic.",
+          ]
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
