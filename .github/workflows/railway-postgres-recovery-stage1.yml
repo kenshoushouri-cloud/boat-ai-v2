@@ -49,11 +49,16 @@ jobs:
           assert 'STAGING_SERVICE = "postgres-recovery"' in script
           assert 'TARGET_SERVICE = "postgres"' in script
           assert 'EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"' in script
+          assert 'KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"' in script
+          assert "KNOWN_BACKUP_REFERENCED_MB = 3582" in script
           assert 'PROTECTIVE_BACKUP_NAME = "Pre-Recovery-Stage1 Backup"' in script
+          assert "guard_known_backup" in script
+          assert "expiresAt" in script
           assert "serviceCreate" in script
           assert "volumeInstanceUpdate" in script
           assert "serviceInstanceUpdate" in script
-          assert "serviceInstanceRedeploy" in script
+          assert "serviceInstanceRedeploy" not in script
+          assert '"DATABASE_PUBLIC_URL"' not in script
           assert "tcpProxyCreate" in script
           assert "tcpProxyDelete" in script
           assert "volumeInstanceBackupCreate" in script
@@ -67,6 +72,10 @@ jobs:
           assert "volumeDelete(" not in script
           assert "volumeInstanceBackupRestore(" not in script
           assert "volumeInstancePITRRestore(" not in script
+
+          main = script.split("def main() -> int:", 1)[1]
+          assert main.count("guard_known_backup(") >= 2
+          assert main.rfind("guard_known_backup(") < main.index("attach_volume(")
 
           print("POSTGRES_RECOVERY_STAGE1_VALIDATE=PASS")
           PY
