@@ -49,6 +49,9 @@ jobs:
           assert 'STAGING_SERVICE = "postgres-recovery"' in script
           assert 'TARGET_SERVICE = "postgres"' in script
           assert 'EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"' in script
+          assert "Verify live Postgres image digest before Railway mutation" in workflow
+          assert "docker buildx imagetools inspect" in workflow
+          assert "sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c" in workflow
           assert 'KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"' in script
           assert "KNOWN_BACKUP_REFERENCED_MB = 3582" in script
           assert "guard_known_backup" in script
@@ -101,6 +104,17 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check psycopg2-binary
+
+      - name: Verify live Postgres image digest before Railway mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='ghcr.io/railwayapp-templates/postgres-ssl:18'
+          expected='sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c'
+          manifest_json="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
+          actual="$(printf '%s' "$manifest_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          test "$actual" = "$expected"
+          echo "POSTGRES_RECOVERY_IMAGE_DIGEST_GUARD=PASS"
 
       - name: Require Railway token
         shell: bash
