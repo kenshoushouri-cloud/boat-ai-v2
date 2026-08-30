@@ -56,6 +56,7 @@ jobs:
           github.event.comment.body == '/railway config' ||
           github.event.comment.body == '/railway help' ||
           github.event.comment.body == '/railway apply-watchpaths CONFIRM' ||
+          github.event.comment.body == '/railway postgres-recovery-stage2 CONFIRM' ||
           startsWith(github.event.comment.body, '/railway vars ') ||
           startsWith(github.event.comment.body, '/railway vars-safe ') ||
           startsWith(github.event.comment.body, '/railway logs ') ||
@@ -111,6 +112,10 @@ jobs:
                 op="apply-watchpaths"
                 confirmed="1"
                 ;;
+              "/railway postgres-recovery-stage2 CONFIRM")
+                op="postgres-recovery-stage2"
+                confirmed="1"
+                ;;
               "/railway vars-safe "*)
                 op="vars-safe"
                 service="${COMMENT_BODY#/railway vars-safe }"
@@ -144,7 +149,7 @@ jobs:
                   ;;
               esac
               ;;
-            status|inventory|config|apply-watchpaths|help)
+            status|inventory|config|apply-watchpaths|postgres-recovery-stage2|help)
               service=""
               ;;
             *)
@@ -181,6 +186,50 @@ jobs:
             echo "RAILWAY_TOKEN is not configured."
             exit 1
           fi
+
+      - name: Set up Python for Postgres recovery Stage 2
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Execute guarded Postgres recovery Stage 2
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' }}
+        shell: bash
+        env:
+          CONFIRMED: ${{ steps.op.outputs.confirmed }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRMED" != "1" ]; then
+            {
+              echo "## Railway Postgres recovery Stage 2"
+              echo
+              echo "STAGE2_BLOCK_CONFIRMATION_REQUIRED"
+              echo
+              echo "No Railway mutation was executed."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          python -m pip install --disable-pip-version-check psycopg2-binary
+          set +e
+          python -u .github/scripts/postgres_recovery_stage2.py
+          rc=$?
+          set -e
+
+          if [ -f stage2-result.md ]; then
+            cp stage2-result.md railway-result-summary.md
+          else
+            {
+              echo "## Railway Postgres recovery Stage 2"
+              echo
+              echo "STAGE2_BLOCK_MANUAL_REVIEW_REQUIRED"
+              echo
+              echo "No sanitized Stage 2 result file was produced."
+            } > railway-result-summary.md
+          fi
+          rm -f stage2-result.md
+          exit "$rc"
 
       - name: Railway status snapshot
         id: railway_status
