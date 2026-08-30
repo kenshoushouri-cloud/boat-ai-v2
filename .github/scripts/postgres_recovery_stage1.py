@@ -44,6 +44,7 @@ TARGET_VOLUME = "postgres-volume"
 
 EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"
 EXPECTED_DIGEST = "sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c"
+PINNED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl@" + EXPECTED_DIGEST
 EXPECTED_MOUNT = "/var/lib/postgresql/data"
 EXPECTED_PGDATA = "/var/lib/postgresql/data/pgdata"
 EXPECTED_REGION = "us-west2"
@@ -537,7 +538,7 @@ def configure_staging_service(
     }
     """
     input_payload = {
-        "source": {"image": EXPECTED_IMAGE},
+        "source": {"image": PINNED_IMAGE},
         "numReplicas": 1,
         "multiRegionConfig": {
             EXPECTED_REGION: {"numReplicas": 1},
