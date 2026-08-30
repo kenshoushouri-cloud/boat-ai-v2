@@ -43,6 +43,10 @@ env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_BRIDGE_ISSUE: "42"
 
+concurrency:
+  group: railway-bridge-production
+  cancel-in-progress: false
+
 jobs:
   railway-bridge:
     if: >-
@@ -57,6 +61,7 @@ jobs:
           github.event.comment.body == '/railway help' ||
           github.event.comment.body == '/railway apply-watchpaths CONFIRM' ||
           github.event.comment.body == '/railway postgres-recovery-stage2 CONFIRM' ||
+          github.event.comment.body == '/railway postgres-recovery-stage2-rebind CONFIRM' ||
           startsWith(github.event.comment.body, '/railway vars ') ||
           startsWith(github.event.comment.body, '/railway vars-safe ') ||
           startsWith(github.event.comment.body, '/railway logs ') ||
@@ -116,6 +121,10 @@ jobs:
                 op="postgres-recovery-stage2"
                 confirmed="1"
                 ;;
+              "/railway postgres-recovery-stage2-rebind CONFIRM")
+                op="postgres-recovery-stage2-rebind"
+                confirmed="1"
+                ;;
               "/railway vars-safe "*)
                 op="vars-safe"
                 service="${COMMENT_BODY#/railway vars-safe }"
@@ -149,7 +158,7 @@ jobs:
                   ;;
               esac
               ;;
-            status|inventory|config|apply-watchpaths|postgres-recovery-stage2|help)
+            status|inventory|config|apply-watchpaths|postgres-recovery-stage2|postgres-recovery-stage2-rebind|help)
               service=""
               ;;
             *)
@@ -188,7 +197,7 @@ jobs:
           fi
 
       - name: Set up Python for Postgres recovery Stage 2
-        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' }}
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2' || steps.op.outputs.operation == 'postgres-recovery-stage2-rebind' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -229,6 +238,151 @@ jobs:
             } > railway-result-summary.md
           fi
           rm -f stage2-result.md
+          exit "$rc"
+
+      - name: Execute guarded Postgres Stage 2 consumer rebind
+        if: ${{ steps.op.outputs.operation == 'postgres-recovery-stage2-rebind' }}
+        shell: bash
+        env:
+          CONFIRMED: ${{ steps.op.outputs.confirmed }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CONFIRMED" != "1" ]; then
+            {
+              echo "## Railway Postgres Stage 2 consumer reference rebind"
+              echo
+              echo "STAGE2_CONSUMER_REBIND_CONFIRMATION_REQUIRED"
+              echo
+              echo "No Railway mutation was executed."
+            } > railway-result-summary.md
+            exit 1
+          fi
+
+          # Immediate read-only guard: both the real DB and compatibility namespace
+          # must currently expose a rendered DATABASE_URL before any consumer write.
+          : > stage2-db-preflight.tsv
+          for service in postgres-recovery postgres; do
+            file="stage2-preflight-${service}.json"
+            if ! railway variable list --service "$service" --environment production --json > "$file" 2>/dev/null; then
+              printf '%s\tquery_failed\n' "$service" >> stage2-db-preflight.tsv
+              continue
+            fi
+            SERVICE="$service" FILE="$file" python - <<'PY' >> stage2-db-preflight.tsv
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path(os.environ["FILE"]).read_text(encoding="utf-8"))
+          value=data.get("DATABASE_URL") if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get("name")=="DATABASE_URL" or item.get("key")=="DATABASE_URL"):
+                      value=item.get("value")
+                      break
+          text="" if value is None else str(value).strip()
+          state="resolved_url" if text.startswith(("postgresql://","postgres://")) else ("empty" if not text else "not_resolved")
+          print(f"{os.environ['SERVICE']}\t{state}")
+          PY
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          rows=[line.split("\t") for line in Path("stage2-db-preflight.tsv").read_text(encoding="utf-8").splitlines()]
+          states={row[0]:row[1] for row in rows if len(row)==2}
+          required=("postgres-recovery","postgres")
+          bad=[name for name in required if states.get(name)!="resolved_url"]
+          if bad:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres Stage 2 consumer reference rebind\n\n"
+                  "**STAGE2_CONSUMER_REBIND_BLOCK_PRECHECK**\n\n"
+                  "The real DB or compatibility namespace is not currently resolved. "
+                  "No consumer Variable was changed.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(1)
+          PY
+
+          python -m pip install --disable-pip-version-check psycopg2-binary
+          set +e
+          python -u .github/scripts/postgres_recovery_stage2_rebind_consumers.py
+          rc=$?
+          set -e
+
+          if [ -f stage2-rebind-result.md ]; then
+            cp stage2-rebind-result.md railway-result-summary.md
+          else
+            {
+              echo "## Railway Postgres Stage 2 consumer reference rebind"
+              echo
+              echo "STAGE2_CONSUMER_REBIND_BLOCK_REVIEW_REQUIRED"
+              echo
+              echo "No sanitized rebind result file was produced."
+            } > railway-result-summary.md
+          fi
+
+          if [ "$rc" -eq 0 ]; then
+            services=(
+              backtest-analysis
+              cron-daily-report
+              cron-data-prepare
+              cron-final-check
+              cron-learning-all
+              cron-monthly-report
+              cron-nightly-results
+              cron-racer-course-stats
+              cron-window-day
+              cron-window-morning
+              cron-window-night
+              historical-backfill
+              test-beforeinfo-extra
+            )
+            : > stage2-rebind-verify.tsv
+            for service in "${services[@]}"; do
+              file="stage2-verify-${service}.json"
+              if ! railway variable list --service "$service" --environment production --json > "$file" 2>/dev/null; then
+                printf '%s\tquery_failed\n' "$service" >> stage2-rebind-verify.tsv
+                continue
+              fi
+              SERVICE="$service" FILE="$file" python - <<'PY' >> stage2-rebind-verify.tsv
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path(os.environ["FILE"]).read_text(encoding="utf-8"))
+          value=data.get("DATABASE_URL") if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get("name")=="DATABASE_URL" or item.get("key")=="DATABASE_URL"):
+                      value=item.get("value")
+                      break
+          text="" if value is None else str(value).strip()
+          state="resolved_url" if text.startswith(("postgresql://","postgres://")) else ("empty" if not text else "not_resolved")
+          print(f"{os.environ['SERVICE']}\t{state}")
+          PY
+            done
+
+            python - <<'PY'
+          from pathlib import Path
+          rows=[]
+          for line in Path("stage2-rebind-verify.tsv").read_text(encoding="utf-8").splitlines():
+              parts=line.split("\t")
+              if len(parts)==2:
+                  rows.append(parts)
+          bad=[name for name,state in rows if state!="resolved_url"]
+          with Path("railway-result-summary.md").open("a",encoding="utf-8") as fh:
+              fh.write("\n### Immediate post-rebind resolution check\n\n")
+              fh.write("| Service | DATABASE_URL state |\n|---|---|\n")
+              for name,state in rows:
+                  fh.write(f"| {name} | {state} |\n")
+              fh.write("\n")
+              fh.write(f"Resolved consumers: **{sum(state=='resolved_url' for _,state in rows)}/13**\n")
+              if not bad and len(rows)==13:
+                  fh.write("\n**STAGE2_CONSUMER_REBIND_VERIFIED_PASS**\n")
+              else:
+                  fh.write("\n**STAGE2_CONSUMER_REBIND_VERIFY_BLOCK**\n")
+          if bad or len(rows)!=13:
+              raise SystemExit(1)
+          PY
+          fi
+
+          rm -f stage2-rebind-result.md stage2-db-preflight.tsv stage2-rebind-verify.tsv stage2-preflight-*.json stage2-verify-*.json
           exit "$rc"
 
       - name: Railway status snapshot
