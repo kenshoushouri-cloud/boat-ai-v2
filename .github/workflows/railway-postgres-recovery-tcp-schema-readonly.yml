@@ -1,0 +1,287 @@
+name: Railway Postgres recovery TCP schema read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-recovery-tcp-schema'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Introspect TCP proxy recovery schema read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          endpoint = "https://backboard.railway.com/graphql/v2"
+          token = os.environ["RAILWAY_TOKEN"]
+
+          query = r"""
+          query RecoveryTcpSchema {
+            __schema {
+              mutationType {
+                fields(includeDeprecated: true) {
+                  name
+                  args {
+                    name
+                    type {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              types {
+                kind
+                name
+                fields(includeDeprecated: true) {
+                  name
+                  args {
+                    name
+                    type {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
+                  }
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+                inputFields {
+                  name
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+                enumValues(includeDeprecated: true) {
+                  name
+                }
+              }
+            }
+          }
+          """
+
+          req = urllib.request.Request(
+              endpoint,
+              data=json.dumps({"query": query}).encode("utf-8"),
+              method="POST",
+              headers={
+                  "Project-Access-Token": token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "boat-ai-v2-readonly-postgres-recovery-tcp-schema",
+              },
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.loads(resp.read().decode("utf-8"))
+          except Exception:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres recovery TCP schema read-only\n\n"
+                  "Schema request failed. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          if payload.get("errors"):
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres recovery TCP schema read-only\n\n"
+                  "Schema request returned an error. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          schema = (payload.get("data") or {}).get("__schema") or {}
+          mutations = ((schema.get("mutationType") or {}).get("fields") or [])
+          types = schema.get("types") or []
+
+          def sig(t):
+              if not isinstance(t, dict):
+                  return "?"
+              kind = t.get("kind")
+              name = t.get("name")
+              of1 = t.get("ofType")
+              if kind == "NON_NULL":
+                  return sig(of1) + "!"
+              if kind == "LIST":
+                  return "[" + sig(of1) + "]"
+              if name:
+                  return str(name)
+              return sig(of1) if of1 else "?"
+
+          wanted_mut = re.compile(r"(tcp|proxy|domain)", re.I)
+          wanted_type = re.compile(r"(tcp|proxy|domain)", re.I)
+
+          lines = [
+              "## Railway Postgres recovery TCP schema read-only",
+              "",
+              "Schema introspection only. No Railway mutation was executed.",
+              "No setting, Variable, service, volume, backup, deployment, database, domain, or proxy was modified.",
+              "",
+              "### Candidate mutation signatures",
+              "",
+              "| Mutation | Args | Return |",
+              "|---|---|---|",
+          ]
+
+          selected_mutations = []
+          for field in sorted(mutations, key=lambda x: x.get("name") or ""):
+              name = field.get("name") or ""
+              if not wanted_mut.search(name):
+                  continue
+              args = ", ".join(
+                  f"{a.get('name')}: {sig(a.get('type'))}"
+                  for a in (field.get("args") or [])
+              ) or "-"
+              lines.append(
+                  f"| `{name}` | `{args.replace('|','\\|')}` | `{sig(field.get('type'))}` |"
+              )
+              selected_mutations.append(name)
+
+          if not selected_mutations:
+              lines.append("| (none) | - | - |")
+
+          selected_types = [
+              t for t in types
+              if isinstance(t, dict) and wanted_type.search(t.get("name") or "")
+          ]
+
+          lines += ["", "### Matching schema types", ""]
+          for item in sorted(selected_types, key=lambda x: x.get("name") or ""):
+              name = item.get("name") or "?"
+              kind = item.get("kind") or "?"
+              lines.append(f"#### `{name}` ({kind})")
+              fields = item.get("fields") or []
+              if fields:
+                  lines += ["", "| Field | Args | Type |", "|---|---|---|"]
+                  for field in sorted(fields, key=lambda x: x.get("name") or ""):
+                      args = ", ".join(
+                          f"{a.get('name')}: {sig(a.get('type'))}"
+                          for a in (field.get("args") or [])
+                      ) or "-"
+                      lines.append(
+                          f"| `{field.get('name') or '?'}` | `{args.replace('|','\\|')}` | `{sig(field.get('type'))}` |"
+                      )
+              input_fields = item.get("inputFields") or []
+              if input_fields:
+                  lines.append("")
+                  lines.append("Input fields:")
+                  for field in sorted(input_fields, key=lambda x: x.get("name") or ""):
+                      lines.append(f"- `{field.get('name')}: {sig(field.get('type'))}`")
+              enums = item.get("enumValues") or []
+              if enums:
+                  lines.append("")
+                  lines.append("Enum values: " + ", ".join(v.get("name") or "?" for v in enums))
+              if not fields and not input_fields and not enums:
+                  lines.append("")
+                  lines.append("(no exposed fields)")
+              lines.append("")
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
