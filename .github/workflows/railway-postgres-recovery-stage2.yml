@@ -1,0 +1,238 @@
+name: Railway Postgres recovery Stage 2
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/railway-postgres-recovery-stage2.yml'
+      - '.github/scripts/postgres_recovery_stage2.py'
+      - '.github/scripts/postgres_recovery_stage1.py'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate Stage 2 safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/postgres_recovery_stage2.py
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/railway-postgres-recovery-stage2.yml').read_text(encoding='utf-8')
+          script = Path('.github/scripts/postgres_recovery_stage2.py').read_text(encoding='utf-8')
+
+          exact = "/railway postgres-recovery-stage2 CONFIRM"
+          assert exact in workflow
+          assert "github.actor == github.repository_owner" in workflow
+          assert "github.event.issue.number == 42" in workflow
+          trigger = workflow.split("permissions:", 1)[0]
+          assert "schedule:" not in trigger
+          assert "workflow_dispatch:" not in trigger
+
+          assert 'STAGING_SERVICE = "postgres-recovery"' in script
+          assert 'TARGET_SERVICE = "postgres"' in script
+          assert "serviceUpdate" in script
+          assert '{"name": TARGET_SERVICE}' in script
+          assert "tcpProxyCreate" in script
+          assert '"name": "DATABASE_PUBLIC_URL"' in script
+          assert '"skipDeploys": True' in script
+          assert "run_db_integrity_audit" in script
+
+          # Stage 2 must keep the volume where it is and never perform destructive recovery.
+          for forbidden in (
+              "volumeInstanceUpdate",
+              "volumeDelete",
+              "serviceDelete",
+              "volumeInstanceBackupCreate",
+              "volumeInstanceBackupRestore",
+              "volumeInstancePITRRestore",
+              "serviceInstanceRedeploy",
+          ):
+              assert forbidden not in script
+
+          # No Production consumer variable edits. The only upsert is DATABASE_PUBLIC_URL
+          # on the recovered Postgres service itself.
+          assert script.count("variableUpsert") == 2  # GraphQL field + result check
+          assert "DATABASE_URL" not in script.split("def restore_public_url",1)[1].split("def rename_service",1)[0].replace("DATABASE_PUBLIC_URL","")
+
+          main = script.split("def main() -> int:", 1)[1]
+          assert main.index("run_db_integrity_audit") < main.index("rename_service(")
+          assert "delete_tcp_proxy(proxy_id)" in main
+          assert "if proxy_id and not renamed" in main
+          print("POSTGRES_RECOVERY_STAGE2_VALIDATE=PASS")
+          PY
+
+  promote:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway postgres-recovery-stage2 CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check psycopg2-binary
+          npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Execute guarded Stage 2 promotion
+        id: promotion
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/postgres_recovery_stage2.py
+
+      - name: Verify promoted Postgres and consumer references read-only
+        id: refs
+        if: steps.promotion.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          services=(
+            postgres
+            cron-daily-report
+            cron-data-prepare
+            cron-final-check
+            cron-learning-all
+            cron-nightly-results
+            cron-racer-course-stats
+            cron-window-day
+            cron-window-morning
+            cron-window-night
+          )
+
+          : > stage2-reference-states.tsv
+          for service in "${services[@]}"; do
+            file="stage2-vars-${service}.json"
+            if ! railway variable list --service "$service" --environment production --json > "$file" 2>/dev/null; then
+              printf '%s\tquery_failed\tquery_failed\n' "$service" >> stage2-reference-states.tsv
+              continue
+            fi
+
+            SERVICE="$service" FILE="$file" python - <<'PY' >> stage2-reference-states.tsv
+          import json, os
+          from pathlib import Path
+
+          service = os.environ["SERVICE"]
+          data = json.loads(Path(os.environ["FILE"]).read_text(encoding="utf-8"))
+
+          def get(name):
+              if isinstance(data, dict):
+                  return data.get(name)
+              if isinstance(data, list):
+                  for item in data:
+                      if isinstance(item, dict) and (item.get("name") == name or item.get("key") == name):
+                          return item.get("value")
+              return None
+
+          def state(value):
+              text = "" if value is None else str(value).strip()
+              if value is None:
+                  return "missing"
+              if not text:
+                  return "empty"
+              if text.startswith("postgresql://") or text.startswith("postgres://"):
+                  return "resolved_url"
+              if text.startswith("$" + "{{") and text.endswith("}}"):
+                  return "reference_expression"
+              return "other_nonempty"
+
+          db = state(get("DATABASE_URL"))
+          public = state(get("DATABASE_PUBLIC_URL")) if service == "postgres" else "-"
+          print(f"{service}\t{db}\t{public}")
+          PY
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+
+          rows = []
+          for line in Path("stage2-reference-states.tsv").read_text(encoding="utf-8").splitlines():
+              parts = line.split("\t")
+              if len(parts) == 3:
+                  rows.append(parts)
+
+          failed = []
+          for service, db_state, public_state in rows:
+              if db_state != "resolved_url":
+                  failed.append(f"{service}:DATABASE_URL={db_state}")
+              if service == "postgres" and public_state != "resolved_url":
+                  failed.append(f"postgres:DATABASE_PUBLIC_URL={public_state}")
+
+          with Path("stage2-result.md").open("a", encoding="utf-8") as fh:
+              fh.write("\n\n### Post-promotion Railway reference verification\n\n")
+              fh.write("| Service | DATABASE_URL | DATABASE_PUBLIC_URL |\n")
+              fh.write("|---|---|---|\n")
+              for service, db_state, public_state in rows:
+                  fh.write(f"| {service} | {db_state} | {public_state} |\n")
+              fh.write("\n")
+              fh.write("Consumer reference verification: **" + ("PASS" if not failed else "BLOCK") + "**\n")
+
+          if failed:
+              raise SystemExit("Reference verification failed: " + ",".join(failed))
+          PY
+
+      - name: Post sanitized Stage 2 result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f stage2-result.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file stage2-result.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "## Railway Postgres recovery Stage 2
+
+STAGE2_BLOCK_MANUAL_REVIEW_REQUIRED
+
+No sanitized result file was produced."
+          fi
+
+      - name: Remove raw variable files
+        if: always()
+        run: rm -f stage2-vars-*.json stage2-reference-states.tsv
+
+      - name: Fail workflow when promotion or reference verification failed
+        if: steps.promotion.outcome != 'success' || steps.refs.outcome != 'success'
+        shell: bash
+        run: exit 1
