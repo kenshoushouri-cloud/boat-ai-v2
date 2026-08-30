@@ -52,21 +52,36 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           set -euo pipefail
-          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
-          python - <<'PY'
+          selected=""
+          for candidate in postgres postgres-recovery; do
+            if ! railway variable list --service "$candidate" --environment production --json > railway-vars.json 2>/dev/null; then
+              continue
+            fi
+            if CANDIDATE="$candidate" python - <<'PY'
           import json, os
           from pathlib import Path
+
           data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
           value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
           if isinstance(data,list):
               for item in data:
                   if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
-                      value=item.get('value'); break
-          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit(1)
           print(f'::add-mask::{value}')
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
               fh.write(f'DATABASE_URL={value}\n')
+              fh.write(f'DB_SERVICE_NAME={os.environ["CANDIDATE"]}\n')
           PY
+            then
+              selected="$candidate"
+              break
+            fi
+          done
+          test -n "$selected"
+          echo "TODAY_HEALTH_DB_SERVICE=$selected"
 
       - name: Run today operational health audit
         if: github.event_name != 'pull_request'
