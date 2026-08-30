@@ -1,0 +1,246 @@
+name: Railway Postgres recovery metadata read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-recovery-metadata'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Collect read-only Railway metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          status_rc=0
+          railway status --json > railway-status.json 2>/dev/null || status_rc=$?
+
+          volume_rc=0
+          railway volume list --json > railway-volumes.json 2>/dev/null || volume_rc=$?
+
+          export STATUS_RC="$status_rc"
+          export VOLUME_RC="$volume_rc"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          TARGET_VOLUME = "postgres-volume"
+          TARGET_SERVICE = "postgres"
+
+          def load(path):
+              p = Path(path)
+              if not p.exists():
+                  return None
+              try:
+                  return json.loads(p.read_text(encoding="utf-8"))
+              except Exception:
+                  return None
+
+          status = load("railway-status.json")
+          volumes = load("railway-volumes.json")
+
+          def walk(obj):
+              if isinstance(obj, dict):
+                  yield obj
+                  for value in obj.values():
+                      yield from walk(value)
+              elif isinstance(obj, list):
+                  for value in obj:
+                      yield from walk(value)
+
+          def object_mentions(obj, needle):
+              if not isinstance(obj, dict):
+                  return False
+              for key in ("name", "volumeName", "serviceName", "databaseName", "displayName"):
+                  value = obj.get(key)
+                  if isinstance(value, str) and value == needle:
+                      return True
+              return False
+
+          def first_string(obj, keys, prefix=None):
+              if not isinstance(obj, dict):
+                  return None
+              for key in keys:
+                  value = obj.get(key)
+                  if isinstance(value, str):
+                      text = value.strip()
+                      if text and (prefix is None or text.startswith(prefix)):
+                          return text
+                  if isinstance(value, dict):
+                      for subkey in ("name", "region", "value"):
+                          sub = value.get(subkey)
+                          if isinstance(sub, str) and sub.strip():
+                              text = sub.strip()
+                              if prefix is None or text.startswith(prefix):
+                                  return text
+              return None
+
+          def any_nonempty(obj, keys):
+              if not isinstance(obj, dict):
+                  return False
+              for key in keys:
+                  value = obj.get(key)
+                  if value not in (None, "", [], {}):
+                      return True
+              return False
+
+          volume_matches = []
+          for source_name, source in (("status", status), ("volume_list", volumes)):
+              if source is None:
+                  continue
+              for obj in walk(source):
+                  if object_mentions(obj, TARGET_VOLUME):
+                      volume_matches.append((source_name, obj))
+
+          mount_path = None
+          region = None
+          state = None
+          image = None
+          attached = None
+          attached_service_name = None
+
+          for _, obj in volume_matches:
+              mount_path = mount_path or first_string(
+                  obj,
+                  ("mountPath", "mount_path", "targetMountPath", "volumeMountPath"),
+                  prefix="/",
+              )
+              region = region or first_string(
+                  obj,
+                  ("region", "regionName", "deploymentRegion"),
+              )
+              state = state or first_string(
+                  obj,
+                  ("state", "status", "mountState", "attachmentState"),
+              )
+              image = image or first_string(
+                  obj,
+                  ("image", "imageName", "dockerImage", "sourceImage"),
+              )
+              attached_service_name = attached_service_name or first_string(
+                  obj,
+                  ("serviceName", "attachedServiceName"),
+              )
+              if attached is None:
+                  if any_nonempty(obj, ("serviceId", "serviceInstanceId", "attachedServiceId", "deploymentId")):
+                      attached = True
+
+          # Explicitly detect the current named service without printing IDs.
+          postgres_service_present = False
+          if status is not None:
+              for obj in walk(status):
+                  if object_mentions(obj, TARGET_SERVICE):
+                      # Avoid counting plain variable/value objects; require service/resource-like hints.
+                      keys = set(obj.keys()) if isinstance(obj, dict) else set()
+                      if keys & {
+                          "serviceId", "serviceInstances", "latestDeployment", "deployments",
+                          "source", "serviceName", "cronSchedule", "replicas"
+                      }:
+                          postgres_service_present = True
+                          break
+
+          # If the volume is visible but no attached service evidence exists, classify conservatively.
+          if attached is None and volume_matches:
+              attached = False if not postgres_service_present else None
+
+          lines = [
+              "## Railway Postgres recovery metadata read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, database, or file was modified.",
+              "No IDs, URLs, credentials, or secret values are published.",
+              "",
+              f"railway status --json: {'OK' if os.environ.get('STATUS_RC') == '0' else 'FAILED'}",
+              f"railway volume list --json: {'OK' if os.environ.get('VOLUME_RC') == '0' else 'FAILED'}",
+              "",
+              f"Current named service \`postgres\` present: {'YES' if postgres_service_present else 'NO'}",
+              f"Volume \`postgres-volume\` visible in read-only metadata: {'YES' if volume_matches else 'NO'}",
+          ]
+
+          if volume_matches:
+              lines += [
+                  f"Volume metadata sources: {', '.join(sorted(set(src for src, _ in volume_matches)))}",
+                  f"Attached to a service: {'YES' if attached is True else 'NO' if attached is False else 'UNKNOWN'}",
+              ]
+              if attached_service_name and attached_service_name != TARGET_VOLUME:
+                  lines.append(f"Attached service name: {attached_service_name}")
+              if mount_path:
+                  lines.append(f"Mount path: \`{mount_path}\`")
+              if region:
+                  lines.append(f"Region: {region}")
+              if state:
+                  lines.append(f"State/status: {state}")
+              if image:
+                  lines.append(f"Image metadata: \`{image}\`")
+
+          if not image:
+              lines += [
+                  "",
+                  "Postgres image/version metadata was not exposed by these read-only CLI payloads.",
+              ]
+
+          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Remove raw metadata
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-status.json railway-volumes.json
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
