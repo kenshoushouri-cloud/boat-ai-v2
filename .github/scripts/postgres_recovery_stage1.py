@@ -6,7 +6,7 @@ This script is intentionally mutating and MUST only be invoked by the owner-only
 exact-confirmation GitHub Actions workflow. It performs a guarded, isolated recovery:
 
 1. Re-run recovery preflight guards.
-2. Create a fresh protective backup if needed.
+2. Re-verify the preserved Pre-Security-Patch Backup immediately before volume mutation.
 3. Create an isolated service named postgres-recovery without reconnecting Production.
 4. Attach the preserved postgres-volume.
 5. Configure the exact original PostgreSQL 18 image/runtime settings.
@@ -15,6 +15,11 @@ exact-confirmation GitHub Actions workflow. It performs a guarded, isolated reco
 8. Run read-only DB integrity checks.
 9. Remove the temporary TCP proxy.
 10. Leave postgres-recovery isolated for manual promotion review.
+
+No new manual volume backup is created in Stage 1. The preserved volume currently
+exceeds Railway's documented 50%-of-capacity manual-backup threshold, so Stage 1
+relies on the already-existing independently guarded backup instead of issuing a
+backup mutation that is expected to be rejected.
 
 It never renames the service to postgres and never edits Production consumer Variables.
 """
@@ -45,7 +50,6 @@ EXPECTED_REGION = "us-west2"
 EXPECTED_SIZE_MB = 5000
 KNOWN_BACKUP_NAME = "Pre-Security-Patch Backup"
 KNOWN_BACKUP_REFERENCED_MB = 3582
-PROTECTIVE_BACKUP_NAME = "Pre-Recovery-Stage1 Backup"
 
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -309,34 +313,6 @@ def guard_known_backup(volume_instance_id: str) -> dict[str, Any]:
     if failed:
         raise RecoveryError("Known backup guard failed: " + ",".join(failed))
     return known
-
-
-def ensure_protective_backup(volume_instance_id: str) -> dict[str, Any]:
-    backups = list_backups(volume_instance_id)
-    existing = next(
-        (row for row in backups if row.get("name") == PROTECTIVE_BACKUP_NAME),
-        None,
-    )
-    if existing:
-        return existing
-
-    mutation = """
-    mutation CreateRecoveryBackup($id:String!, $name:String!) {
-      volumeInstanceBackupCreate(volumeInstanceId:$id, name:$name)
-    }
-    """
-    gql(mutation, {"id": volume_instance_id, "name": PROTECTIVE_BACKUP_NAME})
-
-    for _ in range(24):
-        time.sleep(5)
-        backups = list_backups(volume_instance_id)
-        existing = next(
-            (row for row in backups if row.get("name") == PROTECTIVE_BACKUP_NAME),
-            None,
-        )
-        if existing:
-            return existing
-    raise RecoveryError("Protective backup creation did not become visible")
 
 
 def resolve_deleted_deployment_and_snapshot(
@@ -809,18 +785,6 @@ def main() -> int:
             f"- {KNOWN_BACKUP_NAME}: PRESENT / VALID",
             f"- Referenced MB: {known_backup_ref}",
             f"- Expires: {known_backup_expiry}",
-            "",
-        ]
-
-        backup = ensure_protective_backup(str(context["volume_instance_id"]))
-        backup_expiry = safe_detail(backup.get("expiresAt") or "-")
-        backup_ref = safe_detail(backup.get("referencedMB") or "-")
-        lines += [
-            "### Protective backup",
-            "",
-            f"- {PROTECTIVE_BACKUP_NAME}: PRESENT",
-            f"- Referenced MB: {backup_ref}",
-            f"- Expires: {backup_expiry}",
             "",
         ]
 
