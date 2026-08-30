@@ -1565,3 +1565,56 @@ Current decision:
 
 承認後のStage 1目的は、isolated `postgres-recovery` にpreserved volumeをexact PostgreSQL 18 configで接続し、temporary TCP proxy経由でread-only DB integrity auditまで行うこと。
 Stage 2（`postgres`へのpromotion / Production reconnect）は必ず別承認とする。
+
+
+---
+
+<!-- POSTGRES_RECOVERY_DIGEST_DRIFT_20260831 -->
+## 2026-08-31 — Stage 1 image digest drift検出 / deleted digest固定へhardening
+
+### 新たに判明した重要事項
+PR #277の追加安全監査で、元PostgresのDocker image tagがmutableであることを実測確認した。
+
+deleted deployment:
+- image tag: `ghcr.io/railwayapp-templates/postgres-ssl:18`
+- exact digest: `sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c`
+
+2026-08-31 read-only GHCR check:
+- current `:18` digest: `sha256:8dbbfcb7fafacc22c01dc0c425c38793b5d0449163a3d178d3e3767d43e6f3ee`
+- deleted-deployment digestと不一致
+- deleted digest自体はGHCR上に残存し、digest指定でread-only inspect成功
+
+### Decision
+**Recoveryでmutableな `:18` tagを直接使用しない。**
+
+PR #277 Stage 1は以下へhardening済み:
+- Railway sourceを
+  `ghcr.io/railwayapp-templates/postgres-ssl@sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c`
+  に固定
+- PR validationでdeleted digestのGHCR存在をread-only確認
+- Stage 1 execution直前にも同じpinned digestを再確認
+- staging deployment SUCCESS後、deployment metadataに同じdigestが存在しない場合はDB auditへ進まずBLOCK
+- existing backup二重guard / no manual backup / no DATABASE_PUBLIC_URL / no explicit redeployは維持
+
+PR #277 latest reviewed head:
+- `1debf573f83d54c6455deeb3e7b685ae38ccf164`
+
+CI:
+- Railway Postgres recovery Stage 1: SUCCESS
+- Critical Python syntax: SUCCESS
+- V21 parser sanity: SUCCESS
+- Production shadow isolation: SUCCESS
+- Critical mojibake guard: SUCCESS
+- recover job: SKIPPED
+
+### 現在の安全状態
+- PR #277: Draft / unmerged
+- Railway recovery mutation: none
+- `postgres-recovery` service: not created
+- preserved volume attach: not executed
+- Production reconnect: not executed
+- PR #169: Draft hold
+
+**Current decision: STAGE1_DRAFT_HARDENED_AWAIT_EXPLICIT_MANUAL_APPROVAL**
+
+Stage 1のmerge/実行は、別途ユーザーの明示承認があるまで行わない。
