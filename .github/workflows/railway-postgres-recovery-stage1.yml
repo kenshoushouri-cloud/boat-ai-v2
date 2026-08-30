@@ -90,6 +90,8 @@ jobs:
           expected='sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c'
           manifest_json="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
           actual="$(printf '%s' "$manifest_json" | python -c 'import json,sys; print(json.load(sys.stdin)["digest"])')"
+          echo "Resolved live digest: $actual"
+          echo "Expected deleted-deployment digest: $expected"
           test "$actual" = "$expected"
           echo "POSTGRES_RECOVERY_IMAGE_DIGEST_READONLY=PASS"
 
