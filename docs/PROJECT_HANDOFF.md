@@ -1468,8 +1468,8 @@ Stage 1 codeはDraftのまま、以下をhardeningしてからactivation review�
 2. staging起動前に `DATABASE_PUBLIC_URL` を設定しない。TCP proxy未作成時の `RAILWAY_TCP_PROXY_*` 参照を避ける。
 3. `serviceInstanceUpdate` 直後のunconditional `serviceInstanceRedeploy` を避け、不要な二重restartを防ぐ。
 
-このhardeningはまだmainへ入っていない。
-**PR #277はBLOCK / Draft hold。**
+このhardeningはまだPR #277へ反映していない。
+**PR #277はBLOCK / Draft hold。hardening完了後に再reviewする。**
 
 ### Open PR
 - #169: temporary base-odds refresh — **Draft hold**
