@@ -1365,3 +1365,52 @@ Decision:
 - `MUTABLE_TAG_RECOVERY = FORBIDDEN`
 - `PINNED_DELETED_DIGEST = REQUIRED`
 - `STAGE1 = DRAFT_AWAIT_EXPLICIT_APPROVAL`
+
+
+---
+
+<!-- HISTORY_POSTGRES_RECOVERY_STAGE1_SUCCESS_20260831 -->
+## 2026-08-31 — Preserved Postgres volumeをisolated stagingで起動、DB integrity PASS
+
+ユーザーの明示承認を受け、Stage 1 recoveryを実行。
+
+GitHub:
+- connectorのDraft解除mutation不具合によりPR #277をclose
+- exact same audited headからPR #282を非Draft作成
+- 5 CI SUCCESS後にmerge
+- main merge commit: `b503b32a2c129dd0e8a6b47c954c906fa85689be`
+
+Issue #42:
+- `/railway postgres-recovery-stage1 CONFIRM`
+- Actions run `33336008053`: SUCCESS
+
+実行結果:
+- isolated `postgres-recovery` created
+- preserved `postgres-volume` attached
+- exact deleted PostgreSQL 18 digestでdeployment SUCCESS
+- PostgreSQL 18.6起動
+- temporary TCP proxyでread-only DB audit
+- proxy cleanup SUCCESS
+- Production service `postgres` は作成/renameしていない
+- Production consumer Variablesは変更していない
+
+DB integrity:
+- size 3,471,750,847 bytes
+- v2_races 65,046
+- v2_race_entries 390,276
+- v2_results 64,902
+- v2_odds_trifecta estimate 7,401,959
+- odds table size 1,827,889,152 bytes
+- latest race_date 2026-08-28
+- pg_is_in_recovery=False
+
+Post inventory:
+- services 14
+- postgres-recovery SUCCESS
+- original postgres absent
+- DB-dependent cronはまだCRASHED（Stage 1でProduction referenceを意図的に未接続）
+
+Decision:
+- **STAGE1_PASS_AWAIT_MANUAL_PROMOTION_REVIEW**
+- Stage 2 promotion / Production reconnectは別の明示承認が必要
+- model / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / threshold / PR #169 unchanged
