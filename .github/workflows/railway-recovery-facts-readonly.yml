@@ -24,17 +24,32 @@ jobs:
         github.event.comment.body == '/railway recovery-facts-readonly'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
 
       - name: Require Railway token
         shell: bash
         run: |
           set -euo pipefail
           test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Collect read-only CLI metadata fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway status --json > railway-status.json 2>/dev/null || true
+          railway volume list --json > railway-volumes.json 2>/dev/null || true
 
       - name: Query safe Railway recovery facts read-only
         shell: bash
@@ -44,13 +59,14 @@ jobs:
           import json
           import os
           import urllib.request
-          from datetime import datetime, timezone
           from pathlib import Path
 
           ENDPOINT = "https://backboard.railway.com/graphql/v2"
           TOKEN = os.environ["RAILWAY_TOKEN"]
           TARGET_SERVICE = "postgres"
           TARGET_VOLUME = "postgres-volume"
+          PAGE_SIZE = 100
+          MAX_PAGES = 20
 
           def gql(query, variables=None):
               req = urllib.request.Request(
@@ -63,7 +79,7 @@ jobs:
                   headers={
                       "Project-Access-Token": TOKEN,
                       "Content-Type": "application/json",
-                      "User-Agent": "boat-ai-v2-readonly-recovery-facts",
+                      "User-Agent": "boat-ai-v2-readonly-recovery-facts-v2",
                   },
               )
               try:
@@ -75,6 +91,24 @@ jobs:
                   return payload.get("data"), "graphql_error"
               return payload.get("data"), None
 
+          def load_json(path):
+              p = Path(path)
+              if not p.exists():
+                  return None
+              try:
+                  return json.loads(p.read_text(encoding="utf-8"))
+              except Exception:
+                  return None
+
+          def walk(obj):
+              if isinstance(obj, dict):
+                  yield obj
+                  for value in obj.values():
+                      yield from walk(value)
+              elif isinstance(obj, list):
+                  for value in obj:
+                      yield from walk(value)
+
           def conn_nodes(conn):
               if not isinstance(conn, dict):
                   return []
@@ -84,10 +118,11 @@ jobs:
                       out.append(edge["node"])
               return out
 
-          def iso(v):
-              if not isinstance(v, str) or not v:
-                  return "-"
-              return v
+          def page_state(conn):
+              if not isinstance(conn, dict):
+                  return False, None
+              pi = conn.get("pageInfo") or {}
+              return bool(pi.get("hasNextPage")), pi.get("endCursor")
 
           def safe_scalar(v, default="-"):
               if v is None or v == "":
@@ -109,6 +144,14 @@ jobs:
                   return needle in obj.lower()
               return False
 
+          def mentions_named_object(obj, target):
+              if not isinstance(obj, dict):
+                  return False
+              for key in ("name", "volumeName", "serviceName", "displayName"):
+                  if obj.get(key) == target:
+                      return True
+              return False
+
           token_query = """
           query RecoveryTokenContext {
             projectToken {
@@ -116,61 +159,34 @@ jobs:
               environmentId
               project {
                 workspaceId
-              }
-            }
-          }
-          """
-          token_data, token_err = gql(token_query)
-          token_obj = (token_data or {}).get("projectToken") or {}
-          project_id = token_obj.get("projectId")
-          environment_id = token_obj.get("environmentId")
-          workspace_id = ((token_obj.get("project") or {}).get("workspaceId"))
-
-          if not project_id or not environment_id:
-              Path("railway-result-summary.md").write_text(
-                  "## Railway recovery facts read-only\n\n"
-                  "❌ Could not resolve project/environment context from the project token.\n\n"
-                  "No Railway setting or data was modified. IDs and raw errors were not published.\n",
-                  encoding="utf-8",
-              )
-              raise SystemExit(0)
-
-          project_query = """
-          query RecoveryProjectFacts($projectId: String!) {
-            project(id: $projectId) {
-              services(first: 100) {
-                edges {
-                  node {
-                    name
-                    createdAt
-                    updatedAt
-                    deletedAt
+                services(first: 100) {
+                  edges {
+                    node {
+                      name
+                      createdAt
+                      updatedAt
+                      deletedAt
+                    }
                   }
                 }
-              }
-              volumes(first: 100) {
-                edges {
-                  node {
-                    name
-                    createdAt
-                    volumeInstances(first: 100) {
-                      edges {
-                        node {
-                          id
-                          createdAt
-                          deletedAt
-                          currentSizeMB
-                          sizeMB
-                          mountPath
-                          region
-                          state
-                          isPendingDeletion
-                          serviceId
-                          service {
-                            name
+                volumes(first: 100) {
+                  edges {
+                    node {
+                      name
+                      createdAt
+                      volumeInstances(first: 100) {
+                        edges {
+                          node {
+                            id
                             createdAt
-                            updatedAt
                             deletedAt
+                            currentSizeMB
+                            sizeMB
+                            mountPath
+                            region
+                            state
+                            isPendingDeletion
+                            serviceId
                           }
                         }
                       }
@@ -181,15 +197,28 @@ jobs:
             }
           }
           """
-          project_data, project_err = gql(project_query, {"projectId": project_id})
-          project = (project_data or {}).get("project") or {}
+          token_data, token_err = gql(token_query)
+          token_obj = (token_data or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+          project_obj = token_obj.get("project") or {}
+          workspace_id = project_obj.get("workspaceId")
 
-          services = conn_nodes(project.get("services"))
+          if not project_id or not environment_id:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway recovery facts read-only\n\n"
+                  "❌ Could not resolve project/environment context from the project token.\n\n"
+                  "No Railway setting or data was modified. IDs and raw errors were not published.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          services = conn_nodes(project_obj.get("services"))
           current_postgres = [s for s in services if s.get("name") == TARGET_SERVICE]
 
           volume = None
           volume_instance = None
-          for v in conn_nodes(project.get("volumes")):
+          for v in conn_nodes(project_obj.get("volumes")):
               if v.get("name") == TARGET_VOLUME:
                   volume = v
                   instances = conn_nodes(v.get("volumeInstances"))
@@ -201,10 +230,82 @@ jobs:
                       )[0]
                   break
 
+          cli_status = load_json("railway-status.json")
+          cli_volumes = load_json("railway-volumes.json")
+          cli_volume_visible = False
+          candidate_ids = []
+
+          for source in (cli_status, cli_volumes):
+              if source is None:
+                  continue
+              for obj in walk(source):
+                  if not mentions_named_object(obj, TARGET_VOLUME):
+                      continue
+                  cli_volume_visible = True
+                  for key in (
+                      "volumeInstanceId",
+                      "volume_instance_id",
+                      "instanceId",
+                      "id",
+                  ):
+                      value = obj.get(key)
+                      if isinstance(value, str) and value and value not in candidate_ids:
+                          candidate_ids.append(value)
+                  for nested in walk(obj):
+                      if not isinstance(nested, dict):
+                          continue
+                      for key in (
+                          "volumeInstanceId",
+                          "volume_instance_id",
+                          "instanceId",
+                          "id",
+                      ):
+                          value = nested.get(key)
+                          if isinstance(value, str) and value and value not in candidate_ids:
+                              candidate_ids.append(value)
+
+          volume_probe_query = """
+          query RecoveryVolumeInstance($id: String!) {
+            volumeInstance(id: $id) {
+              id
+              createdAt
+              deletedAt
+              currentSizeMB
+              sizeMB
+              mountPath
+              region
+              state
+              isPendingDeletion
+              serviceId
+              volume {
+                name
+              }
+            }
+          }
+          """
+
+          if volume_instance is None:
+              for candidate in candidate_ids[:20]:
+                  probe_data, probe_err = gql(
+                      volume_probe_query,
+                      {"id": candidate},
+                  )
+                  if probe_err:
+                      continue
+                  probe = (probe_data or {}).get("volumeInstance")
+                  if (
+                      isinstance(probe, dict)
+                      and ((probe.get("volume") or {}).get("name") == TARGET_VOLUME)
+                  ):
+                      volume_instance = probe
+                      volume = {"name": TARGET_VOLUME}
+                      break
+
           backup_data = None
-          backup_err = None
+          backup_err = "not_attempted"
           schedule_data = None
-          schedule_err = None
+          schedule_err = "not_attempted"
+
           if volume_instance and volume_instance.get("id"):
               backup_query = """
               query RecoveryBackups($volumeInstanceId: String!) {
@@ -222,6 +323,7 @@ jobs:
                   backup_query,
                   {"volumeInstanceId": volume_instance["id"]},
               )
+
               schedule_query = """
               query RecoveryBackupSchedules($volumeInstanceId: String!) {
                 volumeInstanceBackupScheduleList(volumeInstanceId: $volumeInstanceId) {
@@ -239,15 +341,24 @@ jobs:
               )
 
           deployments_query = """
-          query RecoveryDeployments($projectId: String!, $environmentId: String!) {
+          query RecoveryDeployments(
+            $projectId: String!,
+            $environmentId: String!,
+            $after: String
+          ) {
             deployments(
               first: 100,
+              after: $after,
               input: {
                 projectId: $projectId,
                 environmentId: $environmentId,
                 includeDeleted: true
               }
             ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
               edges {
                 node {
                   createdAt
@@ -264,14 +375,31 @@ jobs:
             }
           }
           """
-          deployments_data, deployments_err = gql(
-              deployments_query,
-              {
-                  "projectId": project_id,
-                  "environmentId": environment_id,
-              },
-          )
-          deployments = conn_nodes((deployments_data or {}).get("deployments"))
+
+          deployments = []
+          deployments_pages = 0
+          deployments_err = None
+          after = None
+          for _ in range(MAX_PAGES):
+              page_data, page_err = gql(
+                  deployments_query,
+                  {
+                      "projectId": project_id,
+                      "environmentId": environment_id,
+                      "after": after,
+                  },
+              )
+              if page_err:
+                  deployments_err = page_err
+                  break
+              conn = (page_data or {}).get("deployments") or {}
+              deployments.extend(conn_nodes(conn))
+              deployments_pages += 1
+              has_next, end_cursor = page_state(conn)
+              if not has_next or not end_cursor:
+                  break
+              after = end_cursor
+
           postgres_deployments = [
               d for d in deployments
               if ((d.get("service") or {}).get("name") == TARGET_SERVICE)
@@ -282,12 +410,21 @@ jobs:
           )
 
           events_query = """
-          query RecoveryEvents($projectId: String!, $environmentId: String!) {
+          query RecoveryEvents(
+            $projectId: String!,
+            $environmentId: String!,
+            $after: String
+          ) {
             events(
               first: 100,
+              after: $after,
               projectId: $projectId,
               environmentId: $environmentId
             ) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
               edges {
                 node {
                   createdAt
@@ -301,14 +438,31 @@ jobs:
             }
           }
           """
-          events_data, events_err = gql(
-              events_query,
-              {
-                  "projectId": project_id,
-                  "environmentId": environment_id,
-              },
-          )
-          events = conn_nodes((events_data or {}).get("events"))
+
+          events = []
+          events_pages = 0
+          events_err = None
+          after = None
+          for _ in range(MAX_PAGES):
+              page_data, page_err = gql(
+                  events_query,
+                  {
+                      "projectId": project_id,
+                      "environmentId": environment_id,
+                      "after": after,
+                  },
+              )
+              if page_err:
+                  events_err = page_err
+                  break
+              conn = (page_data or {}).get("events") or {}
+              events.extend(conn_nodes(conn))
+              events_pages += 1
+              has_next, end_cursor = page_state(conn)
+              if not has_next or not end_cursor:
+                  break
+              after = end_cursor
+
           candidate_events = []
           for e in events:
               action = str(e.get("action") or "")
@@ -339,16 +493,19 @@ jobs:
           )
 
           audit_rows = []
+          audit_pages = 0
           audit_err = "not_attempted"
           if workspace_id:
               audit_query = """
               query RecoveryAudit(
                 $workspaceId: String!,
                 $projectId: String!,
-                $environmentId: String!
+                $environmentId: String!,
+                $after: String
               ) {
                 auditLogs(
                   first: 100,
+                  after: $after,
                   workspaceId: $workspaceId,
                   filter: {
                     projectId: $projectId,
@@ -357,6 +514,10 @@ jobs:
                     endDate: "2026-08-31T00:00:00Z"
                   }
                 ) {
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
                   edges {
                     node {
                       createdAt
@@ -368,54 +529,68 @@ jobs:
                 }
               }
               """
-              audit_data, audit_err = gql(
-                  audit_query,
-                  {
-                      "workspaceId": workspace_id,
-                      "projectId": project_id,
-                      "environmentId": environment_id,
-                  },
-              )
-              for a in conn_nodes((audit_data or {}).get("auditLogs")):
-                  event_type = str(a.get("eventType") or "")
-                  payload = a.get("payload")
-                  context = a.get("context")
-                  target_match = (
-                      recursive_contains(payload, TARGET_SERVICE)
-                      or recursive_contains(payload, TARGET_VOLUME)
-                      or recursive_contains(context, TARGET_SERVICE)
-                      or recursive_contains(context, TARGET_VOLUME)
+              audit_err = None
+              after = None
+              for _ in range(MAX_PAGES):
+                  page_data, page_err = gql(
+                      audit_query,
+                      {
+                          "workspaceId": workspace_id,
+                          "projectId": project_id,
+                          "environmentId": environment_id,
+                          "after": after,
+                      },
                   )
-                  structural = any(
-                      x in event_type.lower()
-                      for x in ("delete", "remove", "detach", "volume", "service")
-                  )
-                  if target_match or structural:
-                      audit_rows.append({
-                          "createdAt": a.get("createdAt"),
-                          "eventType": event_type,
-                          "target_match": target_match,
-                      })
-              audit_rows.sort(
-                  key=lambda x: x.get("createdAt") or "",
-                  reverse=True,
-              )
+                  if page_err:
+                      audit_err = page_err
+                      break
+                  conn = (page_data or {}).get("auditLogs") or {}
+                  audit_pages += 1
+                  for a in conn_nodes(conn):
+                      event_type = str(a.get("eventType") or "")
+                      payload = a.get("payload")
+                      context = a.get("context")
+                      target_match = (
+                          recursive_contains(payload, TARGET_SERVICE)
+                          or recursive_contains(payload, TARGET_VOLUME)
+                          or recursive_contains(context, TARGET_SERVICE)
+                          or recursive_contains(context, TARGET_VOLUME)
+                      )
+                      structural = any(
+                          x in event_type.lower()
+                          for x in ("delete", "remove", "detach", "volume", "service")
+                      )
+                      if target_match or structural:
+                          audit_rows.append({
+                              "createdAt": a.get("createdAt"),
+                              "eventType": event_type,
+                              "target_match": target_match,
+                          })
+                  has_next, end_cursor = page_state(conn)
+                  if not has_next or not end_cursor:
+                      break
+                  after = end_cursor
+
+          audit_rows.sort(
+              key=lambda x: x.get("createdAt") or "",
+              reverse=True,
+          )
 
           lines = [
               "## Railway recovery facts read-only",
               "",
               "No Railway setting, Variable, service, volume, backup, database, deployment, or file was modified.",
-              "No token, ID, URL, credential, host, username, password, Variable value, raw event payload, or raw audit payload is published.",
+              "No token, ID, URL, credential, host, username, password, Variable value, raw CLI payload, raw event payload, or raw audit payload is published.",
               "",
               "### Current service / volume state",
               "",
-              f"Project query: {'OK' if not project_err else 'FAILED'}",
+              f"Project token nested query: {'OK' if not token_err else 'FAILED'}",
               f"Current named service \`postgres\` in project services: {'YES' if current_postgres else 'NO'}",
-              f"Volume \`postgres-volume\` found: {'YES' if volume else 'NO'}",
+              f"Volume \`postgres-volume\` found via GraphQL/fallback: {'YES' if volume else 'NO'}",
+              f"CLI metadata sees \`postgres-volume\`: {'YES' if cli_volume_visible else 'NO'}",
           ]
 
           if volume_instance:
-              svc = volume_instance.get("service") or {}
               lines += [
                   f"Volume instance createdAt: {safe_scalar(volume_instance.get('createdAt'))}",
                   f"Volume instance deletedAt: {safe_scalar(volume_instance.get('deletedAt'))}",
@@ -426,12 +601,9 @@ jobs:
                   f"Volume current size MB: {safe_scalar(volume_instance.get('currentSizeMB'))}",
                   f"Volume configured size MB: {safe_scalar(volume_instance.get('sizeMB'))}",
                   f"Volume serviceId present: {'YES' if volume_instance.get('serviceId') else 'NO'}",
-                  f"Volume resolver service name: {safe_scalar(svc.get('name'))}",
-                  f"Volume resolver service createdAt: {safe_scalar(svc.get('createdAt'))}",
-                  f"Volume resolver service deletedAt: {safe_scalar(svc.get('deletedAt'))}",
               ]
           else:
-              lines.append("Volume instance metadata: NOT FOUND")
+              lines.append("Volume instance metadata: NOT RESOLVED")
 
           lines += [
               "",
@@ -494,7 +666,9 @@ jobs:
               "",
               "### Deleted-service / deployment evidence",
               "",
-              f"Deployments includeDeleted query: {'OK' if not deployments_err else 'FAILED'}",
+              f"Deployments paged query: {'OK' if not deployments_err else 'FAILED'}",
+              f"Deployment pages scanned: {deployments_pages}",
+              f"Deployments scanned: {len(deployments)}",
               f"Deployments resolved for service name \`postgres\`: {len(postgres_deployments)}",
           ]
 
@@ -503,7 +677,7 @@ jobs:
                   "| Deployment created | Updated | Status | Service created | Service deleted |",
                   "|---|---|---|---|---|",
               ]
-              for d in postgres_deployments[:12]:
+              for d in postgres_deployments[:20]:
                   s = d.get("service") or {}
                   lines.append(
                       "| "
@@ -519,9 +693,11 @@ jobs:
 
           lines += [
               "",
-              "### Recent target event evidence",
+              "### Target event evidence",
               "",
-              f"Events query: {'OK' if not events_err else 'FAILED'}",
+              f"Events paged query: {'OK' if not events_err else 'FAILED'}",
+              f"Event pages scanned: {events_pages}",
+              f"Events scanned: {len(events)}",
               f"Candidate service/volume events: {len(candidate_events)}",
           ]
 
@@ -530,7 +706,7 @@ jobs:
                   "| Created | Action | Object | Severity | Payload mentions postgres target |",
                   "|---|---|---|---|---|",
               ]
-              for e in candidate_events[:20]:
+              for e in candidate_events[:30]:
                   lines.append(
                       "| "
                       + " | ".join([
@@ -548,6 +724,7 @@ jobs:
               "### Audit-log evidence",
               "",
               f"Audit query: {'OK' if audit_err is None else 'FAILED'}",
+              f"Audit pages scanned: {audit_pages}",
               f"Candidate audit rows: {len(audit_rows)}",
           ]
 
@@ -556,7 +733,7 @@ jobs:
                   "| Created | Event type | Payload/context mentions postgres target |",
                   "|---|---|---|",
               ]
-              for a in audit_rows[:20]:
+              for a in audit_rows[:30]:
                   lines.append(
                       "| "
                       + " | ".join([
@@ -571,6 +748,7 @@ jobs:
               "",
               "Interpretation guard:",
               "- Empty event/audit results do not prove that no deletion occurred.",
+              "- CLI metadata is used only as a read-only fallback to resolve the existing volume instance; raw IDs are never published.",
               "- This diagnostic does not mount, restore, recreate, delete, redeploy, or alter anything.",
               "- Postgres image/version is not inferred from these fields.",
           ]
@@ -588,6 +766,12 @@ jobs:
           if [ -f railway-result-summary.md ]; then
             cat railway-result-summary.md
           fi
+
+      - name: Remove raw metadata
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-status.json railway-volumes.json
 
       - name: Post result to control issue
         if: always() && github.event_name == 'issue_comment'
