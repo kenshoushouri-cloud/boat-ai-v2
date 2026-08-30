@@ -1,0 +1,149 @@
+name: Railway DB reference read-only diagnostic
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway db-reference-readonly'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Classify DATABASE_URL state without publishing values
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          services=(cron-learning-all cron-final-check cron-data-prepare cron-window-night)
+          : > db-reference-states.tsv
+
+          for service in "${services[@]}"; do
+            tmp="vars-${service}.json"
+            if ! railway variable list --service "$service" --environment production --json > "$tmp" 2>/dev/null; then
+              printf '%s\tquery_failed\t0\n' "$service" >> db-reference-states.tsv
+              continue
+            fi
+
+            SERVICE="$service" FILE="$tmp" python - <<'PY' >> db-reference-states.tsv
+          import json
+          import os
+          from pathlib import Path
+
+          service = os.environ["SERVICE"]
+          data = json.loads(Path(os.environ["FILE"]).read_text(encoding="utf-8"))
+          value = None
+          if isinstance(data, dict):
+              value = data.get("DATABASE_URL")
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get("name") == "DATABASE_URL" or item.get("key") == "DATABASE_URL"):
+                      value = item.get("value")
+                      break
+
+          text = "" if value is None else str(value).strip()
+          if value is None:
+              state = "missing"
+          elif not text:
+              state = "empty"
+          elif text.startswith("${{") and text.endswith("}}"):
+              state = "reference_expression"
+          elif text.startswith("postgresql://") or text.startswith("postgres://"):
+              state = "resolved_url"
+          else:
+              state = "other_nonempty"
+
+          print(f"{service}\t{state}\t{len(text)}")
+          PY
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+
+          rows = []
+          for line in Path("db-reference-states.tsv").read_text(encoding="utf-8").splitlines():
+              parts = line.split("\t")
+              if len(parts) == 3:
+                  rows.append(parts)
+
+          lines = [
+              "## Railway DB reference read-only diagnostic",
+              "",
+              "No DATABASE_URL values, usernames, passwords, hosts, or credentials are published.",
+              "No Railway settings or Variables were changed.",
+              "",
+              "| Service | DATABASE_URL state | Non-empty length |",
+              "|---|---|---:|",
+          ]
+          for service, state, length in rows:
+              lines.append(f"| {service} | {state} | {length} |")
+
+          resolved = [service for service, state, _ in rows if state == "resolved_url"]
+          lines += [
+              "",
+              f"Resolved URL available in config layer: {'YES' if resolved else 'NO'}",
+          ]
+          if resolved:
+              lines.append("Services with a resolved URL: " + ", ".join(resolved))
+
+          Path("railway-result-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Remove raw variable files
+        if: always()
+        shell: bash
+        run: |
+          rm -f vars-*.json db-reference-states.tsv
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
