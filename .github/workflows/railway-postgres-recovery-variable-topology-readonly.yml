@@ -177,7 +177,7 @@ jobs:
                   elif ":<REF>" in scrubbed:
                       port_hint = "reference"
 
-              if refs and value.strip().startswith("${{") and value.strip().endswith("}}") and len(refs) == 1:
+              if refs and value.strip().startswith("$" + "{" + "{") and value.strip().endswith("}" + "}") and len(refs) == 1:
                   kind = "single_reference"
               elif refs:
                   kind = "interpolated_reference"
