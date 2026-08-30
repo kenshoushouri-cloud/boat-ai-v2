@@ -1,0 +1,229 @@
+name: Railway outage gap repair 2026-08-28 to 2026-08-30
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/railway-outage-gap-repair-20260828-30.yml'
+      - 'audit_repair_outage_gap_20260828_30_pg.py'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fixed gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          wf = Path('.github/workflows/railway-outage-gap-repair-20260828-30.yml').read_text(encoding='utf-8')
+          py = Path('audit_repair_outage_gap_20260828_30_pg.py').read_text(encoding='utf-8')
+          for cmd in (
+              '/railway outage-gap-audit',
+              '/railway outage-gap-repair-20260828 CONFIRM',
+              '/railway outage-gap-repair-20260829 CONFIRM',
+              '/railway outage-gap-repair-20260830 CONFIRM',
+          ):
+              assert cmd in wf
+          assert 'github.actor == github.repository_owner' in wf
+          assert 'github.event.issue.number == 42' in wf
+          trigger = wf.split('permissions:', 1)[0]
+          assert 'schedule:' not in trigger
+          assert 'workflow_dispatch:' not in trigger
+          for date in ('2026-08-28', '2026-08-29', '2026-08-30'):
+              assert date in py
+          assert 'partial_odds' in py
+          assert 'ODDS_IS_FINAL' in py
+          assert 'v23_line_notifier' not in py
+          assert 'run_final_pg.py' not in py
+          assert 'run_window_pipeline_pg.py' not in py
+          print('OUTAGE_GAP_VALIDATE=PASS')
+          PY
+      - name: Python syntax
+        run: python -m py_compile audit_repair_outage_gap_20260828_30_pg.py
+
+  audit:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway outage-gap-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load DB URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Audit
+        id: run
+        shell: bash
+        run: |
+          set +e
+          OUTAGE_GAP_MODE=audit python -u audit_repair_outage_gap_20260828_30_pg.py > output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Railway outage gap audit 2026-08-28..2026-08-30"
+            echo
+            echo "Read-only audit. No DB write or Production decision change."
+            echo
+            echo '~~~text'
+            grep '^OUTAGE_GAP_' output.txt | tail -100 || true
+            echo '~~~'
+          } > summary.md
+      - name: Cleanup
+        if: always()
+        run: rm -f railway-vars.json output.txt
+      - name: Post
+        if: always()
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail if audit failed
+        if: steps.run.outputs.exit_code != '0'
+        run: exit 1
+
+  repair:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      (
+        github.event.comment.body == '/railway outage-gap-repair-20260828 CONFIRM' ||
+        github.event.comment.body == '/railway outage-gap-repair-20260829 CONFIRM' ||
+        github.event.comment.body == '/railway outage-gap-repair-20260830 CONFIRM'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve date
+        id: target
+        env:
+          COMMAND: \${{ github.event.comment.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$COMMAND" in
+            '/railway outage-gap-repair-20260828 CONFIRM') d='2026-08-28' ;;
+            '/railway outage-gap-repair-20260829 CONFIRM') d='2026-08-29' ;;
+            '/railway outage-gap-repair-20260830 CONFIRM') d='2026-08-30' ;;
+            *) exit 2 ;;
+          esac
+          echo "date=$d" >> "$GITHUB_OUTPUT"
+      - name: Install
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load DB URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Repair fixed date
+        id: run
+        env:
+          OUTAGE_GAP_DATE: \${{ steps.target.outputs.date }}
+        shell: bash
+        run: |
+          set +e
+          OUTAGE_GAP_MODE=repair OUTAGE_GAP_BEFOREINFO=1 python -u audit_repair_outage_gap_20260828_30_pg.py > output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Summarize
+        if: always()
+        env:
+          TARGET_DATE: \${{ steps.target.outputs.date }}
+        shell: bash
+        run: |
+          {
+            echo "## Railway outage gap repair $TARGET_DATE"
+            echo
+            echo "Production data maintenance only. Existing partial/complete odds are preserved. Historical beforeinfo is labeled historical. No LINE/model/Shadow/Forward recreation."
+            echo
+            echo '~~~text'
+            grep '^OUTAGE_GAP_' output.txt | tail -160 || true
+            echo '~~~'
+          } > summary.md
+      - name: Cleanup
+        if: always()
+        run: rm -f railway-vars.json output.txt
+      - name: Post
+        if: always()
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail if repair failed
+        if: steps.run.outputs.exit_code != '0'
+        run: exit 1
