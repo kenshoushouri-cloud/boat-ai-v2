@@ -1618,3 +1618,89 @@ CI:
 **Current decision: STAGE1_DRAFT_HARDENED_AWAIT_EXPLICIT_MANUAL_APPROVAL**
 
 Stage 1のmerge/実行は、別途ユーザーの明示承認があるまで行わない。
+
+
+---
+
+<!-- POSTGRES_RECOVERY_STAGE1_SUCCESS_20260831 -->
+## 2026-08-31 — Postgres Recovery Stage 1 SUCCESS / isolated DB integrity PASS
+
+### 実行承認とGitHub
+ユーザーの明示承認後、Stage 1のみ実行した。
+
+- Draft PR #277 はコード変更なしのまま、GitHub connectorの `mark ready for review` GraphQL互換エラーのためclose。
+- 同一head SHA `1debf573f83d54c6455deeb3e7b685ae38ccf164` から非Draft PR #282を作成。
+- PR #282の5 CI:
+  - Railway Postgres recovery Stage 1: SUCCESS
+  - Critical Python syntax: SUCCESS
+  - V21 parser sanity: SUCCESS
+  - Production shadow isolation: SUCCESS
+  - Critical mojibake guard: SUCCESS
+- PR #282 merge commit: `b503b32a2c129dd0e8a6b47c954c906fa85689be`
+
+### Stage 1 execution
+Issue #42 exact command:
+`/railway postgres-recovery-stage1 CONFIRM`
+
+GitHub Actions run:
+- run id: `33336008053`
+- conclusion: **SUCCESS**
+
+Stage 1のpreflightで再確認:
+- original `postgres`: absent
+- `postgres-recovery`: absent before execution
+- `postgres-volume`: READY / detached before attach
+- currentSizeMB: **3761.750016**
+- mount: `/var/lib/postgresql/data`
+- region: `us-west2`
+- existing `Pre-Security-Patch Backup`: PRESENT / VALID
+- backup referencedMB: **3582**
+- backup expiry: **2026-09-22T04:57:09.552Z**
+
+### Isolated recovery result
+- `postgres-recovery` service: **CREATED**
+- preserved `postgres-volume`: **ATTACHED TO STAGING**
+- Production service name `postgres`: **NOT CREATED**
+- Production consumer Variables: **UNCHANGED**
+- pinned deleted-deployment digestを使用
+- PostgreSQL staging deployment: **SUCCESS**
+- temporary TCP proxy: created only for integrity audit, then **DELETED SUCCESSFULLY**
+
+Read-only integrity audit:
+- PostgreSQL: **18.6 (Debian 18.6-1.pgdg13+2)**
+- `pg_is_in_recovery`: **False**
+- database size: **3,471,750,847 bytes**
+- `v2_races`: **65,046**
+- `v2_race_entries`: **390,276**
+- `v2_results`: **64,902**
+- `v2_odds_trifecta` estimated rows: **7,401,959**
+- `v2_odds_trifecta` total bytes: **1,827,889,152**
+- latest `v2_races.race_date`: **2026-08-28**
+
+### Post-Stage-1 inventory
+Read-only `/railway inventory`:
+- services discovered: **14**
+- `postgres-recovery`: **SUCCESS**
+- original `postgres`: still absent
+- DB dependent Production cron services remain CRASHED because their existing `${{postgres.DATABASE_URL}}` reference is intentionally not reconnected in Stage 1.
+
+### Current decision
+**STAGE1_PASS_AWAIT_MANUAL_PROMOTION_REVIEW**
+
+Stage 2 is NOT approved by the Stage 1 approval.
+Before any Stage 2 action, require a separate explicit user approval.
+
+Stage 2 must separately review:
+1. safe promotion/rename strategy from `postgres-recovery` to `postgres`
+2. Railway dynamic reference restoration for Production consumers
+3. public endpoint requirement
+4. post-promotion `/railway vars postgres`, DB-reference audit, today-health, cron health
+5. DB row/table integrity re-check after promotion
+
+Until Stage 2 approval:
+- do not rename/promote service
+- do not edit Production consumer Variables
+- do not redeploy Production DB-dependent cron services
+- do not restore/PITR/delete/wipe volume or backup
+- do not change Production v24 / FINAL / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / coefficients / thresholds
+- PR #169 remains hold
