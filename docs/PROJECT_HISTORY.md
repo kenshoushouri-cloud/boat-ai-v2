@@ -1327,3 +1327,41 @@ Decision:
 - no Railway recovery mutation
 - no Production reconnect
 - PR #169 hold
+
+
+---
+
+<!-- HISTORY_POSTGRES_RECOVERY_DIGEST_DRIFT_20260831 -->
+## 2026-08-31 — Postgres recovery image tag driftを事前検出、deleted digest固定へ変更
+
+PR #277 Draftのstatic safety reviewで、`ghcr.io/railwayapp-templates/postgres-ssl:18` が削除前と同一digestを指し続ける保証がない点を追加監査。
+
+read-only GitHub Actions / GHCR確認:
+- deleted deployment digest:
+  `sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c`
+- current `:18` digest:
+  `sha256:8dbbfcb7fafacc22c01dc0c425c38793b5d0449163a3d178d3e3767d43e6f3ee`
+- digest drift: CONFIRMED
+- deleted digest availability: CONFIRMED
+
+初回のlive-tag equality guardは安全側にCI failureし、危険を検出した。
+その後Stage 1をdigest-pinned sourceへ変更:
+- `ghcr.io/railwayapp-templates/postgres-ssl@sha256:e617...`
+- PR時にpinned digest存在確認
+- execution直前にも再確認
+- deployment SUCCESS後にmetadata digest再確認
+
+最新head `1debf573f83d54c6455deeb3e7b685ae38ccf164`:
+- Stage 1 workflow SUCCESS
+- Python syntax SUCCESS
+- V21 parser sanity SUCCESS
+- Production shadow isolation SUCCESS
+- mojibake guard SUCCESS
+- recover SKIPPED
+
+Production / Railway mutationは一切実行していない。
+
+Decision:
+- `MUTABLE_TAG_RECOVERY = FORBIDDEN`
+- `PINNED_DELETED_DIGEST = REQUIRED`
+- `STAGE1 = DRAFT_AWAIT_EXPLICIT_APPROVAL`
