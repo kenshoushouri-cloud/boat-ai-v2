@@ -1,0 +1,602 @@
+name: Railway Postgres recovery preflight read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-recovery-preflight'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Collect read-only CLI fallback metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway status --json > railway-status.json 2>/dev/null || true
+          railway volume list --json > railway-volumes.json 2>/dev/null || true
+
+      - name: Run Postgres recovery preflight read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          ENDPOINT = "https://backboard.railway.com/graphql/v2"
+          TOKEN = os.environ["RAILWAY_TOKEN"]
+          TARGET_SERVICE = "postgres"
+          STAGING_SERVICE = "postgres-recovery"
+          TARGET_VOLUME = "postgres-volume"
+          EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"
+          EXPECTED_DIGEST = "sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c"
+          EXPECTED_MOUNT = "/var/lib/postgresql/data"
+          EXPECTED_PGDATA = "/var/lib/postgresql/data/pgdata"
+          EXPECTED_REGION = "us-west2"
+          EXPECTED_SIZE_MB = 5000
+          REQUIRED_VARS = (
+              "POSTGRES_USER",
+              "POSTGRES_PASSWORD",
+              "POSTGRES_DB",
+              "PGDATA",
+              "DATABASE_URL",
+              "PGHOST",
+              "PGPORT",
+              "PGUSER",
+              "PGPASSWORD",
+              "PGDATABASE",
+              "SSL_CERT_DAYS",
+          )
+          UUID_RE = re.compile(
+              r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+              r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          )
+
+          def gql(query, variables=None):
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=json.dumps({
+                      "query": query,
+                      "variables": variables or {},
+                  }).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "Project-Access-Token": TOKEN,
+                      "Content-Type": "application/json",
+                      "User-Agent": "boat-ai-v2-readonly-postgres-recovery-preflight",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode("utf-8"))
+              except Exception:
+                  return None, "request_failed"
+              if payload.get("errors"):
+                  return payload.get("data"), "graphql_error"
+              return payload.get("data"), None
+
+          def nodes(conn):
+              if not isinstance(conn, dict):
+                  return []
+              return [
+                  e["node"]
+                  for e in (conn.get("edges") or [])
+                  if isinstance(e, dict) and isinstance(e.get("node"), dict)
+              ]
+
+          def page(conn):
+              info = (conn or {}).get("pageInfo") or {}
+              return bool(info.get("hasNextPage")), info.get("endCursor")
+
+          def walk(obj):
+              if isinstance(obj, dict):
+                  yield obj
+                  for value in obj.values():
+                      yield from walk(value)
+              elif isinstance(obj, list):
+                  for value in obj:
+                      yield from walk(value)
+
+          def load_json(path):
+              p = Path(path)
+              if not p.exists():
+                  return None
+              try:
+                  return json.loads(p.read_text(encoding="utf-8"))
+              except Exception:
+                  return None
+
+          def contains_target(obj):
+              if isinstance(obj, dict):
+                  return any(
+                      TARGET_SERVICE in str(k).lower() or contains_target(v)
+                      for k, v in obj.items()
+                  )
+              if isinstance(obj, list):
+                  return any(contains_target(v) for v in obj)
+              return isinstance(obj, str) and TARGET_SERVICE in obj.lower()
+
+          def extract_uuids(obj):
+              out = []
+              def rec(v):
+                  if isinstance(v, dict):
+                      for x in v.values():
+                          rec(x)
+                  elif isinstance(v, list):
+                      for x in v:
+                          rec(x)
+                  elif isinstance(v, str) and UUID_RE.match(v) and v not in out:
+                      out.append(v)
+              rec(obj)
+              return out
+
+          def find_string(obj, exact=None, prefix=None):
+              for item in walk(obj):
+                  if not isinstance(item, dict):
+                      continue
+                  for value in item.values():
+                      if not isinstance(value, str):
+                          continue
+                      if exact is not None and value == exact:
+                          return value
+                      if prefix is not None and value.startswith(prefix):
+                          return value
+              return None
+
+          def iso_dt(value):
+              if not isinstance(value, str) or not value:
+                  return None
+              try:
+                  return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+              except Exception:
+                  return None
+
+          guards = []
+          def guard(name, ok, detail):
+              guards.append((name, bool(ok), detail))
+
+          context_q = """
+          query {
+            projectToken {
+              projectId
+              environmentId
+              project {
+                services(first: 100) {
+                  edges { node { name deletedAt } }
+                }
+                volumes(first: 100) {
+                  edges {
+                    node {
+                      id
+                      name
+                      volumeInstances(first: 100) {
+                        edges {
+                          node {
+                            id
+                            createdAt
+                            deletedAt
+                            currentSizeMB
+                            sizeMB
+                            mountPath
+                            region
+                            state
+                            isPendingDeletion
+                            serviceId
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+          context, context_err = gql(context_q)
+          token_obj = (context or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+          project = token_obj.get("project") or {}
+
+          guard(
+              "project_environment_context",
+              not context_err and project_id and environment_id,
+              "project token context resolved" if project_id and environment_id else "context unresolved",
+          )
+
+          services = nodes(project.get("services"))
+          service_names = {s.get("name") for s in services}
+          guard(
+              "target_service_absent",
+              TARGET_SERVICE not in service_names,
+              "postgres absent" if TARGET_SERVICE not in service_names else "postgres already exists",
+          )
+          guard(
+              "staging_service_absent",
+              STAGING_SERVICE not in service_names,
+              "postgres-recovery absent" if STAGING_SERVICE not in service_names else "postgres-recovery already exists",
+          )
+
+          volume = None
+          volume_instance = None
+          for v in nodes(project.get("volumes")):
+              if v.get("name") == TARGET_VOLUME:
+                  volume = v
+                  instances = nodes(v.get("volumeInstances"))
+                  if instances:
+                      volume_instance = sorted(
+                          instances,
+                          key=lambda x: x.get("createdAt") or "",
+                          reverse=True,
+                      )[0]
+                  break
+
+          # CLI fallback may expose the preserved volume instance even when nested GraphQL omits it.
+          if volume_instance is None:
+              candidate_ids = []
+              for raw in (load_json("railway-status.json"), load_json("railway-volumes.json")):
+                  if raw is None:
+                      continue
+                  for item in walk(raw):
+                      if not isinstance(item, dict):
+                          continue
+                      values = [str(v) for v in item.values() if isinstance(v, str)]
+                      if TARGET_VOLUME not in values:
+                          continue
+                      for nested in walk(item):
+                          if not isinstance(nested, dict):
+                              continue
+                          for key in ("volumeInstanceId", "volume_instance_id", "instanceId", "id"):
+                              value = nested.get(key)
+                              if isinstance(value, str) and value and value not in candidate_ids:
+                                  candidate_ids.append(value)
+
+              probe_q = """
+              query Q($id:String!) {
+                volumeInstance(id:$id) {
+                  id createdAt deletedAt currentSizeMB sizeMB mountPath region state
+                  isPendingDeletion serviceId
+                  volume { id name }
+                }
+              }
+              """
+              for candidate in candidate_ids[:20]:
+                  data, err = gql(probe_q, {"id": candidate})
+                  probe = (data or {}).get("volumeInstance")
+                  if (
+                      not err and isinstance(probe, dict)
+                      and ((probe.get("volume") or {}).get("name") == TARGET_VOLUME)
+                  ):
+                      volume_instance = probe
+                      volume = probe.get("volume")
+                      break
+
+          guard(
+              "preserved_volume_found",
+              volume_instance is not None,
+              "postgres-volume resolved" if volume_instance else "postgres-volume not resolved",
+          )
+
+          if volume_instance:
+              guard(
+                  "volume_ready",
+                  volume_instance.get("state") == "READY",
+                  f"state={volume_instance.get('state')}",
+              )
+              guard(
+                  "volume_not_pending_deletion",
+                  volume_instance.get("isPendingDeletion") is False and not volume_instance.get("deletedAt"),
+                  "not pending deletion" if volume_instance.get("isPendingDeletion") is False else "deletion risk",
+              )
+              guard(
+                  "volume_detached",
+                  not volume_instance.get("serviceId"),
+                  "detached" if not volume_instance.get("serviceId") else "still attached",
+              )
+              guard(
+                  "volume_mount_path",
+                  volume_instance.get("mountPath") == EXPECTED_MOUNT,
+                  f"mountPath={volume_instance.get('mountPath')}",
+              )
+              guard(
+                  "volume_region",
+                  volume_instance.get("region") == EXPECTED_REGION,
+                  f"region={volume_instance.get('region')}",
+              )
+              guard(
+                  "volume_configured_size",
+                  int(volume_instance.get("sizeMB") or 0) == EXPECTED_SIZE_MB,
+                  f"sizeMB={volume_instance.get('sizeMB')}",
+              )
+              guard(
+                  "volume_data_size_guard",
+                  float(volume_instance.get("currentSizeMB") or 0) >= 3500.0,
+                  f"currentSizeMB={volume_instance.get('currentSizeMB')}",
+              )
+
+          backups = []
+          if volume_instance and volume_instance.get("id"):
+              backup_q = """
+              query Q($id:String!) {
+                volumeInstanceBackupList(volumeInstanceId:$id) {
+                  createdAt expiresAt name referencedMB usedMB volumeInstanceSizeMB
+                }
+              }
+              """
+              data, backup_err = gql(backup_q, {"id": volume_instance["id"]})
+              if not backup_err:
+                  backups = (data or {}).get("volumeInstanceBackupList") or []
+
+          named_backup = next(
+              (b for b in backups if isinstance(b, dict) and b.get("name") == "Pre-Security-Patch Backup"),
+              None,
+          )
+          guard(
+              "known_backup_present",
+              named_backup is not None,
+              "Pre-Security-Patch Backup present" if named_backup else "known backup missing",
+          )
+          if named_backup:
+              expiry = iso_dt(named_backup.get("expiresAt"))
+              now = dt.datetime.now(dt.timezone.utc)
+              guard(
+                  "known_backup_not_expired",
+                  expiry is not None and expiry > now,
+                  f"expiresAt={named_backup.get('expiresAt')}",
+              )
+              guard(
+                  "known_backup_reference_size",
+                  float(named_backup.get("referencedMB") or 0) >= 3500.0,
+                  f"referencedMB={named_backup.get('referencedMB')}",
+              )
+
+          # Resolve the deleted Postgres deployment from removed-event IDs.
+          events_q = """
+          query Q($p:String!, $e:String!, $a:String) {
+            events(first:100, after:$a, projectId:$p, environmentId:$e) {
+              pageInfo { hasNextPage endCursor }
+              edges { node { createdAt action object payload activityPayload } }
+            }
+          }
+          """
+          removed_events = []
+          after = None
+          if project_id and environment_id:
+              for _ in range(20):
+                  data, err = gql(events_q, {"p": project_id, "e": environment_id, "a": after})
+                  if err:
+                      break
+                  conn = (data or {}).get("events") or {}
+                  for item in nodes(conn):
+                      if (
+                          str(item.get("action") or "").lower() == "removed"
+                          and str(item.get("object") or "") in ("Deployment", "ServiceInstance")
+                          and (
+                              contains_target(item.get("payload"))
+                              or contains_target(item.get("activityPayload"))
+                          )
+                      ):
+                          removed_events.append(item)
+                  more, cursor = page(conn)
+                  if not more or not cursor:
+                      break
+                  after = cursor
+
+          guard(
+              "deleted_postgres_event_evidence",
+              len(removed_events) >= 2,
+              f"target removed events={len(removed_events)}",
+          )
+
+          candidate_ids = []
+          for event in removed_events:
+              for raw in (event.get("payload"), event.get("activityPayload")):
+                  for value in extract_uuids(raw):
+                      if value not in candidate_ids:
+                          candidate_ids.append(value)
+
+          dep_q = """
+          query Q($id:String!) {
+            deployment(id:$id) {
+              id snapshotId meta
+            }
+          }
+          """
+          deleted_deployment = None
+          deleted_deployment_id = None
+          for candidate in candidate_ids[:60]:
+              data, err = gql(dep_q, {"id": candidate})
+              dep = (data or {}).get("deployment")
+              if err or not isinstance(dep, dict):
+                  continue
+              meta = dep.get("meta")
+              if (
+                  contains_target(meta)
+                  and find_string(meta, exact=EXPECTED_IMAGE)
+              ):
+                  deleted_deployment = dep
+                  deleted_deployment_id = candidate
+                  break
+
+          guard(
+              "deleted_deployment_resolved",
+              deleted_deployment is not None,
+              "deleted Postgres deployment resolved" if deleted_deployment else "deleted deployment unresolved",
+          )
+
+          if deleted_deployment:
+              meta = deleted_deployment.get("meta")
+              guard(
+                  "original_image_exact",
+                  find_string(meta, exact=EXPECTED_IMAGE) == EXPECTED_IMAGE,
+                  EXPECTED_IMAGE if find_string(meta, exact=EXPECTED_IMAGE) else "exact image not found",
+              )
+              guard(
+                  "original_image_digest_exact",
+                  find_string(meta, exact=EXPECTED_DIGEST) == EXPECTED_DIGEST,
+                  "image digest matched" if find_string(meta, exact=EXPECTED_DIGEST) else "image digest not matched",
+              )
+              # These are safe, non-secret deployment settings.
+              meta_text = json.dumps(meta, ensure_ascii=False, sort_keys=True)
+              guard(
+                  "original_mount_requirement",
+                  EXPECTED_MOUNT in meta_text,
+                  "required mount path present" if EXPECTED_MOUNT in meta_text else "required mount path absent",
+              )
+              guard(
+                  "original_restart_policy",
+                  "ON_FAILURE" in meta_text and "10" in meta_text,
+                  "ON_FAILURE / max retries evidence present" if "ON_FAILURE" in meta_text else "restart policy mismatch",
+              )
+              guard(
+                  "original_region_replica",
+                  EXPECTED_REGION in meta_text,
+                  "us-west2 evidence present" if EXPECTED_REGION in meta_text else "region evidence absent",
+              )
+
+          snapshot = None
+          if deleted_deployment_id:
+              snap_q = """
+              query Q($id:String!) {
+                deploymentSnapshot(deploymentId:$id) {
+                  variables
+                }
+              }
+              """
+              data, snap_err = gql(snap_q, {"id": deleted_deployment_id})
+              if not snap_err:
+                  snapshot = (data or {}).get("deploymentSnapshot")
+
+          variables = {}
+          if isinstance(snapshot, dict) and isinstance(snapshot.get("variables"), dict):
+              variables = snapshot["variables"]
+
+          guard(
+              "deployment_snapshot_variables",
+              bool(variables),
+              f"snapshot variable count={len(variables)}",
+          )
+          missing = [
+              key for key in REQUIRED_VARS
+              if key not in variables or variables.get(key) in (None, "")
+          ]
+          guard(
+              "required_recovery_variables",
+              not missing,
+              "all required variables available internally" if not missing else "missing: " + ",".join(missing),
+          )
+          guard(
+              "pgdata_exact",
+              variables.get("PGDATA") == EXPECTED_PGDATA,
+              f"PGDATA={variables.get('PGDATA') if isinstance(variables.get('PGDATA'), str) else '-'}",
+          )
+
+          # Do not publish any variable values. Only assert that credential continuity is possible.
+          credential_ok = all(
+              variables.get(key) not in (None, "")
+              for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")
+          )
+          guard(
+              "credential_continuity",
+              credential_ok,
+              "credential values available internally" if credential_ok else "credential continuity unavailable",
+          )
+
+          all_pass = bool(guards) and all(ok for _, ok, _ in guards)
+
+          lines = [
+              "## Railway Postgres recovery preflight read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential value, password, username value, raw event payload, raw DeploymentMeta, or raw variable value is published.",
+              "",
+              f"Overall recovery preflight: **{'PASS' if all_pass else 'BLOCK'}**",
+              "",
+              "| Guard | Result | Safe detail |",
+              "|---|---|---|",
+          ]
+          for name, ok, detail in guards:
+              safe_detail = str(detail).replace("|", "\\|").replace("\n", " ")
+              lines.append(f"| `{name}` | {'PASS' if ok else 'FAIL'} | {safe_detail} |")
+
+          lines += [
+              "",
+              "### Staged recovery design (not executed)",
+              "",
+              "1. Create an isolated temporary service named `postgres-recovery` using the exact original PostgreSQL 18 image and the preserved credential/config inputs carried internally.",
+              "2. Attach the existing detached `postgres-volume` at `/var/lib/postgresql/data` only after exact-version/config guards pass.",
+              "3. Apply the original service runtime settings and start PostgreSQL 18.",
+              "4. Run database integrity checks before reconnecting Production consumers.",
+              "5. Only after integrity passes, rename/promote the recovered service to `postgres`, restore any required public DB endpoint, and audit all cron services.",
+              "",
+              "Safety decision:",
+              f"- Recovery execution authorization: **{'READY_FOR_MANUAL_REVIEW' if all_pass else 'BLOCKED'}**.",
+              "- This preflight itself does not create, mount, restore, rename, redeploy, or change any Railway resource.",
+              "- The preserved volume and backup remain untouched.",
+          ]
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Remove raw fallback metadata
+        if: always()
+        shell: bash
+        run: rm -f railway-status.json railway-volumes.json
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
