@@ -571,6 +571,7 @@ def wait_for_successful_deployment(service_id: str) -> dict[str, Any]:
               createdAt
               status
               updatedAt
+              meta
             }
           }
         }
@@ -592,6 +593,8 @@ def wait_for_successful_deployment(service_id: str) -> dict[str, Any]:
             status = str(latest.get("status") or "")
             last_status = status
             if status == "SUCCESS":
+                if not find_string(latest.get("meta"), EXPECTED_DIGEST):
+                    raise RecoveryError("Staging deployment digest mismatch")
                 return latest
             if status in terminal_bad:
                 raise RecoveryError(f"Staging deployment terminal status: {status}")
