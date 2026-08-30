@@ -1414,3 +1414,147 @@ Decision:
 - **STAGE1_PASS_AWAIT_MANUAL_PROMOTION_REVIEW**
 - Stage 2 promotion / Production reconnectは別の明示承認が必要
 - model / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / threshold / PR #169 unchanged
+
+
+---
+
+<!-- HISTORY_POSTGRES_RECOVERY_STAGE2_COMPLETE_20260831 -->
+## 2026-08-31 — Postgres Recovery Stage 2完了、Production DB参照と当日データ収集を復旧
+
+Stage 1でpreserved `postgres-volume` を `postgres-recovery` に安全に接続しDB integrity PASS後、
+Production consumersの再接続をStage 2として実施した。
+
+### 初期rename案の失敗と安全側停止
+当初は `postgres-recovery` を同一service IDのまま `postgres` へrenameする設計だった。
+
+Issue #42:
+- `/railway postgres-recovery-stage2 CONFIRM`
+
+preflight / public endpoint / DB integrityはPASSしたが、
+Railway Project Tokenによる `serviceUpdate(name=postgres)` は
+`not_authorized` で拒否された。
+
+重要:
+- renameは実行されていない
+- preserved volumeは移動していない
+- DB再起動なし
+- temporary TCP proxyはcleanup SUCCESS
+- Production consumersはこの時点で再deployしていない
+
+Decision:
+**DO_NOT_FORCE_RENAME_WITH_PROJECT_TOKEN**
+
+### Compatibility namespace方式へ変更
+PR #289:
+- real DB = `postgres-recovery`
+- compatibility service = `postgres`
+- compatibility serviceはVolumeを持たない
+- DB関連Variablesは `postgres-recovery` へのRailway Referenceのみ
+- real DB service / volume / pinned PostgreSQL digestを維持
+
+Issue #42で再実行し:
+- public TCP proxy作成
+- `DATABASE_PUBLIC_URL` dynamic reference復元
+- PostgreSQL 18.6 read-only integrity PASS
+- compatibility `postgres` service作成
+- alias isolation PASS
+
+Result:
+**STAGE2_PROMOTION_PASS_VERIFY_CONSUMERS**
+
+### Production consumer relink
+PR #292:
+13 application/cron servicesの `DATABASE_URL` のみを
+`postgres-recovery.DATABASE_URL` Railway Referenceへ変更。
+
+安全条件:
+- fixed allowlist
+- `skipDeploys=True`
+- literal secret copyなし
+- 他Variable変更なし
+- relink step自身ではredeployなし
+
+Issue #42:
+- `/railway postgres-recovery-stage2-relink CONFIRM`
+
+Result:
+- staged 13/13
+- `STAGE2_RELINK_STAGED_VERIFY_BEFORE_REDEPLOY`
+
+read-only DB reference診断後:
+- postgres-recovery / postgres / 全application consumerでresolved URL確認
+- config layer resolved URL = YES
+
+### Production consumer redeploy
+PR #295:
+CLI redeployが確定しなかった固定10 serviceのみ、
+GraphQL `serviceInstanceRedeploy` で再deployするguarded pathを追加。
+
+Issue #42:
+- `/railway postgres-recovery-stage2-redeploy CONFIRM`
+
+Result:
+- redeploy accepted **10/10**
+- DB service / compatibility service変更なし
+- volume / backup変更なし
+- model / LINE / N01 / N02 / Bao / thresholds変更なし
+
+post-redeploy inventory:
+- services discovered: **15**
+- `postgres-recovery`: SUCCESS
+- compatibility `postgres`: present
+- 全application / cron service: SUCCESS
+
+Decision:
+**STAGE2_PRODUCTION_CONSUMERS_RESTORED**
+
+### 2026-08-31 recovery catch-up
+Stage 2完了時点で通常前夜data prepareがDB障害期間中に欠損していたため、
+PR #296で2026-08-31固定のmanual catch-up workflowを追加。
+
+安全条件:
+- owner-only exact CONFIRM
+- `TARGET_DATE=2026-08-31`
+- scheduleなし
+- workflow_dispatchなし
+- normal `run_daily_data_prepare_pg.py`
+- `ODDS_IS_FINAL=False`
+- result collectionなし
+- model / LINE / threshold / volume / backup / service renameなし
+
+実行結果:
+- races 144
+- entries 864
+- results 0
+- odds rows 1,399
+- success 144
+- process exit 0
+
+07:55 JST today-health:
+- races 144 / deadline_ready 144
+- entries 864 / full6 144
+- odds 1,399 rows / 65 races
+- results 0
+- `TODAY_HEALTH_RESULT=PASS_READ_ONLY`
+
+morning/day/night oddsは締切前のためpartialだった。
+これは復旧異常ではなく、通常window収集前の状態。
+
+### 最終構成
+- PostgreSQL実体: `postgres-recovery`
+- preserved volume: `postgres-volume` -> `postgres-recovery`
+- compatibility namespace: `postgres`
+- consumer DATABASE_URL: recovered DBへのRailway Reference
+- public endpoint: recovered DBのTCP proxy
+- backup: existing `Pre-Security-Patch Backup` preserved
+
+### 決定
+**POSTGRES_RECOVERY_STAGE2_COMPLETE**
+
+以後:
+- compatibility構成を無計画にrename/deleteしない
+- volume/backupをwipe/delete/restoreしない
+- normal cronを追加変更せず稼働確認する
+- morning window後にread-only healthを確認
+- 異常がなければDB障害復旧フェーズを完了し、通常の予測精度改善へ戻る
+- PR #169はDraft hold継続
