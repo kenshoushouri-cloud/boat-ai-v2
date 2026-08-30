@@ -1281,3 +1281,49 @@ none:
 - Production consumersは未接続
 - model / LINE / BUY-WATCH-SKIP / N01 / N02 / Bao / thresholds unchanged
 - PR #169 Draft hold unchanged
+
+
+---
+
+<!-- HISTORY_MILESTONE_20260831_STAGE1_BACKUP_GUARD -->
+## 2026-08-31 — Recovery Stage 1 hardening完了、manual backup 50%制限を反映
+
+PR #277 Draftの追加安全監査を実施。
+
+確認:
+- original Postgres runtime/configは既にPostgreSQL 18として解決済み
+- preserved `postgres-volume`: 約3.76 GB / 5 GB
+- Railway公式仕様ではmanual volume backupはvolume容量の50%まで
+- したがってStage 1内のfresh manual backup作成はineligibleになる可能性が高い
+
+変更:
+- `volumeInstanceBackupCreate` をStage 1から除外
+- existing `Pre-Security-Patch Backup` をpresence / expiry / exact 3582 MBでguard
+- volume attach直前に同backupを再guard
+- `DATABASE_PUBLIC_URL` 事前設定なし
+- explicit `serviceInstanceRedeploy` なし
+- validationでmanual backup mutation不存在を強制
+
+PR #277 head:
+- `3a401f9d7e97beeb7ebb8470be50323a1d7b840b`
+
+CI:
+- Stage 1 workflow SUCCESS（validate PASS / recover SKIPPED）
+- Critical Python syntax SUCCESS
+- V21 parser sanity SUCCESS
+- Production shadow isolation SUCCESS
+- Critical mojibake guard SUCCESS
+
+Railway read-only状態:
+- bridge SUCCESS
+- 13 services
+- `postgres` absent
+- `vars postgres` FAIL
+
+Decision:
+- **STAGE1_DRAFT_READY_FOR_EXPLICIT_MANUAL_APPROVAL**
+- no merge
+- no Stage 1 command
+- no Railway recovery mutation
+- no Production reconnect
+- PR #169 hold
