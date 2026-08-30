@@ -1115,3 +1115,94 @@ collector自体のbeta=-0.02、8〜15分window、official-beforeinfo-only、firs
 - coefficient / threshold / N02 / N01 / Bao: none
 - PR #169: Draft hold
 
+
+
+---
+
+<!-- HISTORY_MILESTONE_20260830_POSTGRES_SERVICE_LOST -->
+## 2026-08-28〜30 — Railway Postgres service消失を確認、Volume保全優先の復旧フェーズへ
+
+### 発端
+TOTO用Railway Project作成中にRailway Web UIが `Oh no! Looks like the page derailed` となり、同時期にboat-ai-v2でもDB系cronが失敗。
+
+初期調査では:
+- Railway Project Token connection: SUCCESS
+- environment config: read SUCCESS
+- cron側Variable key `DATABASE_URL`: 存在
+- ただし実行時 `DATABASE_URL が必要です` でcrash
+- `railway variable list --service postgres`: FAIL
+
+当初はRailway側の一時障害も疑い、設定変更せず監視した。
+
+### 2026-08-30 UI + Bridgeで構造異常を確定
+Railway Project Canvasで:
+- application/cron servicesは存在
+- **`postgres` serviceが存在しない**
+- **`postgres-volume` のみ残存**
+
+過去Bridge inventoryでは14 services（postgres含む）だったが、現在13 services。
+したがって単なる一時接続障害ではなく、**Postgres serviceが失われ、Volumeがdetachedになった状態**へ診断を更新。
+
+### データ保全状況
+Railway UI:
+- `postgres-volume`
+- usage 約3.76GB / max 5GB
+- region US West
+- unmounted
+- existing `Pre-Security-Patch Backup` 約3.5GBを確認
+
+**Decision:** Volume/backupは現状維持。
+Wipe/Delete/安易なmount/recreateを禁止。
+
+### DB参照診断
+主要serviceの `DATABASE_URL` keyは残るがresolved valueは空。
+read-only診断:
+- learning-all: empty
+- final-check: empty
+- data-prepare: empty
+- window-night: empty
+- config-layer resolved URL: NO
+
+これは `${{postgres.DATABASE_URL}}` の参照先service欠落と整合。
+
+### Volume file read-only diagnostic
+PR #246でdetached volumeから `PG_VERSION` を読む専用workflowを追加。
+- Railway設定変更なし
+- Volume書き込みなし
+- Production service deployなし
+
+結果:
+- root list FAIL
+- /pgdata list FAIL
+- PG_VERSION unreadable
+
+**Interpretation:** CLI file API failureであり、Volume消失判定ではない。UI usage 3.76GBが残っているためデータ存在を優先的に信頼。
+Postgres major versionは未確定。
+
+### Production impact
+DB依存serviceの多くがCRASHED。
+特に:
+- cron-data-prepare
+- cron-final-check
+- morning/day/night windows
+- cron-nightly-results
+- cron-daily-report
+- cron-racer-course-stats
+
+Production判定/LINE/データ収集は正常運用とみなさない。
+
+### Recovery policy
+**NO_DESTRUCTIVE_RECOVERY_WITHOUT_VERSION_AND_DATA_GUARDS**
+
+復旧は:
+- Volumeを残す
+- backupを残す
+- 元Postgres version/configを特定
+- 正規Postgres serviceを再構成
+- compatible mount
+- read-only integrity audit
+- cron health audit
+の順。
+
+Productionモデル、係数、閾値、LINE、N02/Bao、PR #169には触れない。
+
