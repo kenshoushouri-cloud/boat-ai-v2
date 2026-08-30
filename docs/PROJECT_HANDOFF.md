@@ -1201,3 +1201,140 @@ PR #239 CI:
 - Railway Variables / service schedules / Production v24 / LINE / BUY-WATCH-SKIPは変更していない。
 - PR #169はDraft hold継続。
 
+
+
+---
+
+<!-- HANDOFF_MILESTONE_20260830_POSTGRES_SERVICE_LOST -->
+## 緊急引き継ぎ: 2026-08-30 21:05 JST — Railway Postgres service消失 / detached volume復旧待ち
+
+### Source of Truth
+- GitHub repository: `kenshoushouri-cloud/boat-ai-v2`
+- code Source of Truth: `main`
+- この追記直前のmain: `3cd0108b3b8eb8d3d0d899554a377313e196aac5`
+- Railway project: `boat-v2-postgres`
+- production environment
+- 本番DBのデータ本体はRailway Volume `postgres-volume` に残存していると画面上確認。
+- Supabaseは削除済み。使用しない。
+- 正しい出走表テーブルは `v2_race_entries`。
+
+### 現在の最重要障害
+2026-08-28頃からRailway画面/APIでDB参照障害が発生。
+当初はRailway全体障害を疑ったが、2026-08-30のRailway Project CanvasとBridge監査で次を確定した。
+
+1. 以前は `postgres` serviceを含む **14 services** が存在し、`postgres` latest deploymentはSUCCESSだった。
+2. 現在のinventoryは **13 services** で、**`postgres` serviceが一覧から消失**している。
+3. 一方、Railway Volume **`postgres-volume` は残存**。
+4. iPhone Railway UIのVolume設定には **Volume is unmounted / Mount to service** と表示。
+5. Volume metrics:
+   - size limit: **5.00 GB**
+   - usage: **約3.76 GB**
+   - usage warning: **75%**
+   - region: **US West (California, USA)**
+6. Backups画面では既存 **Pre-Security-Patch Backup** が見えた。
+   - 表示時点: 約7日前
+   - size: **3.5 GB**
+   - Hobby環境では新規backup作成不可とUI表示。
+7. **Wipe Volume / Delete Volumeは絶対に実行しない。**
+   どちらも本番データ/backupを失う破壊操作。
+
+### DATABASE_URLの状態
+各cron serviceにはVariable名 `DATABASE_URL` 自体は残っている。
+しかし read-only DB reference diagnostic で以下を確認:
+- cron-learning-all: `DATABASE_URL` = empty / length 0
+- cron-final-check: empty / length 0
+- cron-data-prepare: empty / length 0
+- cron-window-night: empty / length 0
+- config layer resolved URL: **NO**
+
+過去の `postgres` serviceには少なくとも以下の標準Variable keysが存在していた記録あり:
+- `DATABASE_PUBLIC_URL`
+- `DATABASE_URL`
+- `PGDATA`
+- `PGDATABASE`
+- `PGHOST`
+- `PGPASSWORD`
+- `PGPORT`
+- `PGUSER`
+- `POSTGRES_DB`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_USER`
+- volume/TCP関連Railway variables
+
+従って現在のcron側 `${{postgres.DATABASE_URL}}` 参照は、参照先service `postgres` が存在しないため空になっている可能性が最も高い。
+
+### 最新service health
+2026-08-30 Bridge inventoryでは:
+- CRASHED: `cron-daily-report`
+- CRASHED: `cron-data-prepare`
+- CRASHED: `cron-final-check`
+- CRASHED: `cron-nightly-results`
+- CRASHED: `cron-racer-course-stats`
+- CRASHED: `cron-window-morning`
+- CRASHED: `cron-window-day`
+- CRASHED: `cron-window-night`
+- `cron-learning-all` は最新inventory上SUCCESS/画面上Running表示の時点あり。ただしread-only診断ではDATABASE_URL emptyなので、これをDB復旧証拠と扱わない。
+- SUCCESS表示の古い/非DB依存serviceもあるが、現在のProduction正常性を意味しない。
+
+`cron-final-check` の実ログ:
+- `RuntimeError: DATABASE_URL が必要です。`
+
+### 読み取り診断
+PR #246で `.github/workflows/railway-postgres-volume-readonly.yml` をmainへ追加。
+目的はdetached volumeの `PG_VERSION` を**読み取りだけ**で確認すること。
+Issue #42:
+- `/railway postgres-volume-readonly`
+
+結果:
+- root listing: FAILED
+- `/pgdata` listing: FAILED
+- `PG_VERSION` は取得できず
+
+これはVolumeデータ消失を意味しない。
+Railway UIではVolume 3.76GB使用が確認できている。
+detached volumeに対するCLI file APIが利用できない/失敗している可能性があるため、PG major versionはまだ未確定。
+
+その後、DB referenceのread-only diagnosticもmainへ入り、Issue #42で:
+- `/railway db-reference-readonly`
+を実行。上記DATABASE_URL emptyを確認。
+
+### 絶対にしない操作
+復旧確認なしに以下を行わない:
+- `postgres-volume` の Wipe
+- `postgres-volume` の Delete
+- 既存backupの破壊/上書き
+- Volumeをcron application serviceへ直接mount
+- 空のPostgresへVolumeを適当にmount
+- PostgreSQL major versionを推測して既存data directoryを起動
+- Production BUY/WATCH/SKIP、LINE、v24係数/threshold等の変更
+- PR #169 merge
+
+### 復旧の次手
+次チャットはまず最新状態を再取得してから進める。
+
+推奨順:
+1. GitHub main / open PR / Issue #42を再取得。
+2. Railway inventoryで `postgres` がまだ欠落しているか確認。
+3. Railway UIで `postgres-volume` がunmounted、usageが維持されているか確認。
+4. 元Postgres major version / image / PGDATA / auth情報を安全に特定できる手段を優先。
+5. 可能ならRailway Supportにも「service消失・volume孤立」の調査を依頼。
+6. 元Volumeを保持したまま、新しい正規Postgres serviceへの再接続手順を設計。
+7. **データ保全を最優先し、最初の起動はversion/PGDATA互換性を確認してから。**
+8. 復旧後:
+   - `/railway vars postgres` 成功
+   - `/railway db-reference-readonly` でnon-empty
+   - `/railway today-health` 正常
+   - data prepare/window/final/nightlyのDB系service正常
+   - DB行数/主要テーブルをread-only監査
+   を確認するまでProduction復旧完了としない。
+
+### Open PR
+- **PR #169** Draft: temporary 10-minute base-odds refresh
+- 書き込み系Production base oddsのため、今回のDB復旧とは無関係。
+- 明示承認なしにmergeしない。
+
+### TOTO AI
+別repo `kenshoushouri-cloud/toto-ai-v1` は初期bootstrap済み。
+Railway新規Project/PostgreSQL作成は今回のRailway/boat DB問題のため一旦停止中。
+**boat-ai-v2の本番DB復旧・健全性確認を優先し、その後TOTO Railwayを再開する。**
+
