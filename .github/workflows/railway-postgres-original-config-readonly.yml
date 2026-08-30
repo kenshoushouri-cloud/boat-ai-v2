@@ -1,0 +1,371 @@
+name: Railway Postgres original config read-only
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway postgres-original-config'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Inspect deleted Postgres config snapshot read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re, urllib.request
+          from pathlib import Path
+
+          ENDPOINT = "https://backboard.railway.com/graphql/v2"
+          TOKEN = os.environ["RAILWAY_TOKEN"]
+          TARGET = "postgres"
+          UUID_RE = re.compile(
+              r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+              r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          )
+
+          def gql(query, variables=None):
+              req = urllib.request.Request(
+                  ENDPOINT,
+                  data=json.dumps({"query": query, "variables": variables or {}}).encode(),
+                  method="POST",
+                  headers={
+                      "Project-Access-Token": TOKEN,
+                      "Content-Type": "application/json",
+                      "User-Agent": "boat-ai-v2-readonly-postgres-original-config",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode())
+              except Exception:
+                  return None, "request_failed"
+              if payload.get("errors"):
+                  return payload.get("data"), "graphql_error"
+              return payload.get("data"), None
+
+          def nodes(conn):
+              if not isinstance(conn, dict):
+                  return []
+              return [
+                  e["node"] for e in (conn.get("edges") or [])
+                  if isinstance(e, dict) and isinstance(e.get("node"), dict)
+              ]
+
+          def page(conn):
+              p = (conn or {}).get("pageInfo") or {}
+              return bool(p.get("hasNextPage")), p.get("endCursor")
+
+          def contains_target(obj):
+              if isinstance(obj, dict):
+                  return any(
+                      TARGET in str(k).lower() or contains_target(v)
+                      for k, v in obj.items()
+                  )
+              if isinstance(obj, list):
+                  return any(contains_target(v) for v in obj)
+              return isinstance(obj, str) and TARGET in obj.lower()
+
+          def unique_add(dst, value):
+              if value not in dst:
+                  dst.append(value)
+
+          def extract_uuids(obj):
+              out = []
+              def walk(v):
+                  if isinstance(v, dict):
+                      for x in v.values():
+                          walk(x)
+                  elif isinstance(v, list):
+                      for x in v:
+                          walk(x)
+                  elif isinstance(v, str) and UUID_RE.match(v):
+                      unique_add(out, v)
+              walk(obj)
+              return out
+
+          def safe_meta(meta):
+              allowed = (
+                  "image", "region", "mount", "startcommand", "restartpolicy",
+                  "healthcheck", "builder", "rootdirectory", "dockerfile",
+                  "replica", "sleepapplication", "drainingseconds", "overlap",
+                  "predeploy", "cron", "source"
+              )
+              forbidden = (
+                  "password", "token", "secret", "credential", "privatekey",
+                  "apikey", "database_url", "url", "host", "username", "userid",
+                  "projectid", "serviceid", "deploymentid", "environmentid",
+                  "snapshotid", "creatorid"
+              )
+              rows = []
+
+              def walk(v, path=()):
+                  if isinstance(v, dict):
+                      for k, x in v.items():
+                          walk(x, path + (str(k),))
+                      return
+                  if isinstance(v, list):
+                      return
+                  joined = ".".join(path)
+                  low = joined.lower()
+                  if not joined or any(x in low for x in forbidden):
+                      return
+                  if not any(x in low for x in allowed):
+                      return
+                  if not isinstance(v, (str, int, float, bool)) and v is not None:
+                      return
+                  s = str(v)
+                  if len(s) > 300 or "\n" in s or "\r" in s:
+                      return
+                  if "://" in s:
+                      return
+                  rows.append((joined, s))
+              walk(meta)
+              dedup = []
+              seen = set()
+              for row in rows:
+                  if row not in seen:
+                      seen.add(row)
+                      dedup.append(row)
+              return dedup[:80]
+
+          context_q = """
+          query {
+            projectToken { projectId environmentId }
+          }
+          """
+          context, context_err = gql(context_q)
+          token_obj = (context or {}).get("projectToken") or {}
+          project_id = token_obj.get("projectId")
+          environment_id = token_obj.get("environmentId")
+
+          if context_err or not project_id or not environment_id:
+              Path("railway-result-summary.md").write_text(
+                  "## Railway Postgres original config read-only\n\n"
+                  "Context resolution failed. No Railway setting or data was modified.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          events_q = """
+          query Q($p:String!, $e:String!, $a:String) {
+            events(first:100, after:$a, projectId:$p, environmentId:$e) {
+              pageInfo { hasNextPage endCursor }
+              edges {
+                node { createdAt action object payload activityPayload }
+              }
+            }
+          }
+          """
+          target_events = []
+          after = None
+          for _ in range(20):
+              data, err = gql(events_q, {"p": project_id, "e": environment_id, "a": after})
+              if err:
+                  break
+              conn = (data or {}).get("events") or {}
+              for item in nodes(conn):
+                  if (
+                      str(item.get("action") or "").lower() == "removed" and
+                      str(item.get("object") or "") == "Deployment" and
+                      (
+                          contains_target(item.get("payload")) or
+                          contains_target(item.get("activityPayload"))
+                      )
+                  ):
+                      target_events.append(item)
+              more, cursor = page(conn)
+              if not more or not cursor:
+                  break
+              after = cursor
+
+          candidate_ids = []
+          for event in target_events:
+              for raw in (event.get("payload"), event.get("activityPayload")):
+                  for value in extract_uuids(raw):
+                      unique_add(candidate_ids, value)
+
+          deployment_q = """
+          query Q($id:String!) {
+            deployment(id:$id) {
+              id createdAt updatedAt status snapshotId meta
+            }
+          }
+          """
+          deployment = None
+          deployment_id = None
+          for candidate in candidate_ids[:60]:
+              data, err = gql(deployment_q, {"id": candidate})
+              if err:
+                  continue
+              dep = (data or {}).get("deployment")
+              if not isinstance(dep, dict):
+                  continue
+              meta = dep.get("meta")
+              if contains_target(meta):
+                  deployment = dep
+                  deployment_id = candidate
+                  break
+
+          snapshot = None
+          snapshot_err = "not_attempted"
+          if deployment_id:
+              snapshot_q = """
+              query Q($id:String!) {
+                deploymentSnapshot(deploymentId:$id) {
+                  createdAt updatedAt variables
+                }
+              }
+              """
+              snapshot_data, snapshot_err = gql(snapshot_q, {"id": deployment_id})
+              snapshot = (snapshot_data or {}).get("deploymentSnapshot")
+
+          variables = {}
+          if isinstance(snapshot, dict) and isinstance(snapshot.get("variables"), dict):
+              variables = snapshot["variables"]
+
+          variable_names = sorted(str(k) for k in variables.keys())
+          recovery_keys = [
+              "POSTGRES_USER",
+              "POSTGRES_PASSWORD",
+              "POSTGRES_DB",
+              "DATABASE_URL",
+              "DATABASE_PRIVATE_URL",
+              "PGDATA",
+              "POSTGRES_INITDB_ARGS",
+              "SSL_CERT_DAYS",
+          ]
+
+          presence = []
+          for key in recovery_keys:
+              present = key in variables
+              nonempty = present and variables.get(key) not in (None, "")
+              presence.append((key, present, nonempty))
+
+          pgdata_value = None
+          if isinstance(variables.get("PGDATA"), str):
+              value = variables["PGDATA"].strip()
+              if (
+                  value.startswith("/") and len(value) <= 250 and
+                  "\n" not in value and "\r" not in value
+              ):
+                  pgdata_value = value
+
+          meta_rows = safe_meta((deployment or {}).get("meta"))
+
+          credential_continuity = all(
+              key in variables and variables.get(key) not in (None, "")
+              for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")
+          )
+
+          lines = [
+              "## Railway Postgres original config read-only",
+              "",
+              "No Railway setting, Variable, service, volume, backup, deployment, database, or file was modified.",
+              "No token, ID, URL, credential value, password, username value, raw event payload, raw DeploymentMeta, or raw variable value is published.",
+              "",
+              f"Deleted Postgres deployment resolved internally: {'YES' if deployment else 'NO'}",
+              f"Deployment snapshot query: {'OK' if snapshot_err is None and snapshot else 'FAILED'}",
+              f"Snapshot variable count: {len(variable_names)}",
+              "",
+              "### Recovery variable presence",
+              "",
+              "| Variable | Present | Non-empty |",
+              "|---|---|---|",
+          ]
+
+          for key, present, nonempty in presence:
+              lines.append(
+                  f"| {key} | {'YES' if present else 'NO'} | {'YES' if nonempty else 'NO'} |"
+              )
+
+          lines += [
+              "",
+              f"Credential continuity inputs available internally: {'YES' if credential_continuity else 'NO'}",
+          ]
+
+          if pgdata_value:
+              lines.append(f"PGDATA safe value: {pgdata_value}")
+
+          lines += [
+              "",
+              "### Variable names only",
+              "",
+          ]
+          if variable_names:
+              lines.append(", ".join(variable_names))
+          else:
+              lines.append("No variable names resolved.")
+
+          lines += [
+              "",
+              "### Safe deployment config evidence",
+              "",
+          ]
+          if meta_rows:
+              lines += [
+                  "| Field path | Safe value |",
+                  "|---|---|",
+              ]
+              for key, value in meta_rows:
+                  value = value.replace("|", "\\|")
+                  lines.append(f"| {key} | {value} |")
+          else:
+              lines.append("No additional safe config fields resolved from DeploymentMeta.")
+
+          lines += [
+              "",
+              "Safety decision:",
+              "- Do not mount or recreate from this evidence alone.",
+              "- If credential continuity inputs are available, a later recovery workflow can carry them internally without publishing secret values.",
+              "- The preserved volume and existing backup remain untouched.",
+          ]
+
+          Path("railway-result-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Print safe summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f railway-result-summary.md ]; then
+            cat railway-result-summary.md
+          fi
+
+      - name: Post result to control issue
+        if: always() && github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-result-summary.md
+          fi
