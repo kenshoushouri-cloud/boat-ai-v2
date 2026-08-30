@@ -51,6 +51,7 @@ jobs:
           assert 'EXPECTED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18"' in script
           assert 'PINNED_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl@" + EXPECTED_DIGEST' in script
           assert '"source": {"image": PINNED_IMAGE}' in script
+          assert 'raise RecoveryError("Staging deployment digest mismatch")' in script
           assert "Verify pinned Postgres image before Railway mutation" in workflow
           assert "docker buildx imagetools inspect" in workflow
           assert "sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c" in workflow
