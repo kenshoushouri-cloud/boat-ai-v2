@@ -141,7 +141,7 @@ jobs:
           case "$op" in
             vars-keys|vars-safe|logs|redeploy)
               case "$service" in
-                backtest-analysis|cron-daily-report|cron-data-prepare|cron-final-check|cron-learning-all|cron-monthly-report|cron-nightly-results|cron-racer-course-stats|cron-window-day|cron-window-morning|cron-window-night|historical-backfill|test-beforeinfo-extra|postgres)
+                backtest-analysis|cron-daily-report|cron-data-prepare|cron-final-check|cron-learning-all|cron-monthly-report|cron-nightly-results|cron-racer-course-stats|cron-window-day|cron-window-morning|cron-window-night|historical-backfill|test-beforeinfo-extra|postgres|postgres-recovery)
                   ;;
                 *)
                   echo "Unsupported Railway service."
@@ -158,8 +158,8 @@ jobs:
               ;;
           esac
 
-          if [ "$op" = "redeploy" ] && [ "$service" = "postgres" ]; then
-            echo "Postgres redeploy is not permitted by this bridge."
+          if [ "$op" = "redeploy" ] && { [ "$service" = "postgres" ] || [ "$service" = "postgres-recovery" ]; }; then
+            echo "Postgres DB service redeploy is not permitted by this bridge."
             exit 2
           fi
 
