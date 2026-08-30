@@ -260,7 +260,6 @@ def list_backups(volume_instance_id: str) -> list[dict[str, Any]]:
       volumeInstanceBackupList(volumeInstanceId:$id) {
         createdAt
         expiresAt
-        id
         name
         referencedMB
         usedMB
