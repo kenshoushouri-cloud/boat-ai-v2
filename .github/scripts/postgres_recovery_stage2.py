@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Guarded Railway Postgres recovery Stage 2 promotion.
+"""Guarded Railway Postgres recovery Stage 2 compatibility promotion.
 
-Stage 2 promotes the already-audited isolated service without moving the volume:
-1. Verify postgres is absent and postgres-recovery is the audited service.
+Railway Project Tokens cannot rename the recovered service (serviceUpdate is rejected
+as not_authorized). Stage 2 therefore restores the original variable namespace without
+moving or restarting the database:
+1. Verify postgres is absent and postgres-recovery is the audited real DB service.
 2. Re-check preserved volume, backup, deployment digest, and credentials.
-3. Create a TCP proxy on postgres-recovery.
-4. Restore DATABASE_PUBLIC_URL as Railway dynamic references.
-5. Re-run read-only DB integrity audit while still isolated.
-6. Rename the SAME service ID from postgres-recovery to postgres.
-7. Verify service identity, volume attachment, deployment digest and backup again.
+3. Create a persistent TCP proxy on postgres-recovery.
+4. Restore DATABASE_PUBLIC_URL on postgres-recovery using Railway dynamic references.
+5. Re-run the read-only DB integrity audit.
+6. Create an empty compatibility service named postgres whose DB variables are only
+   Railway references to postgres-recovery.
+7. Verify the real DB service, volume identity, pinned digest, backup, and alias isolation.
 
 No Production consumer Variable is edited here. Existing ${{postgres.DATABASE_URL}}
-references are expected to resolve by service-name restoration. Consumer redeploys are
-performed separately only after post-promotion read-only verification.
+references can resolve through the compatibility namespace. Consumer redeploys remain
+separate and occur only after post-promotion read-only reference verification.
 """
 
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -247,72 +248,131 @@ def restore_public_url(
         raise PromotionError("DATABASE_PUBLIC_URL restore failed")
 
 
-def rename_service(service_id: str) -> None:
-    query = """
-    mutation Q($id:String!, $input:ServiceUpdateInput!) {
-      serviceUpdate(id:$id, input:$input) { id name }
-    }
-    """
-    req = urllib.request.Request(
-        stage1.ENDPOINT,
-        data=json.dumps({
-            "query": query,
-            "variables": {"id": service_id, "input": {"name": TARGET_SERVICE}},
-        }).encode("utf-8"),
-        method="POST",
-        headers={
-            "Project-Access-Token": stage1.TOKEN,
-            "Content-Type": "application/json",
-            "User-Agent": "boat-ai-v2-postgres-recovery-stage2",
+def service_ref(service: str, variable: str) -> str:
+    return "$" + "{{" + service + "." + variable + "}}"
+
+
+def create_compat_alias(
+    project_id: str,
+    environment_id: str,
+) -> str:
+    keys = (
+        "DATABASE_URL",
+        "DATABASE_PUBLIC_URL",
+        "PGHOST",
+        "PGPORT",
+        "PGUSER",
+        "PGPASSWORD",
+        "PGDATABASE",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "PGDATA",
+        "SSL_CERT_DAYS",
+    )
+    variables = {key: service_ref(STAGING_SERVICE, key) for key in keys}
+    data = stage1.gql(
+        """
+        mutation Q($input:ServiceCreateInput!) {
+          serviceCreate(input:$input) { id name }
+        }
+        """,
+        {
+            "input": {
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "name": TARGET_SERVICE,
+                "variables": variables,
+            }
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        raise PromotionError(
-            "Service rename request failed: " + type(exc).__name__
-        ) from None
-
-    errors = payload.get("errors") or []
-    if errors:
-        text = " ".join(
-            str(item.get("message") or "").lower()
-            for item in errors
-            if isinstance(item, dict)
-        )
-        if any(word in text for word in ("already exists", "already in use", "duplicate", "taken")):
-            reason = "name_conflict"
-        elif any(word in text for word in ("not authorized", "unauthorized", "permission", "forbidden")):
-            reason = "not_authorized"
-        elif any(word in text for word in ("invalid", "validation", "bad user input")):
-            reason = "invalid_input"
-        else:
-            reason = "other_graphql_rejection"
-        raise PromotionError("Service rename GraphQL rejected: " + reason)
-
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        raise PromotionError("Service rename returned no data")
-    service = data.get("serviceUpdate")
+    service = data.get("serviceCreate")
     if not isinstance(service, dict):
-        raise PromotionError("Service rename failed")
-    if str(service.get("id") or "") != service_id:
-        raise PromotionError("Service identity changed during rename")
-    if service.get("name") != TARGET_SERVICE:
-        raise PromotionError("Service rename did not produce postgres")
+        raise PromotionError("Compatibility postgres service creation failed")
+    if service.get("name") != TARGET_SERVICE or not service.get("id"):
+        raise PromotionError("Compatibility postgres service metadata invalid")
+    return str(service["id"])
+
+
+def verify_compat_alias(
+    real_service_id: str,
+    alias_service_id: str,
+    volume_instance_id: str,
+) -> None:
+    data = stage1.gql(
+        """
+        query Q {
+          projectToken {
+            project {
+              services(first:100) {
+                edges { node { id name deletedAt } }
+              }
+              volumes(first:100) {
+                edges {
+                  node {
+                    name
+                    volumeInstances(first:100) {
+                      edges {
+                        node {
+                          id serviceId state mountPath region sizeMB currentSizeMB
+                          deletedAt isPendingDeletion
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+    )
+    project = ((data.get("projectToken") or {}).get("project") or {})
+    services = stage1.nodes(project.get("services"))
+    by_name = {str(row.get("name")): row for row in services if row.get("name")}
+    real = by_name.get(STAGING_SERVICE)
+    alias = by_name.get(TARGET_SERVICE)
+    if not real or str(real.get("id") or "") != real_service_id:
+        raise PromotionError("Real postgres-recovery service identity mismatch")
+    if not alias or str(alias.get("id") or "") != alias_service_id:
+        raise PromotionError("Compatibility postgres service identity mismatch")
+    if real_service_id == alias_service_id:
+        raise PromotionError("Compatibility service unexpectedly reused real DB service ID")
+
+    found_volume = None
+    alias_has_volume = False
+    for volume in stage1.nodes(project.get("volumes")):
+        for inst in stage1.nodes(volume.get("volumeInstances")):
+            if str(inst.get("serviceId") or "") == alias_service_id:
+                alias_has_volume = True
+            if str(inst.get("id") or "") == volume_instance_id:
+                found_volume = inst
+
+    if alias_has_volume:
+        raise PromotionError("Compatibility postgres service must not own a volume")
+    if not found_volume:
+        raise PromotionError("Preserved postgres volume instance missing after alias creation")
+    if str(found_volume.get("serviceId") or "") != real_service_id:
+        raise PromotionError("Preserved postgres volume moved away from real DB service")
+    if found_volume.get("state") != "READY":
+        raise PromotionError("Preserved postgres volume is not READY")
+    if found_volume.get("mountPath") != stage1.EXPECTED_MOUNT:
+        raise PromotionError("Preserved postgres mount path changed")
+
+    latest_deployment(real_service_id)
+    stage1.guard_known_backup(volume_instance_id)
 
 
 def main() -> int:
     lines = [
         "## Railway Postgres recovery Stage 2",
         "",
-        "Promotion scope: same-service rename plus public endpoint restoration.",
+        "Promotion scope: compatibility namespace plus public endpoint restoration.",
         "No Production consumer Variable is edited by this command.",
         "",
     ]
     proxy_id: str | None = None
-    renamed = False
+    alias_created = False
 
     try:
         context = resolve_context(STAGING_SERVICE, TARGET_SERVICE)
@@ -363,31 +423,35 @@ def main() -> int:
             "",
         ]
 
-        # Rename is intentionally the LAST promotion mutation. The service ID and
-        # attached volume remain unchanged; only the Railway service name is restored.
-        rename_service(context["service_id"])
-        renamed = True
-
-        post = resolve_context(TARGET_SERVICE, STAGING_SERVICE)
-        if post["service_id"] != context["service_id"]:
-            raise PromotionError("Post-promotion service ID mismatch")
-        if post["volume_instance_id"] != context["volume_instance_id"]:
-            raise PromotionError("Post-promotion volume identity mismatch")
+        # Project Tokens cannot rename services. Restore the historical "postgres"
+        # variable namespace with an empty service whose values are references to the
+        # still-running real DB service. No DB process or volume is moved/restarted.
+        alias_service_id = create_compat_alias(
+            context["project_id"],
+            context["environment_id"],
+        )
+        alias_created = True
+        verify_compat_alias(
+            context["service_id"],
+            alias_service_id,
+            context["volume_instance_id"],
+        )
 
         lines += [
             "### Promotion result",
             "",
-            "- Same Railway service ID preserved: YES",
-            "- Service name restored to postgres: YES",
-            "- postgres-recovery name removed: YES",
-            "- postgres-volume remained attached: YES",
+            "- Real DB service postgres-recovery remained unchanged: YES",
+            "- Compatibility service name postgres created: YES",
+            "- Compatibility service owns no volume: YES",
+            "- postgres-volume remained on postgres-recovery: YES",
             "- PostgreSQL deployment remained SUCCESS on pinned digest: YES",
-            "- Existing backup guard after rename: PASS",
+            "- Existing backup guard after alias creation: PASS",
+            "- Compatibility DB variables are Railway references only: YES",
             "- Production consumer Variable values: NOT EDITED",
             "",
             "**STAGE2_PROMOTION_PASS_VERIFY_CONSUMERS**",
             "",
-            "- Keep the restored TCP proxy; it replaces the original public Postgres endpoint.",
+            "- Keep the restored TCP proxy; it provides the recovered public Postgres endpoint.",
             "- Next required step is read-only DATABASE_URL resolution and operational health checks.",
             "- Do not change model/LINE/BUY-WATCH-SKIP/N01/N02/Bao/thresholds or PR #169.",
         ]
@@ -396,7 +460,7 @@ def main() -> int:
 
     except Exception as exc:
         cleanup = "NOT_NEEDED"
-        if proxy_id and not renamed:
+        if proxy_id and not alias_created:
             try:
                 stage1.delete_tcp_proxy(proxy_id)
                 cleanup = "SUCCESS"
@@ -410,12 +474,12 @@ def main() -> int:
             "",
             f"- Error class: {safe(type(exc).__name__)}",
             f"- Safe error: {safe(safe_error)}",
-            f"- Service rename already happened: {'YES' if renamed else 'NO'}",
-            f"- Pre-rename TCP proxy cleanup: {cleanup}",
+            f"- Compatibility postgres service already created: {'YES' if alias_created else 'NO'}",
+            f"- Pre-alias TCP proxy cleanup: {cleanup}",
             "",
             "**STAGE2_BLOCK_MANUAL_REVIEW_REQUIRED**",
             "",
-            "- No automatic rollback of a completed service rename is attempted.",
+            "- No automatic deletion of a created compatibility service is attempted.",
             "- Do not redeploy Production consumers until read-only reference checks pass.",
         ]
         write_summary(lines)
