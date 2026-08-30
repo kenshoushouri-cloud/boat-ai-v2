@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Guarded Railway Postgres recovery Stage 2 promotion.
+"""Guarded Railway Postgres recovery Stage 2 reference promotion.
 
-Stage 2 promotes the already-audited isolated service without moving the volume:
-1. Verify postgres is absent and postgres-recovery is the audited service.
-2. Re-check preserved volume, backup, deployment digest, and credentials.
-3. Create a TCP proxy on postgres-recovery.
-4. Restore DATABASE_PUBLIC_URL as Railway dynamic references.
-5. Re-run read-only DB integrity audit while still isolated.
-6. Rename the SAME service ID from postgres-recovery to postgres.
-7. Verify service identity, volume attachment, deployment digest and backup again.
+Railway Project Tokens can operate the recovered database service but are not
+authorized to rename it. Stage 2 therefore restores Production connectivity
+without moving or restarting the database:
 
-No Production consumer Variable is edited here. Existing ${{postgres.DATABASE_URL}}
-references are expected to resolve by service-name restoration. Consumer redeploys are
-performed separately only after post-promotion read-only verification.
+1. Verify postgres is absent and postgres-recovery is the audited DB service.
+2. Re-check preserved volume, backup, pinned PostgreSQL 18 digest and credentials.
+3. Create the production TCP proxy and restore DATABASE_PUBLIC_URL by Railway refs.
+4. Re-run the read-only DB integrity audit.
+5. Change each application service DATABASE_URL to
+   ${{postgres-recovery.DATABASE_URL}} with skipDeploys=True.
+6. Leave consumer redeploys for a separate postcondition-gated step.
+
+No secret value is copied. The preserved volume is never moved, remounted, restored,
+deleted, or wiped. The recovered DB service is never redeployed by this script.
 """
 
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +33,27 @@ stage1 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stage1)
 
 TARGET_SERVICE = "postgres"
-STAGING_SERVICE = "postgres-recovery"
+RECOVERY_SERVICE = "postgres-recovery"
 TARGET_VOLUME = "postgres-volume"
+
+CONSUMER_SERVICES = (
+    "backtest-analysis",
+    "cron-daily-report",
+    "cron-data-prepare",
+    "cron-final-check",
+    "cron-learning-all",
+    "cron-monthly-report",
+    "cron-nightly-results",
+    "cron-racer-course-stats",
+    "cron-window-day",
+    "cron-window-morning",
+    "cron-window-night",
+    "historical-backfill",
+    "test-beforeinfo-extra",
+)
+
+RECOVERY_DATABASE_REF = stage1.ref("postgres-recovery.DATABASE_URL")
+LEGACY_DATABASE_REF = stage1.ref("postgres.DATABASE_URL")
 
 
 class PromotionError(RuntimeError):
@@ -73,17 +92,15 @@ def latest_deployment(service_id: str) -> dict[str, Any]:
         key=lambda row: row.get("createdAt") or "",
         reverse=True,
     )[0]
-    if str(latest.get("status") or "") != "SUCCESS":
-        raise PromotionError(
-            "Recovery service latest deployment is not SUCCESS: "
-            + str(latest.get("status") or "-")
-        )
+    status = str(latest.get("status") or "")
+    if status != "SUCCESS":
+        raise PromotionError("Recovery service latest deployment is not SUCCESS: " + status)
     if not stage1.find_string(latest.get("meta"), stage1.EXPECTED_DIGEST):
         raise PromotionError("Recovery service deployment digest mismatch")
     return latest
 
 
-def resolve_context(expected_name: str, forbidden_name: str) -> dict[str, Any]:
+def resolve_context() -> dict[str, Any]:
     data = stage1.gql(
         """
         query PromotionContext {
@@ -131,13 +148,28 @@ def resolve_context(expected_name: str, forbidden_name: str) -> dict[str, Any]:
         raise PromotionError("Project/environment context unresolved")
 
     services = stage1.nodes(project.get("services"))
-    by_name = {str(row.get("name")): row for row in services if row.get("name")}
-    if forbidden_name in by_name:
-        raise PromotionError(f"Forbidden service already exists: {forbidden_name}")
-    service = by_name.get(expected_name)
-    if not service or not service.get("id"):
-        raise PromotionError(f"Expected service missing: {expected_name}")
-    service_id = str(service["id"])
+    by_name = {
+        str(row.get("name")): row
+        for row in services
+        if row.get("name") and not row.get("deletedAt")
+    }
+    if TARGET_SERVICE in by_name:
+        raise PromotionError("Unexpected postgres service already exists")
+
+    recovery = by_name.get(RECOVERY_SERVICE)
+    if not recovery or not recovery.get("id"):
+        raise PromotionError("postgres-recovery service missing")
+    recovery_id = str(recovery["id"])
+
+    missing_consumers = [name for name in CONSUMER_SERVICES if name not in by_name]
+    if missing_consumers:
+        raise PromotionError(
+            "Required consumer services missing: " + ",".join(missing_consumers)
+        )
+    consumer_ids = {
+        name: str(by_name[name]["id"])
+        for name in CONSUMER_SERVICES
+    }
 
     volume = None
     volume_instance = None
@@ -153,6 +185,7 @@ def resolve_context(expected_name: str, forbidden_name: str) -> dict[str, Any]:
                 reverse=True,
             )[0]
         break
+
     if not volume or not volume_instance:
         raise PromotionError("Preserved postgres-volume unresolved")
 
@@ -162,23 +195,28 @@ def resolve_context(expected_name: str, forbidden_name: str) -> dict[str, Any]:
             volume_instance.get("isPendingDeletion") is False
             and not volume_instance.get("deletedAt")
         ),
-        "same_service_attachment": str(volume_instance.get("serviceId") or "") == service_id,
+        "same_service_attachment": (
+            str(volume_instance.get("serviceId") or "") == recovery_id
+        ),
         "mount_path": volume_instance.get("mountPath") == stage1.EXPECTED_MOUNT,
         "region": volume_instance.get("region") == stage1.EXPECTED_REGION,
-        "configured_size": int(volume_instance.get("sizeMB") or 0) == stage1.EXPECTED_SIZE_MB,
+        "configured_size": (
+            int(volume_instance.get("sizeMB") or 0) == stage1.EXPECTED_SIZE_MB
+        ),
         "data_size": float(volume_instance.get("currentSizeMB") or 0) >= 3500.0,
     }
     failed = [name for name, ok in guards.items() if not ok]
     if failed:
         raise PromotionError("Promotion volume guard failed: " + ",".join(failed))
 
-    latest_deployment(service_id)
+    latest_deployment(recovery_id)
     stage1.guard_known_backup(str(volume_instance.get("id")))
 
     return {
         "project_id": str(project_id),
         "environment_id": str(environment_id),
-        "service_id": service_id,
+        "recovery_service_id": recovery_id,
+        "consumer_ids": consumer_ids,
         "volume_instance_id": str(volume_instance.get("id")),
         "volume_current_size_mb": volume_instance.get("currentSizeMB"),
     }
@@ -209,6 +247,34 @@ def create_tcp_proxy(environment_id: str, service_id: str) -> dict[str, Any]:
     return proxy
 
 
+def upsert_variable(
+    project_id: str,
+    environment_id: str,
+    service_id: str,
+    name: str,
+    value: str,
+) -> None:
+    data = stage1.gql(
+        """
+        mutation Q($input:VariableUpsertInput!) {
+          variableUpsert(input:$input)
+        }
+        """,
+        {
+            "input": {
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "serviceId": service_id,
+                "name": name,
+                "value": value,
+                "skipDeploys": True,
+            }
+        },
+    )
+    if data.get("variableUpsert") is not True:
+        raise PromotionError(f"{name} upsert failed")
+
+
 def restore_public_url(
     project_id: str,
     environment_id: str,
@@ -226,96 +292,64 @@ def restore_public_url(
         + "/"
         + stage1.ref("PGDATABASE")
     )
-    data = stage1.gql(
-        """
-        mutation Q($input:VariableUpsertInput!) {
-          variableUpsert(input:$input)
-        }
-        """,
-        {
-            "input": {
-                "projectId": project_id,
-                "environmentId": environment_id,
-                "serviceId": service_id,
-                "name": "DATABASE_PUBLIC_URL",
-                "value": value,
-                "skipDeploys": True,
-            }
-        },
+    upsert_variable(
+        project_id,
+        environment_id,
+        service_id,
+        "DATABASE_PUBLIC_URL",
+        value,
     )
-    if data.get("variableUpsert") is not True:
-        raise PromotionError("DATABASE_PUBLIC_URL restore failed")
 
 
-def rename_service(service_id: str) -> None:
-    query = """
-    mutation Q($id:String!, $input:ServiceUpdateInput!) {
-      serviceUpdate(id:$id, input:$input) { id name }
-    }
-    """
-    req = urllib.request.Request(
-        stage1.ENDPOINT,
-        data=json.dumps({
-            "query": query,
-            "variables": {"id": service_id, "input": {"name": TARGET_SERVICE}},
-        }).encode("utf-8"),
-        method="POST",
-        headers={
-            "Project-Access-Token": stage1.TOKEN,
-            "Content-Type": "application/json",
-            "User-Agent": "boat-ai-v2-postgres-recovery-stage2",
-        },
-    )
+def promote_consumer_references(context: dict[str, Any]) -> list[str]:
+    updated: list[str] = []
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
+        for name in CONSUMER_SERVICES:
+            upsert_variable(
+                context["project_id"],
+                context["environment_id"],
+                context["consumer_ids"][name],
+                "DATABASE_URL",
+                RECOVERY_DATABASE_REF,
+            )
+            updated.append(name)
+        return updated
+    except Exception:
+        rollback_failed: list[str] = []
+        for name in reversed(updated):
+            try:
+                upsert_variable(
+                    context["project_id"],
+                    context["environment_id"],
+                    context["consumer_ids"][name],
+                    "DATABASE_URL",
+                    LEGACY_DATABASE_REF,
+                )
+            except Exception:
+                rollback_failed.append(name)
+        if rollback_failed:
+            raise PromotionError(
+                "Consumer reference promotion failed; rollback incomplete: "
+                + ",".join(sorted(rollback_failed))
+            ) from None
         raise PromotionError(
-            "Service rename request failed: " + type(exc).__name__
+            "Consumer reference promotion failed; updated references rolled back"
         ) from None
-
-    errors = payload.get("errors") or []
-    if errors:
-        text = " ".join(
-            str(item.get("message") or "").lower()
-            for item in errors
-            if isinstance(item, dict)
-        )
-        if any(word in text for word in ("already exists", "already in use", "duplicate", "taken")):
-            reason = "name_conflict"
-        elif any(word in text for word in ("not authorized", "unauthorized", "permission", "forbidden")):
-            reason = "not_authorized"
-        elif any(word in text for word in ("invalid", "validation", "bad user input")):
-            reason = "invalid_input"
-        else:
-            reason = "other_graphql_rejection"
-        raise PromotionError("Service rename GraphQL rejected: " + reason)
-
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        raise PromotionError("Service rename returned no data")
-    service = data.get("serviceUpdate")
-    if not isinstance(service, dict):
-        raise PromotionError("Service rename failed")
-    if str(service.get("id") or "") != service_id:
-        raise PromotionError("Service identity changed during rename")
-    if service.get("name") != TARGET_SERVICE:
-        raise PromotionError("Service rename did not produce postgres")
 
 
 def main() -> int:
     lines = [
         "## Railway Postgres recovery Stage 2",
         "",
-        "Promotion scope: same-service rename plus public endpoint restoration.",
-        "No Production consumer Variable is edited by this command.",
+        "Promotion mode: Railway dynamic-reference promotion to postgres-recovery.",
+        "The database service and preserved volume are not moved or restarted.",
         "",
     ]
     proxy_id: str | None = None
-    renamed = False
+    references_promoted = False
 
     try:
-        context = resolve_context(STAGING_SERVICE, TARGET_SERVICE)
+        context = resolve_context()
         _, snapshot = stage1.resolve_deleted_deployment_and_snapshot(
             context["project_id"],
             context["environment_id"],
@@ -325,24 +359,28 @@ def main() -> int:
             "",
             "- postgres absent: PASS",
             "- postgres-recovery present: PASS",
-            "- postgres-volume attached to recovery service: PASS",
+            "- all 13 consumer services present: PASS",
+            "- postgres-volume attached to postgres-recovery: PASS",
             "- preserved backup: PASS",
             "- exact deleted PostgreSQL 18 digest: PASS",
             f"- volume current size MB: {safe(context['volume_current_size_mb'])}",
             "",
         ]
 
-        proxy = create_tcp_proxy(context["environment_id"], context["service_id"])
+        proxy = create_tcp_proxy(
+            context["environment_id"],
+            context["recovery_service_id"],
+        )
         proxy_id = str(proxy["id"])
         restore_public_url(
             context["project_id"],
             context["environment_id"],
-            context["service_id"],
+            context["recovery_service_id"],
         )
         lines += [
             "### Public endpoint restoration",
             "",
-            "- TCP proxy created for recovered Postgres: YES",
+            "- TCP proxy created for postgres-recovery: YES",
             "- DATABASE_PUBLIC_URL restored using Railway dynamic references: YES",
             "- Proxy host/port: NOT PUBLISHED",
             "",
@@ -363,32 +401,31 @@ def main() -> int:
             "",
         ]
 
-        # Rename is intentionally the LAST promotion mutation. The service ID and
-        # attached volume remain unchanged; only the Railway service name is restored.
-        rename_service(context["service_id"])
-        renamed = True
+        updated = promote_consumer_references(context)
+        references_promoted = True
 
-        post = resolve_context(TARGET_SERVICE, STAGING_SERVICE)
-        if post["service_id"] != context["service_id"]:
-            raise PromotionError("Post-promotion service ID mismatch")
+        post = resolve_context()
+        if post["recovery_service_id"] != context["recovery_service_id"]:
+            raise PromotionError("Recovery service identity changed")
         if post["volume_instance_id"] != context["volume_instance_id"]:
-            raise PromotionError("Post-promotion volume identity mismatch")
+            raise PromotionError("Preserved volume identity changed")
 
         lines += [
-            "### Promotion result",
+            "### Reference promotion result",
             "",
-            "- Same Railway service ID preserved: YES",
-            "- Service name restored to postgres: YES",
-            "- postgres-recovery name removed: YES",
-            "- postgres-volume remained attached: YES",
+            f"- Consumer DATABASE_URL references updated: {len(updated)}/{len(CONSUMER_SERVICES)}",
+            "- Target reference: postgres-recovery.DATABASE_URL (value not published)",
+            "- skipDeploys used for every consumer update: YES",
+            "- Raw DB credentials copied: NO",
+            "- postgres-recovery service identity unchanged: YES",
+            "- postgres-volume identity/attachment unchanged: YES",
             "- PostgreSQL deployment remained SUCCESS on pinned digest: YES",
-            "- Existing backup guard after rename: PASS",
-            "- Production consumer Variable values: NOT EDITED",
+            "- Existing backup guard after promotion: PASS",
             "",
-            "**STAGE2_PROMOTION_PASS_VERIFY_CONSUMERS**",
+            "**STAGE2_REFERENCE_PROMOTION_PASS_VERIFY_CONSUMERS**",
             "",
-            "- Keep the restored TCP proxy; it replaces the original public Postgres endpoint.",
-            "- Next required step is read-only DATABASE_URL resolution and operational health checks.",
+            "- The restored TCP proxy is intentionally retained as the production public DB endpoint.",
+            "- Consumer redeploys must wait for read-only DATABASE_URL resolution checks.",
             "- Do not change model/LINE/BUY-WATCH-SKIP/N01/N02/Bao/thresholds or PR #169.",
         ]
         write_summary(lines)
@@ -396,27 +433,31 @@ def main() -> int:
 
     except Exception as exc:
         cleanup = "NOT_NEEDED"
-        if proxy_id and not renamed:
+        if proxy_id and not references_promoted:
             try:
                 stage1.delete_tcp_proxy(proxy_id)
                 cleanup = "SUCCESS"
             except Exception:
                 cleanup = "FAILED"
 
-        safe_error = str(exc) if isinstance(exc, (PromotionError, stage1.RecoveryError)) else type(exc).__name__
+        safe_error = (
+            str(exc)
+            if isinstance(exc, (PromotionError, stage1.RecoveryError))
+            else type(exc).__name__
+        )
         lines += [
             "",
             "### Stage 2 failure",
             "",
             f"- Error class: {safe(type(exc).__name__)}",
             f"- Safe error: {safe(safe_error)}",
-            f"- Service rename already happened: {'YES' if renamed else 'NO'}",
-            f"- Pre-rename TCP proxy cleanup: {cleanup}",
+            f"- Consumer reference promotion completed: {'YES' if references_promoted else 'NO'}",
+            f"- Pre-promotion TCP proxy cleanup: {cleanup}",
             "",
             "**STAGE2_BLOCK_MANUAL_REVIEW_REQUIRED**",
             "",
-            "- No automatic rollback of a completed service rename is attempted.",
             "- Do not redeploy Production consumers until read-only reference checks pass.",
+            "- No volume move, DB service redeploy, restore, PITR, delete, or wipe was attempted.",
         ]
         write_summary(lines)
         return 1
