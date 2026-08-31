@@ -14,6 +14,9 @@
 - 新しいチャットへ「前のチャットを引き継いで」と依頼しない。
 - No.1〜No.6 はArchive扱い。通常運用では読み込まない。
 - このファイルに書かれたSHA・件数はcheckpoint。再開時にはcurrent値を再取得する。
+- 安全なmaintenance writeは、ChatGPTが直前に対象・範囲・影響を1件に限定して明示した場合、ユーザーの「続けて」「進めて」「実行して」等の明確な自然言語承認を、その1件に限る明示承認として扱ってよい。ChatGPTは既存workflowが要求する完全一致commandへ変換してIssue #42へ投稿する。
+- 上記の承認は**単発・非再利用**。別の日付・別operation・追加writeには自動継承しない。
+- destructive/high-impact操作（service/volume/backupのdelete・restore・rename、Railway Variables/schedules変更、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients変更、PR #169 activation、main merge）は自然言語の「続けて」へ自動変換せず、対象操作を明示した個別承認を必要とする。
 
 ## 1. Source of Truth
 
@@ -81,7 +84,7 @@ OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 2026-08-28〜30のDB障害期間のgap補修:
 - 8/28: repair済み
 - 8/29: repair済み
-- 8/30: 最新handoffではread-only review継続
+- 8/30: official-source read-only auditはPASS。ただしDB exhibition 984行に対し公式K sourceは1004/1008行で、復元可能な20行不足を確認。guarded repair待ち。
 - PR #307で、8/28〜30をBOAT RACE公式K sourceで確認する**read-only audit**を追加
 - Issue #42 command: `/railway outage-source-audit`
 
