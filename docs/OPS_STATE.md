@@ -81,22 +81,36 @@ Repair completed:
 - racer condition 936
 
 ### 2026-08-30
-Current read-only evidence:
-- official BOAT RACE K-source audit: PASS
-- races/results/weather: complete
-- official exhibition/course/ST rows: 1004/1008
-- DB historical exhibition rows: 984
-- recoverable exhibition gap: 20 rows
-- guarded repair remains pending; no write has been executed from this checkpoint
+Recovery status: **CLOSED with documented K0 exceptions**.
 
-PR #307 added fixed read-only official-source audit:
+Guarded repair completed successfully:
+- races 168
+- full6 168
+- valid results 168
+- historical weather 168
+- historical race condition 168
+- historical racer condition 1008
+- odds complete 164
+- odds partial 2 preserved
+- odds zero 2
+
+Residual audit:
+- zero odds: `20260830_05_08`, `20260830_19_10`
+- partial odds: `20260830_05_10`, `20260830_23_11`
+- the same four races are the only historical exhibition exceptions
+- all four have one **K0 withdrawal**
+- official beforeinfo currently has zero exhibition lanes for all four
+- DB historical exhibition=984 rows and matches official beforeinfo availability exactly
+- official K source has 1004 exhibition rows: five lanes in each of the four K0 races, 20 rows beyond beforeinfo
+- formal Exhibition ST evidence is **official beforeinfo only**; do not write K-source rows into normal historical beforeinfo snapshots
+- current official odds3t pages for the two zero-odds races return HTML but parse 0 tickets
+- no further 8/30 DB write is justified without new official evidence
+
+Official-source audit remains available:
 - dates fixed: 2026-08-28 / 29 / 30
 - source: official BOAT RACE K source
 - command: `/railway outage-source-audit`
-- no DB writes
-- no Railway mutation
-- no LINE
-- no model / Shadow / Forward execution
+- read-only; no Railway / LINE / model / Shadow / Forward mutation
 
 ## 5. Issue #42 usage policy
 
@@ -119,7 +133,28 @@ Write approval policy:
 - 対象例: fixed-date outage gap repair、現在windowのbounded base-odds refreshなど、既存のguarded workflowで範囲が固定され、model/LINE/Railway settingsを変更しないmaintenance。
 - destructive/high-impact操作（service/volume/backup delete・restore・rename、Railway Variables/schedules、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients、PR #169 activation、main merge）は対象操作を明示した個別承認を必須とし、「続けて」だけでは実行しない。
 
-## 6. Normal pipeline
+## 6. Current live odds reliability
+
+2026-08-31 checkpoint:
+- bounded day-window base-odds refresh succeeded
+- target races: 6
+- fetch_failed_total: 0
+- saved_odds_rows_total: 360
+- complete_expected: 6
+- immediate read-only planner after refresh: eligible=5 / complete=5 / incomplete=0
+- `today-health`: PASS_READ_ONLY
+- elapsed historical gaps remain in earlier morning/day races; treat these as a separate **live odds acquisition reliability** issue, not as part of the 8/28〜30 DB outage recovery
+- night-window upcoming incompleteness before its collection window is not itself an incident
+- PR #169 remains HOLD and must not be activated automatically
+
+Preferred live read-only sequence:
+1. `/railway today-health`
+2. `/railway window-refresh-plan`
+3. `/railway window-refresh-live-probe` only when planner shows incomplete eligible races
+4. bounded refresh only with single-use maintenance approval
+5. re-run planner / health after any write
+
+## 7. Normal pipeline
 
 Major operational flow:
 - `cron-data-prepare`
@@ -133,17 +168,16 @@ Window principle:
 
 Production pipeline detail is in `PROJECT_HANDOFF.md`, but only retrieve the needed section.
 
-## 7. Current safe next sequence
+## 8. Current safe next sequence
 
 1. Confirm current main and open PR.
-2. Confirm Railway inventory / DB reference only if the task needs Ops state.
-3. For outage work, inspect 8/30 with read-only audit.
-4. Run guarded repair only if read-only evidence shows a gap and the write is approved under the single-use maintenance approval policy above.
-5. Re-audit after any repair.
-6. Confirm current-day `today-health` and normal pipeline.
-7. Once stable, close the DB-recovery phase and return to prediction research.
+2. For current live Ops, use `today-health` and `window-refresh-plan`; probe only current eligible gaps.
+3. Do not reopen 8/30 repair unless new official evidence contradicts the K0 exception finding.
+4. Keep K-source historical rows separate from formal beforeinfo evidence.
+5. Keep PR #169 HOLD unless a separate reviewed activation case exists.
+6. Once normal live collection is stable, return to prediction research priorities.
 
-## 8. Maintenance rule
+## 9. Maintenance rule
 
 This is a state file, not a diary.
 - overwrite stale state
