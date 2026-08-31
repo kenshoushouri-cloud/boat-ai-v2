@@ -15,7 +15,7 @@ Guarded writes (require exact trailing CONFIRM):
 
 Safety:
 - postgres / postgres-recovery are read-only here
-- no service/volume/backup delete/restore/rename
+- no destructive service, volume, backup, restore, or rename operations
 - no arbitrary shell
 - no secret-like or model/LINE/threshold Variables
 - Variable writes use --skip-deploys; redeploy is a separate approval
