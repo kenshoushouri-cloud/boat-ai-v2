@@ -391,3 +391,26 @@ Production v24 / FINAL / LINE / BUY-WATCH-SKIP / thresholds / coefficientsは、
 - 安全なPRフローとProduction promotion gate
 
 この条件を満たした後は、古いNo.1〜No.5チャットを新規プロジェクトへ丸ごと移動しなくても、GitHubを基準に継続可能。
+
+
+---
+
+## 12. 2026-08-31 11:07 JST current checkpoint
+
+トーク容量上限による次チャット移行用の最新差分。
+
+- handoff作成直前 main: `3445fad33dcceeceec1b529aa9c00aff1201ec74`
+- open PR: #169のみ（Draft hold）
+- Postgres Stage 2: 完了
+- DB actual: `postgres-recovery`
+- compatibility: `postgres`
+- 15 services、consumer DB references resolved
+- 11:07 JST today-health: PASS_READ_ONLY、144 races / 864 entries / odds 9,841 rows・106 races
+- outage-gap repair:
+  - 8/28 complete
+  - 8/29 complete
+  - 8/30 pending review
+- 次の最優先: 8/30 read-only audit → 必要ならguarded repair → 再audit → 当日通常pipeline health
+- Parallel TOTO repo `kenshoushouri-cloud/toto-ai-v1`: bootstrap済み、Railway未作成、boatと完全分離
+
+詳細は `docs/PROJECT_HANDOFF.md` の `CONTEXT_LIMIT_HANDOFF_20260831_1107` と `docs/PROJECT_HISTORY.md` の同日checkpointを参照。
