@@ -34,11 +34,11 @@
 
 ## 2. Current checkpoint
 
-このBootstrap作成直前のmain:
-- `90dd96872c1006e4293c817f08315898abc2571f`
-- PR #307: `Ops: add fixed outage official-source audit`
+Current main checkpoint:
+- `4834ee58335901e07332c09d968bccaabf61c0a7`
+- startup時は必ずcurrent mainを再取得する。
 
-Open PR:
+Persistent HOLD:
 - **#169** `Draft: temporary 10-minute base-odds refresh`
 - HOLD。明確なprediction / learning valueなしにmergeしない。
 
@@ -81,24 +81,33 @@ OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 
 ## 5. Active operational checkpoint
 
-2026-08-28〜30のDB障害期間のgap補修:
-- 8/28: repair済み
-- 8/29: repair済み
-- 8/30: official-source read-only auditはPASS。ただしDB exhibition 984行に対し公式K sourceは1004/1008行で、復元可能な20行不足を確認。guarded repair待ち。
-- PR #307で、8/28〜30をBOAT RACE公式K sourceで確認する**read-only audit**を追加
-- Issue #42 command: `/railway outage-source-audit`
+2026-08-28〜30のDB障害復旧:
+- 8/28: repair完了
+- 8/29: repair完了
+- 8/30: guarded repair完了。DB障害復旧は**CLOSED with documented K0 exceptions**。
+- 8/30 races/results/weatherは完全。oddsは complete=164 / partial=2 / zero=2。
+- 8/30の4例外は `20260830_05_08`, `20260830_05_10`, `20260830_19_10`, `20260830_23_11`。全て1艇K0欠場。
+- official beforeinfoはこの4Rの展示情報を持たず、DB historical exhibition=984はbeforeinfo可用範囲と一致。
+- official K sourceは同4Rに各5艇、計20行の展示情報を持つが、Exhibition ST formal evidenceは**official beforeinfo only**のため通常historical beforeinfoへ混入させない。
+- zero-odds 2R (`05_08`, `19_10`) は現行公式odds3tページでも parsed=0。追加repair根拠なし。
+- 8/30へ追加DB writeを行わない。新しい公式source/evidenceが出た場合のみ再検討。
+
+Current live Ops:
+- 2026-08-31 day windowのbounded base-odds refreshは成功。6R / saved 360 rows / fetch_failed=0 / complete_expected=6。
+- refresh後の10〜60分scopeは incomplete=0。
+- `today-health` はPASS_READ_ONLY。ただし過去締切済みのmorning/day odds gapは残るため、**DB障害復旧とは別のlive odds acquisition reliability課題**として扱う。
+- PR #169はHOLDのまま。自動有効化しない。
 
 重要:
-- Issue #42を全文取得しない。
-- このcommandが必要なら、command実行とその**新しい結果だけ**を扱う。
+- Issue #42を全文取得しない。必要commandの新しい結果だけ扱う。
 - LINE / model / Shadow / Forward evidenceを障害補修で再生成しない。
 
 次の安全な運用順:
 1. current main / open PRを短く確認
-2. 必要なら `OPS_STATE.md` を読む
-3. 8/30 outage-gapをread-onlyで確認
-4. 当日 `today-health` と通常pipelineの継続正常性をread-only確認
-5. DB障害復旧フェーズを終了できたら研究ラインへ戻る
+2. Ops作業なら `OPS_STATE.md` を読む
+3. live oddsは `today-health` → `window-refresh-plan` → 必要時だけlive probe
+4. bounded maintenance writeが必要ならsingle-use承認で実行し、直後にread-only再監査
+5. 8/30 outage repairへ戻らず、通常pipeline安定確認後は研究ラインへ戻る
 
 ## 6. Research current summary
 
