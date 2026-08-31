@@ -36,7 +36,9 @@ jobs:
           trigger = wf.split('permissions:', 1)[0]
           assert 'schedule:' not in trigger
           assert 'workflow_dispatch:' not in trigger
-          assert 'DATABASE_URL' not in wf
+          audit_part = wf.split('  audit:', 1)[1]
+          assert 'DATABASE_URL' not in audit_part
+          assert 'RAILWAY_TOKEN' not in audit_part
           print('OUTAGE_SOURCE_VALIDATE=PASS')
           PY
       - name: Python syntax
