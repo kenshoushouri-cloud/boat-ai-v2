@@ -1,0 +1,30 @@
+name: Temporary outage official-source audit CI run
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/outage-source-audit-ci-run.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Audit fixed outage dates
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in 2026-08-28 2026-08-29 2026-08-30; do
+            echo "OUTAGE_SOURCE_DATE_START=$d"
+            TARGET_DATE="$d" python -u audit_k_day_all_pg.py
+            echo "OUTAGE_SOURCE_DATE_END=$d"
+          done
