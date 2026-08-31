@@ -34,11 +34,11 @@
 13 application/cron services were relinked so DATABASE_URL resolves to `postgres-recovery`.
 10 DB-dependent services were redeployed successfully during Stage 2.
 
-Checkpoint after recovery:
+2026-08-31 13:21 JST read-only recheck:
 - services discovered: 15
 - `postgres-recovery`: SUCCESS
 - application / cron services: SUCCESS
-- DB reference diagnostic: resolved_url
+- DB reference diagnostic: all 15 listed services `resolved_url`
 
 Do not assume these checkpoint values are current. Re-read only the required health state.
 
@@ -81,19 +81,33 @@ Repair completed:
 - racer condition 936
 
 ### 2026-08-30
-Latest compressed handoff state:
-- repair result was not yet treated as fully closed
-- read-only audit/review remains the safe next step
-- do not infer completion from an old chat
+2026-08-31 read-only official BOAT RACE K-source audit:
+- races 168
+- entry rows 1008
+- entries complete6 168/168
+- trifecta complete 168/168
+- winning method complete 168/168
+- weather / wind / wave complete 168/168
+- exhibition / course / ST rows 1004/1008
+- accident rows 16
+- parser failed candidate lines 0
+- duplicate race IDs 0
+- `RESULT=PASS`
 
-PR #307 added fixed read-only official-source audit:
-- dates fixed: 2026-08-28 / 29 / 30
-- source: official BOAT RACE K source
-- command: `/railway outage-source-audit`
-- no DB writes
-- no Railway mutation
-- no LINE
-- no model / Shadow / Forward execution
+The same fixed audit also returned `RESULT=PASS` for 2026-08-28 and 2026-08-29.
+
+This audit is official-source validation only. It performs no DB writes, Railway mutation, LINE, model, Shadow, or Forward execution.
+
+### Recovery phase status
+**DB recovery incident is closed for normal operations as of the 2026-08-31 read-only checks.**
+
+Reason:
+- fixed outage-source audit: PASS for 8/28, 8/29, 8/30
+- Railway inventory: 15 services discovered; application/cron deployments SUCCESS
+- DB reference read-only diagnostic: all listed services `resolved_url`
+- current-day `today-health`: `PASS_READ_ONLY`
+
+Do not reopen recovery work without new evidence of a DB/service/reference/data gap.
 
 ## 5. Issue #42 usage policy
 
@@ -108,6 +122,7 @@ Preferred read-only commands when relevant:
 - `/railway today-health`
 - `/railway db-reference-readonly`
 - `/railway outage-source-audit`
+- `/railway window-refresh-plan`
 
 Write commands require an exact explicit gate and must not be inferred from a previous approval.
 
@@ -123,17 +138,25 @@ Major operational flow:
 Window principle:
 **odds collection → PRE evaluation → notification**
 
+2026-08-31 13:19–13:20 JST read-only observations:
+- entries: 144/144 races full6
+- active day window planner: eligible 14 / complete 9 / incomplete 5
+- the 5 incomplete races were still 10–60 minutes before deadline
+- early exact120 Shadow evidence: 0
+- `WINDOW_REFRESH_PLAN_RESULT=PASS_READ_ONLY`
+
+This is not evidence to activate PR #169. PR #169 remains HOLD.
+
 Production pipeline detail is in `PROJECT_HANDOFF.md`, but only retrieve the needed section.
 
 ## 7. Current safe next sequence
 
 1. Confirm current main and open PR.
-2. Confirm Railway inventory / DB reference only if the task needs Ops state.
-3. For outage work, inspect 8/30 with read-only audit.
-4. Run guarded repair only if read-only evidence shows a gap and the exact write gate is separately approved.
-5. Re-audit after any repair.
-6. Confirm current-day `today-health` and normal pipeline.
-7. Once stable, close the DB-recovery phase and return to prediction research.
+2. For routine Ops checks, use only the needed read-only command.
+3. Treat the 2026-08-28..30 DB recovery incident as closed unless new evidence appears.
+4. Keep PR #169 HOLD unless prediction / learning value is demonstrated with forward evidence.
+5. Return to prediction research using `docs/RESEARCH_STATE.md`.
+6. Do not change Production v24 / FINAL / LINE / BUY-WATCH-SKIP without formal evidence and a separate gated PR.
 
 ## 8. Maintenance rule
 
