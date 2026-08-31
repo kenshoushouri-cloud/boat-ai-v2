@@ -31,9 +31,9 @@
 
 ## 2. Current checkpoint
 
-このBootstrap作成直前のmain:
-- `90dd96872c1006e4293c817f08315898abc2571f`
-- PR #307: `Ops: add fixed outage official-source audit`
+このBootstrap更新直前のmain:
+- `0fe49fe5533f0a1f7e378e1224557bb3b8c96fac`
+- PR #310: `Docs: add lightweight ChatGPT context state`
 
 Open PR:
 - **#169** `Draft: temporary 10-minute base-odds refresh`
@@ -48,7 +48,12 @@ Open PR:
 - PostgreSQL: **18.6**
 - deleted deploymentのpinned image digestを使用
 - consumer DATABASE_URLは `postgres-recovery` へのRailway Referenceへrelink済み
-- checkpointでは15 services / DB references resolved / application・cron SUCCESS
+
+2026-08-31 13:21 JST read-only recheck:
+- services discovered: 15
+- `postgres-recovery`: SUCCESS
+- application / cron services: SUCCESS
+- DB references: all listed services `resolved_url`
 
 **この二層構成を、明確なmigration planなしにrename/delete/統合しない。**
 Volume / backupをwipe/delete/restoreしない。
@@ -66,7 +71,7 @@ Production本線:
 研究機能はProductionと分離。
 OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 
-このBootstrap作成時点で、以下は勝手に変更しない:
+このBootstrap更新時点で、以下は勝手に変更しない:
 - v24 / FINAL logic
 - LINE
 - BUY / WATCH / SKIP
@@ -78,24 +83,35 @@ OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 
 ## 5. Active operational checkpoint
 
-2026-08-28〜30のDB障害期間のgap補修:
-- 8/28: repair済み
-- 8/29: repair済み
-- 8/30: 最新handoffではread-only review継続
-- PR #307で、8/28〜30をBOAT RACE公式K sourceで確認する**read-only audit**を追加
-- Issue #42 command: `/railway outage-source-audit`
+2026-08-28〜30 DB障害の復旧フェーズは、2026-08-31 read-only確認で**通常運用へ復帰済み**として扱う。
+
+確認済み:
+- `/railway outage-source-audit`: 8/28・8/29・8/30すべて `RESULT=PASS`
+- 8/30 official source: 168 races / complete6 168/168 / trifecta 168/168 / weather 168/168
+- parser failed candidate lines 0 / duplicate race IDs 0
+- `/railway today-health`: `PASS_READ_ONLY`
+- `/railway inventory`: 15 services / application・cron SUCCESS
+- `/railway db-reference-readonly`: all listed services `resolved_url`
+
+2026-08-31 13:20 JSTのactive day-window:
+- eligible 14 / complete 9 / incomplete 5
+- 5件は締切10〜60分前
+- early exact120 Shadow evidence 0
+- `WINDOW_REFRESH_PLAN_RESULT=PASS_READ_ONLY`
+
+この観測だけでPR #169を有効化しない。PR #169はHOLD継続。
 
 重要:
 - Issue #42を全文取得しない。
-- このcommandが必要なら、command実行とその**新しい結果だけ**を扱う。
+- DB復旧を再開するのは、新しいDB/service/reference/data gapの証拠が出た時だけ。
 - LINE / model / Shadow / Forward evidenceを障害補修で再生成しない。
 
 次の安全な運用順:
 1. current main / open PRを短く確認
-2. 必要なら `OPS_STATE.md` を読む
-3. 8/30 outage-gapをread-onlyで確認
-4. 当日 `today-health` と通常pipelineの継続正常性をread-only確認
-5. DB障害復旧フェーズを終了できたら研究ラインへ戻る
+2. Ops作業なら必要時だけ `OPS_STATE.md`
+3. 通常運用はread-only healthで確認
+4. recovery incidentは新しい異常がなければ閉じたままにする
+5. 研究作業へ戻る場合だけ `RESEARCH_STATE.md` を読む
 
 ## 6. Research current summary
 
