@@ -81,10 +81,13 @@ Repair completed:
 - racer condition 936
 
 ### 2026-08-30
-Latest compressed handoff state:
-- repair result was not yet treated as fully closed
-- read-only audit/review remains the safe next step
-- do not infer completion from an old chat
+Current read-only evidence:
+- official BOAT RACE K-source audit: PASS
+- races/results/weather: complete
+- official exhibition/course/ST rows: 1004/1008
+- DB historical exhibition rows: 984
+- recoverable exhibition gap: 20 rows
+- guarded repair remains pending; no write has been executed from this checkpoint
 
 PR #307 added fixed read-only official-source audit:
 - dates fixed: 2026-08-28 / 29 / 30
@@ -109,7 +112,12 @@ Preferred read-only commands when relevant:
 - `/railway db-reference-readonly`
 - `/railway outage-source-audit`
 
-Write commands require an exact explicit gate and must not be inferred from a previous approval.
+Write approval policy:
+- GitHub Actions側のexact command gateは維持する。
+- ChatGPTが直前に**1つの安全なmaintenance write**について対象・範囲・影響を明示した後、ユーザーが「続けて」「進めて」「実行して」等で明確に承認した場合、その自然言語承認をその1 operationに限って有効とし、ChatGPTがexact commandへ変換して投稿してよい。
+- 承認はsingle-use。別日付・別operation・追加writeへ引き継がない。
+- 対象例: fixed-date outage gap repair、現在windowのbounded base-odds refreshなど、既存のguarded workflowで範囲が固定され、model/LINE/Railway settingsを変更しないmaintenance。
+- destructive/high-impact操作（service/volume/backup delete・restore・rename、Railway Variables/schedules、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients、PR #169 activation、main merge）は対象操作を明示した個別承認を必須とし、「続けて」だけでは実行しない。
 
 ## 6. Normal pipeline
 
@@ -130,7 +138,7 @@ Production pipeline detail is in `PROJECT_HANDOFF.md`, but only retrieve the nee
 1. Confirm current main and open PR.
 2. Confirm Railway inventory / DB reference only if the task needs Ops state.
 3. For outage work, inspect 8/30 with read-only audit.
-4. Run guarded repair only if read-only evidence shows a gap and the exact write gate is separately approved.
+4. Run guarded repair only if read-only evidence shows a gap and the write is approved under the single-use maintenance approval policy above.
 5. Re-audit after any repair.
 6. Confirm current-day `today-health` and normal pipeline.
 7. Once stable, close the DB-recovery phase and return to prediction research.
