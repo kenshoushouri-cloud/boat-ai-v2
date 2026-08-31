@@ -122,16 +122,35 @@ Use only the exact command needed for the current task, then inspect the new res
 
 Preferred read-only commands when relevant:
 - `/railway inventory`
+- `/railway config`
+- `/railway vars <service>`
+- `/railway vars-safe <service>`
+- `/railway logs <service>`
+- `/railway deployments <service>`
+- `/railway cron-plan <service> "<5-field cron>"`
+- `/railway start-plan <service> <entry.py>`
+- `/railway var-plan <service> <KEY> <NON_SECRET_VALUE>`
 - `/railway today-health`
 - `/railway db-reference-readonly`
 - `/railway outage-source-audit`
+
+Guarded Railway administration:
+- `/railway restart <service> CONFIRM` — existing image restart; postgres services blocked
+- `/railway redeploy <service> CONFIRM` — rebuild same source; postgres services blocked
+- `/railway cron-set <service> "<5-field cron>" CONFIRM` — existing cron services only
+- `/railway start-set <service> <entry.py> CONFIRM` — existing repository .py only; arbitrary shell blocked
+- `/railway var-set <service> <KEY> <NON_SECRET_VALUE> CONFIRM` — non-secret operational Variables only, `--skip-deploys`
+- secret-like keys/values and model/LINE/threshold Variables are blocked
+- DB service mutation, service/volume/backup destructive operations, arbitrary shell, secret literal reads are not supported
+- Variable set never auto-redeploys; restart/redeploy is a separate operation
 
 Write approval policy:
 - GitHub Actions側のexact command gateは維持する。
 - ChatGPTが直前に**1つの安全なmaintenance write**について対象・範囲・影響を明示した後、ユーザーが「続けて」「進めて」「実行して」等で明確に承認した場合、その自然言語承認をその1 operationに限って有効とし、ChatGPTがexact commandへ変換して投稿してよい。
 - 承認はsingle-use。別日付・別operation・追加writeへ引き継がない。
 - 対象例: fixed-date outage gap repair、現在windowのbounded base-odds refreshなど、既存のguarded workflowで範囲が固定され、model/LINE/Railway settingsを変更しないmaintenance。
-- destructive/high-impact操作（service/volume/backup delete・restore・rename、Railway Variables/schedules、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients、PR #169 activation、main merge）は対象操作を明示した個別承認を必須とし、「続けて」だけでは実行しない。
+- destructive/high-impact操作（service/volume/backup delete・restore・rename、Railway Variables/Cron/Start Command、DB service mutation、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients、PR #169 activation、main merge）は対象操作を明示した個別承認を必須とし、「続けて」だけでは実行しない。
+- non-DB serviceのrestart/redeployは、ChatGPTが対象service・影響を1件に限定して直前に明示した場合のみsafe maintenanceのsingle-use承認対象としてよい。
 
 ## 6. Current live odds reliability
 

@@ -16,7 +16,7 @@
 - このファイルに書かれたSHA・件数はcheckpoint。再開時にはcurrent値を再取得する。
 - 安全なmaintenance writeは、ChatGPTが直前に対象・範囲・影響を1件に限定して明示した場合、ユーザーの「続けて」「進めて」「実行して」等の明確な自然言語承認を、その1件に限る明示承認として扱ってよい。ChatGPTは既存workflowが要求する完全一致commandへ変換してIssue #42へ投稿する。
 - 上記の承認は**単発・非再利用**。別の日付・別operation・追加writeには自動継承しない。
-- destructive/high-impact操作（service/volume/backupのdelete・restore・rename、Railway Variables/schedules変更、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients変更、PR #169 activation、main merge）は自然言語の「続けて」へ自動変換せず、対象操作を明示した個別承認を必要とする。
+- destructive/high-impact操作（service/volume/backupのdelete・restore・rename、Railway Variables/Cron/Start Command変更、DB service mutation、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients変更、PR #169 activation、main merge）は自然言語の「続けて」へ自動変換せず、対象操作を明示した個別承認を必要とする。
 
 ## 1. Source of Truth
 
@@ -35,7 +35,7 @@
 ## 2. Current checkpoint
 
 Current main checkpoint:
-- `4834ee58335901e07332c09d968bccaabf61c0a7`
+- `92905b92e83b4ab39922a99ab91b148906b04506`
 - startup時は必ずcurrent mainを再取得する。
 
 Persistent HOLD:
@@ -52,6 +52,10 @@ Persistent HOLD:
 - deleted deploymentのpinned image digestを使用
 - consumer DATABASE_URLは `postgres-recovery` へのRailway Referenceへrelink済み
 - checkpointでは15 services / DB references resolved / application・cron SUCCESS
+- Railway Project Tokenは2026-08-31に実接続確認済み。inventory/configでproduction 15/15 servicesを取得できる。
+- ChatGPT管理Bridgeはread-onlyのinventory/config/Variable key・safe value/logs/deploymentsに加え、allowlisted non-DB serviceのrestart/redeploy、既存cron serviceのCron変更、repo内.pyへのStart Command変更、non-secret operational Variable設定をguarded operationとして扱う。
+- Variable setは`--skip-deploys`。反映のrestart/redeployは別operation。
+- secret-like Variable、model/LINE/threshold Variable、DB service mutation、任意shell、service/volume/backup destructive操作はBridgeで禁止。
 
 **この二層構成を、明確なmigration planなしにrename/delete/統合しない。**
 Volume / backupをwipe/delete/restoreしない。

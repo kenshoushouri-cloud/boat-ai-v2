@@ -1,0 +1,121 @@
+name: Railway admin bridge
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/railway-admin-bridge.yml'
+      - '.github/scripts/railway_admin_bridge.py'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Python guard
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/railway_admin_bridge.py
+          python .github/scripts/railway_admin_bridge.py --self-test
+      - name: Validate Railway CLI command surface
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway restart --help >/dev/null
+          railway deployment list --help >/dev/null
+          railway variable set --help >/dev/null
+          railway environment edit --help >/dev/null
+          echo "RAILWAY_ADMIN_CLI_SURFACE=PASS"
+      - name: Validate workflow safety
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/railway-admin-bridge.yml').read_text(encoding='utf-8')
+          s=Path('.github/scripts/railway_admin_bridge.py').read_text(encoding='utf-8').lower()
+          assert "github.event.issue.number == 42" in p
+          assert "github.actor == github.repository_owner" in p
+          trigger=p.split('permissions:',1)[0]
+          assert 'schedule:' not in trigger
+          assert 'workflow_dispatch:' not in trigger
+          for forbidden in ('service delete','volume delete','backup delete','railway up','railway ssh'):
+              assert forbidden not in s
+          assert '--skip-deploys' in s
+          assert 'postgres-recovery' in s
+          print('RAILWAY_ADMIN_WORKFLOW_SAFETY=PASS')
+          PY
+
+  admin:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      (
+        startsWith(github.event.comment.body, '/railway deployments ') ||
+        startsWith(github.event.comment.body, '/railway restart ') ||
+        startsWith(github.event.comment.body, '/railway cron-plan ') ||
+        startsWith(github.event.comment.body, '/railway cron-set ') ||
+        startsWith(github.event.comment.body, '/railway start-plan ') ||
+        startsWith(github.event.comment.body, '/railway start-set ') ||
+        startsWith(github.event.comment.body, '/railway var-plan ') ||
+        startsWith(github.event.comment.body, '/railway var-set ')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+      - name: Require Project Token
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+      - name: Run guarded Railway admin operation
+        id: admin
+        shell: bash
+        env:
+          ADMIN_COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set +e
+          python -u .github/scripts/railway_admin_bridge.py
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f railway-admin-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file railway-admin-summary.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "## Railway admin bridge\n\nNo sanitized result was produced. Manual review required."
+          fi
+      - name: Cleanup
+        if: always()
+        run: rm -f railway-admin-summary.md
+      - name: Fail if operation failed
+        if: steps.admin.outputs.exit_code != '0'
+        run: exit 1
