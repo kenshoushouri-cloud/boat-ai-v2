@@ -1558,3 +1558,57 @@ morning/day/night oddsは締切前のためpartialだった。
 - morning window後にread-only healthを確認
 - 異常がなければDB障害復旧フェーズを完了し、通常の予測精度改善へ戻る
 - PR #169はDraft hold継続
+
+
+---
+
+<!-- HISTORY_CONTEXT_LIMIT_HANDOFF_20260831_1107 -->
+## 2026-08-31 11:07 JST — context-limit handoff、Postgres復旧後の通常運転と欠損補修を引き継ぎ
+
+ChatGPTトーク容量上限に伴い、次チャットへ引き継ぐcurrent checkpointを固定した。
+
+### Current production infrastructure
+- main `3445fad33dcceeceec1b529aa9c00aff1201ec74`
+- DB actual `postgres-recovery`
+- compatibility namespace `postgres`
+- 15 services
+- DB referencesは全consumerでresolved
+- application/cronはSUCCESS
+- 11:07 JST today-health = PASS_READ_ONLY
+  - races 144
+  - entries 864 / full6 144
+  - odds 9,841 rows / 106 races
+  - exact dynamic complete 58
+  - elapsed 21 / complete 15
+
+Postgres Stage 2復旧自体は完了。今後この構成を安易にrename/delete/統合しない。
+
+### Outage-gap repair
+固定日repairを追加し、LINE/model/Shadow/Forwardを再生成しないmaintenance-only方針を維持。
+
+- 8/28 repair complete:
+  - results 144 valid
+  - odds partial 23 preserved / complete 121
+  - historical weather 144 / exhibition 864 / race condition 144 / racer condition 864
+- 8/29 repair complete:
+  - results 156 valid
+  - odds partial 2 preserved / complete 154
+  - historical weather 156 / exhibition 924 / race condition 156 / racer condition 936
+- 8/30: handoff時点でrepair結果未確認。次チャットでread-only auditから再開。
+
+### Research snapshot
+- Racer Course Top3 Forward: evaluated 220、overall 3指標大幅改善、manual-review-only
+- Opponent Pressure head-only: evaluated 948、overall modest improvement、R05-08弱いがpost-hoc filter禁止
+- Exhibition ST: evaluated 208、manual-review-only
+- GUARD05: affected evaluated 0、promotion block
+
+### Parallel TOTO
+`kenshoushouri-cloud/toto-ai-v1` main `d76c156...`。bootstrap完了、Railway未作成。boatとは完全分離。
+
+### Decision
+- `POSTGRES_RECOVERY_STAGE2_COMPLETE`
+- `OUTAGE_GAP_20260828_COMPLETE`
+- `OUTAGE_GAP_20260829_COMPLETE`
+- `OUTAGE_GAP_20260830_PENDING_REVIEW`
+- `NO_PRODUCTION_MODEL_TUNING_DURING_RECOVERY_CLOSEOUT`
+- `TOTO_RAILWAY_WAIT_UNTIL_BOAT_STABLE`
