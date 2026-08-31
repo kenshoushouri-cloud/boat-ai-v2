@@ -38,6 +38,8 @@
 Open PR:
 - **#169** `Draft: temporary 10-minute base-odds refresh`
 - HOLD。明確なprediction / learning valueなしにmergeしない。
+- **#311** `Docs: close DB recovery checkpoint`
+- Draft。8/30 DB re-audit結果に合わせて内容修正中。recovery closeはまだ確定しない。
 
 ## 3. Railway / PostgreSQL current topology
 
@@ -83,15 +85,35 @@ OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 
 ## 5. Active operational checkpoint
 
-2026-08-28〜30 DB障害の復旧フェーズは、2026-08-31 read-only確認で**通常運用へ復帰済み**として扱う。
+2026-08-28〜30 DB障害の復旧フェーズは**まだOPEN**。
 
 確認済み:
-- `/railway outage-source-audit`: 8/28・8/29・8/30すべて `RESULT=PASS`
-- 8/30 official source: 168 races / complete6 168/168 / trifecta 168/168 / weather 168/168
-- parser failed candidate lines 0 / duplicate race IDs 0
-- `/railway today-health`: `PASS_READ_ONLY`
+- `/railway outage-source-audit`: 8/28・8/29・8/30すべて official source `RESULT=PASS`
 - `/railway inventory`: 15 services / application・cron SUCCESS
 - `/railway db-reference-readonly`: all listed services `resolved_url`
+- `/railway today-health`: `PASS_READ_ONLY`
+
+2026-08-31のDB直接監査 `/railway outage-gap-audit`:
+- 8/28: races 144 / valid results 144 / odds zero 0 / partial 23 / complete 121
+- 8/29: races 156 / valid results 156 / odds zero 0 / partial 2 / complete 154
+- **8/30: races 168 / valid results 168 / odds zero 2 / partial 2 / complete 164**
+- 8/30 historical weather 168 / exhibition 984 / race condition 168 / racer condition 1008
+- `OUTAGE_GAP_RESULT=PASS_READ_ONLY`
+
+8/30 official source側:
+- races 168 / complete6 168/168 / trifecta 168/168 / weather 168/168
+- exhibition / course / ST rows 1004/1008
+- parser failed candidate lines 0 / duplicate race IDs 0
+
+したがって、8/30は公式source不足ではなくRailway DB側に未補修gapが残る。
+
+次のwriteは自動実行しない。
+明示承認がある場合だけ:
+- `/railway outage-gap-repair-20260830 CONFIRM`
+
+その後:
+- `/railway outage-gap-audit` を再実行
+- re-auditで8/30 gap解消を確認してからrecovery close
 
 2026-08-31 13:20 JSTのactive day-window:
 - eligible 14 / complete 9 / incomplete 5
@@ -103,15 +125,8 @@ OOS / walk-forward / Forward / live evidenceなしに昇格しない。
 
 重要:
 - Issue #42を全文取得しない。
-- DB復旧を再開するのは、新しいDB/service/reference/data gapの証拠が出た時だけ。
+- write commandは過去の承認から推測しない。
 - LINE / model / Shadow / Forward evidenceを障害補修で再生成しない。
-
-次の安全な運用順:
-1. current main / open PRを短く確認
-2. Ops作業なら必要時だけ `OPS_STATE.md`
-3. 通常運用はread-only healthで確認
-4. recovery incidentは新しい異常がなければ閉じたままにする
-5. 研究作業へ戻る場合だけ `RESEARCH_STATE.md` を読む
 
 ## 6. Research current summary
 
