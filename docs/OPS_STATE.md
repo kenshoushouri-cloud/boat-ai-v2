@@ -55,33 +55,40 @@ Do not:
 ## 4. 2026-08-28..30 outage-gap state
 
 ### 2026-08-28
-Repair completed:
-- races 144
-- full6 144
+Read-only DB audit:
+- races 144 / full6 144
 - valid results 144
-- zero odds 0
-- partial odds 23 preserved
-- complete odds 121
+- odds zero 0 / partial 23 / complete 121
 - historical weather 144
-- exhibition rows 864
-- race condition 144
-- racer condition 864
+- historical exhibition 864
+- historical race condition 144
+- historical racer condition 864
 
 ### 2026-08-29
-Repair completed:
-- races 156
-- full6 156
+Read-only DB audit:
+- races 156 / full6 156
 - valid results 156
-- zero odds 0
-- partial odds 2 preserved
-- complete odds 154
+- odds zero 0 / partial 2 / complete 154
 - historical weather 156
-- exhibition rows 924
-- race condition 156
-- racer condition 936
+- historical exhibition 924
+- historical race condition 156
+- historical racer condition 936
 
 ### 2026-08-30
-2026-08-31 read-only official BOAT RACE K-source audit:
+2026-08-31 read-only DB audit:
+- races 168 / deadline ready 168
+- entry rows 1008 / full6 168
+- valid results 168 / missing results 0
+- odds zero **2**
+- odds partial **2**
+- odds complete **164**
+- historical weather 168
+- historical exhibition **984**
+- historical race condition 168
+- historical racer condition 1008
+- `OUTAGE_GAP_RESULT=PASS_READ_ONLY`
+
+Read-only official BOAT RACE K-source audit for the same date:
 - races 168
 - entry rows 1008
 - entries complete6 168/168
@@ -94,20 +101,21 @@ Repair completed:
 - duplicate race IDs 0
 - `RESULT=PASS`
 
-The same fixed audit also returned `RESULT=PASS` for 2026-08-28 and 2026-08-29.
-
-This audit is official-source validation only. It performs no DB writes, Railway mutation, LINE, model, Shadow, or Forward execution.
+Interpretation:
+- official source is available and parses cleanly
+- Railway DB still has an 8/30 production-data gap
+- the confirmed DB gap includes 2 zero-odds races and 2 partial-odds races
+- historical exhibition coverage is also below the official-source row count and is part of the 8/30 repair review
 
 ### Recovery phase status
-**DB recovery incident is closed for normal operations as of the 2026-08-31 read-only checks.**
+**DB recovery incident remains OPEN until the guarded 2026-08-30 repair is explicitly approved, executed, and re-audited.**
 
-Reason:
-- fixed outage-source audit: PASS for 8/28, 8/29, 8/30
-- Railway inventory: 15 services discovered; application/cron deployments SUCCESS
-- DB reference read-only diagnostic: all listed services `resolved_url`
-- current-day `today-health`: `PASS_READ_ONLY`
+The approved read-only checks do not authorize a DB write.
 
-Do not reopen recovery work without new evidence of a DB/service/reference/data gap.
+Exact guarded write command, only after explicit approval:
+- `/railway outage-gap-repair-20260830 CONFIRM`
+
+The repair workflow is fixed to 2026-08-30, preserves existing partial/complete odds, labels historical beforeinfo as historical, and does not recreate LINE/model/Shadow/Forward evidence.
 
 ## 5. Issue #42 usage policy
 
@@ -122,6 +130,7 @@ Preferred read-only commands when relevant:
 - `/railway today-health`
 - `/railway db-reference-readonly`
 - `/railway outage-source-audit`
+- `/railway outage-gap-audit`
 - `/railway window-refresh-plan`
 
 Write commands require an exact explicit gate and must not be inferred from a previous approval.
@@ -140,6 +149,7 @@ Window principle:
 
 2026-08-31 13:19–13:20 JST read-only observations:
 - entries: 144/144 races full6
+- `TODAY_HEALTH_RESULT=PASS_READ_ONLY`
 - active day window planner: eligible 14 / complete 9 / incomplete 5
 - the 5 incomplete races were still 10–60 minutes before deadline
 - early exact120 Shadow evidence: 0
@@ -152,11 +162,13 @@ Production pipeline detail is in `PROJECT_HANDOFF.md`, but only retrieve the nee
 ## 7. Current safe next sequence
 
 1. Confirm current main and open PR.
-2. For routine Ops checks, use only the needed read-only command.
-3. Treat the 2026-08-28..30 DB recovery incident as closed unless new evidence appears.
-4. Keep PR #169 HOLD unless prediction / learning value is demonstrated with forward evidence.
-5. Return to prediction research using `docs/RESEARCH_STATE.md`.
-6. Do not change Production v24 / FINAL / LINE / BUY-WATCH-SKIP without formal evidence and a separate gated PR.
+2. Keep 8/30 recovery OPEN.
+3. Do not issue a write command without exact explicit approval.
+4. If `/railway outage-gap-repair-20260830 CONFIRM` is explicitly approved, execute that one guarded repair only.
+5. Re-run `/railway outage-gap-audit` after the repair.
+6. Close the recovery incident only if the re-audit confirms the 8/30 gaps are resolved or intentionally preserved.
+7. Keep PR #169 HOLD unless prediction / learning value is demonstrated with forward evidence.
+8. Return to prediction research using `docs/RESEARCH_STATE.md` only after recovery is closed.
 
 ## 8. Maintenance rule
 
