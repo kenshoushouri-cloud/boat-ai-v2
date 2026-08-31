@@ -1881,3 +1881,80 @@ fixed-date owner-only workflow:
 3. morning odds / PRE / FINALの通常パイプラインが復旧後DBで正常に進むことを確認。
 4. 異常がなければPostgres障害復旧フェーズを完了扱いとし、元の予測精度改善作業へ戻る。
 5. `postgres-recovery` / compatibility `postgres` の二層構成を、明確なmigration planなしに変更・削除・renameしない。
+
+
+---
+
+<!-- CONTEXT_LIMIT_HANDOFF_20260831_1107 -->
+## 2026-08-31 11:07 JST — ChatGPT context-limit handoff checkpoint
+
+この時点での再開基準。再開時はcurrent main / open PR / Issue #42 / Railway read-only healthを必ず再取得する。
+
+### GitHub current
+- handoff作成直前 main: `3445fad33dcceeceec1b529aa9c00aff1201ec74`
+- message: `Fix outage-gap workflow token expressions (#303)`
+- open PR: **#169のみ**
+- PR #169はDraft hold。DB復旧や候補不足を理由にマージしない。
+
+### Railway / Postgres recovery current
+Postgres障害のStage 2は完了済み。
+- DB実体: `postgres-recovery`
+- compatibility namespace: `postgres`
+- preserved `postgres-volume` は `postgres-recovery` に接続済み
+- PostgreSQL 18.6 / pinned deleted-image digest
+- 15 servicesを確認
+- `postgres-recovery` とapplication/cron servicesはSUCCESS
+- compatibility `postgres` はDB実体ではなく、旧参照互換用
+- DB reference diagnostic: postgres-recovery / postgres / 全application consumerで `resolved_url`
+- **この二層構成をrename/delete/統合しない。Volume/backupをwipe/delete/restoreしない。**
+
+2026-08-31 11:07 JST read-only today-health:
+- races 144 / deadline_ready 144
+- entries 864 / full6 144
+- odds 9,841 rows / 106 races
+- exact dynamic complete 58
+- elapsed 21 / elapsed odds complete 15
+- upcoming 123 / upcoming odds complete 43
+- `TODAY_HEALTH_RESULT=PASS_READ_ONLY`
+- morning 12Rのうちcomplete 7、elapsed odds gap 5。通常pipelineは稼働しているが、当日オッズ完全性は引き続き時間経過で監視。
+
+### 2026-08-28〜30 outage-gap repair
+PR #301 / #303で固定日・guarded repairを追加。
+方針:
+- LINE / model / Shadow / Forward evidenceを再生成しない
+- 既存partial/complete oddsは上書きしない
+- historical beforeinfoはhistorical labelのみ
+
+完了:
+- **2026-08-28**: races 144 / full6 144 / valid results 144 / odds zero 0 / partial 23 preserved / complete 121 / historical weather 144 / exhibition 864 / race condition 144 / racer condition 864
+- **2026-08-29**: races 156 / full6 156 / valid results 156 / odds zero 0 / partial 2 preserved / complete 154 / historical weather 156 / exhibition 924 / race condition 156 / racer condition 936
+
+未完了:
+- **2026-08-30** はこのhandoff時点ではrepair実行結果未確認。次チャットで最優先にread-only audit → 必要なら既存guarded commandでrepair → 再audit。
+
+### Fixed Forward research latest
+- Racer Course Top3: 261 rows / evaluated 220 / pending 41。COURSE vs BASE overall: Brier -0.00550111 / LogLoss -0.22471240 / rank -9.1409。**BLOCK_MANUAL_REVIEW_ONLY**
+- Opponent Pressure head-only: shadow 1092 / evaluated 948 / pending 144。overall Brier -0.00017564 / LogLoss -0.00736051 / rank -0.251。R05-08は弱いが後付け除外しない。**PROMISING_RESEARCH_ONLY / Production BLOCK**
+- Exhibition ST: shadow 239 / evaluated 208 / pending 31。**BLOCK_MANUAL_REVIEW_ONLY**
+- GUARD05: rows 43 / evaluated 39 / pending 4 / affected evaluated 0。**BLOCK_MANUAL_REVIEW_ONLY**
+
+### Parallel TOTO project
+別repo `kenshoushouri-cloud/toto-ai-v1`。
+- main: `d76c1561e736c517d0d509c91db7e69ce8f66b4a`
+- bootstrap PR #1 merged、open PRなし
+- Python skeleton / CI / initial PostgreSQL schema / project planまで完了
+- Railway Project / dedicated PostgreSQLはまだ未作成
+- boat-ai-v2とDB/Variables/serviceを共有しない
+- boat側の通常運転確認とoutage-gap repair完了後に再開する
+
+### 次の安全な順番
+1. current main / open PR / Railway inventory / DB referenceを再確認
+2. 2026-08-30 outage-gapをread-only audit
+3. 必要なら固定guarded repairを1日分だけ実行
+4. repair後auditでmissing results / zero odds / historical beforeinfoを確認
+5. 2026-08-31 today-healthと通常morning/day/night/finalの継続正常性をread-only確認
+6. DB障害復旧フェーズを正式終了
+7. その後、固定Forward研究の証拠蓄積・manual reviewへ戻る
+8. TOTO Railwayはboat安定確認後に別Project + dedicated PostgreSQLで再開
+
+Production v24 / FINAL / LINE / BUY-WATCH-SKIP / thresholds / coefficients / N01/N02 / Bao / PR #169 は、この引き継ぎを理由に変更しない。
