@@ -7,7 +7,7 @@ run_learning_all_realtime_pg.py
 目的:
 - 本番の候補判定・LINE通知を一切変更せず、
   締切前ウィンドウに入った「全レース」の直前情報を保存する。
-- v21_realtime_collector_pg.py を再利用する。
+- v21_realtime_collector_pg_safe.py を利用する。
 - 本番判定用 TARGET_RACE_IDS_FILE を上書きしない。
 
 保存される主な情報（v21側）:
@@ -44,7 +44,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "2026-08-15 learning-all-realtime-v1"
+VERSION = "2026-09-10 learning-all-safe-odds-v2"
 
 
 def _bool(v: str, default: bool = True) -> bool:
@@ -58,11 +58,11 @@ def main() -> None:
         raise RuntimeError("DATABASE_URL が必要です。")
 
     base_dir = Path(__file__).resolve().parent
-    collector = base_dir / "v21_realtime_collector_pg.py"
+    collector = base_dir / "v21_realtime_collector_pg_safe.py"
 
     if not collector.exists():
         raise FileNotFoundError(
-            f"v21_realtime_collector_pg.py が見つかりません: {collector}"
+            f"v21_realtime_collector_pg_safe.py が見つかりません: {collector}"
         )
 
     enabled = _bool(os.getenv("LEARNING_ALL_ENABLED", "1"), True)
