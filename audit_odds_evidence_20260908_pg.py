@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import argparse
 import itertools
-import json
 import math
-import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import odds_evidence_privilege_guard as privilege_guard
 
 TARGET_DATE = "2026-09-08"
 JST = timezone(timedelta(hours=9))
@@ -183,53 +183,66 @@ def analyze(races: list[dict], entries: list[dict], base: list[dict],
     }
 
 
-def read_database(url: str) -> dict:
+def read_database(url: str, *, expected_database: str) -> dict:
+    """Require the privilege gate before any application-data SELECT."""
+    if not isinstance(expected_database, str) or not expected_database:
+        raise privilege_guard.PrivilegeGuardError("privilege_preflight_rejected")
     import psycopg
     from psycopg.rows import dict_row
-    # Both the session and the transaction are read-only. The role still needs
-    # the least privileges available in the existing environment.
     with psycopg.connect(url, row_factory=dict_row, autocommit=False,
                          connect_timeout=10, application_name="odds_evidence_20260908") as conn:
-        with conn.cursor() as cur:
-            cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            cur.execute("SET LOCAL statement_timeout = '15000ms'")
-            cur.execute("SET LOCAL lock_timeout = '2000ms'")
-            cur.execute("SET LOCAL idle_in_transaction_session_timeout = '30000ms'")
-            def read(query: str, params: tuple = ()) -> list[dict]:
-                cur.execute(query, params)
-                rows = cur.fetchmany(MAX_ROWS + 1)
-                if len(rows) > MAX_ROWS:
-                    raise RuntimeError("Audit row limit exceeded")
-                return [dict(row) for row in rows]
-            schema_rows = read("""SELECT table_name,column_name FROM information_schema.columns
-                WHERE table_schema='public' AND table_name IN
-                ('v2_races','v2_race_entries','v2_odds_trifecta','v2_bao_market_shadow_snapshots')""")
-            schema = defaultdict(set)
-            for row in schema_rows:
-                schema[row["table_name"]].add(row["column_name"])
-            required = {
-                "v2_races": {"race_id", "race_date", "deadline_at"},
-                "v2_race_entries": {"race_id", "lane"},
-                "v2_odds_trifecta": {"race_id", "ticket", "fetched_at", "is_final"},
-            }
-            for table, cols in required.items():
-                if not cols <= schema[table]:
-                    raise RuntimeError(f"Missing required columns: {table}")
-            snapshot_cols = {"race_id", "phase", "captured_at", "created_at", "deadline_at", "odds", "source", "schema_version"}
-            has_snapshots = snapshot_cols <= schema["v2_bao_market_shadow_snapshots"]
-            ids = list(TARGET_RACES)
-            races = read("""SELECT race_id,deadline_at FROM v2_races
-                WHERE race_date=%s AND race_id=ANY(%s) ORDER BY race_id""", (TARGET_DATE, ids))
-            entries = read("""SELECT race_id,lane FROM v2_race_entries
-                WHERE race_id=ANY(%s) ORDER BY race_id,lane""", (ids,))
-            base = read("""SELECT race_id,ticket,fetched_at,is_final FROM v2_odds_trifecta
-                WHERE race_id=ANY(%s) ORDER BY race_id,ticket""", (ids,))
-            snapshots = read("""SELECT race_id,phase,captured_at,created_at,deadline_at,odds,source,schema_version
-                FROM v2_bao_market_shadow_snapshots WHERE race_id=ANY(%s)
-                ORDER BY race_id,phase""", (ids,)) if has_snapshots else []
+        # Always roll back, including successful reads. Do not rely on a
+        # connection context manager's successful-exit commit behavior.
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                cur.execute("SET LOCAL statement_timeout = '15000ms'")
+                cur.execute("SET LOCAL lock_timeout = '2000ms'")
+                cur.execute("SET LOCAL idle_in_transaction_session_timeout = '30000ms'")
+                preflight = privilege_guard.preflight(cur, expected_database=expected_database)
+                if (not isinstance(preflight, dict)
+                        or preflight.get("status") != "BOUNDED_PRIVILEGE_PREFLIGHT_PASSED"
+                        or type(preflight.get("server_version")) is not int
+                        or not privilege_guard.MIN_VERSION <= preflight["server_version"] < privilege_guard.MAX_VERSION):
+                    raise privilege_guard.PrivilegeGuardError("privilege_preflight_rejected")
+                def read(query: str, params: tuple = ()) -> list[dict]:
+                    cur.execute(query, params)
+                    rows = cur.fetchmany(MAX_ROWS + 1)
+                    if len(rows) > MAX_ROWS:
+                        raise RuntimeError("Audit row limit exceeded")
+                    return [dict(row) for row in rows]
+                schema_rows = read("""SELECT table_name,column_name FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name IN
+                    ('v2_races','v2_race_entries','v2_odds_trifecta','v2_bao_market_shadow_snapshots')""")
+                schema = defaultdict(set)
+                for row in schema_rows:
+                    schema[row["table_name"]].add(row["column_name"])
+                required = {
+                    "v2_races": {"race_id", "race_date", "deadline_at"},
+                    "v2_race_entries": {"race_id", "lane"},
+                    "v2_odds_trifecta": {"race_id", "ticket", "fetched_at", "is_final"},
+                }
+                for table, cols in required.items():
+                    if not cols <= schema[table]:
+                        raise RuntimeError(f"Missing required columns: {table}")
+                snapshot_cols = {"race_id", "phase", "captured_at", "created_at", "deadline_at", "odds", "source", "schema_version"}
+                has_snapshots = snapshot_cols <= schema["v2_bao_market_shadow_snapshots"]
+                ids = list(TARGET_RACES)
+                races = read("""SELECT race_id,deadline_at FROM public.v2_races
+                    WHERE race_date=%s AND race_id=ANY(%s) ORDER BY race_id""", (TARGET_DATE, ids))
+                entries = read("""SELECT race_id,lane FROM public.v2_race_entries
+                    WHERE race_id=ANY(%s) ORDER BY race_id,lane""", (ids,))
+                base = read("""SELECT race_id,ticket,fetched_at,is_final FROM public.v2_odds_trifecta
+                    WHERE race_id=ANY(%s) ORDER BY race_id,ticket""", (ids,))
+                snapshots = read("""SELECT race_id,phase,captured_at,created_at,deadline_at,odds,source,schema_version
+                    FROM public.v2_bao_market_shadow_snapshots WHERE race_id=ANY(%s)
+                    ORDER BY race_id,phase""", (ids,)) if has_snapshots else []
+        finally:
             conn.rollback()
-    return analyze(races, entries, base, snapshots,
-                   {"bao_snapshots_available": has_snapshots})
+    result = analyze(races, entries, base, snapshots,
+                     {"bao_snapshots_available": has_snapshots})
+    result["privilege_preflight"] = preflight
+    return result
 
 
 def main() -> None:
@@ -238,11 +251,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.date != TARGET_DATE:
         parser.error("Only 2026-09-08 is supported")
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        raise SystemExit("DATABASE_URL is required")
-    result = read_database(url)
-    print("ODDS_EVIDENCE_AUDIT=" + json.dumps(result, ensure_ascii=False, default=str, allow_nan=False))
+    # The standalone CLI must not bypass the authorized runner or print raw odds.
+    from run_odds_evidence_20260908 import main as authorized_main
+    raise SystemExit(authorized_main())
 
 
 if __name__ == "__main__":
