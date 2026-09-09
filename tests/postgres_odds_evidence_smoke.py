@@ -70,9 +70,11 @@ class PostgreSQLSmokeTests(unittest.TestCase):
             for table in TABLES:
                 if cls.admin.execute('SELECT to_regclass(%s) AS relation', ('public.' + table,)).fetchone()['relation'] is not None:
                     raise RuntimeError('disposable_table_already_exists')
-            # PG14 grants CREATE on public to PUBLIC by default. This fixture
-            # removes that dangerous default only inside the disposable DB.
+            # Normalize the disposable fixture. PostgreSQL commonly grants
+            # TEMP to PUBLIC by default, which is not a direct role grant.
+            # The separate PUBLIC test below restores that default explicitly.
             cls.admin.execute('REVOKE CREATE ON SCHEMA public FROM PUBLIC')
+            cls.admin.execute('REVOKE TEMP ON DATABASE audit_sandbox FROM PUBLIC')
             cls.admin.execute(sql.SQL("""CREATE ROLE {} WITH LOGIN NOINHERIT
                 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
                 PASSWORD {}""").format(sql.Identifier(ROLE), sql.Literal(cls.role_password)))
@@ -158,6 +160,8 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                     cur.execute('SELECT private_note FROM public.v2_races')
 
     def test_database_create_grant_is_rejected(self):
+        # PUBLIC TEMP is revoked in setUpClass so a direct TEMP grant cannot
+        # be confused with an already inherited default privilege.
         for privilege in ('CREATE', 'TEMP'):
             with self.subTest(privilege=privilege):
                 self.admin.execute(sql.SQL('GRANT {} ON DATABASE audit_sandbox TO {}').format(
@@ -169,7 +173,17 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                     self.admin.execute(sql.SQL('REVOKE {} ON DATABASE audit_sandbox FROM {}').format(
                         sql.SQL(privilege), sql.Identifier(ROLE)))
 
-    def test_readonly_transaction_blocks_public_temp(self):
+    def test_public_temp_default_is_bounded_by_readonly(self):
+        # The PostgreSQL default is inherited through PUBLIC. It is not a
+        # direct role grant, and must not be mistaken for one by the guard.
+        self.admin.execute('GRANT TEMP ON DATABASE audit_sandbox TO PUBLIC')
+        try:
+            self.assertEqual(self.preflight()['status'], 'BOUNDED_PRIVILEGE_PREFLIGHT_PASSED')
+            self._assert_temp_write_blocked()
+        finally:
+            self.admin.execute('REVOKE TEMP ON DATABASE audit_sandbox FROM PUBLIC')
+
+    def _assert_temp_write_blocked(self):
         with psycopg.connect(self.reader, row_factory=dict_row, autocommit=False) as conn:
             try:
                 with conn.cursor() as cur:
@@ -178,6 +192,9 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                         cur.execute('CREATE TEMP TABLE audit_forbidden_write (id integer)')
             finally:
                 conn.rollback()
+
+    def test_readonly_transaction_blocks_public_temp(self):
+        self._assert_temp_write_blocked()
 
     def test_extra_column_and_write_grants_are_rejected(self):
         for privilege in ('SELECT (private_note)', 'INSERT'):
