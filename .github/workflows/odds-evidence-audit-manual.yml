@@ -1,0 +1,57 @@
+name: Odds evidence audit 2026-09-08 (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      audit_date:
+        description: Fixed historical date
+        required: true
+        type: choice
+        options:
+          - '2026-09-08'
+      confirmation:
+        description: Type AUDIT-2026-09-08-READ-ONLY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odds-evidence-20260908-manual
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.repository == 'kenshoushouri-cloud/boat-ai-v2' &&
+      github.actor == 'kenshoushouri-cloud' &&
+      github.ref == 'refs/heads/research/odds-evidence-20260908' &&
+      inputs.audit_date == '2026-09-08' &&
+      inputs.confirmation == 'AUDIT-2026-09-08-READ-ONLY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned database client
+        run: python -m pip install 'psycopg[binary]==3.2.6'
+      - name: Run fixed-date read-only audit
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          AUDIT_DATE: ${{ inputs.audit_date }}
+          AUDIT_CONFIRMATION: ${{ inputs.confirmation }}
+        run: python run_odds_evidence_20260908.py
+      - name: Preserve sanitized evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-evidence-20260908-${{ github.run_id }}
+          path: .audit-results/odds-evidence-20260908.json
+          if-no-files-found: error
+          retention-days: 7
