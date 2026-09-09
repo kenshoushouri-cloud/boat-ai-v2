@@ -2,7 +2,7 @@
 """Side-effect-free BOAT RACE official trifecta odds parser.
 
 The current official page renders trifecta odds as a table whose extracted text
-is not a contiguous ``1-2-3 12.4`` sequence.  This module recognizes that table
+is not a contiguous ``1-2-3 12.4`` sequence. This module recognizes that table
 layout, emits only canonical 1..6 three-lane permutations, and never fabricates
 missing tickets.
 """
@@ -65,6 +65,14 @@ def _clean_odds(values: Mapping[str, object] | None) -> dict[str, float]:
 
 
 def is_complete_snapshot(values: Mapping[str, object] | None) -> bool:
+    """Return true only for exactly 120 valid canonical ticket/value pairs."""
+    if values is None:
+        return False
+    try:
+        if len(values) != 120:
+            return False
+    except TypeError:
+        return False
     cleaned = _clean_odds(values)
     return len(cleaned) == 120 and set(cleaned) == CANONICAL_SET
 
@@ -73,7 +81,7 @@ def parse_official_odds3t(html: str) -> dict[str, float]:
     """Parse current official table layout, then legacy contiguous ticket text.
 
     The table parser is intentionally structural and bounded to one 270-token
-    3T table.  If the layout cannot be recognized, a legacy contiguous-ticket
+    3T table. If the layout cannot be recognized, a legacy contiguous-ticket
     parser is attempted for compatibility with older fixtures/pages.
     """
     if not isinstance(html, str) or not html:
@@ -177,14 +185,12 @@ def choose_realtime_snapshot(
     """Choose a realtime odds set without propagating incomplete base data.
 
     Direct official data wins only when it is exactly the canonical 120-ticket
-    set.  The legacy base-table fallback is permitted only when that base set is
-    itself exactly complete.  Otherwise the collector must fail closed and skip
+    set. The legacy base-table fallback is permitted only when that base set is
+    itself exactly complete. Otherwise the collector must fail closed and skip
     an odds snapshot instead of copying a partial set into realtime storage.
     """
-    official = _clean_odds(official_values)
-    if len(official) == 120 and set(official) == CANONICAL_SET:
-        return official, "official_odds3t"
-    base = _clean_odds(base_values)
-    if len(base) == 120 and set(base) == CANONICAL_SET:
-        return base, "v2_odds_trifecta_fallback"
+    if is_complete_snapshot(official_values):
+        return _clean_odds(official_values), "official_odds3t"
+    if is_complete_snapshot(base_values):
+        return _clean_odds(base_values), "v2_odds_trifecta_fallback"
     return {}, "unavailable_incomplete"
