@@ -70,6 +70,7 @@ def preflight(cur, *, expected_database):
         table_writes = "INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER"
         if version >= 170000:
             table_writes += ", MAINTAIN"
+        table_nonupdate_writes = table_writes.replace("UPDATE, ", "")
         table_grants = ", ".join(
             privilege + " WITH GRANT OPTION" for privilege in table_writes.split(", "))
         checks = _one(cur, """SELECT
@@ -78,8 +79,14 @@ def preflight(cur, *, expected_database):
                 WHERE refclassid = 'pg_catalog.pg_authid'::regclass
                   AND refobjid = %s AND deptype = 'o') AS owns_objects,
             EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclrole = %s) AS default_acl_owner,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_database
-                WHERE pg_catalog.has_database_privilege(oid, 'CREATE, TEMP')) AS database_write,
+            -- CREATE is disallowed in every database. A direct TEMP grant is
+            -- also disallowed; ordinary PUBLIC TEMP is a PostgreSQL default,
+            -- constrained by the already verified read-only transaction.
+            EXISTS (SELECT 1 FROM pg_catalog.pg_database d
+                WHERE pg_catalog.has_database_privilege(d.oid, 'CREATE')
+                   OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
+                       COALESCE(d.datacl, pg_catalog.acldefault('d', d.datdba))) a
+                       WHERE a.grantee = %s AND a.privilege_type = 'TEMP')) AS database_write,
             EXISTS (SELECT 1 FROM pg_catalog.pg_database
                 WHERE pg_catalog.has_database_privilege(oid, 'CREATE WITH GRANT OPTION, CONNECT WITH GRANT OPTION, TEMP WITH GRANT OPTION')) AS database_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
@@ -90,18 +97,26 @@ def preflight(cur, *, expected_database):
                 WHERE pg_catalog.has_tablespace_privilege(oid, 'CREATE')) AS tablespace_write,
             EXISTS (SELECT 1 FROM pg_catalog.pg_tablespace
                 WHERE pg_catalog.has_tablespace_privilege(oid, 'CREATE WITH GRANT OPTION')) AS tablespace_grant,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_class
-                WHERE relkind IN ('r','p','v','m','f')
-                  AND pg_catalog.has_table_privilege(oid, %s)) AS table_write,
+            -- pg_settings has a built-in PUBLIC UPDATE grant. Its rule is
+            -- equivalent to SET; other writes and grant options remain denied.
+            EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind IN ('r','p','v','m','f')
+                  AND (pg_catalog.has_table_privilege(c.oid, %s)
+                    OR (NOT (n.nspname = 'pg_catalog' AND c.relname = 'pg_settings')
+                        AND pg_catalog.has_table_privilege(c.oid, 'UPDATE')))) AS table_write,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class
                 WHERE relkind IN ('r','p','v','m','f')
                   AND pg_catalog.has_table_privilege(oid, %s)) AS table_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
                 JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 WHERE c.relkind IN ('r','p','v','m','f')
                   AND a.attnum > 0 AND NOT a.attisdropped
-                  AND pg_catalog.has_column_privilege(c.oid, a.attnum,
-                      'INSERT, UPDATE, REFERENCES')) AS column_write,
+                  AND (pg_catalog.has_column_privilege(c.oid, a.attnum,
+                      'INSERT, REFERENCES')
+                    OR (NOT (n.nspname = 'pg_catalog' AND c.relname = 'pg_settings')
+                        AND pg_catalog.has_column_privilege(c.oid, a.attnum, 'UPDATE')))) AS column_write,
             EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
                 JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
                 WHERE c.relkind IN ('r','p','v','m','f')
@@ -124,7 +139,8 @@ def preflight(cur, *, expected_database):
             EXISTS (SELECT 1 FROM pg_catalog.pg_proc
                 WHERE pg_catalog.has_function_privilege(oid, 'EXECUTE WITH GRANT OPTION')) AS routine_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_language
-                WHERE NOT lanpltrusted AND pg_catalog.has_language_privilege(oid, 'USAGE')) AS untrusted_language,
+                WHERE lanispl AND NOT lanpltrusted
+                  AND pg_catalog.has_language_privilege(oid, 'USAGE')) AS untrusted_language,
             EXISTS (SELECT 1 FROM pg_catalog.pg_language
                 WHERE pg_catalog.has_language_privilege(oid, 'USAGE WITH GRANT OPTION')) AS language_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper
@@ -138,7 +154,7 @@ def preflight(cur, *, expected_database):
                   AND a.privilege_type IN ('SELECT', 'UPDATE')) AS largeobject_access,
             EXISTS (SELECT 1 FROM pg_catalog.pg_type
                 WHERE pg_catalog.has_type_privilege(oid, 'USAGE WITH GRANT OPTION')) AS type_grant
-            """, (oid, oid, oid, table_writes, table_grants, oid))
+            """, (oid, oid, oid, oid, table_nonupdate_writes, table_grants, oid))
         _clear(checks, (
             "memberships", "owns_objects", "default_acl_owner", "database_write",
             "database_grant", "schema_write", "schema_grant", "tablespace_write",
