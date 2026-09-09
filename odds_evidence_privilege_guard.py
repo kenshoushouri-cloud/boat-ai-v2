@@ -1,21 +1,26 @@
-"""Conservative, SELECT-only privilege gate for the fixed 2026-09-08 audit.
+"""Bounded, catalog-only privilege prerequisite for the fixed historical audit.
 
-This is a bounded execution prerequisite, not a cluster security certification.
-No role creation, grants, privilege changes, or application-data reads occur here.
+Not a cluster security certification. No role creation, grants, or race-data reads.
+Unknown catalog semantics and unverifiable privileges fail closed.
 """
 from __future__ import annotations
 
 ROLE_NAME = "boat_odds_audit_ro"
-ALLOWED_TABLES = (
-    "v2_races", "v2_race_entries", "v2_odds_trifecta",
-    "v2_bao_market_shadow_snapshots",
-)
+TARGET_COLUMNS = {
+    "v2_races": ("race_id", "race_date", "deadline_at"),
+    "v2_race_entries": ("race_id", "lane"),
+    "v2_odds_trifecta": ("race_id", "ticket", "fetched_at", "is_final"),
+    "v2_bao_market_shadow_snapshots": (
+        "race_id", "phase", "captured_at", "created_at", "deadline_at",
+        "odds", "source", "schema_version"),
+}
+REQUIRED_TABLES = frozenset(TARGET_COLUMNS) - {"v2_bao_market_shadow_snapshots"}
 MIN_VERSION = 140000
-MAX_VERSION = 190000  # New major versions require a review of privilege semantics.
+MAX_VERSION = 190000  # Review new major versions before permitting execution.
 
 
 class PrivilegeGuardError(RuntimeError):
-    """A deliberately non-sensitive failure; never include catalog values."""
+    """Only fixed, non-sensitive failure codes may escape this module."""
 
 
 def _one(cur, query, params=()):
@@ -26,14 +31,20 @@ def _one(cur, query, params=()):
     return rows[0]
 
 
-def preflight(cur, expected_role=ROLE_NAME):
-    """Check the authenticated role inside the audit's read-only transaction.
+def _clear(row, names):
+    if set(row) != set(names) or any(row[name] is not False for name in names):
+        raise PrivilegeGuardError("privilege_preflight_rejected")
 
-    Rejects any role membership, administrative attributes, ownership, broad
-    object privileges, and executable non-system routines. The catalog checks
-    intentionally over-reject rather than infer least privilege from SELECT.
+
+def preflight(cur, *, expected_database):
+    """Check the authenticated role inside the caller's read-only transaction.
+
+    Reject administrative attributes, role membership, ownership, write/grant
+    authority, extra application-data reads, and executable non-system routines.
+    This deliberately over-rejects rather than infer safety from SELECT alone.
     """
-    if expected_role != ROLE_NAME:
+    if (not isinstance(expected_database, str) or not expected_database
+            or len(expected_database) > 63):
         raise PrivilegeGuardError("privilege_preflight_rejected")
     try:
         identity = _one(cur, """SELECT current_setting('server_version_num')::int AS version,
@@ -46,48 +57,111 @@ def preflight(cur, expected_role=ROLE_NAME):
         version = identity.get("version")
         if (type(version) is not int or not MIN_VERSION <= version < MAX_VERSION
                 or identity.get("read_only") != "on"
-                or identity.get("login_role") != expected_role
-                or identity.get("active_role") != expected_role
+                or identity.get("login_role") != ROLE_NAME
+                or identity.get("active_role") != ROLE_NAME
+                or identity.get("database_name") != expected_database
                 or type(identity.get("role_oid")) is not int
                 or any(identity.get(k) is not False for k in (
                     "rolsuper", "rolcreatedb", "rolcreaterole", "rolreplication",
                     "rolbypassrls", "rolinherit"))
                 or identity.get("rolcanlogin") is not True):
             raise PrivilegeGuardError("privilege_preflight_rejected")
-        role_oid = identity["role_oid"]
-        # MAINTAIN was introduced in PostgreSQL 17. Never pass an unknown
-        # privilege name to an older server or silently accept a newer major.
+        oid = identity["role_oid"]
         table_writes = "INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER"
         if version >= 170000:
             table_writes += ", MAINTAIN"
+        table_grants = ", ".join(
+            privilege + " WITH GRANT OPTION" for privilege in table_writes.split(", "))
         checks = _one(cur, """SELECT
             EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE member = %s) AS memberships,
             EXISTS (SELECT 1 FROM pg_catalog.pg_shdepend
                 WHERE refclassid = 'pg_catalog.pg_authid'::regclass
                   AND refobjid = %s AND deptype = 'o') AS owns_objects,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclrole = %s) AS default_acl_owner,
             EXISTS (SELECT 1 FROM pg_catalog.pg_database
                 WHERE pg_catalog.has_database_privilege(oid, 'CREATE, TEMP')) AS database_write,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_database
+                WHERE pg_catalog.has_database_privilege(oid, 'CREATE WITH GRANT OPTION, CONNECT WITH GRANT OPTION, TEMP WITH GRANT OPTION')) AS database_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
                 WHERE pg_catalog.has_schema_privilege(oid, 'CREATE')) AS schema_write,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
+                WHERE pg_catalog.has_schema_privilege(oid, 'CREATE WITH GRANT OPTION, USAGE WITH GRANT OPTION')) AS schema_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_tablespace
                 WHERE pg_catalog.has_tablespace_privilege(oid, 'CREATE')) AS tablespace_write,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_tablespace
+                WHERE pg_catalog.has_tablespace_privilege(oid, 'CREATE WITH GRANT OPTION')) AS tablespace_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class
                 WHERE relkind IN ('r','p','v','m','f')
                   AND pg_catalog.has_table_privilege(oid, %s)) AS table_write,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_class
+                WHERE relkind IN ('r','p','v','m','f')
+                  AND pg_catalog.has_table_privilege(oid, %s)) AS table_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
                 JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
                 WHERE c.relkind IN ('r','p','v','m','f')
                   AND a.attnum > 0 AND NOT a.attisdropped
                   AND pg_catalog.has_column_privilege(c.oid, a.attnum,
                       'INSERT, UPDATE, REFERENCES')) AS column_write,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                WHERE c.relkind IN ('r','p','v','m','f')
+                  AND a.attnum > 0 AND NOT a.attisdropped
+                  AND pg_catalog.has_column_privilege(c.oid, a.attnum,
+                      'SELECT WITH GRANT OPTION, INSERT WITH GRANT OPTION, UPDATE WITH GRANT OPTION, REFERENCES WITH GRANT OPTION')) AS column_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class
                 WHERE relkind = 'S'
                   AND pg_catalog.has_sequence_privilege(oid, 'USAGE, SELECT, UPDATE')) AS sequence_access,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_class
+                WHERE relkind = 'S'
+                  AND pg_catalog.has_sequence_privilege(oid, 'USAGE WITH GRANT OPTION, SELECT WITH GRANT OPTION, UPDATE WITH GRANT OPTION')) AS sequence_grant,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                WHERE pg_catalog.has_function_privilege(p.oid, 'EXECUTE')
+                  AND (n.nspname NOT IN ('pg_catalog','information_schema')
+                       OR p.prosecdef)) AS extra_routine_execute,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_proc
+                WHERE pg_catalog.has_function_privilege(oid, 'EXECUTE WITH GRANT OPTION')) AS routine_grant,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_language
+                WHERE NOT lanpltrusted AND pg_catalog.has_language_privilege(oid, 'USAGE')) AS untrusted_language,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_language
+                WHERE pg_catalog.has_language_privilege(oid, 'USAGE WITH GRANT OPTION')) AS language_grant,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper
+                WHERE pg_catalog.has_foreign_data_wrapper_privilege(oid, 'USAGE')) AS foreign_wrapper,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_server
+                WHERE pg_catalog.has_server_privilege(oid, 'USAGE')) AS foreign_server,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata
+                WHERE pg_catalog.has_largeobject_privilege(oid, 'SELECT, UPDATE')) AS largeobject_access,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_type
+                WHERE pg_catalog.has_type_privilege(oid, 'USAGE WITH GRANT OPTION')) AS type_grant
+            """, (oid, oid, oid, table_writes, table_grants))
+        _clear(checks, (
+            "memberships", "owns_objects", "default_acl_owner", "database_write",
+            "database_grant", "schema_write", "schema_grant", "tablespace_write",
+            "tablespace_grant", "table_write", "table_grant", "column_write", "column_grant",
+            "sequence_access", "sequence_grant", "extra_routine_execute", "routine_grant",
+            "untrusted_language", "language_grant", "foreign_wrapper", "foreign_server",
+            "largeobject_access", "type_grant"))
+        # PostgreSQL 15 introduced parameter ACLs. Check explicit rights only;
+        # ordinary USERSET defaults must not be mistaken for elevated grants.
+        if version >= 150000:
+            parameters = _one(cur, """SELECT
+                EXISTS (SELECT 1 FROM pg_catalog.pg_parameter_acl
+                    WHERE pg_catalog.has_parameter_privilege(parname, 'SET WITH GRANT OPTION, ALTER SYSTEM WITH GRANT OPTION')) AS parameter_grant,
+                EXISTS (SELECT 1 FROM pg_catalog.pg_settings
+                    WHERE context IN ('superuser','postmaster','sighup','backend','superuser-backend')
+                      AND pg_catalog.has_parameter_privilege(name, 'SET, ALTER SYSTEM')) AS privileged_parameter
+                """)
+            _clear(parameters, ("parameter_grant", "privileged_parameter"))
+        targets = _one(cur, """SELECT
+            EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relname = ANY(%s)
+                  AND c.relkind NOT IN ('r','p')) AS unexpected_target_kind,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class c
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 WHERE c.relkind IN ('r','p','v','m','f')
                   AND pg_catalog.has_table_privilege(c.oid, 'SELECT')
-                  AND NOT (n.nspname = 'pg_catalog' OR n.nspname = 'information_schema'
+                  AND NOT (n.nspname IN ('pg_catalog','information_schema')
                     OR (n.nspname = 'public' AND c.relname = ANY(%s)))) AS extra_table_read,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class c
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -95,45 +169,63 @@ def preflight(cur, expected_role=ROLE_NAME):
                 WHERE c.relkind IN ('r','p','v','m','f')
                   AND a.attnum > 0 AND NOT a.attisdropped
                   AND pg_catalog.has_column_privilege(c.oid, a.attnum, 'SELECT')
-                  AND NOT (n.nspname = 'pg_catalog' OR n.nspname = 'information_schema'
-                    OR (n.nspname = 'public' AND c.relname = ANY(%s)))) AS extra_column_read,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
-                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-                WHERE pg_catalog.has_function_privilege(p.oid, 'EXECUTE')
-                  AND (n.nspname NOT IN ('pg_catalog','information_schema')
-                    OR p.prosecdef
-                    OR (p.proacl IS NOT NULL AND NOT EXISTS (
-                        SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
-                        WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE')))) AS extra_routine_execute,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_language
-                WHERE NOT lanpltrusted AND pg_catalog.has_language_privilege(oid, 'USAGE')) AS untrusted_language,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper
-                WHERE pg_catalog.has_foreign_data_wrapper_privilege(oid, 'USAGE')) AS foreign_wrapper,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_server
-                WHERE pg_catalog.has_server_privilege(oid, 'USAGE')) AS foreign_server,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata
-                WHERE pg_catalog.has_largeobject_privilege(oid, 'SELECT, UPDATE')) AS largeobject_access,
+                  AND NOT (n.nspname IN ('pg_catalog','information_schema')
+                    OR (n.nspname = 'public' AND c.relname = ANY(%s)))) AS extra_column_read
+            """, (list(TARGET_COLUMNS),) * 3)
+        _clear(targets, ("unexpected_target_kind", "extra_table_read", "extra_column_read"))
+        # A table-level SELECT grant also exposes future columns. Require
+        # column-only grants on the four audited relations, and reject RLS
+        # because a policy could silently hide historical rows.
+        scope = _one(cur, """SELECT
+            NOT pg_catalog.has_schema_privilege('public', 'USAGE') AS missing_schema_usage,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class c
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND c.relname = ANY(%s)
-                  AND c.relkind NOT IN ('r','p')) AS unexpected_target_kind,
+                  AND c.relkind IN ('r','p')
+                  AND (c.relrowsecurity OR c.relforcerowsecurity)) AS target_rls,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class c
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND c.relname = ANY(%s)
-                  AND NOT pg_catalog.has_table_privilege(c.oid, 'SELECT')) AS missing_target_read
-            """, (role_oid, role_oid, table_writes, list(ALLOWED_TABLES),
-                  list(ALLOWED_TABLES), list(ALLOWED_TABLES), list(ALLOWED_TABLES)))
-        if set(checks) != {
-            "memberships", "owns_objects", "database_write", "schema_write",
-            "tablespace_write", "table_write", "column_write", "sequence_access",
-            "extra_table_read", "extra_column_read", "extra_routine_execute",
-            "untrusted_language", "foreign_wrapper", "foreign_server",
-            "largeobject_access", "unexpected_target_kind", "missing_target_read",
-        } or any(value is not False for value in checks.values()):
-            raise PrivilegeGuardError("privilege_preflight_rejected")
-        return {"status": "BOUNDED_PRIVILEGE_PREFLIGHT_PASSED",
-                "database_name": identity["database_name"],
-                "role": expected_role, "server_version": version}
+                  AND c.relkind IN ('r','p')
+                  AND pg_catalog.has_table_privilege(c.oid, 'SELECT')) AS broad_target_read,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relname = ANY(%s)
+                  AND c.relkind IN ('r','p')
+                  AND a.attnum > 0 AND NOT a.attisdropped
+                  AND pg_catalog.has_column_privilege(c.oid, a.attnum, 'SELECT')
+                  AND NOT (a.attname = ANY(CASE c.relname
+                      WHEN 'v2_races' THEN ARRAY['race_id','race_date','deadline_at']
+                      WHEN 'v2_race_entries' THEN ARRAY['race_id','lane']
+                      WHEN 'v2_odds_trifecta' THEN ARRAY['race_id','ticket','fetched_at','is_final']
+                      WHEN 'v2_bao_market_shadow_snapshots' THEN ARRAY['race_id','phase','captured_at','created_at','deadline_at','odds','source','schema_version']
+                      ELSE ARRAY[]::text[] END))) AS extra_target_column_read
+            """, (list(TARGET_COLUMNS),) * 3)
+        _clear(scope, ('missing_schema_usage', 'target_rls', 'broad_target_read',
+                       'extra_target_column_read'))
+        for table, names in TARGET_COLUMNS.items():
+            row = _one(cur, """SELECT
+                EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND c.relname = %s
+                      AND c.relkind IN ('r','p')) AS relation_exists,
+                NOT EXISTS (SELECT 1 FROM unnest(%s::text[]) AS required(name)
+                    WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+                        WHERE n.nspname = 'public' AND c.relname = %s
+                          AND c.relkind IN ('r','p') AND a.attname = required.name
+                          AND a.attnum > 0 AND NOT a.attisdropped
+                          AND pg_catalog.has_column_privilege(c.oid, a.attnum, 'SELECT'))
+                ) AS columns_readable""", (table, list(names), table))
+            if (set(row) != {"relation_exists", "columns_readable"}
+                    or type(row["relation_exists"]) is not bool
+                    or type(row["columns_readable"]) is not bool
+                    or (row["relation_exists"] and not row["columns_readable"])
+                    or (table in REQUIRED_TABLES and not row["relation_exists"])):
+                raise PrivilegeGuardError("privilege_preflight_rejected")
+        return {"status": "BOUNDED_PRIVILEGE_PREFLIGHT_PASSED", "server_version": version}
     except PrivilegeGuardError:
         raise
     except Exception:
