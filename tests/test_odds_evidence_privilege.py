@@ -53,7 +53,18 @@ class PrivilegeTests(unittest.TestCase):
                 self.assertEqual('pg_parameter_acl' in sql, version >= 150000)
                 self.assertEqual(any('MAINTAIN' in str(params) for _, params in cur.commands), version >= 170000)
                 self.assertTrue(all(q.lstrip().startswith('SELECT') for q, _ in cur.commands))
-                self.assertTrue(all(len(p) <= 5 for _, p in cur.commands))
+                self.assertTrue(all(len(p) <= 6 for _, p in cur.commands))
+    def test_largeobject_acl_is_compatible_with_postgresql_14_through_18(self):
+        cur = CatalogCursor()
+        guard.preflight(cur, expected_database='railway')
+        sql = '\n'.join(q for q, _ in cur.commands)
+        self.assertIn("pg_catalog.acldefault('L', lo.lomowner)", sql)
+        self.assertIn('a.grantee IN (0, %s)', sql)
+        self.assertIn("a.privilege_type IN ('SELECT', 'UPDATE')", sql)
+        self.assertNotIn('has_largeobject_privilege', sql)
+        self.assertEqual(next(params for query, params in cur.commands
+                              if 'largeobject_access' in query)[-1], 123)
+
     def test_grant_options_and_parameter_rights_are_explicit(self):
         cur = CatalogCursor(version=170000)
         guard.preflight(cur, expected_database='railway')
@@ -75,6 +86,8 @@ class PrivilegeTests(unittest.TestCase):
                 with self.assertRaises(guard.PrivilegeGuardError):
                     guard.preflight(CatalogCursor(**change), expected_database='railway')
     def test_rejects_every_catalog_privilege(self):
+        cur = CatalogCursor()
+        cur.execute('SELECT AS dummy')
         names = ['memberships','owns_objects','default_acl_owner','database_write',
                  'database_grant','schema_write','schema_grant','tablespace_write',
                  'tablespace_grant','table_write','table_grant','column_write','column_grant',
