@@ -61,8 +61,9 @@ class ProductionExecutorTests(unittest.TestCase):
         self.assertEqual(value, "safe-admin")
         self.assertEqual((host, port, database),
                          ("x.proxy.rlwy.net", 1234, "railway"))
-        self.assertEqual(seen["sslmode"], "verify-full")
+        self.assertEqual(seen["sslmode"], "require")
         self.assertEqual(seen["gssencmode"], "disable")
+        self.assertNotIn("sslrootcert", seen)
         self.assertNotIn("unsafe", str(seen))
         self.assertEqual(seen["user"], "postgres")
         self.assertEqual(seen["password"], "p@ss")
@@ -105,7 +106,7 @@ class ProductionExecutorTests(unittest.TestCase):
             )
         self.assertEqual(value, "safe-audit")
         self.assertEqual(seen["user"], guard.ROLE_NAME)
-        self.assertEqual(seen["sslmode"], "verify-full")
+        self.assertEqual(seen["sslmode"], "require")
         self.assertIn("default_transaction_read_only=on", seen["options"])
 
     def test_failure_output_is_sanitized(self):
