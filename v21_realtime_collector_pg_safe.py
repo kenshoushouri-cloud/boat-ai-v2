@@ -15,12 +15,84 @@ from pathlib import Path
 import official_odds3t_parser as odds_parser
 import v21_realtime_collector_pg as legacy
 
-VERSION = "2026-09-10 official-table-parser-fail-closed-v1"
+VERSION = "2026-09-10 official-table-parser-fail-closed-v2"
 
 
 def _choose_odds(html: str | None, base_values):
     official = odds_parser.parse_official_odds3t(html or "") if html else {}
     return odds_parser.choose_realtime_snapshot(official, base_values)
+
+
+def _save_complete_odds(race, odds, source):
+    """Persist only a verified dynamic 120/60/24 set without false /120 warnings."""
+    ticket_set = odds_parser.complete_snapshot_ticket_set(odds)
+    if ticket_set is None:
+        print(
+            f"WARNING realtime odds rejected before save: "
+            f"race_id={race.get('race_id')} source={source}",
+            flush=True,
+        )
+        return 0
+
+    rid = str(race.get("race_id"))
+    venue = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
+    valid = {ticket: float(odds[ticket]) for ticket in ticket_set}
+    prev = legacy._fetch_previous_odds(rid)
+    ranked = sorted(valid.items(), key=lambda item: item[1])
+    ranks = {ticket: index + 1 for index, (ticket, _) in enumerate(ranked)}
+    rows = []
+    for ticket, value in ranked:
+        previous = prev.get(ticket, {})
+        previous_odds = (
+            legacy._safe_float(previous.get("odds"), None) if previous else None
+        )
+        previous_rank = (
+            legacy._safe_int(previous.get("market_rank"), 0)
+            if previous and previous.get("market_rank") is not None
+            else None
+        )
+        delta = round(value - previous_odds, 2) if previous_odds else None
+        delta_pct = (
+            round((value - previous_odds) / previous_odds, 4)
+            if previous_odds
+            else None
+        )
+        now = legacy._now_iso()
+        rows.append(
+            {
+                "race_id": rid,
+                "race_date": race.get("race_date"),
+                "venue_id": venue,
+                "venue_code": venue,
+                "race_no": legacy._safe_int(race.get("race_no")),
+                "snapshot_label": legacy.SNAPSHOT_LABEL,
+                "snapshot_at": now,
+                "source": source,
+                "ticket": ticket,
+                "odds": value,
+                "market_rank": ranks[ticket],
+                "prev_odds": previous_odds,
+                "odds_delta": delta,
+                "odds_delta_pct": delta_pct,
+                "prev_market_rank": previous_rank,
+                "market_rank_delta": (
+                    ranks[ticket] - previous_rank
+                    if previous_rank is not None
+                    else None
+                ),
+                "is_favorite": ranks[ticket] == 1,
+                "is_odds_too_low": value < 3,
+                "is_odds_drift": bool(delta_pct is not None and delta_pct >= 0.15),
+                "is_odds_steam": bool(delta_pct is not None and delta_pct <= -0.15),
+                "raw": {},
+                "updated_at": now,
+            }
+        )
+    return legacy._upsert(
+        "v2_realtime_odds_snapshots",
+        rows,
+        "race_id,snapshot_label,ticket",
+    )
 
 
 def main() -> None:
@@ -195,7 +267,7 @@ def main() -> None:
         )
         odds, source = _choose_odds(odds_html, base_odds.get(rid))
         if odds:
-            so += legacy.save_odds(race, odds, source)
+            so += _save_complete_odds(race, odds, source)
         else:
             no += 1
         print(
