@@ -73,7 +73,13 @@ def _decode(raw: str | None) -> str:
 
 
 def admin_connection(url: str):
-    """Validate the Railway public admin URL and rebuild a pinned libpq conninfo."""
+    """Validate the Railway public admin URL and rebuild a pinned libpq conninfo.
+
+    Railway's recovered PostgreSQL endpoint is an authenticated project-derived
+    TCP proxy and the repository's existing recovery integrity audit uses
+    sslmode=require. The URL host is separately restricted to Railway's proxy
+    namespace and URL-supplied libpq options are discarded.
+    """
     try:
         if not isinstance(url, str) or not url or len(url) > 8192:
             raise ValueError("url")
@@ -105,10 +111,7 @@ def admin_connection(url: str):
     from psycopg.conninfo import make_conninfo
     conninfo = make_conninfo(
         "", host=host, port=port, dbname=database, user=user, password=password,
-        sslmode="verify-full",
-        sslrootcert="/etc/ssl/certs/ca-certificates.crt",
-        gssencmode="disable",
-        connect_timeout=10,
+        sslmode="require", gssencmode="disable", connect_timeout=10,
         application_name="odds_evidence_role_provisioner",
         options="-c search_path=pg_catalog -c statement_timeout=15000 "
                 "-c lock_timeout=2000 -c idle_in_transaction_session_timeout=30000",
@@ -120,11 +123,8 @@ def audit_connection(*, host: str, port: int, database: str, password: str) -> s
     from psycopg.conninfo import make_conninfo
     return make_conninfo(
         "", host=host, port=port, dbname=database, user=guard.ROLE_NAME,
-        password=password, sslmode="verify-full",
-        sslrootcert="/etc/ssl/certs/ca-certificates.crt",
-        gssencmode="disable",
-        connect_timeout=10,
-        application_name="odds_evidence_20260908",
+        password=password, sslmode="require", gssencmode="disable",
+        connect_timeout=10, application_name="odds_evidence_20260908",
         options="-c search_path=pg_catalog -c default_transaction_read_only=on "
                 "-c statement_timeout=15000 -c lock_timeout=2000 "
                 "-c idle_in_transaction_session_timeout=30000",
