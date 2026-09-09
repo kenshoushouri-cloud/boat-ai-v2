@@ -1,4 +1,4 @@
-name: Odds evidence realtime snapshot audit once
+name: Odds evidence realtime set comparison once
 
 on:
   push:
@@ -11,16 +11,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: odds-evidence-realtime-snapshot-20260908-once
+  group: odds-evidence-realtime-set-compare-20260908-once
   cancel-in-progress: false
 
 jobs:
-  realtime-snapshot-audit:
+  realtime-set-compare:
     if: >-
       github.repository == 'kenshoushouri-cloud/boat-ai-v2' &&
       github.actor == github.repository_owner &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'REALTIME-SNAPSHOT-AUDIT-2026-09-08-APPROVED-ONCE'
+      github.event.head_commit.message == 'REALTIME-SET-COMPARE-2026-09-08-APPROVED-ONCE'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -46,17 +46,17 @@ jobs:
       - name: Install pinned PostgreSQL client
         run: python -m pip install --disable-pip-version-check 'psycopg[binary]==3.2.6'
 
-      - name: Execute approved realtime snapshot audit
+      - name: Execute approved base-vs-realtime set comparison
         shell: bash
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          REALTIME_SNAPSHOT_AUDIT_CONFIRMATION: REALTIME-SNAPSHOT-AUDIT-2026-09-08-ONCE
-          REALTIME_SNAPSHOT_AUDIT_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REALTIME_SET_COMPARE_CONFIRMATION: REALTIME-SET-COMPARE-2026-09-08-ONCE
+          REALTIME_SET_COMPARE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           set +x
           if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo 'REALTIME_SNAPSHOT_AUDIT_FAILED=railway_authentication;ROLE_CLEANUP=NOT_NEEDED' >&2
+            echo 'REALTIME_SET_COMPARE_FAILED=railway_authentication;ROLE_CLEANUP=NOT_NEEDED' >&2
             exit 1
           fi
           railway variables --service postgres-recovery --json > railway-vars.json
@@ -75,20 +75,20 @@ jobs:
           )"
           rm -f railway-vars.json
           if [ -z "$ADMIN_DATABASE_URL" ]; then
-            echo 'REALTIME_SNAPSHOT_AUDIT_FAILED=admin_database_credentials;ROLE_CLEANUP=NOT_NEEDED' >&2
+            echo 'REALTIME_SET_COMPARE_FAILED=admin_database_credentials;ROLE_CLEANUP=NOT_NEEDED' >&2
             exit 1
           fi
           export ADMIN_DATABASE_URL
-          python -u odds_evidence_realtime_snapshot_audit.py
+          python -u odds_evidence_realtime_set_compare.py
           unset ADMIN_DATABASE_URL
 
-      - name: Show sanitized audit result
+      - name: Show sanitized comparison result
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f .audit-results/realtime-snapshot-audit-20260908.json ]; then
-            cat .audit-results/realtime-snapshot-audit-20260908.json
+          if [ -f .audit-results/realtime-set-compare-20260908.json ]; then
+            cat .audit-results/realtime-set-compare-20260908.json
           else
             echo '{"execution_status":"BLOCKED","stage":"no_sanitized_result"}'
           fi
@@ -97,8 +97,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: odds-evidence-realtime-snapshot-20260908-sanitized
-          path: .audit-results/realtime-snapshot-audit-20260908.json
+          name: odds-evidence-realtime-set-compare-20260908-sanitized
+          path: .audit-results/realtime-set-compare-20260908.json
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 7
