@@ -82,11 +82,12 @@ def preflight(cur, *, expected_database):
             -- CREATE is disallowed in every database. A direct TEMP grant is
             -- also disallowed; ordinary PUBLIC TEMP is a PostgreSQL default,
             -- constrained by the already verified read-only transaction.
+            -- aclexplode uses the canonical TEMPORARY name, not its TEMP alias.
             EXISTS (SELECT 1 FROM pg_catalog.pg_database d
                 WHERE pg_catalog.has_database_privilege(d.oid, 'CREATE')
                    OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
                        COALESCE(d.datacl, pg_catalog.acldefault('d', d.datdba))) a
-                       WHERE a.grantee = %s AND a.privilege_type = 'TEMP')) AS database_write,
+                       WHERE a.grantee = %s AND a.privilege_type = 'TEMPORARY')) AS database_write,
             EXISTS (SELECT 1 FROM pg_catalog.pg_database
                 WHERE pg_catalog.has_database_privilege(oid, 'CREATE WITH GRANT OPTION, CONNECT WITH GRANT OPTION, TEMP WITH GRANT OPTION')) AS database_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
