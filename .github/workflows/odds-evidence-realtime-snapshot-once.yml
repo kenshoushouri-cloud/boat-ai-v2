@@ -1,0 +1,104 @@
+name: Odds evidence realtime snapshot audit once
+
+on:
+  push:
+    branches:
+      - research/odds-evidence-20260908
+    paths:
+      - '.github/workflows/odds-evidence-realtime-snapshot-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odds-evidence-realtime-snapshot-20260908-once
+  cancel-in-progress: false
+
+jobs:
+  realtime-snapshot-audit:
+    if: >-
+      github.repository == 'kenshoushouri-cloud/boat-ai-v2' &&
+      github.actor == github.repository_owner &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'REALTIME-SNAPSHOT-AUDIT-2026-09-08-APPROVED-ONCE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout approved research commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.41.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned PostgreSQL client
+        run: python -m pip install --disable-pip-version-check 'psycopg[binary]==3.2.6'
+
+      - name: Execute approved realtime snapshot audit
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          REALTIME_SNAPSHOT_AUDIT_CONFIRMATION: REALTIME-SNAPSHOT-AUDIT-2026-09-08-ONCE
+          REALTIME_SNAPSHOT_AUDIT_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo 'REALTIME_SNAPSHOT_AUDIT_FAILED=railway_authentication;ROLE_CLEANUP=NOT_NEEDED' >&2
+            exit 1
+          fi
+          railway variables --service postgres-recovery --json > railway-vars.json
+          ADMIN_DATABASE_URL="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+              value = data.get('DATABASE_PUBLIC_URL')
+              if not isinstance(value, str) or not value:
+                  raise ValueError
+              print(value, end='')
+          except Exception:
+              raise SystemExit(2)
+          PY
+          )"
+          rm -f railway-vars.json
+          if [ -z "$ADMIN_DATABASE_URL" ]; then
+            echo 'REALTIME_SNAPSHOT_AUDIT_FAILED=admin_database_credentials;ROLE_CLEANUP=NOT_NEEDED' >&2
+            exit 1
+          fi
+          export ADMIN_DATABASE_URL
+          python -u odds_evidence_realtime_snapshot_audit.py
+          unset ADMIN_DATABASE_URL
+
+      - name: Show sanitized audit result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f .audit-results/realtime-snapshot-audit-20260908.json ]; then
+            cat .audit-results/realtime-snapshot-audit-20260908.json
+          else
+            echo '{"execution_status":"BLOCKED","stage":"no_sanitized_result"}'
+          fi
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-evidence-realtime-snapshot-20260908-sanitized
+          path: .audit-results/realtime-snapshot-audit-20260908.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
