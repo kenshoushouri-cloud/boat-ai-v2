@@ -8,12 +8,14 @@ on:
       - 'odds_evidence_role_provisioning.py'
       - 'odds_evidence_production_executor.py'
       - 'odds_evidence_realtime_snapshot_audit.py'
+      - 'odds_evidence_realtime_set_compare.py'
       - 'tests/test_odds_evidence_20260908.py'
       - 'tests/test_odds_evidence_manual.py'
       - 'tests/test_odds_evidence_privilege.py'
       - 'tests/test_odds_evidence_provisioning.py'
       - 'tests/test_odds_evidence_production_executor.py'
       - 'tests/test_odds_evidence_realtime_snapshot_audit.py'
+      - 'tests/test_odds_evidence_realtime_set_compare.py'
       - '.github/workflows/odds-evidence-audit-manual.yml'
       - '.github/workflows/odds-evidence-audit-tests.yml'
 permissions:
@@ -34,6 +36,8 @@ jobs:
       PRODUCTION_EXECUTION_COMMIT_MESSAGE: ''
       REALTIME_SNAPSHOT_AUDIT_CONFIRMATION: ''
       REALTIME_SNAPSHOT_AUDIT_COMMIT_MESSAGE: ''
+      REALTIME_SET_COMPARE_CONFIRMATION: ''
+      REALTIME_SET_COMPARE_COMMIT_MESSAGE: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +48,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile audit, runners and tests
-        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py odds_evidence_role_provisioning.py odds_evidence_production_executor.py odds_evidence_realtime_snapshot_audit.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py tests/test_odds_evidence_provisioning.py tests/test_odds_evidence_production_executor.py tests/test_odds_evidence_realtime_snapshot_audit.py
+        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py odds_evidence_role_provisioning.py odds_evidence_production_executor.py odds_evidence_realtime_snapshot_audit.py odds_evidence_realtime_set_compare.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py tests/test_odds_evidence_provisioning.py tests/test_odds_evidence_production_executor.py tests/test_odds_evidence_realtime_snapshot_audit.py tests/test_odds_evidence_realtime_set_compare.py
       - name: Run fixed-date offline tests
         run: python -m unittest discover -s tests -p 'test_odds_evidence*.py' -v
