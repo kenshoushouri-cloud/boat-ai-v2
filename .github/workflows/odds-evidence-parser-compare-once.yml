@@ -1,0 +1,91 @@
+name: Odds evidence parser comparison once
+
+on:
+  push:
+    branches:
+      - research/odds-evidence-20260908
+    paths:
+      - '.github/workflows/odds-evidence-parser-compare-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  parser-compare:
+    if: >-
+      github.repository == 'kenshoushouri-cloud/boat-ai-v2' &&
+      github.actor == github.repository_owner &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'PARSER-COMPARE-2026-09-08-READ-ONLY-ONCE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install parser dependencies
+        run: python -m pip install --disable-pip-version-check 'requests==2.32.5' 'beautifulsoup4==4.14.2' 'psycopg[binary]==3.2.6'
+      - name: Compare current official historical pages with realtime and repair parsers
+        env:
+          DATABASE_URL: ''
+          RAILWAY_TOKEN: ''
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import repair_month_all_pg as repair
+          import v21_realtime_collector_pg as realtime
+
+          races = (
+              '20260908_10_02','20260908_14_02','20260908_10_03','20260908_14_03',
+              '20260908_11_02','20260908_11_03','20260908_11_04','20260908_03_03',
+              '20260908_13_05','20260908_11_05','20260908_03_04','20260908_13_06',
+              '20260908_11_06','20260908_11_07','20260908_13_08','20260908_11_08',
+              '20260908_03_08','20260908_13_09','20260908_11_09',
+          )
+          cases=[]
+          rt_full=repair_full=same_set=fetch_none=0
+          print('PARSER_COMPARE_MODE=public_http_read_only_in_memory')
+          for rid in races:
+              date_str, venue, rno = repair._parse_race_id(rid)
+              html = repair._fetch(repair._official_url('odds3t', date_str, venue, rno))
+              if not html:
+                  fetch_none += 1
+                  case={'race_id':rid,'fetch':'none','realtime':0,'repair':0,'same_set':True}
+              else:
+                  rt = realtime.parse_odds3t(html)
+                  rp = repair.parse_odds3t(html, rid)
+                  rt_set=set(rt)
+                  rp_set={str(row.get('ticket') or '') for row in rp}
+                  rt_full += int(len(rt_set)==120)
+                  repair_full += int(len(rp_set)==120)
+                  same = rt_set==rp_set
+                  same_set += int(same)
+                  case={
+                      'race_id':rid,'html_chars':len(html),'realtime':len(rt_set),
+                      'repair':len(rp_set),'same_set':same,
+                      'repair_only':len(rp_set-rt_set),'realtime_only':len(rt_set-rp_set),
+                  }
+              cases.append(case)
+              print('PARSER_COMPARE_CASE='+json.dumps(case,separators=(',',':')))
+          result={
+              'mode':'PUBLIC_HTTP_READ_ONLY_IN_MEMORY',
+              'date':'2026-09-08','total':len(races),'fetch_none':fetch_none,
+              'realtime_full_120':rt_full,'repair_full_120':repair_full,
+              'same_ticket_set':same_set,'cases':cases,
+              'interpretation':'CURRENT_PAGE_ONLY_NOT_HISTORICAL_AUTHENTICATION',
+          }
+          Path('parser-compare-20260908.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+          print('PARSER_COMPARE_SUMMARY='+json.dumps({k:result[k] for k in ('total','fetch_none','realtime_full_120','repair_full_120','same_ticket_set')},separators=(',',':')))
+          print('PARSER_COMPARE_RESULT=PASS_READ_ONLY')
+          PY
+      - name: Upload sanitized parser comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-evidence-parser-compare-20260908
+          path: parser-compare-20260908.json
+          retention-days: 7
