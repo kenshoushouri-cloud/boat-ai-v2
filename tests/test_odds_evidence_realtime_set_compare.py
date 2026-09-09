@@ -60,16 +60,22 @@ class RealtimeSetCompareTests(unittest.TestCase):
         admin.assert_not_called()
 
     def test_failure_is_sanitized_and_blocked(self):
-        with patch.object(cmp.shared.base_executor, "admin_connection",
-                          side_effect=RuntimeError("private-secret")), \
-             patch.object(cmp, "_write") as write, \
-             contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertEqual(cmp.main(self.env()), 1)
-        self.assertNotIn("private-secret", err.getvalue())
-        payload = write.call_args.args[0]
-        self.assertEqual(payload["execution_status"], "BLOCKED")
-        self.assertEqual(payload["root_cause"], "UNDETERMINED")
-        self.assertEqual(payload["historical_roi_approval"], "BLOCKED")
+        old_role = cmp.shared.ROLE_NAME
+        old_columns = cmp.shared.ALLOWED_COLUMNS
+        try:
+            with patch.object(cmp.shared.base_executor, "admin_connection",
+                              side_effect=RuntimeError("private-secret")), \
+                 patch.object(cmp, "_write") as write, \
+                 contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cmp.main(self.env()), 1)
+            self.assertNotIn("private-secret", err.getvalue())
+            payload = write.call_args.args[0]
+            self.assertEqual(payload["execution_status"], "BLOCKED")
+            self.assertEqual(payload["root_cause"], "UNDETERMINED")
+            self.assertEqual(payload["historical_roi_approval"], "BLOCKED")
+        finally:
+            cmp.shared.ROLE_NAME = old_role
+            cmp.shared.ALLOWED_COLUMNS = old_columns
 
 
 if __name__ == "__main__":
