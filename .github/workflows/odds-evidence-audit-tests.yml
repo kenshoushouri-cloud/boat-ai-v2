@@ -1,18 +1,17 @@
 name: Odds evidence audit tests
-
 on:
   pull_request:
     paths:
       - 'audit_odds_evidence_20260908_pg.py'
       - 'run_odds_evidence_20260908.py'
+      - 'odds_evidence_privilege_guard.py'
       - 'tests/test_odds_evidence_20260908.py'
       - 'tests/test_odds_evidence_manual.py'
+      - 'tests/test_odds_evidence_privilege.py'
       - '.github/workflows/odds-evidence-audit-manual.yml'
       - '.github/workflows/odds-evidence-audit-tests.yml'
-
 permissions:
   contents: read
-
 jobs:
   offline-audit-tests:
     runs-on: ubuntu-latest
@@ -20,6 +19,10 @@ jobs:
     env:
       DATABASE_URL: ''
       RAILWAY_TOKEN: ''
+      AUDIT_DATABASE_URL: ''
+      AUDIT_DB_HOST: ''
+      AUDIT_DB_PORT: ''
+      AUDIT_DB_NAME: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +33,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile audit, runner and tests
-        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py
+        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py
       - name: Run fixed-date offline tests
         run: python -m unittest discover -s tests -p 'test_odds_evidence*.py' -v
