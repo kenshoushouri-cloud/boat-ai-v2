@@ -1,0 +1,31 @@
+name: Odds evidence audit tests
+
+on:
+  pull_request:
+    paths:
+      - 'audit_odds_evidence_20260908_pg.py'
+      - 'tests/test_odds_evidence_20260908.py'
+      - '.github/workflows/odds-evidence-audit-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-audit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile audit and tests
+        run: python -m py_compile audit_odds_evidence_20260908_pg.py tests/test_odds_evidence_20260908.py
+      - name: Run fixed-date offline tests
+        run: python -m unittest discover -s tests -p 'test_odds_evidence_20260908.py' -v
