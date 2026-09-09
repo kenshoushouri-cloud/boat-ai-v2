@@ -6,10 +6,12 @@ on:
       - 'run_odds_evidence_20260908.py'
       - 'odds_evidence_privilege_guard.py'
       - 'odds_evidence_role_provisioning.py'
+      - 'odds_evidence_production_executor.py'
       - 'tests/test_odds_evidence_20260908.py'
       - 'tests/test_odds_evidence_manual.py'
       - 'tests/test_odds_evidence_privilege.py'
       - 'tests/test_odds_evidence_provisioning.py'
+      - 'tests/test_odds_evidence_production_executor.py'
       - '.github/workflows/odds-evidence-audit-manual.yml'
       - '.github/workflows/odds-evidence-audit-tests.yml'
 permissions:
@@ -25,6 +27,9 @@ jobs:
       AUDIT_DB_HOST: ''
       AUDIT_DB_PORT: ''
       AUDIT_DB_NAME: ''
+      ADMIN_DATABASE_URL: ''
+      PRODUCTION_EXECUTION_CONFIRMATION: ''
+      PRODUCTION_EXECUTION_COMMIT_MESSAGE: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +39,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile audit, runner, provisioning contract and tests
-        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py odds_evidence_role_provisioning.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py tests/test_odds_evidence_provisioning.py
+      - name: Compile audit, runner, provisioning, executor and tests
+        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py odds_evidence_role_provisioning.py odds_evidence_production_executor.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py tests/test_odds_evidence_provisioning.py tests/test_odds_evidence_production_executor.py
       - name: Run fixed-date offline tests
         run: python -m unittest discover -s tests -p 'test_odds_evidence*.py' -v
