@@ -125,6 +125,8 @@ class OfficialOddsFixTests(unittest.TestCase):
         self.assertIn("complete_snapshot_ticket_set(odds)", text)
         self.assertIn("_save_complete_odds(race, odds, source)", text)
         self.assertNotIn("legacy.save_odds(race, odds, source)", text)
+        self.assertIn("for ticket in sorted(ticket_set)", text)
+        self.assertIn("key=lambda item: (item[1], item[0])", text)
 
 
 if __name__ == "__main__":
