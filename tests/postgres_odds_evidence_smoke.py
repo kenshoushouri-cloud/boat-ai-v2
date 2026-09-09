@@ -92,10 +92,11 @@ class PostgreSQLSmokeTests(unittest.TestCase):
             deadline = audit.reference_deadline(rid)
             cls.admin.execute('INSERT INTO public.v2_races VALUES (%s,%s,%s,%s)',
                               (rid, audit.TARGET_DATE, deadline, 'not readable'))
-            cls.admin.executemany('INSERT INTO public.v2_race_entries VALUES (%s,%s)',
-                                  [(rid, lane) for lane in range(1, 7)])
-            cls.admin.executemany('INSERT INTO public.v2_odds_trifecta VALUES (%s,%s,%s,%s)',
-                                  [(rid, ticket, deadline, False) for ticket in audit.ALL_TICKETS])
+            with cls.admin.cursor() as cur:
+                cur.executemany('INSERT INTO public.v2_race_entries VALUES (%s,%s)',
+                                [(rid, lane) for lane in range(1, 7)])
+                cur.executemany('INSERT INTO public.v2_odds_trifecta VALUES (%s,%s,%s,%s)',
+                                [(rid, ticket, deadline, False) for ticket in audit.ALL_TICKETS])
             cls.admin.execute('''INSERT INTO public.v2_bao_market_shadow_snapshots
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
                 (rid, 'early', deadline - timedelta(minutes=25),
