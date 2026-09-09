@@ -58,8 +58,8 @@ class OfficialOddsParserTests(unittest.TestCase):
 
     def test_structural_table_missing_token_fails_closed(self):
         html, _ = structural_html()
-        self.assertIn("129.0", html)
-        damaged = html.replace("<td>129.0</td>", "", 1)
+        self.assertIn("22.0", html)
+        damaged = html.replace("<td>22.0</td>", "", 1)
         self.assertEqual(parser.parse_official_odds3t(damaged), {})
 
     def test_legacy_contiguous_text_remains_supported(self):
