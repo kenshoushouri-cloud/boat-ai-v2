@@ -11,6 +11,7 @@ import sys
 import unittest
 from datetime import timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import audit_odds_evidence_20260908_pg as audit
@@ -130,7 +131,17 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                 conn.rollback()
 
     def test_actual_catalog_sql_and_fixed_scope(self):
-        result = audit.read_database(self.reader, expected_database='audit_sandbox')
+        # Diagnostics are limited to the guard's fixed flag names, never values.
+        failures = []
+        original_clear = guard._clear
+        def checked_clear(row, names):
+            failures.extend(name for name in names if row.get(name) is not False)
+            return original_clear(row, names)
+        with patch.object(guard, '_clear', side_effect=checked_clear):
+            try:
+                result = audit.read_database(self.reader, expected_database='audit_sandbox')
+            except guard.PrivilegeGuardError as exc:
+                self.fail('disposable_preflight:' + (','.join(failures) or str(exc)))
         self.assertEqual(result['privilege_preflight']['status'], 'BOUNDED_PRIVILEGE_PREFLIGHT_PASSED')
         self.assertEqual(len(result['races']), 19)
         self.assertTrue(result['races'][0]['base']['complete'])
