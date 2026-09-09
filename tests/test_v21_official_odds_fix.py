@@ -119,6 +119,13 @@ class OfficialOddsFixTests(unittest.TestCase):
         self.assertNotIn("len(od) < 80", text)
         self.assertIn("unavailable_incomplete", (ROOT / "official_odds3t_parser.py").read_text(encoding="utf-8"))
 
+    def test_safe_collector_uses_dynamic_persistence_path(self):
+        text = (ROOT / "v21_realtime_collector_pg_safe.py").read_text(encoding="utf-8")
+        self.assertIn("def _save_complete_odds", text)
+        self.assertIn("complete_snapshot_ticket_set(odds)", text)
+        self.assertIn("_save_complete_odds(race, odds, source)", text)
+        self.assertNotIn("legacy.save_odds(race, odds, source)", text)
+
 
 if __name__ == "__main__":
     unittest.main()
