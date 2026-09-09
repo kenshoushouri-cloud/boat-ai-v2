@@ -1,5 +1,4 @@
 name: Odds evidence audit 2026-09-08 (manual)
-
 on:
   workflow_dispatch:
     inputs:
@@ -13,14 +12,11 @@ on:
         description: Type AUDIT-2026-09-08-READ-ONLY
         required: true
         type: string
-
 permissions:
   contents: read
-
 concurrency:
   group: odds-evidence-20260908-manual
   cancel-in-progress: false
-
 jobs:
   audit:
     if: >-
@@ -43,7 +39,10 @@ jobs:
         run: python -m pip install 'psycopg[binary]==3.2.6'
       - name: Run fixed-date read-only audit
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          AUDIT_DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
+          AUDIT_DB_HOST: ${{ vars.AUDIT_DB_HOST }}
+          AUDIT_DB_PORT: ${{ vars.AUDIT_DB_PORT }}
+          AUDIT_DB_NAME: ${{ vars.AUDIT_DB_NAME }}
           AUDIT_DATE: ${{ inputs.audit_date }}
           AUDIT_CONFIRMATION: ${{ inputs.confirmation }}
         run: python run_odds_evidence_20260908.py
