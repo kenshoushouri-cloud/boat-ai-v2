@@ -15,7 +15,7 @@ from pathlib import Path
 import official_odds3t_parser as odds_parser
 import v21_realtime_collector_pg as legacy
 
-VERSION = "2026-09-10 official-table-parser-fail-closed-v2"
+VERSION = "2026-09-10 official-table-parser-fail-closed-v3"
 
 
 def _choose_odds(html: str | None, base_values):
@@ -36,9 +36,9 @@ def _save_complete_odds(race, odds, source):
 
     rid = str(race.get("race_id"))
     venue = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
-    valid = {ticket: float(odds[ticket]) for ticket in ticket_set}
+    valid = {ticket: float(odds[ticket]) for ticket in sorted(ticket_set)}
     prev = legacy._fetch_previous_odds(rid)
-    ranked = sorted(valid.items(), key=lambda item: item[1])
+    ranked = sorted(valid.items(), key=lambda item: (item[1], item[0]))
     ranks = {ticket: index + 1 for index, (ticket, _) in enumerate(ranked)}
     rows = []
     for ticket, value in ranked:
