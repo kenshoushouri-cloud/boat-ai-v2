@@ -100,4 +100,5 @@ jobs:
           name: odds-evidence-production-20260908-sanitized
           path: .audit-results/
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 7
