@@ -129,11 +129,14 @@ def preflight(cur, *, expected_database):
                 WHERE pg_catalog.has_foreign_data_wrapper_privilege(oid, 'USAGE')) AS foreign_wrapper,
             EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_server
                 WHERE pg_catalog.has_server_privilege(oid, 'USAGE')) AS foreign_server,
-            EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata
-                WHERE pg_catalog.has_largeobject_privilege(oid, 'SELECT, UPDATE')) AS largeobject_access,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata lo
+                CROSS JOIN LATERAL pg_catalog.aclexplode(
+                    COALESCE(lo.lomacl, pg_catalog.acldefault('L', lo.lomowner))) a
+                WHERE a.grantee IN (0, %s)
+                  AND a.privilege_type IN ('SELECT', 'UPDATE')) AS largeobject_access,
             EXISTS (SELECT 1 FROM pg_catalog.pg_type
                 WHERE pg_catalog.has_type_privilege(oid, 'USAGE WITH GRANT OPTION')) AS type_grant
-            """, (oid, oid, oid, table_writes, table_grants))
+            """, (oid, oid, oid, table_writes, table_grants, oid))
         _clear(checks, (
             "memberships", "owns_objects", "default_acl_owner", "database_write",
             "database_grant", "schema_write", "schema_grant", "tablespace_write",
