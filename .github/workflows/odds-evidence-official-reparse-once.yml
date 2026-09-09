@@ -1,0 +1,68 @@
+name: Odds evidence official historical reparse once
+
+on:
+  push:
+    branches:
+      - research/odds-evidence-20260908
+    paths:
+      - '.github/workflows/odds-evidence-official-reparse-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  official-reparse:
+    if: >-
+      github.repository == 'kenshoushouri-cloud/boat-ai-v2' &&
+      github.actor == github.repository_owner &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'OFFICIAL-REPARSE-2026-09-08-READ-ONLY-ONCE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install parser dependencies
+        run: python -m pip install --disable-pip-version-check 'requests==2.32.5' 'beautifulsoup4==4.14.2' 'psycopg[binary]==3.2.6'
+      - name: Reparse current official historical pages in memory
+        env:
+          DATABASE_URL: ''
+          RAILWAY_TOKEN: ''
+        run: |
+          python - <<'PY'
+          import repair_month_all_pg as rp
+          races = (
+              '20260908_10_02','20260908_14_02','20260908_10_03','20260908_14_03',
+              '20260908_11_02','20260908_11_03','20260908_11_04','20260908_03_03',
+              '20260908_13_05','20260908_11_05','20260908_03_04','20260908_13_06',
+              '20260908_11_06','20260908_11_07','20260908_13_08','20260908_11_08',
+              '20260908_03_08','20260908_13_09','20260908_11_09',
+          )
+          full = partial = zero = fetch_none = 0
+          print('OFFICIAL_REPARSE_MODE=read_only_public_http_in_memory')
+          for rid in races:
+              date_str, venue, rno = rp._parse_race_id(rid)
+              html = rp._fetch(rp._official_url('odds3t', date_str, venue, rno))
+              if not html:
+                  fetch_none += 1
+                  print(f'OFFICIAL_REPARSE_CASE=race:{rid} fetch:none parsed:0 distinct:0')
+                  continue
+              rows = rp.parse_odds3t(html, rid)
+              tickets = [str(row.get('ticket') or '') for row in rows]
+              n = len(rows); d = len(set(tickets))
+              if n == 120 and d == 120:
+                  full += 1
+              elif n == 0:
+                  zero += 1
+              else:
+                  partial += 1
+              print(f'OFFICIAL_REPARSE_CASE=race:{rid} html:{len(html)} no_race:{int(rp._looks_no_race(html))} parsed:{n} distinct:{d}')
+          print(f'OFFICIAL_REPARSE_SUMMARY=full:{full} partial:{partial} zero:{zero} fetch_none:{fetch_none} total:{len(races)}')
+          print('OFFICIAL_REPARSE_INTERPRETATION=current_page_only_not_historical_authentication')
+          print('OFFICIAL_REPARSE_RESULT=PASS_READ_ONLY')
+          PY
