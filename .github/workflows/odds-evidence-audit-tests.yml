@@ -5,9 +5,11 @@ on:
       - 'audit_odds_evidence_20260908_pg.py'
       - 'run_odds_evidence_20260908.py'
       - 'odds_evidence_privilege_guard.py'
+      - 'odds_evidence_role_provisioning.py'
       - 'tests/test_odds_evidence_20260908.py'
       - 'tests/test_odds_evidence_manual.py'
       - 'tests/test_odds_evidence_privilege.py'
+      - 'tests/test_odds_evidence_provisioning.py'
       - '.github/workflows/odds-evidence-audit-manual.yml'
       - '.github/workflows/odds-evidence-audit-tests.yml'
 permissions:
@@ -32,7 +34,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile audit, runner and tests
-        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py
+      - name: Compile audit, runner, provisioning contract and tests
+        run: python -m py_compile audit_odds_evidence_20260908_pg.py run_odds_evidence_20260908.py odds_evidence_privilege_guard.py odds_evidence_role_provisioning.py tests/test_odds_evidence_20260908.py tests/test_odds_evidence_manual.py tests/test_odds_evidence_privilege.py tests/test_odds_evidence_provisioning.py
       - name: Run fixed-date offline tests
         run: python -m unittest discover -s tests -p 'test_odds_evidence*.py' -v
