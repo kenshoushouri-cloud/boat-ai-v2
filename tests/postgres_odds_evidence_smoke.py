@@ -1,6 +1,6 @@
 """Real PostgreSQL smoke tests, confined to a disposable local CI database.
 
-This is not a production audit. The only accepted server is loopback:5432,
+This is not a production audit. The only accepted connection is loopback:5432,
 with database audit_sandbox and the explicit sandbox marker. The fixture
 creates and removes its own objects; it never reads real race data or secrets.
 """
@@ -70,6 +70,9 @@ class PostgreSQLSmokeTests(unittest.TestCase):
             for table in TABLES:
                 if cls.admin.execute('SELECT to_regclass(%s) AS relation', ('public.' + table,)).fetchone()['relation'] is not None:
                     raise RuntimeError('disposable_table_already_exists')
+            # PG14 grants CREATE on public to PUBLIC by default. This fixture
+            # removes that dangerous default only inside the disposable DB.
+            cls.admin.execute('REVOKE CREATE ON SCHEMA public FROM PUBLIC')
             cls.admin.execute(sql.SQL("""CREATE ROLE {} WITH LOGIN NOINHERIT
                 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
                 PASSWORD {}""").format(sql.Identifier(ROLE), sql.Literal(cls.role_password)))
@@ -141,27 +144,7 @@ class PostgreSQLSmokeTests(unittest.TestCase):
             try:
                 result = audit.read_database(self.reader, expected_database='audit_sandbox')
             except guard.PrivilegeGuardError as exc:
-                # Only system-object names from this disposable fixture may be logged.
-                details = []
-                if 'database_write' in failures:
-                    rows = self.admin.execute('''SELECT datname FROM pg_catalog.pg_database
-                        WHERE pg_catalog.has_database_privilege(oid, 'CREATE, TEMP')''').fetchall()
-                    details.append('databases=' + ','.join(sorted(row['datname'] for row in rows)))
-                if 'table_write' in failures or 'column_write' in failures:
-                    rows = self.admin.execute('''SELECT n.nspname, c.relname FROM pg_catalog.pg_class c
-                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                        WHERE c.relkind IN ('r','p','v','m','f')
-                          AND pg_catalog.has_table_privilege(c.oid,
-                            'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')''').fetchall()
-                    names = sorted(row['nspname'] + '.' + row['relname'] for row in rows
-                                   if row['nspname'] in ('pg_catalog','information_schema'))
-                    details.append('system_relations=' + ','.join(names))
-                if 'untrusted_language' in failures:
-                    rows = self.admin.execute('''SELECT lanname FROM pg_catalog.pg_language
-                        WHERE NOT lanpltrusted AND pg_catalog.has_language_privilege(oid, 'USAGE')''').fetchall()
-                    details.append('languages=' + ','.join(sorted(row['lanname'] for row in rows)))
-                self.fail('disposable_preflight:' + (','.join(failures) or str(exc))
-                          + ';' + ';'.join(details))
+                self.fail('disposable_preflight:' + (','.join(failures) or str(exc)))
         self.assertEqual(result['privilege_preflight']['status'], 'BOUNDED_PRIVILEGE_PREFLIGHT_PASSED')
         self.assertEqual(len(result['races']), 19)
         self.assertTrue(result['races'][0]['base']['complete'])
@@ -175,12 +158,26 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                     cur.execute('SELECT private_note FROM public.v2_races')
 
     def test_database_create_grant_is_rejected(self):
-        self.admin.execute(sql.SQL('GRANT CREATE ON DATABASE audit_sandbox TO {}').format(sql.Identifier(ROLE)))
-        try:
-            with self.assertRaises(guard.PrivilegeGuardError):
-                self.preflight()
-        finally:
-            self.admin.execute(sql.SQL('REVOKE CREATE ON DATABASE audit_sandbox FROM {}').format(sql.Identifier(ROLE)))
+        for privilege in ('CREATE', 'TEMP'):
+            with self.subTest(privilege=privilege):
+                self.admin.execute(sql.SQL('GRANT {} ON DATABASE audit_sandbox TO {}').format(
+                    sql.SQL(privilege), sql.Identifier(ROLE)))
+                try:
+                    with self.assertRaises(guard.PrivilegeGuardError):
+                        self.preflight()
+                finally:
+                    self.admin.execute(sql.SQL('REVOKE {} ON DATABASE audit_sandbox FROM {}').format(
+                        sql.SQL(privilege), sql.Identifier(ROLE)))
+
+    def test_readonly_transaction_blocks_public_temp(self):
+        with psycopg.connect(self.reader, row_factory=dict_row, autocommit=False) as conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                    with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction):
+                        cur.execute('CREATE TEMP TABLE audit_forbidden_write (id integer)')
+            finally:
+                conn.rollback()
 
     def test_extra_column_and_write_grants_are_rejected(self):
         for privilege in ('SELECT (private_note)', 'INSERT'):
