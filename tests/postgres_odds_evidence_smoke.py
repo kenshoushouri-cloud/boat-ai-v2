@@ -141,7 +141,27 @@ class PostgreSQLSmokeTests(unittest.TestCase):
             try:
                 result = audit.read_database(self.reader, expected_database='audit_sandbox')
             except guard.PrivilegeGuardError as exc:
-                self.fail('disposable_preflight:' + (','.join(failures) or str(exc)))
+                # Only system-object names from this disposable fixture may be logged.
+                details = []
+                if 'database_write' in failures:
+                    rows = self.admin.execute('''SELECT datname FROM pg_catalog.pg_database
+                        WHERE pg_catalog.has_database_privilege(oid, 'CREATE, TEMP')''').fetchall()
+                    details.append('databases=' + ','.join(sorted(row['datname'] for row in rows)))
+                if 'table_write' in failures or 'column_write' in failures:
+                    rows = self.admin.execute('''SELECT n.nspname, c.relname FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind IN ('r','p','v','m','f')
+                          AND pg_catalog.has_table_privilege(c.oid,
+                            'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')''').fetchall()
+                    names = sorted(row['nspname'] + '.' + row['relname'] for row in rows
+                                   if row['nspname'] in ('pg_catalog','information_schema'))
+                    details.append('system_relations=' + ','.join(names))
+                if 'untrusted_language' in failures:
+                    rows = self.admin.execute('''SELECT lanname FROM pg_catalog.pg_language
+                        WHERE NOT lanpltrusted AND pg_catalog.has_language_privilege(oid, 'USAGE')''').fetchall()
+                    details.append('languages=' + ','.join(sorted(row['lanname'] for row in rows)))
+                self.fail('disposable_preflight:' + (','.join(failures) or str(exc))
+                          + ';' + ';'.join(details))
         self.assertEqual(result['privilege_preflight']['status'], 'BOUNDED_PRIVILEGE_PREFLIGHT_PASSED')
         self.assertEqual(len(result['races']), 19)
         self.assertTrue(result['races'][0]['base']['complete'])
