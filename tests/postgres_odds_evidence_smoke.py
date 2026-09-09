@@ -61,7 +61,7 @@ class PostgreSQLSmokeTests(unittest.TestCase):
                 current_user AS role, inet_server_addr()::text AS address,
                 current_setting('server_version_num')::int AS version""").fetchone()
             if (identity['db'] != 'audit_sandbox' or identity['role'] != 'postgres'
-                    or not ipaddress.ip_address(identity['address']).is_private
+                    or not ipaddress.ip_interface(identity['address']).ip.is_private
                     or not guard.MIN_VERSION <= identity['version'] < guard.MAX_VERSION):
                 raise RuntimeError('disposable_database_identity_rejected')
             if cls.admin.execute('SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=%s', (ROLE,)).fetchone():
