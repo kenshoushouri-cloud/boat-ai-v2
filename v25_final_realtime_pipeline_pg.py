@@ -24,7 +24,7 @@ from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-08-22 targeted-final-wave-shadow-hook-v5"
+VERSION = "2026-09-10 safe-official-odds-collector-v6"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -164,7 +164,7 @@ def main() -> None:
     collection_file.write_text("", encoding="utf-8")
 
     _run(
-        [sys.executable, "v21_realtime_collector_pg.py"],
+        [sys.executable, "v21_realtime_collector_pg_safe.py"],
         {
             **common,
             "TARGET_RACE_IDS_FILE": TARGET_RACE_IDS_FILE,
