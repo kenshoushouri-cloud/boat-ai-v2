@@ -53,7 +53,28 @@ class PrivilegeTests(unittest.TestCase):
                 self.assertEqual('pg_parameter_acl' in sql, version >= 150000)
                 self.assertEqual(any('MAINTAIN' in str(params) for _, params in cur.commands), version >= 170000)
                 self.assertTrue(all(q.lstrip().startswith('SELECT') for q, _ in cur.commands))
-                self.assertTrue(all(len(p) <= 6 for _, p in cur.commands))
+                self.assertTrue(all(len(p) <= 7 for _, p in cur.commands))
+    def test_builtin_defaults_do_not_hide_application_writes(self):
+        cur = CatalogCursor()
+        guard.preflight(cur, expected_database='railway')
+        query = next(q for q, _ in cur.commands if 'database_write' in q)
+        self.assertIn("a.privilege_type = 'TEMP'", query)
+        self.assertIn("has_database_privilege(d.oid, 'CREATE')", query)
+        self.assertIn("c.relname = 'pg_settings'", query)
+        self.assertIn("has_table_privilege(c.oid, 'UPDATE')", query)
+        self.assertIn("has_column_privilege(c.oid, a.attnum, 'UPDATE')", query)
+        self.assertIn('lanispl AND NOT lanpltrusted', query)
+        params = next(p for q, p in cur.commands if 'database_write' in q)
+        self.assertEqual(params[4], 'INSERT, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+        self.assertIn('UPDATE WITH GRANT OPTION', params[5])
+
+    def test_sequence_privilege_checks_guard_relation_kind(self):
+        cur = CatalogCursor()
+        guard.preflight(cur, expected_database='railway')
+        query = next(q for q, _ in cur.commands if 'sequence_access' in q)
+        self.assertEqual(query.count("WHERE CASE WHEN relkind = 'S'"), 2)
+        self.assertEqual(query.count('ELSE false END'), 2)
+
     def test_largeobject_acl_is_compatible_with_postgresql_14_through_18(self):
         cur = CatalogCursor()
         guard.preflight(cur, expected_database='railway')
