@@ -109,11 +109,13 @@ def preflight(cur, *, expected_database):
                   AND pg_catalog.has_column_privilege(c.oid, a.attnum,
                       'SELECT WITH GRANT OPTION, INSERT WITH GRANT OPTION, UPDATE WITH GRANT OPTION, REFERENCES WITH GRANT OPTION')) AS column_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class
-                WHERE relkind = 'S'
-                  AND pg_catalog.has_sequence_privilege(oid, 'USAGE, SELECT, UPDATE')) AS sequence_access,
+                WHERE CASE WHEN relkind = 'S'
+                  THEN pg_catalog.has_sequence_privilege(oid, 'USAGE, SELECT, UPDATE')
+                  ELSE false END) AS sequence_access,
             EXISTS (SELECT 1 FROM pg_catalog.pg_class
-                WHERE relkind = 'S'
-                  AND pg_catalog.has_sequence_privilege(oid, 'USAGE WITH GRANT OPTION, SELECT WITH GRANT OPTION, UPDATE WITH GRANT OPTION')) AS sequence_grant,
+                WHERE CASE WHEN relkind = 'S'
+                  THEN pg_catalog.has_sequence_privilege(oid, 'USAGE WITH GRANT OPTION, SELECT WITH GRANT OPTION, UPDATE WITH GRANT OPTION')
+                  ELSE false END) AS sequence_grant,
             EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
                 JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                 WHERE pg_catalog.has_function_privilege(p.oid, 'EXECUTE')
