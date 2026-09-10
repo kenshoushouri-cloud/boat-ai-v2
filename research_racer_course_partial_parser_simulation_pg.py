@@ -56,7 +56,11 @@ def _fetch_current_top3(racer_number: int) -> tuple[int, List[Optional[float]], 
 
 
 def main() -> None:
-    print("RACER_COURSE_PARTIAL_SIM_MODE=read_only_current_http_structural_simulation_not_prediction_eligible", flush=True)
+    print(
+        "RACER_COURSE_PARTIAL_SIM_MODE="
+        "read_only_current_http_structural_simulation_not_prediction_eligible",
+        flush=True,
+    )
     url = (fwd.os.getenv("DATABASE_URL") or "").strip()
     if not url:
         raise RuntimeError("DATABASE_URL required")
@@ -78,7 +82,10 @@ def main() -> None:
     current: Dict[int, List[Optional[float]]] = {}
     status_counts: Dict[str, int] = defaultdict(int)
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        futures = {pool.submit(_fetch_current_top3, racer): racer for racer in sorted(missing_racers)}
+        futures = {
+            pool.submit(_fetch_current_top3, racer): racer
+            for racer in sorted(missing_racers)
+        }
         for future in as_completed(futures):
             racer, values, status = future.result()
             status_counts[status] += 1
@@ -91,15 +98,19 @@ def main() -> None:
     simulated_fallback = 0
     distribution_ok = 0
     invalid_cards = 0
-    missing_pair_count = 0
-    current_value_pair_count = 0
+    tested_missing_pairs: set[tuple[str, int, int]] = set()
+    tested_recoverable_pairs: set[tuple[str, int, int]] = set()
     venue_total: Dict[str, int] = defaultdict(int)
     venue_baseline: Dict[str, int] = defaultdict(int)
     venue_simulated: Dict[str, int] = defaultdict(int)
 
     for rid, raw_rows in sorted(by_race.items()):
         entries = sorted(raw_rows, key=lambda row: fwd._si(row.get("lane"), 0))
-        venue = str(entries[0].get("venue") or "").zfill(2) if entries else "UNKNOWN"
+        venue = (
+            str(entries[0].get("venue") or "").zfill(2)
+            if entries
+            else "UNKNOWN"
+        )
         venue_total[venue] += 1
         if not fwd._valid_entries(entries):
             invalid_cards += 1
@@ -120,13 +131,18 @@ def main() -> None:
                 if not _source_safe(row):
                     racer = fwd._si(row.get("racer_number"), 0)
                     lane = fwd._si(row.get("lane"), 0)
-                    missing_pair_count += 1
+                    pair = (rid, racer, lane)
+                    tested_missing_pairs.add(pair)
                     values = current.get(racer, [])
-                    value = values[lane - 1] if len(values) == 6 and 1 <= lane <= 6 else None
+                    value = (
+                        values[lane - 1]
+                        if len(values) == 6 and 1 <= lane <= 6
+                        else None
+                    )
                     if value is None or not (0.0 <= value <= 100.0):
                         recoverable = False
                         break
-                    current_value_pair_count += 1
+                    tested_recoverable_pairs.add(pair)
                     copy["course_top3_rate"] = value
                 simulated_entries.append(copy)
 
@@ -157,18 +173,25 @@ def main() -> None:
     simulated_pct = 100.0 * simulated_safe / total_races if total_races else 0.0
 
     print(
-        f"RACER_COURSE_PARTIAL_SIM_HTTP=missing_racers:{len(missing_racers)} parsed:{len(current)} "
-        f"ok:{status_counts.get('ok',0)} no_html:{status_counts.get('no_html',0)} parse_failed:{status_counts.get('parse_failed',0)}",
+        f"RACER_COURSE_PARTIAL_SIM_HTTP=missing_racers:{len(missing_racers)} "
+        f"parsed:{len(current)} ok:{status_counts.get('ok',0)} "
+        f"no_html:{status_counts.get('no_html',0)} "
+        f"parse_failed:{status_counts.get('parse_failed',0)}",
         flush=True,
     )
     print(
-        f"RACER_COURSE_PARTIAL_SIM_COVERAGE=races:{total_races} baseline_safe:{baseline_safe} baseline_pct:{baseline_pct:.2f} "
-        f"simulated_safe:{simulated_safe} simulated_pct:{simulated_pct:.2f} recovered:{simulated_recovered} fallback:{simulated_fallback} "
+        f"RACER_COURSE_PARTIAL_SIM_COVERAGE=races:{total_races} "
+        f"baseline_safe:{baseline_safe} baseline_pct:{baseline_pct:.2f} "
+        f"simulated_safe:{simulated_safe} simulated_pct:{simulated_pct:.2f} "
+        f"recovered:{simulated_recovered} fallback:{simulated_fallback} "
         f"distribution_ok:{distribution_ok} invalid_cards:{invalid_cards}",
         flush=True,
     )
     print(
-        f"RACER_COURSE_PARTIAL_SIM_PAIRS=missing_pairs_seen:{missing_pair_count} current_value_pairs_used:{current_value_pair_count}",
+        f"RACER_COURSE_PARTIAL_SIM_TESTED_PAIRS="
+        f"required:{len(tested_missing_pairs)} "
+        f"recoverable:{len(tested_recoverable_pairs)} "
+        f"scope:fail_closed_until_first_unavailable_per_race",
         flush=True,
     )
     for venue in sorted(venue_total):
@@ -176,11 +199,20 @@ def main() -> None:
         base = venue_baseline.get(venue, 0)
         sim = venue_simulated.get(venue, 0)
         print(
-            f"RACER_COURSE_PARTIAL_SIM_VENUE=venue:{venue} baseline:{base}/{total} simulated:{sim}/{total}",
+            f"RACER_COURSE_PARTIAL_SIM_VENUE=venue:{venue} "
+            f"baseline:{base}/{total} simulated:{sim}/{total}",
             flush=True,
         )
-    print("RACER_COURSE_PARTIAL_SIM_POLICY=current_http_values_are_after_cutoff_and_must_not_be_used_for_today_prediction", flush=True)
-    print("RACER_COURSE_PARTIAL_SIM_PRODUCTION=NO_CHANGE_BLOCK_MANUAL_REVIEW_ONLY", flush=True)
+    print(
+        "RACER_COURSE_PARTIAL_SIM_POLICY="
+        "current_http_values_are_after_cutoff_and_must_not_be_used_for_today_prediction",
+        flush=True,
+    )
+    print(
+        "RACER_COURSE_PARTIAL_SIM_PRODUCTION="
+        "NO_CHANGE_BLOCK_MANUAL_REVIEW_ONLY",
+        flush=True,
+    )
     print("RACER_COURSE_PARTIAL_SIM_RESULT=PASS_READ_ONLY", flush=True)
 
 
@@ -188,5 +220,9 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(f"RACER_COURSE_PARTIAL_SIM_ERROR={type(exc).__name__}:{str(exc).replace(chr(10),' ')[:500]}", flush=True)
+        print(
+            f"RACER_COURSE_PARTIAL_SIM_ERROR={type(exc).__name__}:"
+            f"{str(exc).replace(chr(10),' ')[:500]}",
+            flush=True,
+        )
         raise
