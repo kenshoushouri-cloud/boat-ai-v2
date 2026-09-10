@@ -53,6 +53,25 @@ def main() -> None:
         if rid:
             by_race[rid].append(row)
 
+    entry_racers: set[int] = set()
+    safe_snapshot_racers: set[int] = set()
+    for row in rows:
+        racer_number = fwd._si(row.get("racer_number"), 0)
+        if racer_number > 0:
+            entry_racers.add(racer_number)
+        created = fwd._aware_jst(row.get("course_snapshot_created_at"))
+        top3 = fwd._sf(row.get("course_top3_rate"))
+        if (
+            racer_number > 0
+            and created is not None
+            and created.date() == fwd.TARGET_DATE
+            and created.time().replace(tzinfo=None) <= fwd.SOURCE_CUTOFF
+            and str(row.get("course_source") or "") == "boatrace_official_racer_course"
+            and top3 is not None and 0.0 <= top3 <= 100.0
+        ):
+            safe_snapshot_racers.add(racer_number)
+    missing_racers = entry_racers - safe_snapshot_racers
+
     total_races = len(by_race)
     full6_cards = 0
     source_full6 = 0
@@ -118,6 +137,7 @@ def main() -> None:
     min_source_lead = min(source_leads) if source_leads else 0.0
     median_source_lead = median(source_leads) if source_leads else 0.0
     coverage_pct = (100.0 * source_full6 / total_races) if total_races else 0.0
+    racer_coverage_pct = (100.0 * len(safe_snapshot_racers) / len(entry_racers)) if entry_racers else 0.0
 
     venue_rates = []
     for venue in sorted(venue_total):
@@ -131,6 +151,11 @@ def main() -> None:
         )
 
     print(f"RACER_COURSE_PROD_READY_DATE={fwd.TARGET_DATE}", flush=True)
+    print(
+        f"RACER_COURSE_PROD_READY_RACERS=entry_unique:{len(entry_racers)} safe_snapshot_unique:{len(safe_snapshot_racers)} "
+        f"missing_snapshot_unique:{len(missing_racers)} safe_pct:{racer_coverage_pct:.2f}",
+        flush=True,
+    )
     print(
         f"RACER_COURSE_PROD_READY_COVERAGE=races:{total_races} full6_cards:{full6_cards} "
         f"source_safe_full6:{source_full6} source_safe_pct:{coverage_pct:.2f} distribution_ok:{distribution_ok} "
