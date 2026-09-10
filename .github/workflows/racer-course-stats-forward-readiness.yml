@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/racer_course_stats_forward_readiness.py'
+      - '.github/scripts/racer_course_stats_natural_cron_audit_20260911.py'
       - '.github/workflows/racer-course-stats-forward-readiness.yml'
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
       - name: Validate audit isolation
         run: |
           set -euo pipefail
-          python -m py_compile .github/scripts/racer_course_stats_forward_readiness.py
+          python -m py_compile .github/scripts/racer_course_stats_forward_readiness.py .github/scripts/racer_course_stats_natural_cron_audit_20260911.py
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/scripts/racer_course_stats_forward_readiness.py').read_text(encoding='utf-8').lower()
@@ -35,6 +36,11 @@ jobs:
           assert 'v2_results' not in p
           assert 'insert into' not in p and 'update ' not in p and 'delete from' not in p
           assert 'ready_for_fixed_incremental_oos' in p
+          q=Path('.github/scripts/racer_course_stats_natural_cron_audit_20260911.py').read_text(encoding='utf-8').lower()
+          assert 'read_only_no_results_no_odds_no_predictions' in q
+          assert 'no_writes_no_production_no_line_no_coefficients' in q
+          assert 'v2_results' not in q and 'v2_odds' not in q
+          assert 'insert into' not in q and 'update ' not in q and 'delete from' not in q
           print('RACER_COURSE_READY_VALIDATE=PASS')
           PY
       - name: Install dependencies
@@ -64,8 +70,13 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/racer_course_stats_forward_readiness.py | tee racer-course-ready.txt
           grep -q '^RACER_COURSE_READY_RESULT=PASS_READ_ONLY$' racer-course-ready.txt
+      - name: Run date-specific natural Cron audit
+        env:
+          TARGET_DATE: '2026-09-11'
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_stats_natural_cron_audit_20260911.py | tee racer-course-natural.txt
+          grep -q '^RACER_COURSE_NATURAL_AUDIT_RESULT=PASS_READ_ONLY$' racer-course-natural.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json racer-course-ready.txt
-
-# audit refresh: 2026-09-11 natural Cron verification only
+        run: rm -f railway-vars.json racer-course-ready.txt racer-course-natural.txt
