@@ -1,0 +1,16 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "watchPatterns": [
+      ".github/scripts/opponent_pressure_shadow_v2_compact.py",
+      "requirements.txt",
+      "railway.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -u .github/scripts/opponent_pressure_shadow_v2_compact.py",
+    "cronSchedule": "0 22 * * *",
+    "restartPolicyType": "NEVER"
+  }
+}
