@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/scripts/opponent_pressure_timing_integrity_audit_20260911.py'
       - '.github/workflows/opponent-pressure-timing-integrity-audit.yml'
+      - 'research/opponent_pressure_forward_timing_contract.py'
+      - 'research/test_opponent_pressure_forward_timing_contract.py'
       - 'docs/RACER_COURSE_OPPONENT_PREPROD_REVIEW_20260911.md'
 
 permissions:
@@ -27,7 +29,10 @@ jobs:
       - name: Validate audit isolation
         run: |
           set -euo pipefail
-          python -m py_compile .github/scripts/opponent_pressure_timing_integrity_audit_20260911.py
+          python -m py_compile \
+            .github/scripts/opponent_pressure_timing_integrity_audit_20260911.py \
+            research/opponent_pressure_forward_timing_contract.py \
+            research/test_opponent_pressure_forward_timing_contract.py
           python - <<'PY'
           import re
           from pathlib import Path
@@ -40,8 +45,18 @@ jobs:
           assert not re.search(r'\binsert\s+into\b', p)
           assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', p)
           assert not re.search(r'\bdelete\s+from\b', p)
+          q=Path('research/opponent_pressure_forward_timing_contract.py').read_text(encoding='utf-8').lower()
+          assert 'no i/o' in q
+          assert 'fixed_cutoff = time(8, 15)' in q
+          assert 'updated_after_cutoff' in q
+          assert 'updated_at_or_after_deadline' in q
+          assert 'opponent_coverage_incomplete' in q
           print('OPP_TIMING_AUDIT_VALIDATE=PASS')
           PY
+      - name: Run synthetic timing contract tests
+        run: |
+          set -euo pipefail
+          python -m unittest -v research.test_opponent_pressure_forward_timing_contract
       - name: Install dependencies
         run: |
           set -euo pipefail
