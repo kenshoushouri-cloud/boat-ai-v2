@@ -54,10 +54,35 @@ Latest realized Forward report through 2026-09-10:
 
 All reported realized dates from 2026-08-22 through 2026-09-09 improved win Brier, top3 Brier, and winner LogLoss versus the stored baseline; rank improvement was not universal by day.
 
-Interpretation remains **PROMISING_FORWARD_RESEARCH_ONLY** and **BLOCK_NO_PRODUCTION_CHANGE**. Do not tune the fixed coefficient or add post-hoc date/venue/race-band filters from these results.
+### Incremental value over current v24
+Draft research PR #322 runs the already-designed fixed-coefficient incremental audit against the current v24 lane-strength baseline without writes or tuning.
+
+Read-only result through 2026-09-10:
+- Shadow: **2,724**
+- evaluated: **2,579**
+- pending: **145**
+- integrity skip / missing entries: **0 / 0**
+- winner Brier: `0.12915852 -> 0.12817352`, delta **-0.00098501**
+- winner LogLoss: `1.62306091 -> 1.60802117`, delta **-0.01503974**
+- winner rank: `2.3897 -> 2.3447`, delta **-0.0450**
+
+Fixed pre-existing race bands:
+- R01-04 n=860: Brier **-0.00077701**, LogLoss **-0.01221327**, rank **-0.0884**
+- R05-08 n=860: Brier **-0.00019291**, LogLoss **-0.00299867**, rank **+0.0314**
+- R09-12 n=859: Brier **-0.00198627**, LogLoss **-0.02992459**, rank **-0.0780**
+
+Non-selective stability decomposition:
+- 17 dates: Brier better **16/17**, LogLoss better **16/17**, all three metrics better **13/17**
+- 24 venues: Brier better **19/24**, LogLoss better **20/24**, all three metrics better **12/24**
+- 2026-08-24 was the only observed date with both Brier and LogLoss worsening
+- venue heterogeneity remains; venues 03, 05, 10, and 22 worsened on both Brier and LogLoss, while venue 11 was effectively flat/slightly worse on Brier but better on LogLoss
+
+These weak groups are **not** being removed after observing results. The decomposition is a stability diagnostic, not a post-hoc filter design.
+
+Interpretation remains **PROMISING_INCREMENTAL_FORWARD_RESEARCH_ONLY / BLOCK_NO_PRODUCTION_CHANGE**. The evidence is substantially broader than the older checkpoint, but venue heterogeneity and the still-pending current-day results mean no Production coefficient/threshold change is authorized.
 
 ## Current safe next work
-1. Continue fixed Opponent Pressure Forward evidence and perform the already-designed read-only incremental comparison against current v24 before any manual promotion review.
+1. Continue fixed Opponent Pressure Forward collection and repeat the unchanged current-v24 incremental audit as additional dates realize; do not tune coefficient 1.0 or create post-hoc venue/race-band filters.
 2. Continue Racer Course Top3, Exhibition ST, and GUARD05 fixed Forward evidence without retuning coefficients/filters.
 3. Keep Bao as auxiliary research with its formal gates; no automatic promotion.
 4. Keep monitoring live odds acquisition only as a data-quality concern; the #320 realtime parser/fallback defect itself is live-validated.
