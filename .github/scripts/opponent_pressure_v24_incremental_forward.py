@@ -12,6 +12,10 @@ For each already-frozen Opponent Pressure Shadow race:
 4. clip positive and renormalize across six lanes;
 5. compare v24 vs v24+Opponent Pressure on official realized winners.
 
+The report emits overall plus complete, non-selective race-band/day/venue
+breakdowns. These breakdowns are descriptive stability checks only: they must
+not be used to cherry-pick dates, venues, or race bands after observing results.
+
 No coefficient search/tuning, no subgroup selection, no DB writes, no
 Production/LINE/Railway setting changes, and no promotion decision.
 """
@@ -129,6 +133,22 @@ def emit(prefix: str, m: dict[str, float]) -> None:
     )
 
 
+def delta_signs(groups: dict[str, list[dict[str, Any]]]) -> tuple[int, int, int, int]:
+    total = brier = logloss = all_three = 0
+    for rows in groups.values():
+        if not rows:
+            continue
+        m = aggregate(rows)
+        bd = m["brier_opp"] - m["brier_v24"]
+        ld = m["logloss_opp"] - m["logloss_v24"]
+        rd = m["rank_opp"] - m["rank_v24"]
+        total += 1
+        brier += int(bd < 0)
+        logloss += int(ld < 0)
+        all_three += int(bd < 0 and ld < 0 and rd < 0)
+    return total, brier, logloss, all_three
+
+
 def main() -> None:
     if not DB:
         raise RuntimeError("DATABASE_URL required")
@@ -142,6 +162,7 @@ def main() -> None:
     print(f"OPP_V24_INCREMENTAL_COEF={UNIT_PRESSURE_COEF:.1f}_fixed_unit_pressure_delta_no_tuning", flush=True)
     print("OPP_V24_INCREMENTAL_RESULT_SOURCE=v2_results_first_lane", flush=True)
     print("OPP_V24_INCREMENTAL_POLICY=no_writes_no_production_no_line_no_railway_change_no_threshold_search", flush=True)
+    print("OPP_V24_INCREMENTAL_STRATIFICATION=all_days_all_venues_all_fixed_race_bands_no_subgroup_selection", flush=True)
 
     with psycopg.connect(DB, row_factory=dict_row, autocommit=True) as conn:
         with conn.cursor() as cur:
@@ -225,6 +246,7 @@ def main() -> None:
         rec = {
             "race_id": rid,
             "race_date": s["race_date"],
+            "venue": venue,
             "race_band": race_band(si(s.get("race_no"), 0)),
             "brier_v24": sum((y[i] - p_v24[i]) ** 2 for i in range(6)) / 6.0,
             "brier_opp": sum((y[i] - p_plus[i]) ** 2 for i in range(6)) / 6.0,
@@ -244,11 +266,30 @@ def main() -> None:
     emit("OPP_V24_INCREMENTAL_OVERALL", aggregate(records))
 
     by_band: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_venue: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in records:
         by_band[r["race_band"]].append(r)
+        by_day[str(r["race_date"])].append(r)
+        by_venue[r["venue"]].append(r)
+
     for band in ("R01_04", "R05_08", "R09_12", "R_OTHER"):
         if by_band.get(band):
             emit(f"OPP_V24_INCREMENTAL_RACE_BAND={band}", aggregate(by_band[band]))
+    for day in sorted(by_day):
+        emit(f"OPP_V24_INCREMENTAL_DAY={day}", aggregate(by_day[day]))
+    for venue in sorted(by_venue):
+        emit(f"OPP_V24_INCREMENTAL_VENUE={venue}", aggregate(by_venue[venue]))
+
+    day_total, day_brier, day_logloss, day_all3 = delta_signs(by_day)
+    venue_total, venue_brier, venue_logloss, venue_all3 = delta_signs(by_venue)
+    print(
+        f"OPP_V24_INCREMENTAL_STABILITY=days:{day_total} brier_better:{day_brier} "
+        f"logloss_better:{day_logloss} all3_better:{day_all3} "
+        f"venues:{venue_total} venue_brier_better:{venue_brier} "
+        f"venue_logloss_better:{venue_logloss} venue_all3_better:{venue_all3}",
+        flush=True,
+    )
 
     overall = aggregate(records)
     brier_delta = overall["brier_opp"] - overall["brier_v24"]
