@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 """Read-only pre-production timing-integrity audit for Opponent Pressure v2.
 
-This audit deliberately reads only race schedule/timing metadata and the
-research shadow table. It does not read results, odds, predictions, LINE
-state, purchase state, or Production coefficients, and performs no writes.
-
-The current shadow collector upserts by race_id. Therefore a pre-deadline
-created_at alone is not sufficient Forward evidence: updated_at must also be
-at or before the fixed source cutoff and strictly before the race deadline.
+Reads only race schedule/timing metadata and the research shadow table.
+No results, odds, predictions, LINE state, purchase state, Production
+coefficients, or writes are used.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 import os
 from typing import Any
@@ -35,6 +32,20 @@ def as_jst(value: Any) -> datetime | None:
 def before_cutoff_for_date(value: datetime | None, race_date: date) -> bool:
     v = as_jst(value)
     return bool(v is not None and v.date() == race_date and v.time().replace(tzinfo=None) <= SOURCE_CUTOFF)
+
+
+def timing_flags(r: dict[str, Any]) -> tuple[bool, bool, bool, bool, datetime | None, datetime | None]:
+    race_date = r.get("race_date")
+    if not isinstance(race_date, date):
+        raise ValueError("race_date missing")
+    deadline = as_jst(r.get("deadline_at"))
+    created = as_jst(r.get("created_at"))
+    updated = as_jst(r.get("updated_at"))
+    c_cut = before_cutoff_for_date(created, race_date)
+    u_cut = before_cutoff_for_date(updated, race_date)
+    c_dead = bool(created is not None and deadline is not None and created < deadline)
+    u_dead = bool(updated is not None and deadline is not None and updated < deadline)
+    return c_cut, u_cut, c_dead, u_dead, created, updated
 
 
 def main() -> None:
@@ -79,34 +90,19 @@ def main() -> None:
     missing = target - len(present)
     deadline_ready = sum(as_jst(r.get("deadline_at")) is not None for r in rows)
 
-    full_safe = 0
-    model_ok = 0
-    train_ok = 0
-    created_cutoff_ok = 0
-    updated_cutoff_ok = 0
-    created_deadline_ok = 0
-    updated_deadline_ok = 0
-    timing_clean = 0
-    mutable_rows = 0
-    post_cutoff_updates = 0
-    post_deadline_updates = 0
-    post_cutoff_creates = 0
-    post_deadline_creates = 0
+    full_safe = model_ok = train_ok = 0
+    created_cutoff_ok = updated_cutoff_ok = 0
+    created_deadline_ok = updated_deadline_ok = 0
+    timing_clean = mutable_rows = 0
+    post_cutoff_updates = post_deadline_updates = 0
+    post_cutoff_creates = post_deadline_creates = 0
 
     for r in present:
-        race_date = r.get("race_date") or TARGET_DATE
-        deadline = as_jst(r.get("deadline_at"))
-        created = as_jst(r.get("created_at"))
-        updated = as_jst(r.get("updated_at"))
+        c_cut, u_cut, c_dead, u_dead, created, updated = timing_flags(r)
         matched = r.get("matched_opponents")
         is_full = isinstance(matched, list) and len(matched) == 6 and all(int(x) >= 4 for x in matched)
         is_model = int(r.get("model_version") or 0) == 2
         is_train = r.get("train_end") == TARGET_DATE - timedelta(days=1)
-        c_cut = before_cutoff_for_date(created, race_date)
-        u_cut = before_cutoff_for_date(updated, race_date)
-        c_dead = bool(created is not None and deadline is not None and created < deadline)
-        u_dead = bool(updated is not None and deadline is not None and updated < deadline)
-
         full_safe += int(is_full)
         model_ok += int(is_model)
         train_ok += int(is_train)
@@ -115,12 +111,11 @@ def main() -> None:
         created_deadline_ok += int(c_dead)
         updated_deadline_ok += int(u_dead)
         timing_clean += int(is_full and is_model and is_train and c_cut and u_cut and c_dead and u_dead)
-
         mutable_rows += int(created is not None and updated is not None and updated > created)
-        post_cutoff_updates += int(updated is not None and not u_cut)
-        post_deadline_updates += int(updated is not None and deadline is not None and updated >= deadline)
-        post_cutoff_creates += int(created is not None and not c_cut)
-        post_deadline_creates += int(created is not None and deadline is not None and created >= deadline)
+        post_cutoff_updates += int(not u_cut)
+        post_deadline_updates += int(not u_dead)
+        post_cutoff_creates += int(not c_cut)
+        post_deadline_creates += int(not c_dead)
 
     print(
         "OPP_TIMING_AUDIT_ROWS="
@@ -139,42 +134,54 @@ def main() -> None:
     )
     print(f"OPP_TIMING_AUDIT_TIMING_CLEAN={timing_clean}/{target}", flush=True)
 
-    hist_mutable = 0
-    hist_created_post_cutoff = 0
-    hist_updated_post_cutoff = 0
-    hist_created_post_deadline = 0
-    hist_updated_post_deadline = 0
-    hidden_cutoff = 0
-    hidden_deadline = 0
-    hist_dates: set[date] = set()
+    hist_mutable = hist_created_post_cutoff = hist_updated_post_cutoff = 0
+    hist_created_post_deadline = hist_updated_post_deadline = 0
+    hidden_cutoff = hidden_deadline = 0
+    by_date: dict[date, dict[str, Any]] = defaultdict(lambda: {
+        "rows": 0, "post_cutoff": 0, "post_deadline": 0,
+        "mutable": 0, "min_created": None, "max_created": None,
+    })
+
     for r in history:
         race_date = r.get("race_date")
         if not isinstance(race_date, date):
             continue
-        hist_dates.add(race_date)
-        deadline = as_jst(r.get("deadline_at"))
-        created = as_jst(r.get("created_at"))
-        updated = as_jst(r.get("updated_at"))
-        c_cut = before_cutoff_for_date(created, race_date)
-        u_cut = before_cutoff_for_date(updated, race_date)
-        c_dead = bool(created is not None and deadline is not None and created < deadline)
-        u_dead = bool(updated is not None and deadline is not None and updated < deadline)
+        c_cut, u_cut, c_dead, u_dead, created, updated = timing_flags(r)
         hist_mutable += int(created is not None and updated is not None and updated > created)
         hist_created_post_cutoff += int(not c_cut)
         hist_updated_post_cutoff += int(not u_cut)
-        hist_created_post_deadline += int(created is not None and deadline is not None and created >= deadline)
-        hist_updated_post_deadline += int(updated is not None and deadline is not None and updated >= deadline)
+        hist_created_post_deadline += int(not c_dead)
+        hist_updated_post_deadline += int(not u_dead)
         hidden_cutoff += int(c_cut and not u_cut)
         hidden_deadline += int(c_dead and not u_dead)
 
+        d = by_date[race_date]
+        d["rows"] += 1
+        d["post_cutoff"] += int(not c_cut)
+        d["post_deadline"] += int(not c_dead)
+        d["mutable"] += int(created is not None and updated is not None and updated > created)
+        if created is not None:
+            if d["min_created"] is None or created < d["min_created"]:
+                d["min_created"] = created
+            if d["max_created"] is None or created > d["max_created"]:
+                d["max_created"] = created
+
     print(
         "OPP_TIMING_AUDIT_HISTORY="
-        f"start:{HISTORY_START} end:{TARGET_DATE - timedelta(days=1)} dates:{len(hist_dates)} rows:{len(history)} "
+        f"start:{HISTORY_START} end:{TARGET_DATE - timedelta(days=1)} dates:{len(by_date)} rows:{len(history)} "
         f"mutable:{hist_mutable} created_post_cutoff:{hist_created_post_cutoff} updated_post_cutoff:{hist_updated_post_cutoff} "
         f"created_post_deadline:{hist_created_post_deadline} updated_post_deadline:{hist_updated_post_deadline} "
-        f"created_safe_updated_unsafe_cutoff:{hidden_cutoff} created_safe_updated_unsafe_deadline:{hidden_deadline}",
-        flush=True,
+        f"created_safe_updated_unsafe_cutoff:{hidden_cutoff} created_safe_updated_unsafe_deadline:{hidden_deadline}", flush=True,
     )
+    for race_date in sorted(by_date):
+        d = by_date[race_date]
+        mn = d["min_created"].strftime("%H:%M:%S") if d["min_created"] else "none"
+        mx = d["max_created"].strftime("%H:%M:%S") if d["max_created"] else "none"
+        print(
+            "OPP_TIMING_AUDIT_HISTORY_DATE="
+            f"date:{race_date} rows:{d['rows']} post_cutoff:{d['post_cutoff']} "
+            f"post_deadline:{d['post_deadline']} mutable:{d['mutable']} created_jst:{mn}-{mx}", flush=True,
+        )
 
     structural_mutability = True  # current collector uses ON CONFLICT ... DO UPDATE
     empirical_bad_update = post_cutoff_updates > 0 or post_deadline_updates > 0
