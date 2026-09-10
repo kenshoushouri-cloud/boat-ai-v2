@@ -89,6 +89,20 @@ Before Production use, one of the following is required:
 1. Prefer an immutable/append-only snapshot contract keyed by race plus observation/run identity; or
 2. at minimum require both `created_at` and `updated_at` to be at or before the source cutoff and strictly before the race deadline, with any later update failing closed.
 
+## 2026-09-11 morning dependency timing
+
+Railway read-only runtime logs establish the current daily preparation boundary:
+
+- `cron-data-prepare` schedule: 06:30 JST (`30 21 * * *` UTC)
+- 2026-09-11 natural run started: approximately 06:30:42 JST
+- 144 races / 864 race-entry rows were saved by approximately 06:53:19 JST
+- failed race preparation: 0
+- earliest observed race deadline on the date: 08:32 JST
+
+The Opponent Pressure collector is independent of Racer Course. Its current-date inputs are `v2_races` / `v2_race_entries`; its effect estimates use only historical result entries strictly before `TARGET_DATE`. Therefore it does not need to wait for the 07:15 Racer Course collector.
+
+For a future operations change, **07:00 JST Railway Cron is the current recommended candidate**: it is after the observed 06:53 completion of daily race-card preparation and leaves 75 minutes before the fixed 08:15 source cutoff. The collector must still preflight all race cards and fail closed rather than write if cards are incomplete. This is a proposal only; this PR does not create or alter a Railway service/Cron.
+
 ## Interpretation of prior combined Forward evidence
 
 The previous fixed Course 0.50 + Opponent 1.0 research evaluation remains useful model evidence:
@@ -105,12 +119,13 @@ That evidence does **not** establish that the current live Opponent collection s
 
 Recommended pre-production contract:
 
-1. Run Opponent collection from a scheduler that can be relied upon to complete materially before 08:15 JST. The current GitHub Actions scheduled job has repeatedly produced rows after 08:15 and sometimes after race deadlines.
-2. Add an in-process hard guard: if the observation/write time is after 08:15 JST, do not create a Forward-eligible snapshot.
-3. Preserve immutable timing evidence, preferably append-only. If mutability is retained, require both `created_at` and `updated_at` to pass cutoff/deadline checks.
-4. A combined loader must require timing-clean Racer Course and timing-clean Opponent inputs for the same race. Missing/late Opponent data must fail closed and must not silently use a stale day.
-5. Do not alter current Production v24 fallback behavior as part of this research PR. Any Course-only fallback or combined Production routing requires a separate explicit approval.
-6. After remediation, require at least **5 consecutive natural operating days** with Opponent rows available by 08:15 JST and before race deadlines before reopening Production promotion review.
+1. Move Opponent collection from the delayed GitHub Actions schedule to a scheduler that can reliably start after race-card preparation and materially before 08:15 JST; the current candidate is Railway Cron at 07:00 JST.
+2. Preserve the current complete-card preflight; if all race cards are not complete, perform no Forward-eligible write.
+3. Add an in-process hard guard: if the observation/write time is after 08:15 JST, do not create a Forward-eligible snapshot.
+4. Preserve immutable timing evidence, preferably append-only. If mutability is retained, require both `created_at` and `updated_at` to pass cutoff/deadline checks.
+5. A combined loader must require timing-clean Racer Course and timing-clean Opponent inputs for the same race. Missing/late Opponent data must fail closed and must not silently use a stale day.
+6. Do not alter current Production v24 fallback behavior as part of this research PR. Any Course-only fallback or combined Production routing requires a separate explicit approval.
+7. After remediation, require at least **5 consecutive natural operating days** with Opponent rows available by 08:15 JST and before race deadlines before reopening Production promotion review.
 
 No scheduler change is made by this PR. Moving the job to Railway Cron or another deterministic scheduler is a Production/operations change and requires explicit approval.
 
