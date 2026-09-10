@@ -7,7 +7,10 @@ import collect_racer_course_stats_pg as collector
 
 def page(entry, top3, avg):
     def rows(values, suffix=""):
-        return "".join(f"<tr><td>{i}</td><td>{v}{suffix if v != '-' else ''}</td></tr>" for i, v in enumerate(values, 1))
+        return "".join(
+            f"<tr><td>{i}</td><td>{v}{suffix if v != '-' else ''}</td></tr>"
+            for i, v in enumerate(values, 1)
+        )
 
     return f"""
     <html><body>
@@ -30,9 +33,13 @@ class RacerCoursePartialParserTests(unittest.TestCase):
         )
         rows, debug = collector.parse_course_stats(html, 4000)
         self.assertEqual(6, len(rows))
-        self.assertEqual([11.0, 22.0, 33.0, 44.0, 55.0, 66.0], [r["top3_rate"] for r in rows])
+        self.assertEqual(
+            [11.0, 22.0, 33.0, 44.0, 55.0, 66.0],
+            [r["top3_rate"] for r in rows],
+        )
         self.assertEqual(6, debug["top3_count"])
         self.assertEqual(6, debug["top3_slots"])
+        self.assertEqual(6, len(collector._rows_for_upsert(rows)))
 
     def test_official_dash_is_none_and_course_position_is_preserved(self):
         html = page(
@@ -42,10 +49,14 @@ class RacerCoursePartialParserTests(unittest.TestCase):
         )
         rows, debug = collector.parse_course_stats(html, 3265)
         self.assertEqual(6, len(rows))
-        self.assertEqual([78.6, 51.7, None, None, None, None], [r.get("top3_rate") for r in rows])
+        self.assertEqual(
+            [78.6, 51.7, None, None, None, None],
+            [r.get("top3_rate") for r in rows],
+        )
         self.assertEqual([1, 2, 3, 4, 5, 6], [r["course"] for r in rows])
         self.assertEqual(2, debug["top3_count"])
         self.assertEqual(6, debug["top3_slots"])
+        self.assertEqual([1, 2], [r["course"] for r in collector._rows_for_upsert(rows)])
 
     def test_middle_gaps_do_not_shift_later_courses_left(self):
         html = page(
@@ -54,9 +65,13 @@ class RacerCoursePartialParserTests(unittest.TestCase):
             ["0.11", "-", "0.13", "-", "0.15", "0.16"],
         )
         rows, _ = collector.parse_course_stats(html, 4001)
-        self.assertEqual([12.0, None, 34.0, None, 56.0, 67.0], [r.get("top3_rate") for r in rows])
+        self.assertEqual(
+            [12.0, None, 34.0, None, 56.0, 67.0],
+            [r.get("top3_rate") for r in rows],
+        )
         self.assertEqual(34.0, rows[2]["top3_rate"])
         self.assertEqual(56.0, rows[4]["top3_rate"])
+        self.assertEqual([1, 3, 5, 6], [r["course"] for r in collector._rows_for_upsert(rows)])
 
     def test_all_dash_page_preserves_six_null_slots_not_zeroes(self):
         html = page(["-"] * 6, ["-"] * 6, ["-"] * 6)
@@ -67,6 +82,7 @@ class RacerCoursePartialParserTests(unittest.TestCase):
         self.assertTrue(all("avg_st" not in r for r in rows))
         self.assertTrue(all(r["raw"]["top3_rate"] is None for r in rows))
         self.assertEqual(0, debug["top3_count"])
+        self.assertEqual([], collector._rows_for_upsert(rows))
 
     def test_missing_values_are_omitted_from_upsert_columns(self):
         html = page(
@@ -79,6 +95,20 @@ class RacerCoursePartialParserTests(unittest.TestCase):
         self.assertNotIn("top3_rate", rows[1])
         self.assertEqual(34.0, rows[2]["top3_rate"])
         self.assertIsNone(rows[1]["raw"]["top3_rate"])
+        self.assertNotIn(2, [r["course"] for r in collector._rows_for_upsert(rows)])
+
+    def test_course_with_one_real_metric_is_still_persistable(self):
+        html = page(
+            ["10.0", "-", "30.0", "40.0", "50.0", "60.0"],
+            ["12.0", "25.0", "34.0", "44.0", "54.0", "64.0"],
+            ["0.11", "-", "0.13", "0.14", "0.15", "0.16"],
+        )
+        rows, _ = collector.parse_course_stats(html, 4004)
+        save_rows = collector._rows_for_upsert(rows)
+        lane2 = next(r for r in save_rows if r["course"] == 2)
+        self.assertEqual(25.0, lane2["top3_rate"])
+        self.assertNotIn("entry_rate", lane2)
+        self.assertNotIn("avg_st", lane2)
 
     def test_missing_course_label_fails_closed_instead_of_realigning(self):
         html = """
@@ -99,12 +129,26 @@ class RacerCoursePartialParserTests(unittest.TestCase):
             ["78.6", "51.7", "-", "-", "-", "-"],
             ["0.16", "0.14", "-", "-", "-", "-"],
         )
-        with patch.object(collector, "_fetch_html", return_value=html), patch.object(collector, "RACER_STATS_SLEEP_SEC", 0.0):
+        with patch.object(collector, "_fetch_html", return_value=html), patch.object(
+            collector, "RACER_STATS_SLEEP_SEC", 0.0
+        ):
             racer, rows, debug, error = collector._collect_one(3265)
         self.assertEqual(3265, racer)
         self.assertIsNone(error)
         self.assertEqual(6, len(rows))
         self.assertEqual(2, debug["top3_count"])
+        self.assertEqual(2, len(collector._rows_for_upsert(rows)))
+
+    def test_collect_one_rejects_all_dash_page_as_no_usable_metrics(self):
+        html = page(["-"] * 6, ["-"] * 6, ["-"] * 6)
+        with patch.object(collector, "_fetch_html", return_value=html), patch.object(
+            collector, "RACER_STATS_SLEEP_SEC", 0.0
+        ):
+            racer, rows, debug, error = collector._collect_one(4999)
+        self.assertEqual(4999, racer)
+        self.assertEqual([], rows)
+        self.assertEqual("no_usable_metrics", error)
+        self.assertEqual(0, debug["top3_count"])
 
 
 if __name__ == "__main__":
