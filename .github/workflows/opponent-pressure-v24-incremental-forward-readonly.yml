@@ -1,6 +1,7 @@
 name: Opponent pressure incremental Forward over v24 read-only
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - '.github/scripts/opponent_pressure_v24_incremental_forward.py'
