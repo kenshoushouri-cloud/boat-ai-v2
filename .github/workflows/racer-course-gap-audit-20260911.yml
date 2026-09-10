@@ -1,0 +1,200 @@
+name: Racer Course source gap audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/racer-course-gap-audit-20260911.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install read-only dependencies
+        run: |
+          set -euo pipefail
+          pip install 'psycopg[binary]'
+          npm install --global @railway/cli
+      - name: Load Production database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run SELECT-only Racer Course gap classification
+        env:
+          TARGET_DATE: '2026-09-11'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          target = os.environ['TARGET_DATE']
+          sql = r'''
+          with joined as (
+            select r.race_id,
+                   r.race_date::date race_date,
+                   lpad(coalesce(nullif(r.venue_id::text,''),nullif(r.venue_code::text,'')),2,'0') venue,
+                   r.race_no::int race_no,
+                   r.deadline_at,
+                   e.lane::int lane,
+                   e.racer_number::int racer_number,
+                   s.racer_number s_racer_number,
+                   s.top3_rate,
+                   s.entry_rate,
+                   s.avg_st course_avg_st,
+                   s.created_at,
+                   s.source
+              from v2_races r
+              join v2_race_entries e on e.race_id=r.race_id
+              left join v2_racer_course_stats_snapshots s
+                on s.racer_number=e.racer_number
+               and s.snapshot_date=r.race_date
+               and s.course=e.lane
+             where r.race_date=%s::date
+          ), race_summary as (
+            select race_id, min(venue) venue, min(race_no) race_no,
+                   count(*)::int entry_lanes,
+                   count(*) filter (
+                     where s_racer_number is not null
+                       and created_at is not null
+                       and (created_at at time zone 'Asia/Tokyo')::date=race_date
+                       and created_at < (%s::date + time '08:15') at time zone 'Asia/Tokyo'
+                       and created_at < deadline_at
+                       and coalesce(source,'')='boatrace_official_racer_course'
+                       and top3_rate between 0 and 100
+                   )::int safe_lanes,
+                   count(*) filter (where s_racer_number is null)::int snapshot_missing_lanes,
+                   count(*) filter (where s_racer_number is not null and top3_rate is null)::int top3_missing_lanes,
+                   count(*) filter (where s_racer_number is not null and top3_rate is null and (entry_rate is not null or course_avg_st is not null))::int partial_metric_lanes,
+                   count(*) filter (where created_at is not null and created_at >= (%s::date + time '08:15') at time zone 'Asia/Tokyo')::int post_cutoff_lanes,
+                   count(*) filter (where created_at is not null and created_at >= deadline_at)::int post_deadline_lanes,
+                   count(*) filter (where s_racer_number is not null and created_at is not null and (created_at at time zone 'Asia/Tokyo')::date<>race_date)::int wrong_date_lanes,
+                   count(*) filter (where s_racer_number is not null and coalesce(source,'')<>'boatrace_official_racer_course')::int source_mismatch_lanes,
+                   count(*) filter (where s_racer_number is not null and top3_rate is not null and not (top3_rate between 0 and 100))::int top3_out_of_range_lanes
+              from joined
+             group by race_id
+          )
+          select * from race_summary order by venue,race_no,race_id
+          '''
+
+          unsafe_sql = r'''
+          select r.race_id,
+                 lpad(coalesce(nullif(r.venue_id::text,''),nullif(r.venue_code::text,'')),2,'0') venue,
+                 r.race_no::int race_no,
+                 e.lane::int lane,
+                 e.racer_number::int racer_number,
+                 s.top3_rate,
+                 s.entry_rate,
+                 s.avg_st course_avg_st,
+                 s.created_at,
+                 s.source,
+                 r.deadline_at
+            from v2_races r
+            join v2_race_entries e on e.race_id=r.race_id
+            left join v2_racer_course_stats_snapshots s
+              on s.racer_number=e.racer_number
+             and s.snapshot_date=r.race_date
+             and s.course=e.lane
+           where r.race_date=%s::date
+             and not (
+               s.racer_number is not null
+               and s.created_at is not null
+               and (s.created_at at time zone 'Asia/Tokyo')::date=r.race_date
+               and s.created_at < (%s::date + time '08:15') at time zone 'Asia/Tokyo'
+               and s.created_at < r.deadline_at
+               and coalesce(s.source,'')='boatrace_official_racer_course'
+               and s.top3_rate between 0 and 100
+             )
+           order by venue,race_no,race_id,e.lane
+          '''
+
+          lowered=(sql+' '+unsafe_sql).lower()
+          assert 'v2_results' not in lowered
+          assert 'v2_odds' not in lowered
+          assert 'prediction' not in lowered
+          for forbidden in ('insert ', 'update ', 'delete ', 'truncate ', 'alter ', 'drop ', 'create '):
+              assert forbidden not in lowered
+
+          with psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row) as conn:
+              with conn.cursor() as cur:
+                  cur.execute('set transaction read only')
+                  cur.execute(sql, (target,target,target))
+                  rows=[dict(r) for r in cur.fetchall()]
+                  cur.execute(unsafe_sql, (target,target))
+                  unsafe=[dict(r) for r in cur.fetchall()]
+
+          total=len(rows)
+          safe=sum(1 for r in rows if r['entry_lanes']==6 and r['safe_lanes']==6)
+          blocked=total-safe
+          def rcause(field):
+              return sum(1 for r in rows if int(r[field] or 0)>0)
+          print(f'RACER_COURSE_GAP_AUDIT_MODE=read_only_no_results_no_odds_no_predictions target:{target}')
+          print('RACER_COURSE_GAP_AUDIT_POLICY=no_writes_no_production_no_line_no_coefficients')
+          print(f'RACER_COURSE_GAP_AUDIT_RACES=total:{total} safe:{safe} blocked:{blocked}')
+          print('RACER_COURSE_GAP_AUDIT_CAUSE_RACES=' +
+                f"snapshot_missing:{rcause('snapshot_missing_lanes')} " +
+                f"top3_missing:{rcause('top3_missing_lanes')} " +
+                f"partial_metric:{rcause('partial_metric_lanes')} " +
+                f"post_cutoff:{rcause('post_cutoff_lanes')} " +
+                f"post_deadline:{rcause('post_deadline_lanes')} " +
+                f"wrong_date:{rcause('wrong_date_lanes')} " +
+                f"source_mismatch:{rcause('source_mismatch_lanes')} " +
+                f"top3_out_of_range:{rcause('top3_out_of_range_lanes')}")
+          print('RACER_COURSE_GAP_AUDIT_CAUSE_LANES=' +
+                f"snapshot_missing:{sum(r['snapshot_missing_lanes'] for r in rows)} " +
+                f"top3_missing:{sum(r['top3_missing_lanes'] for r in rows)} " +
+                f"partial_metric:{sum(r['partial_metric_lanes'] for r in rows)} " +
+                f"post_cutoff:{sum(r['post_cutoff_lanes'] for r in rows)} " +
+                f"post_deadline:{sum(r['post_deadline_lanes'] for r in rows)} " +
+                f"wrong_date:{sum(r['wrong_date_lanes'] for r in rows)} " +
+                f"source_mismatch:{sum(r['source_mismatch_lanes'] for r in rows)} " +
+                f"top3_out_of_range:{sum(r['top3_out_of_range_lanes'] for r in rows)}")
+
+          for r in rows:
+              if not (r['entry_lanes']==6 and r['safe_lanes']==6):
+                  print('RACER_COURSE_GAP_RACE=' +
+                        f"race:{r['race_id']} venue:{r['venue']} no:{r['race_no']} safe_lanes:{r['safe_lanes']} " +
+                        f"snapshot_missing:{r['snapshot_missing_lanes']} top3_missing:{r['top3_missing_lanes']} " +
+                        f"partial_metric:{r['partial_metric_lanes']} post_cutoff:{r['post_cutoff_lanes']} " +
+                        f"post_deadline:{r['post_deadline_lanes']} source_mismatch:{r['source_mismatch_lanes']}")
+          for r in unsafe[:120]:
+              created=r['created_at'].isoformat() if r['created_at'] else 'none'
+              print('RACER_COURSE_GAP_LANE=' +
+                    f"race:{r['race_id']} venue:{r['venue']} no:{r['race_no']} lane:{r['lane']} racer:{r['racer_number']} " +
+                    f"top3:{r['top3_rate']} entry:{r['entry_rate']} avg_st:{r['course_avg_st']} created:{created} source:{r['source'] or 'none'}")
+
+          assert total==144, f'unexpected race count {total}'
+          assert safe+blocked==total
+          print('RACER_COURSE_GAP_AUDIT_RESULT=PASS_READ_ONLY')
+          PY
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json
