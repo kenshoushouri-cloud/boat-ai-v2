@@ -5,11 +5,14 @@ Stores one row per race using fixed lane-order typed arrays instead of JSONB.
 Production prediction / BUY-WATCH-SKIP / LINE are not touched.
 
 PR dry-run is strictly read-only and compares recomputed values with the
-existing v1 pilot rows for 2026-08-22. Write mode targets a separate v2 table.
+existing v1 pilot rows for 2026-08-22. Live write mode is Forward-only:
+complete race cards are required, writes must occur before 08:15 JST and
+strictly before every target race deadline, and existing rows are immutable
+(first-write-wins).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import os
 import re
 from typing import Any
@@ -18,8 +21,9 @@ import psycopg
 from psycopg.rows import dict_row
 
 JST = timezone(timedelta(hours=9))
-VERSION_TEXT = "2026-08-22 opponent-pressure-shadow-v2-compact"
+VERSION_TEXT = "2026-09-11 opponent-pressure-shadow-v2-timing-safe-v3"
 VERSION_CODE = 2
+FORWARD_CUTOFF = time(8, 15)
 TRAIN_START = date.fromisoformat(os.getenv("OPPONENT_PRESSURE_TRAIN_START", "2025-07-01"))
 SHRINK_K = float(os.getenv("OPPONENT_PRESSURE_SHRINK_K", "100"))
 TRAIN_COND_MIN = int(os.getenv("OPPONENT_PRESSURE_TRAIN_COND_MIN", "40"))
@@ -65,7 +69,48 @@ def _ensure_schema(conn: psycopg.Connection[Any]) -> None:
           )
         """)
         cur.execute("create index if not exists ix_v2_opponent_pressure_shadow_v2_date on v2_opponent_pressure_shadow_v2(race_date)")
-    conn.commit()
+
+
+def _preflight_complete_cards(conn: psycopg.Connection[Any]) -> int:
+    ids = _target_race_ids()
+    params: list[Any] = [TARGET_DATE]
+    clause = ""
+    if ids:
+        clause = " and r.race_id = any(%s)"
+        params.append(sorted(ids))
+    q = f"""
+      with cards as (
+        select r.race_id,
+               count(e.*) filter(where e.lane between 1 and 6 and e.racer_class between 1 and 4) valid_entries,
+               count(distinct e.lane) filter(where e.lane between 1 and 6 and e.racer_class between 1 and 4) valid_lanes,
+               r.deadline_at
+        from v2_races r
+        left join v2_race_entries e on e.race_id=r.race_id
+        where r.race_date=%s {clause}
+        group by r.race_id,r.deadline_at
+      )
+      select count(*) total_races,
+             count(*) filter(where valid_entries=6 and valid_lanes=6) complete_races,
+             coalesce(sum(valid_entries),0) valid_entries,
+             count(*) filter(where deadline_at is not null) deadline_races
+      from cards
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, tuple(params))
+        r = cur.fetchone()
+    total = int(r["total_races"] or 0)
+    complete = int(r["complete_races"] or 0)
+    entries = int(r["valid_entries"] or 0)
+    deadlines = int(r["deadline_races"] or 0)
+    print(
+        f"OPP_PRESSURE_V2_CARD_PREFLIGHT=total:{total} complete:{complete} entries:{entries} deadlines:{deadlines}",
+        flush=True,
+    )
+    if total <= 0 or complete != total or entries != total * 6 or deadlines != total:
+        raise RuntimeError("target race cards/deadlines are not complete; no Shadow write allowed")
+    if ids and total != len(ids):
+        raise RuntimeError(f"requested target race ids incomplete expected={len(ids)} actual={total}")
+    return total
 
 
 def _load_effects(conn: psycopg.Connection[Any]) -> dict[tuple[int, int, int, int], dict[str, float]]:
@@ -115,7 +160,7 @@ def _load_targets(conn: psycopg.Connection[Any]) -> tuple[dict[str, dict[str, An
         clause = " and r.race_id = any(%s)"
         params.append(sorted(ids))
     q = f"""
-      select r.race_id,r.race_date,coalesce(r.venue_id,r.venue_code) venue_id,r.race_no,
+      select r.race_id,r.race_date,coalesce(r.venue_id,r.venue_code) venue_id,r.race_no,r.deadline_at,
              e.lane,e.racer_class
       from v2_races r join v2_race_entries e on e.race_id=r.race_id
       where r.race_date=%s {clause}
@@ -132,9 +177,38 @@ def _load_targets(conn: psycopg.Connection[Any]) -> tuple[dict[str, dict[str, An
                 "race_date": d["race_date"],
                 "venue_id": str(d["venue_id"] or "").zfill(2),
                 "race_no": int(d["race_no"]),
+                "deadline_at": d["deadline_at"],
             }
             entries.setdefault(rid, []).append({"lane": int(d["lane"]), "class": int(d["racer_class"])})
     return meta, entries
+
+
+def _assert_forward_write_window(meta: dict[str, dict[str, Any]], now: datetime | None = None) -> datetime:
+    now_jst = now or datetime.now(JST)
+    if now_jst.tzinfo is None or now_jst.utcoffset() is None:
+        raise RuntimeError("write observation time must be timezone-aware")
+    now_jst = now_jst.astimezone(JST)
+    if now_jst.date() != TARGET_DATE:
+        raise RuntimeError(f"Forward write target date mismatch now={now_jst.date()} target={TARGET_DATE}")
+    cutoff = datetime.combine(TARGET_DATE, FORWARD_CUTOFF, tzinfo=JST)
+    if now_jst >= cutoff:
+        raise RuntimeError(f"Forward write cutoff reached now={now_jst.isoformat()} cutoff={cutoff.isoformat()}")
+    if not meta:
+        raise RuntimeError("no target race metadata")
+    for rid, m in meta.items():
+        deadline = m.get("deadline_at")
+        if not isinstance(deadline, datetime) or deadline.tzinfo is None or deadline.utcoffset() is None:
+            raise RuntimeError(f"missing/naive race deadline race_id={rid}")
+        deadline_jst = deadline.astimezone(JST)
+        if now_jst >= deadline_jst:
+            raise RuntimeError(
+                f"race deadline reached race_id={rid} now={now_jst.isoformat()} deadline={deadline_jst.isoformat()}"
+            )
+    print(
+        f"OPP_PRESSURE_V2_TIMING_GUARD=PASS now:{now_jst.isoformat()} cutoff:{cutoff.isoformat()} races:{len(meta)}",
+        flush=True,
+    )
+    return now_jst
 
 
 def _score(rows: list[dict[str, int]], effects: dict[tuple[int, int, int, int], dict[str, float]]) -> dict[str, list[Any]]:
@@ -195,6 +269,36 @@ def _compare_v1(conn: psycopg.Connection[Any], payloads: dict[str, dict[str, lis
     return compared, mismatches, max_abs
 
 
+def _verify_forward_rows(conn: psycopg.Connection[Any], expected: int) -> dict[str, int]:
+    cutoff = datetime.combine(TARGET_DATE, FORWARD_CUTOFF, tzinfo=JST)
+    with conn.cursor() as cur:
+        cur.execute("""
+          select count(*) rows,
+                 count(*) filter(where s.model_version=%s and s.train_end=%s) version_rows,
+                 count(*) filter(where cardinality(s.racer_classes)=6 and cardinality(s.matched_opponents)=6
+                   and cardinality(s.base_win)=6 and cardinality(s.base_top3)=6
+                   and cardinality(s.score_win)=6 and cardinality(s.score_top3)=6
+                   and cardinality(s.adj_win)=6 and cardinality(s.adj_top3)=6) arrays_ok,
+                 count(*) filter(where 4 <= all(s.matched_opponents)) matched_ok,
+                 count(*) filter(where s.created_at < %s and s.updated_at < %s
+                   and s.created_at < r.deadline_at and s.updated_at < r.deadline_at) timing_ok
+          from v2_opponent_pressure_shadow_v2 s
+          join v2_races r on r.race_id=s.race_id
+          where s.race_date=%s
+        """, (VERSION_CODE, TARGET_DATE-timedelta(days=1), cutoff, cutoff, TARGET_DATE))
+        r = cur.fetchone()
+    out = {k: int(r[k] or 0) for k in ("rows", "version_rows", "arrays_ok", "matched_ok", "timing_ok")}
+    print(
+        "OPP_PRESSURE_V2_POST="
+        + " ".join(f"{k}:{v}" for k, v in out.items())
+        + f" expected:{expected}",
+        flush=True,
+    )
+    if any(out[k] != expected for k in out):
+        raise RuntimeError(f"Forward postcondition failed expected={expected} actual={out}")
+    return out
+
+
 def main() -> None:
     print(f"OPP_PRESSURE_V2_VERSION={VERSION_TEXT}", flush=True)
     print(f"OPP_PRESSURE_V2_ENABLED={int(ENABLED)} DRY_RUN={int(DRY_RUN)} TARGET_DATE={TARGET_DATE}", flush=True)
@@ -208,12 +312,18 @@ def main() -> None:
             cur.execute("set max_parallel_workers_per_gather=0")
             cur.execute("set work_mem='8MB'")
             cur.execute("set statement_timeout='180s'")
-        effects = _load_effects(conn)
+        expected = _preflight_complete_cards(conn)
         meta, entries = _load_targets(conn)
+        if len(meta) != expected or len(entries) != expected:
+            raise RuntimeError(f"target load incomplete meta={len(meta)} entries={len(entries)} expected={expected}")
+        if not DRY_RUN:
+            _assert_forward_write_window(meta)
+        effects = _load_effects(conn)
         payloads: dict[str, dict[str, list[Any]]] = {}
         complete = 0
         for rid, rows in entries.items():
-            if len(rows) != 6:
+            lanes = {int(x["lane"]) for x in rows}
+            if len(rows) != 6 or lanes != {1,2,3,4,5,6}:
                 continue
             p = _score(rows, effects)
             payloads[rid] = p
@@ -228,7 +338,13 @@ def main() -> None:
             conn.rollback()
             print("OPP_PRESSURE_V2_WRITE_ROWS=0", flush=True)
             print("OPP_PRESSURE_V2_RESULT=PASS_DRY_RUN", flush=True); return
+        if len(payloads) != expected or complete != expected:
+            raise RuntimeError(
+                f"incomplete Forward payloads target={expected} payloads={len(payloads)} complete={complete}"
+            )
+        _assert_forward_write_window(meta)
         _ensure_schema(conn)
+        inserted = 0
         with conn.cursor() as cur:
             for rid, p in payloads.items():
                 m = meta[rid]
@@ -237,16 +353,14 @@ def main() -> None:
                     (race_id,race_date,venue_id,race_no,model_version,train_end,
                      racer_classes,matched_opponents,base_win,base_top3,score_win,score_top3,adj_win,adj_top3,updated_at)
                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
-                  on conflict (race_id) do update set
-                    model_version=excluded.model_version,train_end=excluded.train_end,
-                    racer_classes=excluded.racer_classes,matched_opponents=excluded.matched_opponents,
-                    base_win=excluded.base_win,base_top3=excluded.base_top3,
-                    score_win=excluded.score_win,score_top3=excluded.score_top3,
-                    adj_win=excluded.adj_win,adj_top3=excluded.adj_top3,updated_at=now()
+                  on conflict (race_id) do nothing
                 """, (rid,m["race_date"],m["venue_id"],m["race_no"],VERSION_CODE,TARGET_DATE-timedelta(days=1),
                       p["racer_classes"],p["matched_opponents"],p["base_win"],p["base_top3"],p["score_win"],p["score_top3"],p["adj_win"],p["adj_top3"]))
+                inserted += int(cur.rowcount or 0)
+        _verify_forward_rows(conn, expected)
         conn.commit()
-        print(f"OPP_PRESSURE_V2_WRITE_ROWS={len(payloads)}", flush=True)
+        print(f"OPP_PRESSURE_V2_WRITE_ROWS={inserted}", flush=True)
+        print(f"OPP_PRESSURE_V2_TOTAL_FORWARD_ROWS={expected}", flush=True)
         print("OPP_PRESSURE_V2_RESULT=PASS_WRITE", flush=True)
 
 if __name__ == "__main__":
