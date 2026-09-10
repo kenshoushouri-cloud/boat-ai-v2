@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/forward-health-bundle-readonly.yml'
       - 'research_racer_course_top3_venue_health_pg.py'
+      - 'research_racer_course_top3_bootstrap_pg.py'
 
 permissions:
   contents: read
@@ -33,7 +34,8 @@ jobs:
             report_racer_course_top3_forward_health_pg.py \
             report_exhibition_st_forward_health_pg.py \
             report_motor_guard05_forward_health_pg.py \
-            research_racer_course_top3_venue_health_pg.py
+            research_racer_course_top3_venue_health_pg.py \
+            research_racer_course_top3_bootstrap_pg.py
           python - <<'PY'
           from pathlib import Path
           paths = [
@@ -41,6 +43,7 @@ jobs:
               'report_exhibition_st_forward_health_pg.py',
               'report_motor_guard05_forward_health_pg.py',
               'research_racer_course_top3_venue_health_pg.py',
+              'research_racer_course_top3_bootstrap_pg.py',
           ]
           forbidden = ('insert into','update v2_','delete from','create table','alter table','drop table','send_line','upsert_rows')
           for path in paths:
@@ -77,6 +80,7 @@ jobs:
           set -euo pipefail
           python -u report_racer_course_top3_forward_health_pg.py > racer.txt 2>&1
           python -u research_racer_course_top3_venue_health_pg.py > racer-venue.txt 2>&1
+          python -u research_racer_course_top3_bootstrap_pg.py > racer-bootstrap.txt 2>&1
           python -u report_exhibition_st_forward_health_pg.py > exhibition.txt 2>&1
           python -u report_motor_guard05_forward_health_pg.py > guard.txt 2>&1
       - name: Print sanitized results
@@ -84,8 +88,9 @@ jobs:
         run: |
           grep '^RACER_COURSE_FORWARD_HEALTH_' racer.txt 2>/dev/null || true
           grep '^RACER_COURSE_VENUE_HEALTH_' racer-venue.txt 2>/dev/null || true
+          grep '^RACER_COURSE_BOOTSTRAP_' racer-bootstrap.txt 2>/dev/null || true
           grep '^EXH_ST_FORWARD_HEALTH_' exhibition.txt 2>/dev/null || true
           grep '^MOTOR_GUARD_FORWARD_HEALTH_' guard.txt 2>/dev/null || true
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json racer.txt racer-venue.txt exhibition.txt guard.txt
+        run: rm -f railway-vars.json racer.txt racer-venue.txt racer-bootstrap.txt exhibition.txt guard.txt
