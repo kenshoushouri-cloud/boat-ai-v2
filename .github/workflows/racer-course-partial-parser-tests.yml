@@ -1,0 +1,119 @@
+name: Racer course partial parser tests
+
+on:
+  pull_request:
+    paths:
+      - 'collect_racer_course_stats_pg.py'
+      - 'db_pg.py'
+      - 'tests/test_racer_course_partial_parser.py'
+      - 'tests/test_racer_course_partial_downstream_safety.py'
+      - '.github/workflows/racer-course-partial-parser-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile collector and regression tests
+        run: |
+          python -m py_compile \
+            collect_racer_course_stats_pg.py \
+            tests/test_racer_course_partial_parser.py \
+            tests/test_racer_course_partial_downstream_safety.py
+      - name: Run partial parser and downstream regressions
+        env:
+          DATABASE_URL: ''
+        run: |
+          python -m unittest \
+            tests.test_racer_course_partial_parser \
+            tests.test_racer_course_partial_downstream_safety -v
+
+  postgres-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Verify omitted metrics do not erase existing values
+        run: |
+          python - <<'PY'
+          from db_pg import execute, fetch_one, upsert_rows
+
+          execute('drop table if exists v2_racer_course_stats_snapshots')
+          execute('''
+          create table v2_racer_course_stats_snapshots (
+            racer_number integer not null,
+            snapshot_date date not null,
+            course integer not null,
+            entry_rate numeric,
+            top3_rate numeric,
+            avg_st numeric,
+            source text,
+            raw jsonb,
+            created_at timestamptz,
+            updated_at timestamptz,
+            unique (racer_number, snapshot_date, course)
+          )
+          ''')
+          full = {
+            'racer_number': 4000,
+            'snapshot_date': '2026-09-10',
+            'course': 2,
+            'entry_rate': 22.2,
+            'top3_rate': 44.4,
+            'avg_st': 0.12,
+            'source': 'boatrace_official_racer_course',
+            'raw': {'entry_rate': 22.2, 'top3_rate': 44.4, 'avg_st': 0.12},
+            'created_at': '2026-09-10T07:15:00+09:00',
+            'updated_at': '2026-09-10T07:15:00+09:00',
+          }
+          partial = {
+            'racer_number': 4000,
+            'snapshot_date': '2026-09-10',
+            'course': 2,
+            'top3_rate': 55.5,
+            'source': 'boatrace_official_racer_course',
+            'raw': {'entry_rate': None, 'top3_rate': 55.5, 'avg_st': None},
+            'created_at': '2026-09-10T07:15:00+09:00',
+            'updated_at': '2026-09-10T07:20:00+09:00',
+          }
+          upsert_rows('v2_racer_course_stats_snapshots', [full], ['racer_number', 'snapshot_date', 'course'])
+          upsert_rows('v2_racer_course_stats_snapshots', [partial], ['racer_number', 'snapshot_date', 'course'])
+          row = fetch_one('select entry_rate,top3_rate,avg_st from v2_racer_course_stats_snapshots where racer_number=4000 and course=2')
+          assert float(row['entry_rate']) == 22.2, row
+          assert float(row['top3_rate']) == 55.5, row
+          assert float(row['avg_st']) == 0.12, row
+          print('RACER_COURSE_PARTIAL_POSTGRES_SMOKE=PASS')
+          PY

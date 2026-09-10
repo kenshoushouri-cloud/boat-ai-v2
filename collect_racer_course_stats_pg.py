@@ -13,6 +13,9 @@ BOAT RACE公式の「選手コース別成績」を取得し、Railway Postgres�
 重要:
 - 公式ページは現在時点の集計値なので、過去レースへ遡って適用しません。
 - 今後の日次スナップショットとして蓄積し、shadow/A-B検証に使用します。
+- 公式の「-」は 0 ではなく欠損(None)としてコース位置を保持します。
+- 欠損列はupsert対象から省き、同日再実行で既存の有効値を消しません。
+- 3指標すべて欠損のコース行は保存せず、見かけ上のcoverageを増やしません。
 - 本番判定・LINE通知・購入処理には影響しません。
 
 Start Command:
@@ -44,6 +47,7 @@ HTTP_TIMEOUT = max(5, int(os.getenv("HTTP_TIMEOUT", "35")))
 RETRY_MAX = max(0, int(os.getenv("RETRY_MAX", "2")))
 RETRY_SLEEP = max(0.0, float(os.getenv("RETRY_SLEEP", "1.5")))
 OFFICIAL_URL = "https://www.boatrace.jp/owpc/pc/data/racersearch/course?toban={racer_number}"
+METRIC_KEYS = ("entry_rate", "top3_rate", "avg_st")
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -74,7 +78,7 @@ def _normalize_text(value: Any) -> str:
 
 
 def _require_settings() -> None:
-    print("✅ collect_racer_course_stats_pg.py VERSION 2026-07-15 snapshot-v1", flush=True)
+    print("✅ collect_racer_course_stats_pg.py VERSION 2026-09-10 partial-slots-v3", flush=True)
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です。")
 
@@ -120,90 +124,156 @@ def _fetch_html(racer_number: int) -> Optional[str]:
     return None
 
 
-def _extract_six_values_from_section(text: str, start_label: str, end_labels: List[str], *, percent: bool) -> List[Optional[float]]:
+def _section_text(text: str, start_label: str, end_labels: List[str]) -> str:
     start = text.find(start_label)
     if start < 0:
-        return []
+        return ""
     segment = text[start + len(start_label):]
     end_positions = [segment.find(label) for label in end_labels if segment.find(label) >= 0]
     if end_positions:
         segment = segment[:min(end_positions)]
-    pattern = r"(\d{1,3}(?:\.\d+)?)\s*%" if percent else r"(?<!\d)(0\.\d{1,2})(?!\d)"
-    values = [_safe_float(v) for v in re.findall(pattern, segment)]
-    return values[:6] if len(values) >= 6 else []
+    return segment.strip()
 
 
-def _extract_table_values(soup: BeautifulSoup, heading_text: str, *, percent: bool) -> List[Optional[float]]:
-    heading = soup.find(lambda tag: getattr(tag, "name", None) and heading_text in _normalize_text(tag.get_text(" ", strip=True)))
-    if heading is None:
+def _extract_positioned_six_values(
+    text: str,
+    start_label: str,
+    end_labels: List[str],
+    *,
+    percent: bool,
+) -> List[Optional[float]]:
+    """Parse six explicit course slots while preserving official '-' gaps."""
+    segment = _section_text(text, start_label, end_labels)
+    if not segment:
         return []
-    candidates: List[str] = []
-    node = heading
-    for _ in range(12):
-        node = node.find_next()
-        if node is None:
-            break
-        text = _normalize_text(node.get_text(" ", strip=True))
-        if text:
-            candidates.append(text)
-        if len(" ".join(candidates)) > 1500:
-            break
-    segment = " ".join(candidates)
+
+    value_pattern = r"\d{1,3}(?:\.\d+)?\s*%" if percent else r"\d(?:\.\d+)?"
+    values: List[Optional[float]] = []
+    cursor = 0
+    for course in range(1, 7):
+        pattern = rf"(?<!\d){course}(?!\d)\s*(?:\||:|：)?\s*(?P<value>{value_pattern}|(?:-\s*)+)"
+        match = re.search(pattern, segment[cursor:])
+        if match is None:
+            return []
+        values.append(_safe_float(match.group("value")))
+        cursor += match.end()
+    return values
+
+
+def _extract_six_values_from_section(
+    text: str,
+    start_label: str,
+    end_labels: List[str],
+    *,
+    percent: bool,
+) -> List[Optional[float]]:
+    """Section-bounded fallback for old markup where all six values exist."""
+    segment = _section_text(text, start_label, end_labels)
+    if not segment or "-" in segment:
+        return []
     pattern = r"(\d{1,3}(?:\.\d+)?)\s*%" if percent else r"(?<!\d)(0\.\d{1,2})(?!\d)"
     values = [_safe_float(v) for v in re.findall(pattern, segment)]
-    return values[:6] if len(values) >= 6 else []
+    return values if len(values) == 6 else []
 
 
 def parse_course_stats(html: str, racer_number: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
     full_text = _normalize_text(soup.get_text(" ", strip=True))
 
-    entry_rates = _extract_table_values(soup, "コース別進入率", percent=True)
-    top3_rates = _extract_table_values(soup, "コース別3連対率", percent=True)
-    avg_st_values = _extract_table_values(soup, "コース別平均スタートタイミング", percent=False)
+    entry_rates = _extract_positioned_six_values(
+        full_text,
+        "コース別進入率",
+        ["コース別3連対率", "コース別平均スタートタイミング"],
+        percent=True,
+    )
+    top3_rates = _extract_positioned_six_values(
+        full_text,
+        "コース別3連対率",
+        ["コース別平均スタートタイミング", "本日出走予定"],
+        percent=True,
+    )
+    avg_st_values = _extract_positioned_six_values(
+        full_text,
+        "コース別平均スタートタイミング",
+        ["コース別スタート順", "本日出走予定", "出場予定", "過去3節成績"],
+        percent=False,
+    )
 
-    if len(entry_rates) < 6:
-        entry_rates = _extract_six_values_from_section(full_text, "コース別進入率", ["コース別3連対率", "コース別平均スタートタイミング"], percent=True)
-    if len(top3_rates) < 6:
-        top3_rates = _extract_six_values_from_section(full_text, "コース別3連対率", ["コース別平均スタートタイミング", "本日出走予定"], percent=True)
-    if len(avg_st_values) < 6:
-        avg_st_values = _extract_six_values_from_section(full_text, "コース別平均スタートタイミング", ["本日出走予定", "出場予定", "過去3節成績"], percent=False)
+    if len(entry_rates) != 6:
+        entry_rates = _extract_six_values_from_section(
+            full_text,
+            "コース別進入率",
+            ["コース別3連対率", "コース別平均スタートタイミング"],
+            percent=True,
+        )
+    if len(top3_rates) != 6:
+        top3_rates = _extract_six_values_from_section(
+            full_text,
+            "コース別3連対率",
+            ["コース別平均スタートタイミング", "本日出走予定"],
+            percent=True,
+        )
+    if len(avg_st_values) != 6:
+        avg_st_values = _extract_six_values_from_section(
+            full_text,
+            "コース別平均スタートタイミング",
+            ["コース別スタート順", "本日出走予定", "出場予定", "過去3節成績"],
+            percent=False,
+        )
 
     debug = {
         "racer_number": racer_number,
-        "entry_count": len(entry_rates),
-        "top3_count": len(top3_rates),
-        "avg_st_count": len(avg_st_values),
+        "entry_slots": len(entry_rates),
+        "top3_slots": len(top3_rates),
+        "avg_st_slots": len(avg_st_values),
+        "entry_count": sum(v is not None for v in entry_rates),
+        "top3_count": sum(v is not None for v in top3_rates),
+        "avg_st_count": sum(v is not None for v in avg_st_values),
         "text_head": full_text[:1200],
     }
     if not (len(entry_rates) == 6 and len(top3_rates) == 6 and len(avg_st_values) == 6):
         return [], debug
 
     now_iso = _now_iso()
-    rows = []
+    rows: List[Dict[str, Any]] = []
     for course in range(1, 7):
-        rows.append({
+        entry_rate = entry_rates[course - 1]
+        top3_rate = top3_rates[course - 1]
+        avg_st = avg_st_values[course - 1]
+        row: Dict[str, Any] = {
             "racer_number": racer_number,
             "snapshot_date": TARGET_DATE,
             "course": course,
-            "entry_rate": entry_rates[course - 1],
-            "top3_rate": top3_rates[course - 1],
-            "avg_st": avg_st_values[course - 1],
             "source": "boatrace_official_racer_course",
             "raw": {
-                "entry_rate": entry_rates[course - 1],
-                "top3_rate": top3_rates[course - 1],
-                "avg_st": avg_st_values[course - 1],
+                "entry_rate": entry_rate,
+                "top3_rate": top3_rate,
+                "avg_st": avg_st,
             },
             "created_at": now_iso,
             "updated_at": now_iso,
-        })
+        }
+        if entry_rate is not None:
+            row["entry_rate"] = entry_rate
+        if top3_rate is not None:
+            row["top3_rate"] = top3_rate
+        if avg_st is not None:
+            row["avg_st"] = avg_st
+        rows.append(row)
     return rows, debug
+
+
+def _rows_for_upsert(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Persist only course rows that contain at least one real metric value."""
+    return [row for row in rows if any(key in row for key in METRIC_KEYS)]
 
 
 def _target_racer_numbers() -> List[int]:
     if RACER_STATS_SCOPE == "recent":
-        start_date = (datetime.strptime(TARGET_DATE, "%Y-%m-%d") - timedelta(days=RACER_STATS_LOOKBACK_DAYS - 1)).strftime("%Y-%m-%d")
+        start_date = (
+            datetime.strptime(TARGET_DATE, "%Y-%m-%d")
+            - timedelta(days=RACER_STATS_LOOKBACK_DAYS - 1)
+        ).strftime("%Y-%m-%d")
         rows = fetch_all(
             """
             select distinct e.racer_number
@@ -247,6 +317,8 @@ def _collect_one(racer_number: int) -> Tuple[int, List[Dict[str, Any]], Dict[str
         time.sleep(RACER_STATS_SLEEP_SEC)
     if len(rows) != 6:
         return racer_number, [], debug, "parse_incomplete"
+    if not _rows_for_upsert(rows):
+        return racer_number, [], debug, "no_usable_metrics"
     return racer_number, rows, debug, None
 
 
@@ -254,12 +326,16 @@ def main() -> None:
     _require_settings()
     _ensure_schema()
     racer_numbers = _target_racer_numbers()
-    print(f"TARGET_DATE={TARGET_DATE} SCOPE={RACER_STATS_SCOPE} LOOKBACK_DAYS={RACER_STATS_LOOKBACK_DAYS}", flush=True)
+    print(
+        f"TARGET_DATE={TARGET_DATE} SCOPE={RACER_STATS_SCOPE} LOOKBACK_DAYS={RACER_STATS_LOOKBACK_DAYS}",
+        flush=True,
+    )
     print(f"target_racers={len(racer_numbers)} WORKERS={RACER_STATS_WORKERS}", flush=True)
     print("本番判定・LINE通知・購入処理は変更しません。", flush=True)
 
     saved_rows = 0
     success = 0
+    partial = 0
     failed: List[Tuple[int, str, Dict[str, Any]]] = []
     with ThreadPoolExecutor(max_workers=RACER_STATS_WORKERS) as executor:
         futures = {executor.submit(_collect_one, n): n for n in racer_numbers}
@@ -273,19 +349,32 @@ def main() -> None:
             if error:
                 failed.append((racer_number, error, debug))
             else:
+                save_rows = _rows_for_upsert(rows)
                 saved_rows += upsert_rows(
                     "v2_racer_course_stats_snapshots",
-                    rows,
+                    save_rows,
                     ["racer_number", "snapshot_date", "course"],
                 )
                 success += 1
+                if len(save_rows) != 6 or any(
+                    "entry_rate" not in row
+                    or "top3_rate" not in row
+                    or "avg_st" not in row
+                    for row in save_rows
+                ):
+                    partial += 1
             if index % 50 == 0 or index == len(racer_numbers):
-                print(f"progress={index}/{len(racer_numbers)} success={success} failed={len(failed)} saved_rows={saved_rows}", flush=True)
+                print(
+                    f"progress={index}/{len(racer_numbers)} success={success} partial={partial} "
+                    f"failed={len(failed)} saved_rows={saved_rows}",
+                    flush=True,
+                )
 
     coverage = success / len(racer_numbers) * 100.0 if racer_numbers else 0.0
     print("\n=== racer course stats collection summary ===", flush=True)
     print(f"target_racers={len(racer_numbers)}", flush=True)
     print(f"success_racers={success}", flush=True)
+    print(f"partial_racers={partial}", flush=True)
     print(f"failed_racers={len(failed)}", flush=True)
     print(f"saved_rows={saved_rows}", flush=True)
     print(f"coverage={coverage:.1f}%", flush=True)
@@ -293,7 +382,9 @@ def main() -> None:
         print("--- failed samples ---", flush=True)
         for racer_number, error, debug in failed[:20]:
             print(
-                f"racer={racer_number} error={error} counts={debug.get('entry_count', '-')}/{debug.get('top3_count', '-')}/{debug.get('avg_st_count', '-')}",
+                f"racer={racer_number} error={error} "
+                f"values={debug.get('entry_count', '-')}/{debug.get('top3_count', '-')}/{debug.get('avg_st_count', '-')} "
+                f"slots={debug.get('entry_slots', '-')}/{debug.get('top3_slots', '-')}/{debug.get('avg_st_slots', '-')}",
                 flush=True,
             )
     print("=== racer course stats collection finished ===", flush=True)
