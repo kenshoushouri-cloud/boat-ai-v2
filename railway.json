@@ -4,6 +4,7 @@
     "builder": "RAILPACK",
     "watchPatterns": [
       ".github/scripts/opponent_pressure_shadow_v2_compact.py",
+      ".github/scripts/test_opponent_pressure_timing_guard.py",
       "requirements.txt",
       "railway.json"
     ]
