@@ -7,18 +7,20 @@
 ## Current main
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- main: `7f64a11c397bb8f41e6348ca0fc8c8068bee5adb`
+- この更新開始時に確認したmain: `d514b8a52c4dd15e820f5e47e29c424d6b675e55`（PR #325 docs-only current-state更新後）。この文書更新自体でmainが進む可能性があるため、再開時は必ず再取得する。
+- 最新の機能コード変更基準: `7f64a11c397bb8f41e6348ca0fc8c8068bee5adb`（PR #324）。
 - PR #320: merged。リアルタイム3連単公式parserを構造化し、120/60/24の完全ticket集合だけを採用。不完全なbase odds fallbackをfail-closed化。自然CronでLIVE_VALIDATED済み。
 - PR #324: merged。Racer Course statsで公式`-`を欠損として位置保持し、部分的に取得できたコース値を安全に保存。欠損列はupsert対象から外し、既存有効値を消さない。
 
 ## PR cleanup
 
+- PR #169: temporary base-odds refresh。未マージでclosed。復活させない。
 - PR #319: historical odds evidence research。修正を#320へ移した後、未マージでclosed。
 - PR #321: stale documentation snapshot。後続変更で陳腐化したため未マージでclosed。
 - PR #322: Opponent Pressure incremental Forward research。証拠保持後、未マージでclosed。
 - PR #323: one-shot Forward health bundle。証拠保持後、未マージでclosed。
-- PR #169: temporary base-odds refresh。未マージでclosed。復活させない。
-- このスナップショット作成時点でopen PRは0件。
+- PR #326: Racer Course 0.50 + Opponent Pressure 1.0 fixed combined Forward research。証拠保持後、未マージでclosed。
+- #326 close後のfeature/research open PRは0件。このcurrent-state更新用Docs PRはmergeまで一時的にopenになり得る。
 
 ## Railway production
 
@@ -93,6 +95,54 @@ PR #324で部分slot保持をmainへ反映。ただし9/10は08:15 cutoff後だ�
 
 判断: `PROMISING_INCREMENTAL_FORWARD_RESEARCH_ONLY` / `BLOCK_NO_PRODUCTION_CHANGE`。
 
+## Fixed combined Forward: Racer Course 0.50 + Opponent Pressure 1.0
+
+PR #326で、係数探索・後付けsubset選択なしのread-only固定併用比較を実施。
+
+固定条件:
+- COURSEはfrozen Racer Course Forwardの120-ticket分布をそのまま使用。
+- Racer Course coefficient = 0.50固定。
+- Opponent Pressure coefficient = 1.0固定、保存済み`adj_win - base_win`を使用。
+- Opponent Pressureは1着周辺確率だけを調整し、元分布の `P(2着,3着 | 1着)` を保持。
+- BASE / COURSE / OPP / COMBINEDを同じ共通レースで比較。
+
+Timing-clean common sample:
+- joined: 1,261
+- official evaluated: **1,144**
+- pending: 93
+- invalid Course: 0
+- invalid Opponent: 24
+- invalid result: 0
+- Opponent除外24件は**全件 `created_at_or_after_deadline`**。締切後作成行をForward証拠に使わず除外した。
+
+1,144Rの結果:
+- BASE: LL `4.49065800` / Brier `0.98565326` / rank `32.6469`
+- COURSE: LL `4.25117257` / Brier `0.97958549` / rank `25.2028`
+- OPP: LL `4.46394449` / Brier `0.98505901` / rank `30.9677`
+- COMBINED: LL **`4.22303151`** / Brier **`0.97876161`** / rank **`24.7343`**
+
+COMBINEDのCOURSEに対するincremental delta:
+- LogLoss: **`-0.02814106`**
+- Brier: **`-0.00082388`**
+- ticket rank: **`-0.4685`**
+
+安定性（COMBINED vs COURSE）:
+- 13日: LogLoss 13/13改善、Brier 13/13、rank 10/13、3指標同時10/13
+- 23場: LogLoss 19/23改善、Brier 20/23、rank 13/23、3指標同時13/23
+
+Paired bootstrap 5,000 reps / seed 20260910、COMBINED - COURSE:
+- LogLoss 95% CI **[-0.03429284, -0.02201693]**
+- Brier 95% CI **[-0.00101761, -0.00062761]**
+- rank 95% CI **[-0.75526661, -0.18791521]**
+
+判断: `SUPPORTS_FIXED_COMBINED_FORWARD_RESEARCH_ONLY`。
+
+意味:
+- 現在のtiming-clean common sampleではOpponent PressureはCourse 0.50に対して追加価値を示した。
+- ただしこれはProduction昇格許可ではない。
+- Racer Course partial-sourceの自然Cron readiness確認と、別のpre-production reviewが必要。
+- promotionは `BLOCK_NO_PRODUCTION_CHANGE`。
+
 ## Exhibition ST / Motor GUARD05
 
 Exhibition ST:
@@ -112,6 +162,7 @@ Motor GUARD05:
 - Production v24/FINAL probability logic
 - Racer Course coefficient 0.50
 - Opponent Pressure coefficient/filter
+- Racer Course + Opponent combined logic
 - BUY/WATCH/SKIP
 - LINE notification behavior
 - N01/N02/Bao thresholds/coefficients
@@ -124,7 +175,7 @@ Motor GUARD05:
 2. `target_racers / success_racers / partial_racers / failed_racers / saved_rows / coverage`を確認する。
 3. partial-slot parserで当日08:15前の必要lane coverageが実際に改善したか評価する。
 4. 手動collector再実行やbackfillはしない。
-5. Racer Course Top3のProduction昇格は、上記source readiness確認後も別の明示判断とpre-production reviewを要求する。
+5. Racer Course Top3単独またはOpponent Pressure併用のProduction昇格は、上記source readiness確認後も別の明示判断とpre-production reviewを要求する。
 
 ## Restart checklist
 
