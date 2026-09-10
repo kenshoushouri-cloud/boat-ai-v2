@@ -7,6 +7,7 @@ on:
       - 'research_racer_course_top3_venue_health_pg.py'
       - 'research_racer_course_top3_bootstrap_pg.py'
       - 'research_racer_course_top3_production_readiness_pg.py'
+      - 'research_racer_course_partial_coverage_pg.py'
 
 permissions:
   contents: read
@@ -37,7 +38,8 @@ jobs:
             report_motor_guard05_forward_health_pg.py \
             research_racer_course_top3_venue_health_pg.py \
             research_racer_course_top3_bootstrap_pg.py \
-            research_racer_course_top3_production_readiness_pg.py
+            research_racer_course_top3_production_readiness_pg.py \
+            research_racer_course_partial_coverage_pg.py
           python - <<'PY'
           from pathlib import Path
           paths = [
@@ -47,6 +49,7 @@ jobs:
               'research_racer_course_top3_venue_health_pg.py',
               'research_racer_course_top3_bootstrap_pg.py',
               'research_racer_course_top3_production_readiness_pg.py',
+              'research_racer_course_partial_coverage_pg.py',
           ]
           forbidden = ('insert into','update v2_','delete from','create table','alter table','drop table','send_line','upsert_rows')
           for path in paths:
@@ -54,7 +57,10 @@ jobs:
               for token in forbidden:
                   assert token not in low, f'{path}:{token}'
           readiness = Path('research_racer_course_top3_production_readiness_pg.py').read_text(encoding='utf-8').lower()
+          partial = Path('research_racer_course_partial_coverage_pg.py').read_text(encoding='utf-8').lower()
           assert 'v2_results' not in readiness and 'v2_odds' not in readiness
+          assert 'v2_results' not in partial and 'v2_odds' not in partial
+          assert 'not_frozen_source' in partial
           print('FORWARD_HEALTH_BUNDLE_VALIDATE=PASS')
           PY
       - name: Install dependencies
@@ -87,6 +93,7 @@ jobs:
           python -u research_racer_course_top3_venue_health_pg.py > racer-venue.txt 2>&1
           python -u research_racer_course_top3_bootstrap_pg.py > racer-bootstrap.txt 2>&1
           python -u research_racer_course_top3_production_readiness_pg.py > racer-prod-ready.txt 2>&1
+          python -u research_racer_course_partial_coverage_pg.py > racer-partial.txt 2>&1
           python -u report_exhibition_st_forward_health_pg.py > exhibition.txt 2>&1
           python -u report_motor_guard05_forward_health_pg.py > guard.txt 2>&1
       - name: Print sanitized results
@@ -96,8 +103,9 @@ jobs:
           grep '^RACER_COURSE_VENUE_HEALTH_' racer-venue.txt 2>/dev/null || true
           grep '^RACER_COURSE_BOOTSTRAP_' racer-bootstrap.txt 2>/dev/null || true
           grep '^RACER_COURSE_PROD_READY_' racer-prod-ready.txt 2>/dev/null || true
+          grep '^RACER_COURSE_PARTIAL_' racer-partial.txt 2>/dev/null || true
           grep '^EXH_ST_FORWARD_HEALTH_' exhibition.txt 2>/dev/null || true
           grep '^MOTOR_GUARD_FORWARD_HEALTH_' guard.txt 2>/dev/null || true
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json racer.txt racer-venue.txt racer-bootstrap.txt racer-prod-ready.txt exhibition.txt guard.txt
+        run: rm -f railway-vars.json racer.txt racer-venue.txt racer-bootstrap.txt racer-prod-ready.txt racer-partial.txt exhibition.txt guard.txt
