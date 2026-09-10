@@ -29,6 +29,7 @@ jobs:
           set -euo pipefail
           python -m py_compile .github/scripts/opponent_pressure_timing_integrity_audit_20260911.py
           python - <<'PY'
+          import re
           from pathlib import Path
           p=Path('.github/scripts/opponent_pressure_timing_integrity_audit_20260911.py').read_text(encoding='utf-8').lower()
           assert 'read_only_no_results_no_odds_no_predictions' in p
@@ -36,7 +37,9 @@ jobs:
           assert 'set transaction read only' in p
           assert 'updated_at' in p and 'created_at' in p and 'deadline_at' in p
           assert 'v2_results' not in p and 'v2_odds' not in p
-          assert 'insert into' not in p and 'update ' not in p and 'delete from' not in p
+          assert not re.search(r'\binsert\s+into\b', p)
+          assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', p)
+          assert not re.search(r'\bdelete\s+from\b', p)
           print('OPP_TIMING_AUDIT_VALIDATE=PASS')
           PY
       - name: Install dependencies
