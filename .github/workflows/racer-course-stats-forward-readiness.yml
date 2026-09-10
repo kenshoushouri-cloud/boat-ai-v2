@@ -67,3 +67,5 @@ jobs:
       - name: Clean temporary files
         if: always()
         run: rm -f railway-vars.json racer-course-ready.txt
+
+# audit refresh: 2026-09-11 natural Cron verification only
