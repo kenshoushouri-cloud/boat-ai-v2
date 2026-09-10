@@ -1,0 +1,77 @@
+name: Course Opponent Integrity Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+    paths:
+      - .github/scripts/course_opponent_integrity_diag.py
+      - .github/workflows/course-opponent-integrity-diagnostic.yml
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  integrity-diagnostic:
+    if: >-
+      github.actor == github.repository_owner &&
+      github.head_ref == 'research/course-opponent-combined-forward-20260910'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install 'psycopg[binary]==3.2.6'
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway variable list --service postgres --environment production --json > railway-vars.json 2> railway-vars-error.txt
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = data.get('DATABASE_PUBLIC_URL') if isinstance(data, dict) else None
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict) and (item.get('name') == 'DATABASE_PUBLIC_URL' or item.get('key') == 'DATABASE_PUBLIC_URL'):
+                      value = item.get('value'); break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL missing')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run exclusion diagnostic read-only
+        shell: bash
+        env:
+          COURSE_OPP_COMBINED_START: "2026-08-25"
+          COURSE_OPP_COMBINED_END: "2026-09-10"
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/course_opponent_integrity_diag.py
+          python -u .github/scripts/course_opponent_integrity_diag.py > integrity.txt 2> integrity-error.txt
+          grep '^COURSE_OPP_INTEGRITY_' integrity.txt
+          grep -q '^COURSE_OPP_INTEGRITY_RESULT=PASS_READ_ONLY$' integrity.txt
+      - name: Remove temporary files
+        if: always()
+        run: rm -f railway-vars.json railway-vars-error.txt integrity.txt integrity-error.txt
