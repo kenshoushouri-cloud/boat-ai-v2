@@ -1,187 +1,192 @@
 # boat-ai-v2 Current State
 
-更新日時: 2026-09-10 JST
+更新日時: 2026-09-11 JST
 
-このファイルは、`docs/PROJECT_HANDOFF.md` / `docs/PROJECT_HISTORY.md` の長期記録を補完する、現在地点の短い運用スナップショットです。再開時はGitHub mainとRailway productionを再確認し、この内容を固定の現在値だと仮定しないでください。
+このファイルは、`docs/PROJECT_HANDOFF.md` / `docs/PROJECT_HISTORY.md` の長期記録を補完する現在地点の短い運用スナップショットです。再開時は必ずGitHub mainとRailway productionを再取得し、この内容を固定の現在値だと仮定しないでください。
 
-## Current main
+## Current main / open PR
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- この更新開始時に確認したmain: `d514b8a52c4dd15e820f5e47e29c424d6b675e55`（PR #325 docs-only current-state更新後）。この文書更新自体でmainが進む可能性があるため、再開時は必ず再取得する。
-- 最新の機能コード変更基準: `7f64a11c397bb8f41e6348ca0fc8c8068bee5adb`（PR #324）。
-- PR #320: merged。リアルタイム3連単公式parserを構造化し、120/60/24の完全ticket集合だけを採用。不完全なbase odds fallbackをfail-closed化。自然CronでLIVE_VALIDATED済み。
-- PR #324: merged。Racer Course statsで公式`-`を欠損として位置保持し、部分的に取得できたコース値を安全に保存。欠損列はupsert対象から外し、既存有効値を消さない。
-
-## PR cleanup
-
-- PR #169: temporary base-odds refresh。未マージでclosed。復活させない。
-- PR #319: historical odds evidence research。修正を#320へ移した後、未マージでclosed。
-- PR #321: stale documentation snapshot。後続変更で陳腐化したため未マージでclosed。
-- PR #322: Opponent Pressure incremental Forward research。証拠保持後、未マージでclosed。
-- PR #323: one-shot Forward health bundle。証拠保持後、未マージでclosed。
-- PR #326: Racer Course 0.50 + Opponent Pressure 1.0 fixed combined Forward research。証拠保持後、未マージでclosed。
-- #326 close後のfeature/research open PRは0件。このcurrent-state更新用Docs PRはmergeまで一時的にopenになり得る。
+- 確認時main: `0f44d401107f9b68fb74faeacdc973c867f776c3`（PR #330）。
+- PR #330: merged。Opponent Pressureをtiming-safe Railway Cronへ移行。
+- Open PR: #329 `Research: audit Course + Opponent pre-production timing integrity` のみ。Draft / research-only。
+- PR #331: SELECT-only zero-write監査。2026-09-11の0書込み確認後、証拠を#329へ移して未マージclose。
 
 ## Railway production
 
 Project: `boat-v2-postgres`
 
-- source-linked servicesは#324 main merge後の自動deployで確認対象すべてSUCCESS。
-- `cron-racer-course-stats` start command: `python -u collect_racer_course_stats_pg.py`
-- `cron-racer-course-stats` schedule: `15 22 * * *` UTC = 07:15 JST
-- `cron-final-check`: SUCCESS
-- `cron-learning-all`: SUCCESS
-- PostgreSQL `postgres-recovery`: SUCCESS / 1 replica
-- Railway variables/config/Cronは手動変更していない。
-- environmentに既存のSTAGED patch 174 changesが残っている。未適用のまま維持し、目的を確認せずaccept-deployしない。
+主要既存service:
+- `cron-racer-course-stats`: `python -u collect_racer_course_stats_pg.py`, Cron `15 22 * * *` UTC = 07:15 JST, SUCCESS。
+- `cron-final-check`: SUCCESS。
+- `cron-learning-all`: SUCCESS。
+- PostgreSQL `postgres-recovery`: SUCCESS / 1 replica / 5,000 MB volume。
 
-## Realtime trifecta odds incident
+Opponent Pressure dedicated service:
+- service: `cron-opponent-pressure-v2-live`
+- source: `kenshoushouri-cloud/boat-ai-v2`
+- branch: `runtime/opponent-pressure-railway-cron`
+- start: `python -u .github/scripts/opponent_pressure_shadow_v2_compact.py`
+- Cron: `0 22 * * *` UTC = 07:00 JST
+- restart: `NEVER`
+- latest deployment: SUCCESS
 
-2026-09-08 historical auditで、固定19Rの`v2_odds_trifecta`と`v2_realtime_odds_snapshots`が完全120ではない問題を調査。
+Migration試行時に作られた補助service:
+- `cron-opponent-pressure-v2`: 空 / Cronなし。
+- `cron-opponent-pressure-v2-runner`: Cronなし。Production実行経路として使用しない。
 
-確定した原因:
-- realtime側の旧簡易`parse_odds3t`が現行公式ページ構造と非互換。
-- 公式取得が80件未満になると、不完全な`v2_odds_trifecta`へfallback。
-- その部分集合がrealtime snapshotへ伝播していた。
+### STAGED patch safety
 
-PR #320後の自然Production Cronでは:
-- `official_odds3t`由来の120通りsnapshotを継続確認。
-- 早い時点で不完全なレースはodds=0でfail-closedし、後のCronで120へ回復。
-- 観測区間で`v2_odds_trifecta_fallback`再伝播0件。
+- 現在、新しいRailway environment STAGED patchが存在し、確認時は180 changes。
+- patch IDや件数は将来変わり得るので再開時に再取得する。
+- **内容を独立確認するまでaccept-deployしない。**
+- active `cron-opponent-pressure-v2-live` の07:00 JST Cron / restart NEVERはすでに実効設定として確認済み。
 
-判断: `LIVE_VALIDATED`。
+### PostgreSQL capacity
 
-ただし2026-09-08当時の市場オッズ値そのものは独立認証できていないため、historical ROI承認やその証拠を使うmodel/threshold promotionはBLOCKのまま。
+2026-09-11 24h read-only metrics:
+- disk current: 約4.107 GB / 5 GB = 約82.1%
+- disk max: 約4.107 GB
+- memory current: 約1.162 GB
+- memory 24h average: 約0.731 GB
+- CPU: low
+
+判断:
+- DB volume headroomは約0.893 GB。
+- 地方競馬等の別競技データをこのDBへ同居させない。
+- Opponent追加はcompact daily rowsのみとし、容量監視を継続する。
+
+## Realtime trifecta odds
+
+PR #320後:
+- 公式`official_odds3t`由来の120/60/24完全ticket集合のみ採用。
+- 不完全fallbackはfail-closed。
+- 自然Production CronでLIVE_VALIDATED済み。
+
+ただし2026-09-08 historical market odds値そのものは独立認証できていないため、その値を使うhistorical ROI承認/model-threshold promotionは引き続きBLOCK。
 
 ## Racer Course Top3
 
-Frozen Forward contract:
+Frozen contract:
 - BASE = current v24
 - COURSE = BASE raw strength + `0.50 * z(official racer-by-course top3 rate)`
-- coefficient 0.50固定。後付け再探索しない。
+- coefficient 0.50固定。再探索しない。
 - exact-date official source
-- source timestamp <= 08:15 JSTかつdeadline前
-- 必要な6艇の当該lane Top3値が揃わなければ適用しない。
+- source timestamp <= 08:15 JSTかつrace deadline前
+- 必要6艇の当該lane Top3が揃わなければfail-closed
 
-2026-09-10 read-only Forward evidence:
+2026-09-10 research evidence:
 - evaluated: 1,168 races
 - LogLoss delta: `-0.23874376`
 - Brier delta: `-0.00606810`
 - winner rank delta: `-7.2877`
-- observed venues: 23/23で3指標すべて改善
-- observed dates: 13/13で3指標すべて改善
+- 23/23 venues、13/13 datesで3指標すべて改善
 - paired bootstrap 5,000 reps: 3指標の95% CIはいずれも0未跨ぎ
-- promotion state: `BLOCK_MANUAL_REVIEW_ONLY`
 
-Source coverage bottleneck:
-- 2026-09-10 collector target 493 racers
-- old complete-only parser: 458 complete / 35 `parse_incomplete`
-- 35 racer failuresが49/132 racesのeligibility欠損へ波及
-- structural read-only simulation: baseline safe 83/132 = 62.88% -> partial-slot parserなら105/132 = 79.55%
-- recovered 22 races / remaining fail-closed 27 races / valid distributions 105
+2026-09-11 natural collector validation:
+- collector version: `2026-09-10 partial-slots-v3`
+- target racers: 530
+- success: 518
+- partial: 22
+- failed: 12
+- saved rows: 3,045
+- racer coverage: 97.7%
+- failed 12は`no_usable_metrics`
+- timing-safe six-lane Top3 coverage: **117/144 = 81.25%**
+- fail-closed: 27 races
 
-PR #324で部分slot保持をmainへ反映。ただし9/10は08:15 cutoff後だったため手動再収集は行っていない。最初の正しい実運用確認は2026-09-11 07:15 JSTの自然Cron。
+旧complete-only実績 83/132=62.88%、事前構造simulation 105/132=79.55%に対し、実運用でもcoverage改善を確認。
+
+判断: source parser/readinessは改善確認済み。ただしCourse 0.50のProduction昇格はまだ許可しない。
 
 ## Opponent Pressure
 
-2026-09-10 incremental Forward over current v24:
-- evaluated: 2,579
+Historical research evidence:
+- evaluated: 2,579 races
 - winner Brier delta: `-0.00098501`
 - winner LogLoss delta: `-0.01503974`
 - winner rank delta: `-0.0450`
-- Brier/LogLoss improved on 16/17 days
-- Brier improved on 19/24 venues; LogLoss improved on 20/24 venues
-- fixed coefficient 1.0; subgroupを後付けで除外しない
+- fixed coefficient 1.0
 
-判断: `PROMISING_INCREMENTAL_FORWARD_RESEARCH_ONLY` / `BLOCK_NO_PRODUCTION_CHANGE`。
+Fixed Course 0.50 + Opponent 1.0 common timing-clean sample 1,144R:
+- COMBINED vs COURSE LogLoss: `-0.02814106`
+- Brier: `-0.00082388`
+- rank: `-0.4685`
+- paired bootstrap 95% CIはいずれも0未満
 
-## Fixed combined Forward: Racer Course 0.50 + Opponent Pressure 1.0
+### Timing problem and migration
 
-PR #326で、係数探索・後付けsubset選択なしのread-only固定併用比較を実施。
+2026-08-25..2026-09-10 read-only timing audit:
+- 15 dates / 2,256 rows
+- created after 08:15 cutoff: 1,932
+- created at/after race deadline: 183
+- cutoffを満たした観測日は2/15のみ
+- observed later mutation `updated_at > created_at`: 0
 
-固定条件:
-- COURSEはfrozen Racer Course Forwardの120-ticket分布をそのまま使用。
-- Racer Course coefficient = 0.50固定。
-- Opponent Pressure coefficient = 1.0固定、保存済み`adj_win - base_win`を使用。
-- Opponent Pressureは1着周辺確率だけを調整し、元分布の `P(2着,3着 | 1着)` を保持。
-- BASE / COURSE / OPP / COMBINEDを同じ共通レースで比較。
+このためquality evidenceだけではProductionに上げず、PR #330でcollectorをtiming-safe Railway Cronへ移行。
 
-Timing-clean common sample:
-- joined: 1,261
-- official evaluated: **1,144**
-- pending: 93
-- invalid Course: 0
-- invalid Opponent: 24
-- invalid result: 0
-- Opponent除外24件は**全件 `created_at_or_after_deadline`**。締切後作成行をForward証拠に使わず除外した。
+New collector contract:
+- 07:00 JST natural Cron
+- complete card必須
+- 08:15 JST cutoff
+- race deadline前必須
+- first-write-wins `ON CONFLICT DO NOTHING`
+- GitHub側の旧書込み経路は停止
 
-1,144Rの結果:
-- BASE: LL `4.49065800` / Brier `0.98565326` / rank `32.6469`
-- COURSE: LL `4.25117257` / Brier `0.97958549` / rank `25.2028`
-- OPP: LL `4.46394449` / Brier `0.98505901` / rank `30.9677`
-- COMBINED: LL **`4.22303151`** / Brier **`0.97876161`** / rank **`24.7343`**
+2026-09-11:
+- migration deploymentは約08:28 JSTに初回起動したためcutoff guardが拒否。
+- Production DB SELECT-only監査で当日Opponent rows=0、cutoff後created=0、updated=0を確認。
+- したがって9/11はnatural success dayに数えない。
 
-COMBINEDのCOURSEに対するincremental delta:
-- LogLoss: **`-0.02814106`**
-- Brier: **`-0.00082388`**
-- ticket rank: **`-0.4685`**
+次gate:
+- 2026-09-12 07:00 JSTから5日連続の自然Cronを監査。
+- 毎日、完全行数・model_version・train_end・6艇配列・matched opponents・created/updated timing・deadline timing・後更新有無をread-only確認。
+- 5/5でも自動昇格しない。別のProduction promotion reviewが必要。
 
-安定性（COMBINED vs COURSE）:
-- 13日: LogLoss 13/13改善、Brier 13/13、rank 10/13、3指標同時10/13
-- 23場: LogLoss 19/23改善、Brier 20/23、rank 13/23、3指標同時13/23
-
-Paired bootstrap 5,000 reps / seed 20260910、COMBINED - COURSE:
-- LogLoss 95% CI **[-0.03429284, -0.02201693]**
-- Brier 95% CI **[-0.00101761, -0.00062761]**
-- rank 95% CI **[-0.75526661, -0.18791521]**
-
-判断: `SUPPORTS_FIXED_COMBINED_FORWARD_RESEARCH_ONLY`。
-
-意味:
-- 現在のtiming-clean common sampleではOpponent PressureはCourse 0.50に対して追加価値を示した。
-- ただしこれはProduction昇格許可ではない。
-- Racer Course partial-sourceの自然Cron readiness確認と、別のpre-production reviewが必要。
-- promotionは `BLOCK_NO_PRODUCTION_CHANGE`。
+Current decision:
+`RAILWAY_MIGRATION_COMPLETE / OPPONENT_5_DAY_TIMING_VALIDATION_PENDING / BLOCK_NO_PRODUCTION_CHANGE`
 
 ## Exhibition ST / Motor GUARD05
 
 Exhibition ST:
 - evaluated: 865
 - directionally positive but venue heterogeneous
-- promotion: `BLOCK_MANUAL_REVIEW_ONLY`
+- `BLOCK_MANUAL_REVIEW_ONLY`
 
 Motor GUARD05:
 - evaluated: 262
 - `affected_evaluated=0`
-- treatment effectは未識別
-- promotion: `BLOCK_MANUAL_REVIEW_ONLY`
+- treatment effect未識別
+- `BLOCK_MANUAL_REVIEW_ONLY`
 
 ## Production boundaries
 
 明示的な追加判断なしに変更しない:
 - Production v24/FINAL probability logic
 - Racer Course coefficient 0.50
-- Opponent Pressure coefficient/filter
+- Opponent Pressure coefficient 1.0 / filter
 - Racer Course + Opponent combined logic
 - BUY/WATCH/SKIP
 - LINE notification behavior
+- automatic purchase
 - N01/N02/Bao thresholds/coefficients
 - Railway variables/config/Cron
-- 174 STAGED changes
+- 現在のRailway STAGED patch
 
 ## Next safe boundary
 
-1. 2026-09-11 07:15 JST `cron-racer-course-stats` の自然実行をread-only監査する。
-2. `target_racers / success_racers / partial_racers / failed_racers / saved_rows / coverage`を確認する。
-3. partial-slot parserで当日08:15前の必要lane coverageが実際に改善したか評価する。
-4. 手動collector再実行やbackfillはしない。
-5. Racer Course Top3単独またはOpponent Pressure併用のProduction昇格は、上記source readiness確認後も別の明示判断とpre-production reviewを要求する。
+1. 2026-09-12 07:00 JST `cron-opponent-pressure-v2-live` の最初の自然Cronをread-only監査。
+2. 5日連続timing-clean gateを積み上げる。
+3. Racer Courseは117/144 source readinessを基準に、欠損27Rの原因分布をread-onlyで追跡する。
+4. Production昇格・係数変更・手動backfill/collector再実行はしない。
+5. PostgreSQL disk usageを継続監視し、5GB volumeの余裕を守る。
 
 ## Restart checklist
 
 1. current GitHub main SHAを確認。
 2. open PRを確認。
-3. Railway production statusと174 STAGED changesをread-only確認。
-4. `docs/CURRENT_STATE.md`、`docs/PROJECT_HANDOFF.md`、`docs/PROJECT_HISTORY.md`を読む。
-5. Issue #42の最新監査ログを確認。
-6. 研究結果とProduction昇格を混同しない。
+3. Railway production statusとSTAGED patch件数をread-only確認。
+4. `cron-opponent-pressure-v2-live` のsource/start/Cron/restartを確認。
+5. `docs/CURRENT_STATE.md`、`docs/PROJECT_HANDOFF.md`、`docs/PROJECT_HISTORY.md`を読む。
+6. Issue #42の最新監査ログを確認。
+7. 研究結果とProduction昇格を混同しない。
