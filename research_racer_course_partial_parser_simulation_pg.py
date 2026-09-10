@@ -10,6 +10,11 @@ prediction eligible. They are used only to test parser structure, lane-position
 preservation, and whether the Production distribution can be formed if the same
 per-lane values had been captured at the approved PRE-time cutoff.
 
+The simulation intentionally stops checking a race after its first unavailable
+required lane. Its pair counters are therefore tested-path diagnostics, not a
+complete census of all missing lane pairs. Coverage/recovered-race counts are
+the decision-relevant outputs.
+
 No DB writes, no LINE, no purchase/selection changes, no Production changes.
 """
 from __future__ import annotations
