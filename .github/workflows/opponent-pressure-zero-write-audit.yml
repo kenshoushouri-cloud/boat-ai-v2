@@ -1,0 +1,84 @@
+name: Opponent Pressure zero-write audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/opponent-pressure-zero-write-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install read-only dependencies
+        run: |
+          set -euo pipefail
+          pip install psycopg[binary]
+          npm install --global @railway/cli
+      - name: Load Production database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run SELECT-only post-migration audit
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import psycopg
+          from psycopg.rows import dict_row
+          sql = '''
+            select count(*)::bigint rows,
+                   min(created_at) min_created_at,
+                   max(created_at) max_created_at,
+                   min(updated_at) min_updated_at,
+                   max(updated_at) max_updated_at,
+                   count(*) filter(where created_at >= timestamptz '2026-09-11 08:15:00+09')::bigint created_after_cutoff,
+                   count(*) filter(where updated_at >= timestamptz '2026-09-11 08:15:00+09')::bigint updated_after_cutoff
+            from v2_opponent_pressure_shadow_v2
+            where race_date = date '2026-09-11'
+          '''
+          assert sql.lstrip().lower().startswith('select')
+          lowered=sql.lower()
+          for forbidden in ('insert ', 'update ', 'delete ', 'truncate ', 'alter ', 'drop ', 'create '):
+              assert forbidden not in lowered
+          with psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row) as conn:
+              with conn.cursor() as cur:
+                  cur.execute('set transaction read only')
+                  cur.execute(sql)
+                  r=cur.fetchone()
+          print(f"OPP_ZERO_WRITE_AUDIT=rows:{r['rows']} created_after_cutoff:{r['created_after_cutoff']} updated_after_cutoff:{r['updated_after_cutoff']}")
+          print(f"OPP_ZERO_WRITE_TIMES=min_created:{r['min_created_at']} max_created:{r['max_created_at']} min_updated:{r['min_updated_at']} max_updated:{r['max_updated_at']}")
+          if int(r['rows'] or 0) != 0:
+              raise SystemExit('unexpected 2026-09-11 Opponent rows present after cutoff-failed deployment')
+          print('OPP_ZERO_WRITE_RESULT=PASS_ZERO_ROWS')
+          PY
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json
