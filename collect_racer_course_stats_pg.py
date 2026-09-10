@@ -139,13 +139,7 @@ def _extract_positioned_six_values(
     *,
     percent: bool,
 ) -> List[Optional[float]]:
-    """Parse all six course slots without collapsing official '-' gaps.
-
-    The official page renders rows in course order (1..6). A missing value is
-    shown as '-'. Numeric-only regex extraction used to drop those gaps and
-    either fail the whole racer or risk positional collapse. This parser walks
-    the six explicit course labels in order and converts '-' to None.
-    """
+    """Parse six explicit course slots while preserving official '-' gaps."""
     segment = _section_text(text, start_label, end_labels)
     if not segment:
         return []
@@ -164,34 +158,13 @@ def _extract_positioned_six_values(
 
 
 def _extract_six_values_from_section(text: str, start_label: str, end_labels: List[str], *, percent: bool) -> List[Optional[float]]:
-    """Legacy complete-value fallback for historical markup variants."""
+    """Section-bounded fallback for old markup where all six values exist."""
     segment = _section_text(text, start_label, end_labels)
-    if not segment:
+    if not segment or "-" in segment:
         return []
     pattern = r"(\d{1,3}(?:\.\d+)?)\s*%" if percent else r"(?<!\d)(0\.\d{1,2})(?!\d)"
     values = [_safe_float(v) for v in re.findall(pattern, segment)]
-    return values[:6] if len(values) >= 6 else []
-
-
-def _extract_table_values(soup: BeautifulSoup, heading_text: str, *, percent: bool) -> List[Optional[float]]:
-    heading = soup.find(lambda tag: getattr(tag, "name", None) and heading_text in _normalize_text(tag.get_text(" ", strip=True)))
-    if heading is None:
-        return []
-    candidates: List[str] = []
-    node = heading
-    for _ in range(12):
-        node = node.find_next()
-        if node is None:
-            break
-        text = _normalize_text(node.get_text(" ", strip=True))
-        if text:
-            candidates.append(text)
-        if len(" ".join(candidates)) > 1500:
-            break
-    segment = " ".join(candidates)
-    pattern = r"(\d{1,3}(?:\.\d+)?)\s*%" if percent else r"(?<!\d)(0\.\d{1,2})(?!\d)"
-    values = [_safe_float(v) for v in re.findall(pattern, segment)]
-    return values[:6] if len(values) >= 6 else []
+    return values if len(values) == 6 else []
 
 
 def parse_course_stats(html: str, racer_number: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -216,15 +189,6 @@ def parse_course_stats(html: str, racer_number: int) -> Tuple[List[Dict[str, Any
         ["コース別スタート順", "本日出走予定", "出場予定", "過去3節成績"],
         percent=False,
     )
-
-    # Keep the historical complete-value extractors only as fail-closed
-    # compatibility fallbacks for markup variants where all six values exist.
-    if len(entry_rates) != 6:
-        entry_rates = _extract_table_values(soup, "コース別進入率", percent=True)
-    if len(top3_rates) != 6:
-        top3_rates = _extract_table_values(soup, "コース別3連対率", percent=True)
-    if len(avg_st_values) != 6:
-        avg_st_values = _extract_table_values(soup, "コース別平均スタートタイミング", percent=False)
 
     if len(entry_rates) != 6:
         entry_rates = _extract_six_values_from_section(full_text, "コース別進入率", ["コース別3連対率", "コース別平均スタートタイミング"], percent=True)
