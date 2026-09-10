@@ -14,6 +14,7 @@ BOAT RACE公式の「選手コース別成績」を取得し、Railway Postgres�
 - 公式ページは現在時点の集計値なので、過去レースへ遡って適用しません。
 - 今後の日次スナップショットとして蓄積し、shadow/A-B検証に使用します。
 - 公式の「-」は 0 ではなく欠損(None)としてコース位置を保持します。
+- 欠損列はupsert対象から省き、同日再実行で既存の有効値を消しません。
 - 本番判定・LINE通知・購入処理には影響しません。
 
 Start Command:
@@ -213,22 +214,29 @@ def parse_course_stats(html: str, racer_number: int) -> Tuple[List[Dict[str, Any
     now_iso = _now_iso()
     rows = []
     for course in range(1, 7):
-        rows.append({
+        entry_rate = entry_rates[course - 1]
+        top3_rate = top3_rates[course - 1]
+        avg_st = avg_st_values[course - 1]
+        row: Dict[str, Any] = {
             "racer_number": racer_number,
             "snapshot_date": TARGET_DATE,
             "course": course,
-            "entry_rate": entry_rates[course - 1],
-            "top3_rate": top3_rates[course - 1],
-            "avg_st": avg_st_values[course - 1],
             "source": "boatrace_official_racer_course",
             "raw": {
-                "entry_rate": entry_rates[course - 1],
-                "top3_rate": top3_rates[course - 1],
-                "avg_st": avg_st_values[course - 1],
+                "entry_rate": entry_rate,
+                "top3_rate": top3_rate,
+                "avg_st": avg_st,
             },
             "created_at": now_iso,
             "updated_at": now_iso,
-        })
+        }
+        if entry_rate is not None:
+            row["entry_rate"] = entry_rate
+        if top3_rate is not None:
+            row["top3_rate"] = top3_rate
+        if avg_st is not None:
+            row["avg_st"] = avg_st
+        rows.append(row)
     return rows, debug
 
 
@@ -312,9 +320,9 @@ def main() -> None:
                 )
                 success += 1
                 if any(
-                    row.get("entry_rate") is None
-                    or row.get("top3_rate") is None
-                    or row.get("avg_st") is None
+                    "entry_rate" not in row
+                    or "top3_rate" not in row
+                    or "avg_st" not in row
                     for row in rows
                 ):
                     partial += 1
