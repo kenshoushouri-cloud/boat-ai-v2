@@ -80,3 +80,5 @@ jobs:
       - name: Clean temporary files
         if: always()
         run: rm -f railway-vars.json racer-course-ready.txt racer-course-natural.txt
+
+# final post-Cron read-only refresh: 2026-09-11 07:42 JST
