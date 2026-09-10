@@ -1,0 +1,125 @@
+# -*- coding: utf-8 -*-
+"""Read-only Production-input readiness audit for Racer Course Top3.
+
+Checks whether the frozen Forward feature can be computed from today's PRE-time
+inputs without outcome or market data. No writes, notifications, selection, or
+Production behavior changes are performed.
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+from statistics import median
+from typing import Any, Dict, List
+
+import psycopg
+from psycopg.rows import dict_row
+
+import collect_racer_course_top3_forward_shadow_pg as fwd
+
+
+def main() -> None:
+    print("RACER_COURSE_PROD_READY_MODE=read_only_inputs_only_no_odds_no_results_no_updates_no_line", flush=True)
+    url = (fwd.os.getenv("DATABASE_URL") or "").strip()
+    if not url:
+        raise RuntimeError("DATABASE_URL required")
+
+    with psycopg.connect(url, row_factory=dict_row, autocommit=True) as conn:
+        rows = fwd._load(conn)
+
+    by_race: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        rid = str(row.get("race_id") or "")
+        if rid:
+            by_race[rid].append(row)
+
+    total_races = len(by_race)
+    full6_cards = 0
+    source_full6 = 0
+    distribution_ok = 0
+    invalid_card = 0
+    deadline_missing = 0
+    source_not_safe = 0
+    degenerate_or_distribution_error = 0
+    lead_ge3_at_source = 0
+    deltas: List[float] = []
+    source_leads: List[float] = []
+
+    for rid, raw_rows in sorted(by_race.items()):
+        entries = sorted(raw_rows, key=lambda x: fwd._si(x.get("lane")))
+        if not fwd._valid_entries(entries):
+            invalid_card += 1
+            continue
+        full6_cards += 1
+
+        deadline = fwd._aware_jst(entries[0].get("deadline_at"))
+        if deadline is None:
+            deadline_missing += 1
+            continue
+
+        if not all(fwd._source_row_safe(e, deadline) for e in entries):
+            source_not_safe += 1
+            continue
+        source_full6 += 1
+
+        latest_source = max(fwd._aware_jst(e.get("course_snapshot_created_at")) for e in entries)
+        if latest_source is not None:
+            lead = (deadline - latest_source).total_seconds() / 60.0
+            source_leads.append(lead)
+            if lead >= fwd.MIN_LEAD_MINUTES:
+                lead_ge3_at_source += 1
+
+        try:
+            venue = str(entries[0].get("venue") or "").zfill(2)
+            base = fwd._distribution(entries, venue, 0.0)
+            course = fwd._distribution(entries, venue, fwd.FIXED_COEF)
+            if (
+                len(base) != 120
+                or len(course) != 120
+                or abs(sum(base.values()) - 1.0) > 1e-10
+                or abs(sum(course.values()) - 1.0) > 1e-10
+            ):
+                raise RuntimeError("invalid distribution")
+            deltas.append(max(abs(base[t] - course[t]) for t in fwd.TICKETS))
+            distribution_ok += 1
+        except Exception:
+            degenerate_or_distribution_error += 1
+
+    max_delta = max(deltas) if deltas else 0.0
+    median_delta = median(deltas) if deltas else 0.0
+    min_source_lead = min(source_leads) if source_leads else 0.0
+    median_source_lead = median(source_leads) if source_leads else 0.0
+
+    print(f"RACER_COURSE_PROD_READY_DATE={fwd.TARGET_DATE}", flush=True)
+    print(
+        f"RACER_COURSE_PROD_READY_COVERAGE=races:{total_races} full6_cards:{full6_cards} "
+        f"source_safe_full6:{source_full6} distribution_ok:{distribution_ok} "
+        f"lead_ge3_at_source:{lead_ge3_at_source}",
+        flush=True,
+    )
+    print(
+        f"RACER_COURSE_PROD_READY_SKIPS=invalid_card:{invalid_card} deadline_missing:{deadline_missing} "
+        f"source_not_safe:{source_not_safe} distribution_error:{degenerate_or_distribution_error}",
+        flush=True,
+    )
+    print(
+        f"RACER_COURSE_PROD_READY_SOURCE_LEAD_MINUTES=min:{min_source_lead:.2f} median:{median_source_lead:.2f}",
+        flush=True,
+    )
+    print(
+        f"RACER_COURSE_PROD_READY_PROB_CHANGE=max_abs_median:{median_delta:.10f} max_abs_max:{max_delta:.10f}",
+        flush=True,
+    )
+    print("RACER_COURSE_PROD_READY_POLICY=FAIL_OPEN_TO_CURRENT_V24_IF_FEATURE_INPUT_NOT_SAFE", flush=True)
+    print("RACER_COURSE_PROD_READY_PROMOTION=BLOCK_MANUAL_REVIEW_ONLY", flush=True)
+    print("RACER_COURSE_PROD_READY_RESULT=PASS_READ_ONLY", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(
+            f"RACER_COURSE_PROD_READY_ERROR={type(exc).__name__}:{str(exc).replace(chr(10),' ')[:700]}",
+            flush=True,
+        )
+        raise
