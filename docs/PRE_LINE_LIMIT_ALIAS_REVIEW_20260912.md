@@ -2,10 +2,41 @@
 
 Research-only note. No Production configuration or runtime behavior is changed by this branch.
 
+## 1. PRE-specific limit alias gap
+
 Read-only Railway config inspection shows `cron-window-morning`, `cron-window-day`, and `cron-window-night` expose `PRE_DAILY_LINE_LIMIT`, while current `v24_pre_candidate_notifier_pg.py` reads `DAILY_LINE_LIMIT` (default `3`) and current `run_pre_window_pg.py` does not map the PRE-specific variable to that legacy name.
 
 Therefore the configured `PRE_DAILY_LINE_LIMIT` value is not consumed by the current non-deduped PRE path. The effective PRE daily line limit falls back to `DAILY_LINE_LIMIT` if separately supplied, otherwise `3`.
 
-A safe correction should be reviewed separately, remain PRE-only, preserve the monthly limit, not alter FINAL notification limits, and add explicit observability/tests before any Production wiring.
+The pure contract in this Draft freezes only a proposed future precedence: `PRE_DAILY_LINE_LIMIT` -> legacy `DAILY_LINE_LIMIT` -> default `3`. Invalid/nonpositive configured values fail closed.
 
-Gate: `CONFIG_ALIAS_GAP_CONFIRMED / EFFECTIVE_PRE_DEFAULT_3_UNLESS_GENERIC_SET / FINAL_PATH_UNCHANGED / NO_PRODUCTION_CHANGE`.
+## 2. Current daily counter is not PRE-specific
+
+The current v24 PRE `_count_sent_notifications()` query counts every `v2_line_notifications` row with `status='sent'` for the date/month. It does not filter `notification_type='push_pre_candidate'`.
+
+That is conservative for LINE capacity because other successful notification types can consume the PRE guard, but it does not implement a truly independent PRE quota. In particular, a FINAL/report notification sent earlier the same day may make the PRE guard stop sooner than a PRE-only policy would.
+
+This Draft does **not** choose or change that policy. Any future runtime change must explicitly decide whether PRE quota accounting should remain global/conservative or become PRE-type-specific.
+
+## 3. Overlapping PRE windows and dormant dedupe
+
+The configured PRE windows overlap: morning is 08:30–10:15 and day is 09:45–15:00. Current natural logs show `PRE_NOTIFICATION_DEDUPE_ENABLED=False`, and the three PRE Railway services do not expose that variable, so the existing `run_pre_window_deduped_pg.py` wrapper is dormant.
+
+The base v24 notifier has no ticket-level duplicate suppression. Therefore an unchanged candidate in the 09:45–10:15 overlap can in principle be selected again in the later day window, subject to the existing global daily/monthly guards.
+
+A dormant dedupe implementation already exists in main with concurrency-safe per-ticket claims, message-level dedupe, historical sent-row backfill, retryable failed/stale claims, and PostgreSQL/safety tests. Enabling it is a separate Production configuration/schema behavior decision and is **not** authorized by this research note.
+
+## 4. PRE vs FINAL are separate stages
+
+FINAL notification dedupe intentionally ignores PRE candidate notices. A PRE candidate notice followed by a later FINAL BUY notice for the same race/ticket is therefore stage-specific behavior, not an accidental same-stage duplicate. This review does not propose merging those stages.
+
+## Safe next review
+
+Before any Production change, review these independently:
+
+- the intended numeric value of `PRE_DAILY_LINE_LIMIT`;
+- whether PRE quota accounting should count only PRE messages or all sent LINE notifications;
+- whether to enable the already-tested PRE ticket-level dedupe wrapper for overlap/retry protection;
+- observability showing the effective PRE limit, its source variable, and dedupe state in natural logs.
+
+Gate: `CONFIG_ALIAS_GAP_CONFIRMED / GLOBAL_COUNTER_SCOPE_CONFIRMED / OVERLAP_DUPLICATE_PATH_POSSIBLE_WITH_DEDUPE_DISABLED / EXISTING_DEDUPE_WRAPPER_REVIEWABLE / FINAL_STAGE_SEPARATE / NO_PRODUCTION_CHANGE`.
