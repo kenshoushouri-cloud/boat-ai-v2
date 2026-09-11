@@ -85,6 +85,28 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
         self.assertEqual(row.course_z[idx], 0.0)
         self.assertEqual(row.adjusted_raw[idx], row.base_raw[idx])
 
+    def test_zero_variance_course_values_keep_all_lanes_at_base(self) -> None:
+        evidence = {
+            lane: self.evidence(lane, 50.0)
+            for lane in range(1, 7)
+        }
+        payload = build_shadow_payload(
+            race_id="20260912_01_01",
+            race_date=self.race_date,
+            base_raw=self.base,
+            expected_racers=self.racers,
+            evidence_by_lane=evidence,
+        )
+        row = prepare_shadow_row(
+            payload=payload,
+            observed_at=self.observed,
+            deadline_at=self.deadline,
+        )
+        self.assertTrue(all(row.usable_mask))
+        self.assertTrue(all(value == 0.0 for value in row.course_z))
+        self.assertEqual(row.adjusted_raw, row.base_raw)
+        self.assertEqual(row.adjusted_trifecta, row.base_trifecta)
+
     def test_exact_0815_is_allowed(self) -> None:
         row = prepare_shadow_row(
             payload=self.payload(),
