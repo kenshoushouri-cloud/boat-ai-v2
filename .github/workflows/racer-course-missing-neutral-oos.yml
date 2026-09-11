@@ -43,7 +43,7 @@ jobs:
           assert 'bootstrap_n = 5000' in p and 'bootstrap_seed = 20260911' in p
           assert 'missing/unusable lanes receive course z = **0**' in d
           assert 'no coefficient search' in d
-          assert 'v2_odds' not in p and 'payout' not in p
+          assert 'v2_odds' not in p and 'v2_payout' not in p and 'payback' not in p
           assert not re.search(r'\binsert\s+into\b', p)
           assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', p)
           assert not re.search(r'\bdelete\s+from\b', p)
