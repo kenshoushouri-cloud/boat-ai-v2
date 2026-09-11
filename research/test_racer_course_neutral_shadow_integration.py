@@ -13,7 +13,11 @@ from research.racer_course_neutral_shadow_integration import (
     CourseNeutralShadowIntegrationError,
     prepare_shadow_row,
 )
-from research.racer_course_neutral_shadow_payload import build_shadow_payload
+from research.racer_course_neutral_shadow_payload import (
+    CANONICAL_TICKETS,
+    build_shadow_payload,
+    trifecta_probabilities,
+)
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -63,6 +67,8 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
         self.assertEqual(row.immutable_key, ("20260912_01_01", "course-neutral-missing-v1"))
         self.assertEqual(row.write_policy, WRITE_POLICY)
         self.assertEqual(row.ticket_order_version, TICKET_ORDER_VERSION)
+        self.assertEqual(row.course_coef, 0.50)
+        self.assertEqual(row.prob_temp, 2.20)
         self.assertEqual(len(row.base_trifecta), 120)
         self.assertEqual(len(row.adjusted_trifecta), 120)
         self.assertAlmostEqual(sum(row.base_trifecta), 1.0, places=9)
@@ -102,6 +108,27 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
                 payload=self.payload(), observed_at=self.deadline, deadline_at=self.deadline
             )
 
+    def test_tampered_course_coefficient_fails_closed(self) -> None:
+        bad = replace(self.payload(), course_coef=0.60)
+        with self.assertRaisesRegex(CourseNeutralShadowIntegrationError, "frozen 0.50"):
+            prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
+
+    def test_duplicate_racer_identity_fails_closed(self) -> None:
+        payload = self.payload()
+        racers = list(payload.racer_numbers)
+        racers[5] = racers[0]
+        bad = replace(payload, racer_numbers=tuple(racers))
+        with self.assertRaisesRegex(CourseNeutralShadowIntegrationError, "must be unique"):
+            prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
+
+    def test_tampered_course_z_fails_closed(self) -> None:
+        payload = self.payload()
+        course_z = list(payload.course_z)
+        course_z[0] += 0.1
+        bad = replace(payload, course_z=tuple(course_z))
+        with self.assertRaisesRegex(CourseNeutralShadowIntegrationError, "course_z does not match"):
+            prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
+
     def test_tampered_missing_lane_adjustment_fails_closed(self) -> None:
         payload = self.payload(missing_lane=4)
         adjusted = list(payload.adjusted_raw)
@@ -110,12 +137,38 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
         with self.assertRaises(CourseNeutralShadowIntegrationError):
             prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
 
+    def test_adjusted_raw_tamper_fails_even_with_matching_recomputed_probabilities(self) -> None:
+        payload = self.payload()
+        adjusted = list(payload.adjusted_raw)
+        adjusted[0] += 0.1
+        recomputed = trifecta_probabilities(
+            {lane: adjusted[lane - 1] for lane in range(1, 7)}
+        )
+        bad = replace(
+            payload,
+            adjusted_raw=tuple(adjusted),
+            adjusted_trifecta=tuple(recomputed[ticket] for ticket in CANONICAL_TICKETS),
+        )
+        with self.assertRaisesRegex(CourseNeutralShadowIntegrationError, "frozen Course 0.50"):
+            prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
+
     def test_probability_vector_tamper_fails_closed(self) -> None:
         payload = self.payload()
         probs = list(payload.adjusted_trifecta)
         probs[0] += 0.05
         bad = replace(payload, adjusted_trifecta=tuple(probs))
         with self.assertRaises(CourseNeutralShadowIntegrationError):
+            prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
+
+    def test_probability_permutation_tamper_fails_even_if_sum_stays_one(self) -> None:
+        payload = self.payload()
+        probs = list(payload.adjusted_trifecta)
+        probs[0], probs[1] = probs[1], probs[0]
+        bad = replace(payload, adjusted_trifecta=tuple(probs))
+        with self.assertRaisesRegex(
+            CourseNeutralShadowIntegrationError,
+            "does not match frozen v24 probability transform",
+        ):
             prepare_shadow_row(payload=bad, observed_at=self.observed, deadline_at=self.deadline)
 
 
