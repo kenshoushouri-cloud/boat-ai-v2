@@ -1,0 +1,42 @@
+name: Racer Course Required Coverage Contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/racer_course_required_coverage_audit.py'
+      - 'tests/test_racer_course_required_coverage_audit.py'
+      - '.github/workflows/racer-course-required-coverage-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m py_compile .github/scripts/racer_course_required_coverage_audit.py tests/test_racer_course_required_coverage_audit.py
+      - name: Synthetic contract tests
+        run: python -m unittest tests.test_racer_course_required_coverage_audit -v
+      - name: Confirm read-only contract markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('.github/scripts/racer_course_required_coverage_audit.py').read_text(encoding='utf-8').lower()
+          required = ('set transaction read only', 'conn.rollback()', 'no results')
+          missing = [token for token in required if token not in text]
+          forbidden = ('insert into', 'update v2_', 'delete from', 'line_channel_access_token', 'purchase')
+          found = [token for token in forbidden if token in text]
+          if missing:
+              raise SystemExit(f'missing read-only markers: {missing}')
+          if found:
+              raise SystemExit(f'forbidden mutation markers: {found}')
+          print('RACER_COURSE_REQUIRED_COVERAGE_CONTRACT=PASS')
+          PY
