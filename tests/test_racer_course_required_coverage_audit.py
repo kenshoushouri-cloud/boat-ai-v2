@@ -55,15 +55,20 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["missing_or_invalid_top3"], 1)
 
-    def test_post_0815_snapshot_blocks(self) -> None:
+    def test_exact_0815_snapshot_is_allowed(self) -> None:
         rows = self.race()
         rows[0]["snapshot_created_at"] = datetime(2026, 9, 11, 8, 15, tzinfo=JST)
         result = classify_required_coverage(rows, self.race_date)
-        self.assertEqual(result["reasons"]["created_at_or_after_0815"], 1)
+        self.assertEqual(result["ready_races"], 1)
+
+    def test_after_0815_snapshot_blocks(self) -> None:
+        rows = self.race()
+        rows[0]["snapshot_created_at"] = datetime(2026, 9, 11, 8, 15, 0, 1, tzinfo=JST)
+        result = classify_required_coverage(rows, self.race_date)
+        self.assertEqual(result["reasons"]["created_after_0815"], 1)
 
     def test_post_deadline_snapshot_blocks(self) -> None:
         rows = self.race()
-        rows[0]["snapshot_created_at"] = self.deadline + timedelta(seconds=1)
         # deadline reason is checked after fixed-cutoff reason; use an earlier race deadline.
         rows[0]["deadline_at"] = datetime(2026, 9, 11, 7, 20, tzinfo=JST)
         rows[0]["snapshot_created_at"] = datetime(2026, 9, 11, 7, 30, tzinfo=JST)
