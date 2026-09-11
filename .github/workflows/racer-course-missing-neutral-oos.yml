@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   read-only-oos:
+    # Historical evidence is frozen at the already-successful research head.
+    # Later PR synchronizations must not repeatedly query Production DB.
+    if: github.event.pull_request.head.sha == 'cbc2c00c4459daf5928d5d762cb7864e266f40f9'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
