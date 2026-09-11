@@ -1,0 +1,40 @@
+name: Racer Course Neutral Forward Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/racer_course_neutral_forward_contract.py'
+      - 'research/test_racer_course_neutral_forward_contract.py'
+      - '.github/workflows/racer-course-neutral-forward-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m py_compile research/racer_course_neutral_forward_contract.py research/test_racer_course_neutral_forward_contract.py
+      - name: Fixed-rule contract tests
+        run: python -m unittest research.test_racer_course_neutral_forward_contract -v
+      - name: Confirm pure research isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('research/racer_course_neutral_forward_contract.py').read_text(encoding='utf-8').lower()
+          assert 'course_coef = 0.50' in p
+          assert 'course_cutoff = time(8, 15)' in p
+          assert 'missing/unusable lanes always receive z=0' in p
+          forbidden=('psycopg','requests','urllib','railway','line_channel_access_token','database_url','insert into','update v2_','delete from','purchase_action')
+          found=[x for x in forbidden if x in p]
+          if found: raise SystemExit(f'forbidden runtime markers: {found}')
+          print('COURSE_NEUTRAL_FORWARD_CONTRACT=PASS')
+          PY
