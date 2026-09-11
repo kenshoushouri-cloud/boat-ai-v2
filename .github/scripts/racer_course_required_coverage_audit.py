@@ -64,7 +64,6 @@ def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) 
                 if created_at.tzinfo is None or created_at.utcoffset() is None:
                     race_reason = "naive_created_at"
                     break
-                # Established Course contract allows snapshots no later than 08:15 JST.
                 if created_at.astimezone(JST) > cutoff:
                     race_reason = "created_after_0815"
                     break
@@ -131,6 +130,25 @@ def _load_rows(race_date: date) -> list[dict[str, Any]]:
     return rows
 
 
+def _print_result(prefix: str, race_date: date, result: dict[str, Any]) -> None:
+    total = result["total_races"]
+    ready = result["ready_races"]
+    pct = (100.0 * ready / total) if total else 0.0
+    print(f"{prefix}_DATE={race_date.isoformat()}", flush=True)
+    print(
+        f"{prefix}_RACES=target:{total} ready:{ready} blocked:{result['blocked_races']} ready_pct:{pct:.2f}",
+        flush=True,
+    )
+    print(
+        f"{prefix}_LANES=target:{result['total_lanes']} ready:{result['ready_lanes']}",
+        flush=True,
+    )
+    for reason, count in sorted(result["reasons"].items()):
+        print(f"{prefix}_REASON={reason}:{count}", flush=True)
+    for race_id, reason in result["blocked"]:
+        print(f"{prefix}_BLOCKED=race_id:{race_id} reason:{reason}", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--race-date", required=True, help="YYYY-MM-DD")
@@ -138,24 +156,19 @@ def main() -> None:
     race_date = date.fromisoformat(args.race_date)
 
     result = classify_required_coverage(_load_rows(race_date), race_date)
-    total = result["total_races"]
-    ready = result["ready_races"]
-    pct = (100.0 * ready / total) if total else 0.0
     print("RACER_COURSE_REQUIRED_MODE=read_only_exact_racer_course_no_results", flush=True)
-    print(f"RACER_COURSE_REQUIRED_DATE={race_date.isoformat()}", flush=True)
-    print(
-        f"RACER_COURSE_REQUIRED_RACES=target:{total} ready:{ready} blocked:{result['blocked_races']} ready_pct:{pct:.2f}",
-        flush=True,
-    )
-    print(
-        f"RACER_COURSE_REQUIRED_LANES=target:{result['total_lanes']} ready:{result['ready_lanes']}",
-        flush=True,
-    )
-    for reason, count in sorted(result["reasons"].items()):
-        print(f"RACER_COURSE_REQUIRED_REASON={reason}:{count}", flush=True)
-    for race_id, reason in result["blocked"]:
-        print(f"RACER_COURSE_REQUIRED_BLOCKED=race_id:{race_id} reason:{reason}", flush=True)
+    _print_result("RACER_COURSE_REQUIRED", race_date, result)
     print("RACER_COURSE_REQUIRED_RESULT=PASS_READ_ONLY", flush=True)
+
+    # One-shot 2026-09-12 natural-run probe. The existing workflow still
+    # reproduces 2026-09-11 and its fixed assertions; this adds a second
+    # SELECT-only/rollback observation without changing the workflow or DB.
+    if race_date == date(2026, 9, 11):
+        probe_date = date(2026, 9, 12)
+        probe = classify_required_coverage(_load_rows(probe_date), probe_date)
+        print("RACER_COURSE_REQUIRED_PROBE_MODE=read_only_exact_racer_course_no_results", flush=True)
+        _print_result("RACER_COURSE_REQUIRED_PROBE", probe_date, probe)
+        print("RACER_COURSE_REQUIRED_PROBE_RESULT=PASS_READ_ONLY", flush=True)
 
 
 if __name__ == "__main__":
