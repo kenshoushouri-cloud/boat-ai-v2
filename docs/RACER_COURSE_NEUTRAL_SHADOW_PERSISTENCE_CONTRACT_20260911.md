@@ -11,7 +11,7 @@ This document defines the persistence boundary for a future prospective Racer Co
 - Probability temperature: fixed `2.20`.
 - Course evidence: exact `(race_date, racer_number, course=lane)` only.
 - timing: evidence `created_at <= 08:15 JST` and strictly before race deadline.
-- missing/unusable lane: `course_z=0`; BASE raw must remain bit-for-bit equal at that lane.
+- missing/unusable lane: `course_z=0`; BASE raw must remain exactly unchanged at that lane before persistence.
 - fewer than two usable Course observations or near-zero observed SD: no Course adjustment.
 - no later snapshot repair, subgroup tuning, odds, payout, ROI or result data in the forward write path.
 
@@ -48,12 +48,29 @@ One prospective row per race should retain enough evidence to independently audi
 - BASE raw six-vector;
 - Course z six-vector;
 - adjusted raw six-vector;
-- canonical 120-ticket order;
+- compact ticket-order version `canonical-permutations-1to6-v1`;
 - BASE trifecta 120-vector;
 - adjusted trifecta 120-vector;
 - timezone-aware `observed_at` representing the prospective decision observation time.
 
+The 120 ticket strings themselves should **not** be stored on every row. Their order is deterministic from the ticket-order version. This avoids repeating the same labels for every race.
+
 The persistence adapter must reject malformed vectors, non-finite values, non-normalized probability vectors, post-08:15 observations, at/after-deadline observations, and any unavailable lane whose Course z is non-zero or whose adjusted raw differs from BASE.
+
+## Compact storage direction
+
+If a real schema is later approved, use typed arrays rather than JSONB for the fixed-size numeric vectors. A compact direction is:
+
+- `integer[]` racer numbers;
+- `boolean[]` usable mask;
+- `real[]` Course Top3 / BASE raw / Course z / adjusted raw;
+- compact reason codes or a six-element reason representation;
+- `real[]` BASE trifecta / adjusted trifecta, each cardinality 120;
+- scalar version/timing metadata.
+
+A rough payload-only estimate for this compact layout is about **1.37 KB per race before PostgreSQL row/index overhead**. At 144 races/day this is about **0.19 MB/day**, **5.6 MB/30 days**, or **68.5 MB/year** before DB overhead/indexes. Even allowing substantial row/index overhead, this is much smaller than storing repeated ticket labels or JSON documents.
+
+This estimate is planning evidence only. Before creating any schema, actual PostgreSQL type/row-size measurements and current volume headroom must be reviewed again.
 
 ## Integration boundary
 
@@ -88,4 +105,4 @@ The future shadow writer must not:
 
 Historical/post-study evidence and pure contracts support an implementation review only.
 
-`COURSE_NEUTRAL_SHADOW_PERSISTENCE_CONTRACT_DEFINED / REAL_WRITE_PATH_NOT_AUTHORIZED / BLOCK_NO_PRODUCTION_CHANGE`
+`COURSE_NEUTRAL_SHADOW_PERSISTENCE_CONTRACT_DEFINED / COMPACT_STORAGE_ESTIMATED / REAL_WRITE_PATH_NOT_AUTHORIZED / BLOCK_NO_PRODUCTION_CHANGE`
