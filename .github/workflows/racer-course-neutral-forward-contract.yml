@@ -28,13 +28,29 @@ jobs:
       - name: Confirm pure research isolation
         run: |
           python - <<'PY'
+          import ast
+          import re
           from pathlib import Path
-          p=Path('research/racer_course_neutral_forward_contract.py').read_text(encoding='utf-8').lower()
-          assert 'course_coef = 0.50' in p
-          assert 'course_cutoff = time(8, 15)' in p
-          assert 'missing/unusable lanes always receive z=0' in p
-          forbidden=('psycopg','requests','urllib','railway','line_channel_access_token','database_url','insert into','update v2_','delete from','purchase_action')
-          found=[x for x in forbidden if x in p]
+          path=Path('research/racer_course_neutral_forward_contract.py')
+          source=path.read_text(encoding='utf-8')
+          lower=source.lower()
+          tree=ast.parse(source)
+          imported=set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+          assert 'course_coef = 0.50' in lower
+          assert 'course_cutoff = time(8, 15)' in lower
+          assert 'missing/unusable lanes always receive z=0' in lower
+          forbidden_imports={'psycopg','requests','urllib','sqlalchemy'}
+          bad_imports=sorted(imported & forbidden_imports)
+          if bad_imports: raise SystemExit(f'forbidden runtime imports: {bad_imports}')
+          forbidden_markers=('line_channel_access_token','database_url','purchase_action')
+          found=[x for x in forbidden_markers if x in lower]
           if found: raise SystemExit(f'forbidden runtime markers: {found}')
+          if re.search(r'\binsert\s+into\b|\bupdate\s+[a-z_][a-z0-9_]*\s+set\b|\bdelete\s+from\b', lower):
+              raise SystemExit('forbidden SQL mutation marker')
           print('COURSE_NEUTRAL_FORWARD_CONTRACT=PASS')
           PY
