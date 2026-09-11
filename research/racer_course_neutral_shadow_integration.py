@@ -12,10 +12,13 @@ from datetime import datetime, time
 import math
 from zoneinfo import ZoneInfo
 
+from research.racer_course_neutral_forward_contract import COURSE_COEF
 from research.racer_course_neutral_shadow_payload import (
+    CANONICAL_TICKETS,
     CourseNeutralShadowPayload,
     SHADOW_VERSION,
     V24_PROB_TEMP,
+    trifecta_probabilities,
 )
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -74,6 +77,46 @@ def _validate_probability_vector(values: tuple[float, ...], *, name: str) -> Non
         raise CourseNeutralShadowIntegrationError(f"{name} must sum to one")
 
 
+def _validate_probability_matches_raw(
+    values: tuple[float, ...],
+    raw_values: tuple[float, ...],
+    *,
+    name: str,
+) -> None:
+    expected = trifecta_probabilities(
+        {lane: float(raw_values[lane - 1]) for lane in range(1, 7)}
+    )
+    for index, ticket in enumerate(CANONICAL_TICKETS):
+        if abs(float(values[index]) - float(expected[ticket])) > 1e-12:
+            raise CourseNeutralShadowIntegrationError(
+                f"{name} does not match frozen v24 probability transform"
+            )
+
+
+def _expected_course_z(
+    usable_mask: tuple[bool, ...],
+    course_top3: tuple[float | None, ...],
+) -> tuple[float, ...]:
+    observed = [
+        float(course_top3[i])
+        for i in range(6)
+        if usable_mask[i] and course_top3[i] is not None
+    ]
+    expected = [0.0] * 6
+    if len(observed) < 2:
+        return tuple(expected)
+    mean = sum(observed) / len(observed)
+    sd = math.sqrt(sum((x - mean) ** 2 for x in observed) / len(observed))
+    if sd < 1e-12:
+        return tuple(expected)
+    for i in range(6):
+        if usable_mask[i]:
+            value = course_top3[i]
+            assert value is not None
+            expected[i] = (float(value) - mean) / sd
+    return tuple(expected)
+
+
 def prepare_shadow_row(
     *,
     payload: CourseNeutralShadowPayload,
@@ -89,6 +132,14 @@ def prepare_shadow_row(
         raise CourseNeutralShadowIntegrationError("unexpected shadow version")
     if payload.base_version != "v24":
         raise CourseNeutralShadowIntegrationError("unexpected base version")
+    try:
+        course_coef = float(payload.course_coef)
+    except (TypeError, ValueError) as exc:
+        raise CourseNeutralShadowIntegrationError("course_coef must be numeric") from exc
+    if not math.isfinite(course_coef) or abs(course_coef - COURSE_COEF) > 1e-12:
+        raise CourseNeutralShadowIntegrationError("course_coef must equal frozen 0.50")
+    if abs(float(V24_PROB_TEMP) - 2.20) > 1e-12:
+        raise CourseNeutralShadowIntegrationError("v24 probability temperature must remain 2.20")
     if not payload.race_id.strip():
         raise CourseNeutralShadowIntegrationError("race_id is required")
     if not _aware(observed_at) or not _aware(deadline_at):
@@ -106,6 +157,8 @@ def prepare_shadow_row(
 
     if len(payload.racer_numbers) != 6 or any(int(x) <= 0 for x in payload.racer_numbers):
         raise CourseNeutralShadowIntegrationError("racer_numbers must contain six positive ids")
+    if len(set(int(x) for x in payload.racer_numbers)) != 6:
+        raise CourseNeutralShadowIntegrationError("racer_numbers must be unique")
     if len(payload.usable_mask) != 6:
         raise CourseNeutralShadowIntegrationError("usable_mask must have six values")
     if len(payload.course_top3) != 6 or len(payload.unavailable_reason) != 6:
@@ -128,17 +181,34 @@ def prepare_shadow_row(
                 raise CourseNeutralShadowIntegrationError("unusable lane must not expose Course Top3")
             if not payload.unavailable_reason[i]:
                 raise CourseNeutralShadowIntegrationError("unusable lane requires a reason")
-            if abs(float(payload.course_z[i])) > 1e-12:
-                raise CourseNeutralShadowIntegrationError("unusable lane must have Course z=0")
-            if abs(float(payload.adjusted_raw[i]) - float(payload.base_raw[i])) > 1e-12:
+
+    expected_z = _expected_course_z(payload.usable_mask, payload.course_top3)
+    for i in range(6):
+        if abs(float(payload.course_z[i]) - expected_z[i]) > 1e-12:
+            raise CourseNeutralShadowIntegrationError("course_z does not match usable Course Top3")
+        expected_adjusted = float(payload.base_raw[i]) + COURSE_COEF * expected_z[i]
+        if abs(float(payload.adjusted_raw[i]) - expected_adjusted) > 1e-12:
+            if not payload.usable_mask[i]:
                 raise CourseNeutralShadowIntegrationError("unusable lane must preserve BASE raw exactly")
+            raise CourseNeutralShadowIntegrationError("adjusted_raw does not match frozen Course 0.50 rule")
+
+    _validate_probability_matches_raw(
+        payload.base_trifecta,
+        payload.base_raw,
+        name="base_trifecta",
+    )
+    _validate_probability_matches_raw(
+        payload.adjusted_trifecta,
+        payload.adjusted_raw,
+        name="adjusted_trifecta",
+    )
 
     return CourseNeutralShadowRow(
         race_id=payload.race_id,
         race_date=payload.race_date,
         shadow_version=payload.shadow_version,
         base_version=payload.base_version,
-        course_coef=float(payload.course_coef),
+        course_coef=COURSE_COEF,
         prob_temp=V24_PROB_TEMP,
         racer_numbers=tuple(int(x) for x in payload.racer_numbers),
         usable_mask=tuple(bool(x) for x in payload.usable_mask),
