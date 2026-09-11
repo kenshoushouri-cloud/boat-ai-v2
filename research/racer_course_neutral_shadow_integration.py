@@ -13,7 +13,6 @@ import math
 from zoneinfo import ZoneInfo
 
 from research.racer_course_neutral_shadow_payload import (
-    CANONICAL_TICKETS,
     CourseNeutralShadowPayload,
     SHADOW_VERSION,
     V24_PROB_TEMP,
@@ -22,6 +21,7 @@ from research.racer_course_neutral_shadow_payload import (
 JST = ZoneInfo("Asia/Tokyo")
 SHADOW_TABLE_NAME = "v2_racer_course_neutral_shadow"
 WRITE_POLICY = "FIRST_WRITE_WINS_DO_NOTHING"
+TICKET_ORDER_VERSION = "canonical-permutations-1to6-v1"
 FORWARD_CUTOFF = time(8, 15)
 
 
@@ -44,7 +44,7 @@ class CourseNeutralShadowRow:
     base_raw: tuple[float, ...]
     course_z: tuple[float, ...]
     adjusted_raw: tuple[float, ...]
-    ticket_order: tuple[str, ...]
+    ticket_order_version: str
     base_trifecta: tuple[float, ...]
     adjusted_trifecta: tuple[float, ...]
     observed_at: datetime
@@ -147,7 +147,7 @@ def prepare_shadow_row(
         base_raw=payload.base_raw,
         course_z=payload.course_z,
         adjusted_raw=payload.adjusted_raw,
-        ticket_order=CANONICAL_TICKETS,
+        ticket_order_version=TICKET_ORDER_VERSION,
         base_trifecta=payload.base_trifecta,
         adjusted_trifecta=payload.adjusted_trifecta,
         observed_at=observed_jst,
