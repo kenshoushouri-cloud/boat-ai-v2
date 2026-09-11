@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   read-only-holdout:
+    # Post-study evidence is frozen at the already-successful research head.
+    # Later PR synchronizations must not repeatedly query Production DB.
+    if: github.event.pull_request.head.sha == 'e590ebd62bbb0ad613c09f3a9c07cf9b54b6d736'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
