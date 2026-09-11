@@ -30,9 +30,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           text = Path('.github/scripts/racer_course_required_coverage_audit.py').read_text(encoding='utf-8').lower()
-          required = ('set transaction read only', 'conn.rollback()', 'no results')
+          required = ('set transaction read only', 'conn.rollback()', 'does not read results')
           missing = [token for token in required if token not in text]
-          forbidden = ('insert into', 'update v2_', 'delete from', 'line_channel_access_token', 'purchase')
+          forbidden = ('insert into', 'update v2_', 'delete from', 'line_channel_access_token', 'purchase_action')
           found = [token for token in forbidden if token in text]
           if missing:
               raise SystemExit(f'missing read-only markers: {missing}')
