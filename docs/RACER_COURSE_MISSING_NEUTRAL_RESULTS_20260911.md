@@ -1,8 +1,8 @@
 # Racer Course missing-row neutral fallback — research results 2026-09-11
 
-Status: `SUPPORTS_FORWARD_SHADOW_REVIEW / NO_PRODUCTION_CHANGE`
+Status: `SUPPORTS_FORWARD_SHADOW_REVIEW / PURE_FORWARD_CONTRACT_VALIDATED / NO_PRODUCTION_CHANGE`
 
-This note records two read-only historical evaluations of the fixed Course missing-row neutral rule. It does not authorize Production use.
+This note records two read-only historical evaluations of the fixed Course missing-row neutral rule and the pure forward-shadow contract validation. It does not authorize Production use.
 
 ## Fixed rule
 
@@ -99,6 +99,29 @@ The post-study subset satisfies every predeclared sensitivity condition, so the 
 
 `POSTSTUDY_HOLDOUT_SUPPORTS_FORWARD_SHADOW_REVIEW`.
 
+## Pure forward-shadow contract validation
+
+A runtime-independent contract is implemented in:
+- `research/racer_course_neutral_forward_contract.py`
+- `research/test_racer_course_neutral_forward_contract.py`
+
+It has no DB/network/Railway/LINE/purchase dependency. The coefficient is a fixed module constant `COURSE_COEF=0.50`; evidence binds exact racer, lane/course, race date, Top3, source creation time and race deadline. Any missing or invalid evidence is neutralized to z=0 for that lane rather than repaired.
+
+The contract explicitly tests:
+- coefficient fixed at 0.50;
+- a missing lane leaves BASE raw strength exactly unchanged;
+- safe observed z-scores are centered;
+- exact 08:15 JST evidence remains eligible;
+- post-08:15 evidence is neutralized;
+- racer mismatch is neutralized;
+- course/lane mismatch is neutralized;
+- one usable lane leaves the entire race at BASE;
+- malformed BASE input fails closed.
+
+`Racer Course Neutral Forward Contract` run `34561483593`: **SUCCESS**, 9/9 tests PASS and structural research-isolation check PASS.
+
+The prospective integration design is frozen separately in `docs/RACER_COURSE_NEUTRAL_FORWARD_SHADOW_PLAN_20260911.md`. It requires a separate immutable shadow path, no Production probability overwrite, no LINE/purchase dependency, runtime timing guards, first-write-wins evidence, and a later prospective evaluation gate before any Production promotion review.
+
 ## Decision boundary
 
 The result supports implementing the fixed missing-row neutral rule in a **separate forward-shadow path only**. It does not authorize:
@@ -107,6 +130,7 @@ The result supports implementing the fixed missing-row neutral rule in a **separ
 - Opponent Pressure promotion;
 - BUY/WATCH/SKIP or LINE changes;
 - Railway Production deployment/config changes;
+- Production shadow table creation without separate approval;
 - automatic purchase.
 
-A forward-shadow implementation must preserve the same fixed rule and collect natural prospective evidence before any Production promotion review.
+A Forward shadow implementation must preserve the same fixed rule and collect natural prospective evidence before any Production promotion review.
