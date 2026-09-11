@@ -8,6 +8,7 @@ import unittest
 from research.racer_course_neutral_forward_contract import CourseLaneEvidence
 from research.racer_course_neutral_shadow_integration import (
     SHADOW_TABLE_NAME,
+    TICKET_ORDER_VERSION,
     WRITE_POLICY,
     CourseNeutralShadowIntegrationError,
     prepare_shadow_row,
@@ -53,6 +54,7 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
     def test_persistence_namespace_and_policy_are_fixed(self) -> None:
         self.assertEqual(SHADOW_TABLE_NAME, "v2_racer_course_neutral_shadow")
         self.assertEqual(WRITE_POLICY, "FIRST_WRITE_WINS_DO_NOTHING")
+        self.assertEqual(TICKET_ORDER_VERSION, "canonical-permutations-1to6-v1")
 
     def test_valid_payload_becomes_immutable_row_contract(self) -> None:
         row = prepare_shadow_row(
@@ -60,7 +62,7 @@ class CourseNeutralShadowIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(row.immutable_key, ("20260912_01_01", "course-neutral-missing-v1"))
         self.assertEqual(row.write_policy, WRITE_POLICY)
-        self.assertEqual(len(row.ticket_order), 120)
+        self.assertEqual(row.ticket_order_version, TICKET_ORDER_VERSION)
         self.assertEqual(len(row.base_trifecta), 120)
         self.assertEqual(len(row.adjusted_trifecta), 120)
         self.assertAlmostEqual(sum(row.base_trifecta), 1.0, places=9)
