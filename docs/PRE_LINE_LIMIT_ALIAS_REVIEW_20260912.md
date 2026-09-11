@@ -18,7 +18,15 @@ That is conservative for LINE capacity because other successful notification typ
 
 This Draft does **not** choose or change that policy. Any future runtime change must explicitly decide whether PRE quota accounting should remain global/conservative or become PRE-type-specific.
 
-## 3. Overlapping PRE windows and dormant dedupe
+## 3. DRY_RUN rows also consume the current counter
+
+In the base v24 PRE path, `_send_line_message()` returns synthetic HTTP 200 during `DRY_RUN`, after which the caller records the notification row with `status='sent'`. `_save_pre_notification()` marks `line_to='DRY_RUN'` and preserves `raw.dry_run=true`, but `_count_sent_notifications()` does not exclude those rows.
+
+Therefore a same-day PRE dry-run against the Production database can consume the current daily/monthly guard even though no external LINE API call occurred. This fails safe against over-sending, but can suppress a later legitimate live PRE notification. The existing ticket-level dedupe identity correctly distinguishes dry-run from live; quota accounting currently does not.
+
+No runtime change is made here. Any later quota-policy change must explicitly decide whether dry-run rows count toward the operational LINE quota.
+
+## 4. Overlapping PRE windows and dormant dedupe
 
 The configured PRE windows overlap: morning is 08:30–10:15 and day is 09:45–15:00. Current natural logs show `PRE_NOTIFICATION_DEDUPE_ENABLED=False`, and the three PRE Railway services do not expose that variable, so the existing `run_pre_window_deduped_pg.py` wrapper is dormant.
 
@@ -26,7 +34,7 @@ The base v24 notifier has no ticket-level duplicate suppression. Therefore an un
 
 A dormant dedupe implementation already exists in main with concurrency-safe per-ticket claims, message-level dedupe, historical sent-row backfill, retryable failed/stale claims, and PostgreSQL/safety tests. Enabling it is a separate Production configuration/schema behavior decision and is **not** authorized by this research note.
 
-## 4. PRE vs FINAL are separate stages
+## 5. PRE vs FINAL are separate stages
 
 FINAL notification dedupe intentionally ignores PRE candidate notices. A PRE candidate notice followed by a later FINAL BUY notice for the same race/ticket is therefore stage-specific behavior, not an accidental same-stage duplicate. This review does not propose merging those stages.
 
@@ -36,7 +44,8 @@ Before any Production change, review these independently:
 
 - the intended numeric value of `PRE_DAILY_LINE_LIMIT`;
 - whether PRE quota accounting should count only PRE messages or all sent LINE notifications;
+- whether PRE dry-run rows should be excluded from the operational live-send quota;
 - whether to enable the already-tested PRE ticket-level dedupe wrapper for overlap/retry protection;
-- observability showing the effective PRE limit, its source variable, and dedupe state in natural logs.
+- observability showing the effective PRE limit, its source variable, quota scope, and dedupe state in natural logs.
 
-Gate: `CONFIG_ALIAS_GAP_CONFIRMED / GLOBAL_COUNTER_SCOPE_CONFIRMED / OVERLAP_DUPLICATE_PATH_POSSIBLE_WITH_DEDUPE_DISABLED / EXISTING_DEDUPE_WRAPPER_REVIEWABLE / FINAL_STAGE_SEPARATE / NO_PRODUCTION_CHANGE`.
+Gate: `CONFIG_ALIAS_GAP_CONFIRMED / GLOBAL_COUNTER_SCOPE_CONFIRMED / DRYRUN_SENT_ROWS_COUNT_TOWARD_CURRENT_GUARD / OVERLAP_DUPLICATE_PATH_POSSIBLE_WITH_DEDUPE_DISABLED / EXISTING_DEDUPE_WRAPPER_REVIEWABLE / FINAL_STAGE_SEPARATE / NO_PRODUCTION_CHANGE`.
