@@ -1,0 +1,75 @@
+name: Racer Course Required Coverage Live Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/racer_course_required_coverage_audit.py'
+      - '.github/workflows/racer-course-required-coverage-live-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only isolation
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/racer_course_required_coverage_audit.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('.github/scripts/racer_course_required_coverage_audit.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert 'conn.rollback()' in text
+          assert 'v2_results' not in text and 'v2_odds' not in text
+          assert not re.search(r'\binsert\s+into\b', text)
+          assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', text)
+          assert not re.search(r'\bdelete\s+from\b', text)
+          print('RACER_COURSE_REQUIRED_LIVE_ISOLATION=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Reproduce 2026-09-11 exact required coverage
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_required_coverage_audit.py --race-date 2026-09-11 | tee required-course-audit.txt
+          grep -q '^RACER_COURSE_REQUIRED_RESULT=PASS_READ_ONLY$' required-course-audit.txt
+          grep -q '^RACER_COURSE_REQUIRED_RACES=target:144 ready:117 blocked:27 ready_pct:81.25$' required-course-audit.txt
+          grep -q '^RACER_COURSE_REQUIRED_REASON=missing_required_row:27$' required-course-audit.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json required-course-audit.txt
