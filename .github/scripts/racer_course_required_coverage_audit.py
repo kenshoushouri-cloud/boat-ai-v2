@@ -64,8 +64,9 @@ def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) 
                 if created_at.tzinfo is None or created_at.utcoffset() is None:
                     race_reason = "naive_created_at"
                     break
-                if created_at.astimezone(JST) >= cutoff:
-                    race_reason = "created_at_or_after_0815"
+                # Established Course contract allows snapshots no later than 08:15 JST.
+                if created_at.astimezone(JST) > cutoff:
+                    race_reason = "created_after_0815"
                     break
                 if deadline_at is None:
                     race_reason = "missing_deadline"
