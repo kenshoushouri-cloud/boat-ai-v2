@@ -17,17 +17,20 @@ if str(ROOT) not in sys.path:
 from db_pg import fetch_all
 
 
+# table, date expression, optional read-only join used only to resolve the date.
+# v2_odds_trifecta's own race_date is not a reliable populated key, so its date
+# must be resolved from v2_races exactly as the existing odds inventory does.
 TABLES = (
-    ("v2_odds_trifecta", "race_date"),
-    ("v2_realtime_odds_snapshots", "race_date"),
-    ("v2_realtime_weather_snapshots", "race_date"),
-    ("v2_realtime_exhibition_snapshots", "race_date"),
-    ("v2_realtime_entry_snapshots", "race_date"),
-    ("v2_realtime_race_condition_snapshots", "race_date"),
-    ("v2_realtime_racer_condition_snapshots", "race_date"),
-    ("v2_v24_motor2_forward_shadow", "race_date"),
-    ("v2_racer_course_stats_snapshots", "snapshot_date"),
-    ("v2_opponent_pressure_shadow_v2", "race_date"),
+    ("v2_odds_trifecta", "r.race_date", "join public.v2_races r on r.race_id=t.race_id"),
+    ("v2_realtime_odds_snapshots", "t.race_date", ""),
+    ("v2_realtime_weather_snapshots", "t.race_date", ""),
+    ("v2_realtime_exhibition_snapshots", "t.race_date", ""),
+    ("v2_realtime_entry_snapshots", "t.race_date", ""),
+    ("v2_realtime_race_condition_snapshots", "t.race_date", ""),
+    ("v2_realtime_racer_condition_snapshots", "t.race_date", ""),
+    ("v2_v24_motor2_forward_shadow", "t.race_date", ""),
+    ("v2_racer_course_stats_snapshots", "t.snapshot_date", ""),
+    ("v2_opponent_pressure_shadow_v2", "t.race_date", ""),
 )
 
 
@@ -39,18 +42,19 @@ def one(sql: str):
 def main() -> None:
     print("STORAGE_CURRENT_GROWTH_MODE=READ_ONLY_NO_MUTATION")
     measured = []
-    for table, date_col in TABLES:
+    for table, date_expr, join_sql in TABLES:
         row = one(
             f"""
             select count(*)::bigint as rows,
-                   count(distinct {date_col})::bigint as active_dates,
-                   min({date_col}) as min_date,
-                   max({date_col}) as max_date,
+                   count(distinct {date_expr})::bigint as active_dates,
+                   min({date_expr}) as min_date,
+                   max({date_expr}) as max_date,
                    coalesce(sum(pg_column_size(t)),0)::bigint as logical_bytes,
                    pg_total_relation_size('public.{table}'::regclass)::bigint as relation_bytes
               from public.{table} t
-             where {date_col} >= current_date - 7
-               and {date_col} < current_date
+              {join_sql}
+             where {date_expr} >= current_date - 7
+               and {date_expr} < current_date
             """
         )
         rows = int(row.get("rows") or 0)
