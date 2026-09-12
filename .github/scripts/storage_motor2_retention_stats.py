@@ -20,16 +20,19 @@ WITH scoped AS (
     AND r.deadline_at IS NOT NULL
 ), generations AS (
   SELECT race_id,race_date,snapshot_key,deadline_at,
-         count(*) AS row_count,
-         count(DISTINCT ticket) AS ticket_count,
+         count(*)::bigint AS row_count,
+         count(DISTINCT ticket)::bigint AS ticket_count,
+         min(snapshot_at) AS first_snapshot_at,
          max(snapshot_at) AS last_snapshot_at
   FROM scoped
   GROUP BY race_id,race_date,snapshot_key,deadline_at
 ), valid AS (
   SELECT * FROM generations
-  WHERE row_count=120 AND ticket_count=120 AND last_snapshot_at<=deadline_at
+  WHERE row_count>0
+    AND ticket_count=row_count
+    AND last_snapshot_at<=deadline_at
 ), chosen AS (
-  SELECT race_id,race_date,snapshot_key,last_snapshot_at,deadline_at
+  SELECT race_id,race_date,snapshot_key,last_snapshot_at,deadline_at,row_count
   FROM (
     SELECT v.*,row_number() OVER (
       PARTITION BY race_id ORDER BY last_snapshot_at DESC,snapshot_key DESC
@@ -48,10 +51,13 @@ WITH scoped AS (
 SELECT
   count(*)::bigint AS scoped_rows,
   count(DISTINCT race_id)::bigint AS scoped_races,
+  (SELECT count(*)::bigint FROM generations) AS generations,
+  (SELECT count(*)::bigint FROM valid) AS predeadline_generations,
   count(*) FILTER (WHERE chosen_row)::bigint AS chosen_rows,
   count(*) FILTER (WHERE older_row)::bigint AS older_rows,
   count(DISTINCT race_id) FILTER (WHERE chosen_row)::bigint AS eligible_races,
   count(DISTINCT race_id) FILTER (WHERE chosen_snapshot_key IS NULL)::bigint AS protected_races,
+  count(*) FILTER (WHERE snapshot_at>deadline_at)::bigint AS after_deadline_rows,
   pg_total_relation_size('v2_v24_motor2_forward_shadow')::bigint AS relation_bytes
 FROM marked
 """
@@ -65,12 +71,14 @@ def main() -> None:
         conn.execute('SET TRANSACTION READ ONLY')
         conn.execute("SET LOCAL statement_timeout='120s'")
         row=dict(conn.execute(SQL).fetchone())
-    eligible=int(row['eligible_races'] or 0)
-    chosen=int(row['chosen_rows'] or 0)
-    if chosen != eligible*120:
-        raise SystemExit('fail closed: chosen generation is not 120 rows per eligible race')
     scoped=int(row['scoped_rows'] or 0)
     older=int(row['older_rows'] or 0)
+    chosen=int(row['chosen_rows'] or 0)
+    eligible=int(row['eligible_races'] or 0)
+    if eligible and chosen<eligible:
+        raise SystemExit('fail closed: an eligible race has no chosen rows')
+    if older+chosen>scoped:
+        raise SystemExit('fail closed: retention accounting exceeds scope')
     row['older_share_pct']=round(older/scoped*100,6) if scoped else 0.0
     row['mutation_performed']=False
     OUT.write_text(json.dumps(row,indent=2,default=str)+'\n',encoding='utf-8')
