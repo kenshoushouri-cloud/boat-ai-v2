@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/value-candidate-volume-audit.yml'
       - '.github/scripts/value_s02_historical_structure_pg.py'
+      - '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py'
       - 'report_candidate_shadow_active_comparison_pg.py'
       - 'report_candidate_filter_shadow_robustness_pg.py'
 
@@ -16,6 +17,8 @@ env:
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
   ACTIVE_SHADOW_REPORT_DAYS: '30'
   CANDIDATE_SHADOW_REPORT_DAYS: '30'
+  VALUE_PRE_BREAKDOWN_DAYS: '30'
+  VALUE_PRE_BREAKDOWN_END: '2026-09-12'
 
 jobs:
   audit:
@@ -36,13 +39,17 @@ jobs:
           python -m py_compile report_candidate_shadow_active_comparison_pg.py
           python -m py_compile report_candidate_filter_shadow_robustness_pg.py
           python -m py_compile .github/scripts/value_s02_historical_structure_pg.py
+          python -m py_compile .github/scripts/value_candidate_pre_shadow_breakdown_pg.py
           python - <<'PY'
           from pathlib import Path
           reports=(
               'report_candidate_shadow_active_comparison_pg.py',
               'report_candidate_filter_shadow_robustness_pg.py',
           )
-          strict=('.github/scripts/value_s02_historical_structure_pg.py',)
+          strict=(
+              '.github/scripts/value_s02_historical_structure_pg.py',
+              '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py',
+          )
           for path in reports:
               text=Path(path).read_text(encoding='utf-8').lower()
               for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table'):
@@ -81,6 +88,10 @@ jobs:
         run: |
           python -u report_candidate_filter_shadow_robustness_pg.py | tee candidate-robustness.txt
           grep -q '^RESULT=PASS$' candidate-robustness.txt
+      - name: Run actual PRE shadow breakdown
+        run: |
+          python -u .github/scripts/value_candidate_pre_shadow_breakdown_pg.py | tee value-candidate-pre-shadow-breakdown.txt
+          grep -q '^VALUE_PRE_BREAKDOWN_RESULT=PASS_READ_ONLY$' value-candidate-pre-shadow-breakdown.txt
       - name: Run historical S02 structure screen
         run: |
           python -u .github/scripts/value_s02_historical_structure_pg.py | tee value-s02-historical-structure.txt
@@ -92,6 +103,8 @@ jobs:
           path: |
             candidate-active.txt
             candidate-robustness.txt
+            value-candidate-pre-shadow-breakdown.json
+            value-candidate-pre-shadow-breakdown.txt
             value-s02-historical-structure.json
             value-s02-historical-structure.txt
           retention-days: 30
