@@ -18,6 +18,7 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_BRIDGE_ISSUE: "42"
+  PGOPTIONS: -c default_transaction_read_only=on -c temp_file_limit=65536
 
 jobs:
   db-size:
