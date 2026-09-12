@@ -3,6 +3,10 @@
 
 Measures final_ab/learning_all identity overlap and payload equality while
 excluding volatile identity/timestamp columns. SELECT-only capacity research.
+
+Labels are summarized one at a time instead of using grouped DISTINCT aggregation
+across the largest historical tables. Pair comparison drives from learning_all and
+performs keyed final_ab lookups to keep temporary-file use bounded.
 """
 from __future__ import annotations
 
@@ -25,13 +29,13 @@ TABLES = (
 )
 
 
-def one(sql: str):
-    rows = fetch_all(sql)
+def one(sql: str, params=()):
+    rows = fetch_all(sql, params)
     return dict(rows[0]) if rows else {}
 
 
 def main() -> None:
-    print('STORAGE_REALTIME_LABEL_MATRIX_MODE=READ_ONLY_NO_MUTATION')
+    print('STORAGE_REALTIME_LABEL_MATRIX_MODE=READ_ONLY_LOW_TEMP_NO_MUTATION')
     for table, has_lane in TABLES:
         relation = one(
             f"""
@@ -40,21 +44,42 @@ def main() -> None:
                    pg_indexes_size('public.{table}') as index_bytes
             """
         )
-        labels = fetch_all(
-            f"""
-            select snapshot_label,count(*)::bigint as rows,
-                   count(distinct race_id)::bigint as races,
-                   min(race_date) as min_date,max(race_date) as max_date
-              from {table}
-             group by snapshot_label
-             order by count(*) desc,snapshot_label
-            """
+        label_names = [
+            str(r.get('snapshot_label') or '')
+            for r in fetch_all(
+                f"""
+                select distinct snapshot_label
+                  from {table}
+                 where snapshot_label is not null
+                 order by snapshot_label
+                """
+            )
+            if r.get('snapshot_label')
+        ]
+        labels = []
+        for label in label_names:
+            labels.append(
+                one(
+                    f"""
+                    select %s::text as snapshot_label,
+                           count(*)::bigint as rows,
+                           count(distinct race_id)::bigint as races,
+                           min(race_date) as min_date,max(race_date) as max_date
+                      from {table}
+                     where snapshot_label=%s
+                    """,
+                    (label, label),
+                )
+            )
+        labels.sort(key=lambda r: (-int(r.get('rows') or 0), str(r.get('snapshot_label') or '')))
+
+        lateral_identity = (
+            "f.race_id=l.race_id and f.snapshot_label='final_ab' and f.lane=l.lane"
+            if has_lane
+            else "f.race_id=l.race_id and f.snapshot_label='final_ab'"
         )
-        identity = 'f.race_id=l.race_id and f.lane=l.lane' if has_lane else 'f.race_id=l.race_id'
         pair = one(
             f"""
-            with f as (select * from {table} where snapshot_label='final_ab'),
-                 l as (select * from {table} where snapshot_label='learning_all')
             select count(*)::bigint as overlap_rows,
                    count(distinct f.race_id)::bigint as overlap_races,
                    count(*) filter (
@@ -68,7 +93,13 @@ def main() -> None:
                    min(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as min_abs_seconds,
                    max(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as max_abs_seconds,
                    avg(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as avg_abs_seconds
-              from f join l on {identity}
+              from {table} l
+              join lateral (
+                select f.*
+                  from {table} f
+                 where {lateral_identity}
+              ) f on true
+             where l.snapshot_label='learning_all'
             """
         )
         by_name = {str(r.get('snapshot_label') or ''): dict(r) for r in labels}
