@@ -1,0 +1,38 @@
+name: Motor2 FINAL Compact Runtime Default Off
+
+on:
+  pull_request:
+    paths:
+      - "v25_final_realtime_pipeline_pg.py"
+      - "tests/test_motor2_final_compact_runtime_default_off.py"
+      - "docs/MOTOR2_FINAL_COMPACT_RUNTIME_DEFAULT_OFF_20260912.md"
+      - ".github/workflows/motor2-final-compact-runtime-default-off.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run compact runtime tests
+        run: python -m pytest -q tests/test_motor2_final_compact_runtime_default_off.py
+      - name: Assert Production activation absent
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('v25_final_realtime_pipeline_pg.py').read_text(encoding='utf-8')
+          assert 'os.getenv("MOTOR2_FINAL_SNAPSHOT_MODE", "timestamped")' in s
+          assert 'MOTOR2_FINAL_SNAPSHOT_MODE=latest_per_race' not in s
+          print('DEFAULT_OFF=PASS')
+          PY
