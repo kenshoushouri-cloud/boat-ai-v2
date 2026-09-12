@@ -2,10 +2,10 @@
 """Read-only structural/usage audit for indexes on v2_odds_trifecta.
 
 Capacity research only. Reports index definitions, sizes, usage counters,
-constraint ownership, and planner choices for representative SELECT shapes.
-It performs no schema change and does not execute data-sampling queries merely
-to obtain EXPLAIN parameters, so this audit does not intentionally increment
-index usage counters through its own sample lookup.
+last scan timestamps, constraint ownership, and planner choices for representative
+SELECT shapes. It performs no schema change and does not execute data-sampling
+queries merely to obtain EXPLAIN parameters, so this audit avoids the earlier
+self-contaminating sample lookup.
 """
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from db_pg import fetch_all
 
 
 # Representative literals are used only as EXPLAIN parameters. EXPLAIN without
-# ANALYZE does not execute the SELECT. Keeping them static avoids a preliminary
-# min/max lookup on the audited table that can contaminate pg_stat index usage.
+# ANALYZE does not execute the SELECT body. Keeping them static avoids the
+# preliminary min/max lookup that previously contaminated pg_stat usage.
 SAMPLE_RACE_ID = "20260912_21_12"
 SAMPLE_MIN_RACE_ID = "20250701_05_01"
 SAMPLE_RACE_DATE = date(2026, 9, 12)
@@ -113,6 +113,7 @@ def main() -> None:
                coalesce(k.key_columns,array[]::text[]) as key_columns,
                coalesce(co.constraints,'') as constraints,
                s.idx_scan::bigint as idx_scan,
+               s.last_idx_scan as last_idx_scan,
                s.idx_tup_read::bigint as idx_tup_read,
                s.idx_tup_fetch::bigint as idx_tup_fetch,
                pg_get_indexdef(s.indexrelid) as index_def
@@ -132,6 +133,7 @@ def main() -> None:
     for item in index_rows:
         cols = tuple(str(x) for x in (item.get("key_columns") or []))
         index_def = str(item.get("index_def") or "").replace("\n", " ").strip()
+        last_idx_scan = item.get("last_idx_scan")
         parsed.append({**item, "cols": cols})
         print(
             "STORAGE_ODDS_INDEX="
@@ -146,6 +148,7 @@ def main() -> None:
             f"columns:{','.join(cols)} "
             f"constraints:{item.get('constraints') or '-'} "
             f"idx_scan:{int(item.get('idx_scan') or 0)} "
+            f"last_idx_scan:{last_idx_scan.isoformat() if last_idx_scan is not None else '-'} "
             f"idx_tup_read:{int(item.get('idx_tup_read') or 0)} "
             f"idx_tup_fetch:{int(item.get('idx_tup_fetch') or 0)}"
         )
