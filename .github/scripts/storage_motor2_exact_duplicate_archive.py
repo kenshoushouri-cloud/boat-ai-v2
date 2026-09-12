@@ -101,8 +101,10 @@ def main() -> None:
         retention_older = int(retention["older_rows"] or 0)
         retention_eligible = int(retention["eligible_races"] or 0)
         retention_chosen = int(retention["chosen_rows"] or 0)
-        if retention_chosen != retention_eligible * 120:
-            raise SystemExit("fail closed: chosen generation is not 120 rows per eligible race")
+        if retention_eligible and retention_chosen < retention_eligible:
+            raise SystemExit("fail closed: an eligible race has no chosen rows")
+        if retention_older + retention_chosen > retention_scoped:
+            raise SystemExit("fail closed: retention accounting exceeds scope")
         retention["older_share_pct"] = (
             round(retention_older / retention_scoped * 100, 6)
             if retention_scoped else 0.0
@@ -156,7 +158,7 @@ def main() -> None:
         "source_relation_bytes": int(summary["relation_bytes"]),
         "source_heap_bytes": int(summary["heap_bytes"]),
         "source_index_bytes": int(summary["index_bytes"]),
-        "retention_contract": "latest_complete_predeadline_generation_v1",
+        "retention_contract": "latest_sparse_predeadline_generation_v2",
         "retention_stats": {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in retention.items()},
         "archive_file": ARCHIVE_PATH.name,
         "mutation_performed": False,
@@ -174,11 +176,14 @@ def main() -> None:
     print(f"MOTOR2_SOURCE_RELATION_BYTES={manifest['source_relation_bytes']}")
     print(f"MOTOR2_RETENTION_SCOPED_ROWS={retention_scoped}")
     print(f"MOTOR2_RETENTION_SCOPED_RACES={int(retention['scoped_races'] or 0)}")
+    print(f"MOTOR2_RETENTION_GENERATIONS={int(retention['generations'] or 0)}")
+    print(f"MOTOR2_RETENTION_PREDEADLINE_GENERATIONS={int(retention['predeadline_generations'] or 0)}")
     print(f"MOTOR2_RETENTION_ELIGIBLE_RACES={retention_eligible}")
     print(f"MOTOR2_RETENTION_CHOSEN_ROWS={retention_chosen}")
     print(f"MOTOR2_RETENTION_OLDER_ROWS={retention_older}")
     print(f"MOTOR2_RETENTION_OLDER_SHARE_PCT={retention['older_share_pct']}")
     print(f"MOTOR2_RETENTION_PROTECTED_RACES={int(retention['protected_races'] or 0)}")
+    print(f"MOTOR2_RETENTION_AFTER_DEADLINE_ROWS={int(retention['after_deadline_rows'] or 0)}")
     print("MOTOR2_EXACT_DUP_ARCHIVE_RESULT=PASS_READ_ONLY")
 
 
