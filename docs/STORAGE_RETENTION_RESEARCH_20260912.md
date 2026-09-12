@@ -107,19 +107,41 @@ The live read-only audit confirms this is common, not hypothetical:
 - rows where that later `final_ab.prev_odds` **and** `prev_market_rank` equal the current `learning_all` odds/rank: `188,080` (**99.87%** of final-after-learning rows)
 - affected races: `1,590`
 - reverse direction, `learning_all.prev_*` matching an earlier/current `final_ab`: `207,375` rows
-- cross-label-predecessor final rows carrying drift/steam: `1,572` (~`0.84%` of the visibly matched final predecessor rows)
-- cross-label-predecessor final rows with market rank 1 and drift/steam: `7`, across `7` races
+- direct predecessor matches within 180 seconds: `177,186`
+- direct predecessor matches in the latest seven completed days: `31,617`
+- average direct learning→final gap: about `77.49s`
 
-This matters to Production behavior. `v22_realtime_decision_engine_pg.py::_realtime_judge()` reads the `final_ab` snapshot and changes its realtime score when these fields are set:
+This matters to Production behavior. `v22_realtime_decision_engine_pg.py::_realtime_judge()` reads the `final_ab` snapshot and changes its realtime score when movement flags are set:
 
 - `is_odds_steam` → `+0.3`
 - `is_odds_drift` → `-0.5`
 
 Recommendations then depend on that score (`buy` at >=1.0, `watch` at >=0.0, otherwise `skip`, absent stronger skip conditions).
 
-The current persisted decision table is too small to claim a historical recommendation was changed by this coupling: the audit found only one matching saved final decision, and it was not a drift/steam-flagged cross-label case. The safe conclusion is therefore **mechanistic and prospective**: the current feature path is cross-label and Production-score-sensitive, so removing the learning observations is not output-invariant by construction.
-
 No Production code needs to hard-code the literal `learning_all` string for this dependency to exist.
+
+## Counterfactual proxy: removing the immediate learning hop changes a Production-scored feature
+
+Realtime storage keeps one current row per `(race_id,snapshot_label,ticket)`, so exact replay of every overwritten same-label snapshot is unavailable. The read-only audit therefore uses a bounded one-step proxy only where:
+
+1. a final row demonstrably used current learning odds as `prev_odds`; and
+2. that learning row itself has non-null previous odds.
+
+For `169,758` such rows:
+
+- stored drift rows: `1,122`
+- proxy drift rows without the immediate learning hop: `12,584`
+- stored steam rows: `282`
+- proxy steam rows: `3,900`
+- rows whose drift/steam movement score changes: **`15,419`**
+- changed rows in the latest seven completed days: **`10,805`**
+- proxy score higher than stored: `3,791`
+- proxy score lower than stored: `11,628`
+- possible proxy movement-score delta: **`-0.8` to `+0.8`**
+
+This is **not** evidence that 15,419 historical BUY/WATCH/SKIP recommendations would flip. It is a bounded sensitivity result showing that removing the learning hop can materially change an input that v22 scores in Production.
+
+The current persisted decision table is too small for a historical decision-flip claim. The safe conclusion is mechanistic and prospective: the current feature path is demonstrably cross-label and Production-score-sensitive, so a learning pause is not output-invariant by construction.
 
 ## Consequence: full `learning_all` pause is blocked as a cleanup experiment
 
@@ -132,7 +154,7 @@ Accordingly:
 - historical `learning_all` rows remain preservation-by-default;
 - changing `_fetch_previous_odds` to be label-scoped would also change feature semantics and therefore requires a separate Production/model-impact approval.
 
-CI now freezes this hidden dependency explicitly so future cleanup work cannot accidentally assume label independence.
+CI freezes this hidden dependency explicitly so future cleanup work cannot accidentally assume label independence.
 
 ## Research candidate: odds-only learning path
 
@@ -140,8 +162,8 @@ The strongest safe research direction is no longer a full pause. It is an **odds
 
 Current logical tuple split:
 
-- odds rows: about **73.6%** of stored `learning_all` tuple bytes;
-- non-odds learning tables: about **26.4%**;
+- odds learning bytes: `75,876,808`, about **73.63%** of stored `learning_all` tuple bytes;
+- non-odds learning bytes: `27,174,160`, about **26.37%**;
 - over the latest seven completed days, non-odds learning rows added `10,912` rows total (~`1,559/day`);
 - non-odds logical tuple payload added `4,575,256` bytes over seven days (~`0.62 MiB/day`).
 
@@ -166,4 +188,4 @@ The immediate capacity benefit of reducing duplicate collection is primarily **s
 
 ## Current gate
 
-`CAPACITY_PRESSURE_CONFIRMED / MOTOR2_ZERO_DIFF_RETENTION_PASS / CONSERVATIVE_FINAL_ONLY_42552 / BASE_ODDS_NOT_CLEANUP_TARGET / REALTIME_IDENTITY_DUPLICATION_CONFIRMED / RECENT_LEARNING_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / CROSS_LABEL_PREVIOUS_ODDS_CONFIRMED / FINAL_PREV_FROM_LEARNING_99_87PCT_WHEN_FINAL_AFTER / V22_STEAM_DRIFT_SCORE_SENSITIVE / FULL_LEARNING_PAUSE_BLOCKED / HISTORICAL_LEARNING_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / BACKUP_STALE_FOR_CLEANUP / NO_DB_DELETE / NO_VACUUM / NO_BACKUP_CREATE / NO_CRON_CHANGE / NO_PRODUCTION_CHANGE`
+`CAPACITY_PRESSURE_CONFIRMED / MOTOR2_ZERO_DIFF_RETENTION_PASS / CONSERVATIVE_FINAL_ONLY_42552 / BASE_ODDS_NOT_CLEANUP_TARGET / REALTIME_IDENTITY_DUPLICATION_CONFIRMED / RECENT_LEARNING_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / CROSS_LABEL_PREVIOUS_ODDS_CONFIRMED / DIRECT_PREDECESSOR_MATCHES_188080 / RECENT7_DIRECT_PREDECESSOR_MATCHES_31617 / COUNTERFACTUAL_PROXY_SCORE_CHANGED_15419 / RECENT7_PROXY_SCORE_CHANGED_10805 / V22_STEAM_DRIFT_SCORE_SENSITIVE / FULL_LEARNING_PAUSE_BLOCKED / HISTORICAL_LEARNING_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / BACKUP_STALE_FOR_CLEANUP / NO_DB_DELETE / NO_VACUUM / NO_BACKUP_CREATE / NO_CRON_CHANGE / NO_PRODUCTION_CHANGE`
