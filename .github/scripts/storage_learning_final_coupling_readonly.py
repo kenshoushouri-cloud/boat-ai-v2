@@ -7,9 +7,9 @@ how often a current final_ab row demonstrably used the current learning_all row
 as its immediate previous odds sample, and estimates a one-step counterfactual
 movement flag using learning_all.prev_odds.
 
-The counterfactual is deliberately labelled a proxy: realtime rows are upserted
-per (race_id, snapshot_label, ticket), so older same-label snapshots are not
-retained as an independent history table.
+The counterfactual is deliberately labelled a proxy: realtime tables retain one
+current row per (race_id, snapshot_label, ticket), so older same-label snapshots
+are not retained as an independent history table.
 """
 from __future__ import annotations
 
