@@ -6,6 +6,10 @@ This module never connects to PostgreSQL, Railway, or the network. It scans SQL 
 constants in repository Python/SQL files and classifies whether the odds table's own
 ``race_date`` column is referenced in a WHERE clause. The goal is to distinguish true
 index consumers from files that merely query ``v2_races.race_date`` elsewhere.
+
+The dedicated storage index probe is excluded from dependency classification because it
+intentionally issues race_date queries solely to test the index itself; counting that
+instrumentation as workload would make the audit self-referential.
 """
 
 import argparse
@@ -18,7 +22,12 @@ from typing import Iterable
 TABLE = "v2_odds_trifecta"
 SELF_PATH = "research/odds_race_date_index_static_audit.py"
 TEST_PATH = "tests/test_odds_race_date_index_static_audit.py"
+INSTRUMENTATION_PATHS = {".github/scripts/storage_odds_index_readonly.py"}
 
+TABLE_BASE_REF_RE = re.compile(
+    r"\b(?:from|join)\s+v2_odds_trifecta\b",
+    re.IGNORECASE,
+)
 TABLE_REF_RE = re.compile(
     r"\b(?:from|join)\s+v2_odds_trifecta\b(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?",
     re.IGNORECASE,
@@ -84,7 +93,14 @@ def classify_sql(path: str, line: int, sql: str) -> Finding | None:
             re.search(rf"\b{re.escape(alias)}\.race_date\b", low)
         )
 
-    unqualified = bool(UNQUALIFIED_WHERE_RACE_DATE_RE.search(low))
+    # Only inspect text after an actual odds-table FROM/JOIN position. This avoids
+    # treating an earlier CTE predicate such as `v2_races where race_date ...` as
+    # an unqualified predicate on the odds table.
+    unqualified = any(
+        UNQUALIFIED_WHERE_RACE_DATE_RE.search(low[match.end() :]) is not None
+        for match in TABLE_BASE_REF_RE.finditer(low)
+    )
+
     compact = " ".join(sql.split())
     if len(compact) > 240:
         compact = compact[:237] + "..."
@@ -130,7 +146,7 @@ def scan_repo(root: Path) -> list[Finding]:
         if not path.is_file() or path.suffix.lower() not in {".py", ".sql"}:
             continue
         rel = path.relative_to(root).as_posix()
-        if rel in {SELF_PATH, TEST_PATH}:
+        if rel in {SELF_PATH, TEST_PATH} or rel in INSTRUMENTATION_PATHS:
             continue
         if any(part in {".git", ".venv", "venv", "node_modules"} for part in path.parts):
             continue
@@ -148,6 +164,7 @@ def render(findings: list[Finding]) -> str:
     unqualified = [f for f in findings if f.unqualified_where_race_date]
     lines = [
         "ODDS_RACE_DATE_STATIC_MODE=PURE_NO_DB_NO_NETWORK",
+        "ODDS_RACE_DATE_INSTRUMENTATION_EXCLUDED=storage_odds_index_readonly.py",
         f"ODDS_RACE_DATE_SQL_STRINGS={len(findings)}",
         f"ODDS_RACE_DATE_DIRECT_CANDIDATES={len(direct)}",
         f"ODDS_RACE_DATE_QUALIFIED_DIRECT={len(qualified)}",
