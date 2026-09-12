@@ -42,8 +42,11 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         self.assertEqual(result["blocked_races"], 0)
         self.assertEqual(result["ready_lanes"], 6)
         self.assertEqual(result["lane_reasons"], {})
+        self.assertEqual(result["neutral_usable_lane_counts"][6], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
+        self.assertEqual(result["neutral_base_only_races"], 0)
 
-    def test_missing_exact_racer_course_row_blocks_race_but_counts_other_lanes(self) -> None:
+    def test_missing_exact_racer_course_row_blocks_strict_but_neutral_uses_other_lanes(self) -> None:
         rows = self.race()
         rows[2]["snapshot_racer_number"] = None
         result = classify_required_coverage(rows, self.race_date)
@@ -52,6 +55,8 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         self.assertEqual(result["lane_reasons"]["missing_required_row"], 1)
         self.assertEqual(result["ready_lanes"], 5)
         self.assertEqual(result["missing_required"], [("r1", 3, 1003)])
+        self.assertEqual(result["neutral_usable_lane_counts"][5], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
 
     def test_multiple_missing_lanes_count_independently(self) -> None:
         rows = self.race()
@@ -66,14 +71,28 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
             result["missing_required"],
             [("r1", 2, 1002), ("r1", 5, 1005)],
         )
+        self.assertEqual(result["neutral_usable_lane_counts"][4], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
 
-    def test_missing_top3_blocks_even_when_row_exists(self) -> None:
+    def test_missing_top3_blocks_strict_but_neutral_uses_other_lanes(self) -> None:
         rows = self.race()
         rows[4]["course_top3_rate"] = None
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["missing_or_invalid_top3"], 1)
         self.assertEqual(result["lane_reasons"]["missing_or_invalid_top3"], 1)
         self.assertEqual(result["ready_lanes"], 5)
+        self.assertEqual(result["neutral_usable_lane_counts"][5], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
+
+    def test_zero_variance_neutral_falls_back_to_base_only(self) -> None:
+        rows = self.race()
+        for row in rows:
+            row["course_top3_rate"] = 50.0
+        result = classify_required_coverage(rows, self.race_date)
+        self.assertEqual(result["ready_races"], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 0)
+        self.assertEqual(result["neutral_base_only_races"], 1)
+        self.assertEqual(result["neutral_usable_lane_counts"][6], 1)
 
     def test_exact_0815_snapshot_is_allowed(self) -> None:
         rows = self.race()
@@ -87,6 +106,7 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["created_after_0815"], 1)
         self.assertEqual(result["ready_lanes"], 5)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
 
     def test_post_deadline_snapshot_blocks(self) -> None:
         rows = self.race()
@@ -96,11 +116,14 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["created_at_or_after_deadline"], 1)
         self.assertEqual(result["ready_lanes"], 5)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 1)
 
-    def test_not_exactly_six_entries_blocks(self) -> None:
+    def test_not_exactly_six_entries_blocks_both_structures(self) -> None:
         result = classify_required_coverage(self.race()[:-1], self.race_date)
         self.assertEqual(result["reasons"]["entries_not_exactly_6"], 1)
         self.assertEqual(result["ready_lanes"], 0)
+        self.assertEqual(result["neutral_structure_blocked_races"], 1)
+        self.assertEqual(result["neutral_adjustment_ready_races"], 0)
 
 
 if __name__ == "__main__":
