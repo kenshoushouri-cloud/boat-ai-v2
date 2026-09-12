@@ -134,6 +134,37 @@ def main() -> None:
         from f join l using (race_id,ticket)
         """
     )
+    decisions = one(
+        """
+        with f as (
+          select race_id,ticket,odds,snapshot_at,market_rank,prev_odds,
+                 prev_market_rank,is_odds_drift,is_odds_steam
+            from v2_realtime_odds_snapshots
+           where snapshot_label='final_ab'
+        ), l as (
+          select race_id,ticket,odds,snapshot_at,market_rank
+            from v2_realtime_odds_snapshots
+           where snapshot_label='learning_all'
+        ), x as (
+          select f.race_id,f.ticket,
+                 (
+                   f.snapshot_at > l.snapshot_at
+                   and f.prev_odds is not distinct from l.odds
+                   and f.prev_market_rank is not distinct from l.market_rank
+                 ) as cross_label_prev,
+                 (coalesce(f.is_odds_drift,false) or coalesce(f.is_odds_steam,false)) as movement_flagged
+            from f join l using (race_id,ticket)
+        )
+        select count(distinct d.id)::bigint as decision_rows,
+               count(distinct d.id) filter (where x.cross_label_prev)::bigint as cross_label_prev_decisions,
+               count(distinct d.id) filter (where x.cross_label_prev and x.movement_flagged)::bigint as cross_label_flagged_decisions,
+               count(distinct d.id) filter (where x.cross_label_prev and x.movement_flagged and lower(coalesce(d.recommendation,''))='buy')::bigint as cross_label_flagged_buy_decisions,
+               count(distinct d.race_id) filter (where x.cross_label_prev and x.movement_flagged)::bigint as cross_label_flagged_decision_races
+          from v2_realtime_decisions d
+          join x on x.race_id=d.race_id and x.ticket=d.ticket
+         where d.decision_label='final_ab'
+        """
+    )
     indexes = fetch_all(
         """
         select i.relname as index_name,
@@ -202,6 +233,14 @@ def main() -> None:
         f"final_crosslabel_prev_flagged:{int(pair.get('final_crosslabel_prev_flagged') or 0)} "
         f"final_crosslabel_prev_rank1_flagged:{int(pair.get('final_crosslabel_prev_rank1_flagged') or 0)} "
         f"final_crosslabel_prev_rank1_flagged_races:{int(pair.get('final_crosslabel_prev_rank1_flagged_races') or 0)}"
+    )
+    print(
+        'STORAGE_REALTIME_ODDS_DECISION_COUPLING='
+        f"decision_rows:{int(decisions.get('decision_rows') or 0)} "
+        f"cross_label_prev_decisions:{int(decisions.get('cross_label_prev_decisions') or 0)} "
+        f"cross_label_flagged_decisions:{int(decisions.get('cross_label_flagged_decisions') or 0)} "
+        f"cross_label_flagged_buy_decisions:{int(decisions.get('cross_label_flagged_buy_decisions') or 0)} "
+        f"cross_label_flagged_decision_races:{int(decisions.get('cross_label_flagged_decision_races') or 0)}"
     )
     for row in indexes:
         print(
