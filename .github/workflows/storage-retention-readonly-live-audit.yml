@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/scripts/storage_retention_readonly_inventory.py'
       - '.github/scripts/storage_retention_output_invariance.py'
+      - '.github/scripts/storage_retention_candidate_preview.py'
       - '.github/workflows/storage-retention-readonly-live-audit.yml'
 
 permissions:
@@ -31,11 +32,13 @@ jobs:
         run: |
           python -m py_compile .github/scripts/storage_retention_readonly_inventory.py
           python -m py_compile .github/scripts/storage_retention_output_invariance.py
+          python -m py_compile .github/scripts/storage_retention_candidate_preview.py
           python - <<'PY'
           from pathlib import Path
           for path in (
               '.github/scripts/storage_retention_readonly_inventory.py',
               '.github/scripts/storage_retention_output_invariance.py',
+              '.github/scripts/storage_retention_candidate_preview.py',
           ):
               text=Path(path).read_text(encoding='utf-8').lower()
               assert 'from db_pg import fetch_all' in text
@@ -75,6 +78,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_retention_output_invariance.py | tee storage-invariance.txt
           grep -q '^STORAGE_RETENTION_INVARIANCE_RESULT=PASS_READ_ONLY$' storage-invariance.txt
+      - name: Run read-only candidate preview
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_candidate_preview.py | tee storage-candidates.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_PREVIEW_RESULT=PASS_READ_ONLY$' storage-candidates.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt
