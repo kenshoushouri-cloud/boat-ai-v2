@@ -69,3 +69,16 @@ def test_targeted_decision_passes_requested_snapshot_label_through():
     assert "def _rt(date_str: str, snapshot_label: str):" in targeted
     assert "_original_rt(date_str, snapshot_label)" in targeted
     assert "learning_all" not in targeted
+
+
+def test_no_other_top_level_runtime_hard_codes_learning_all():
+    """Keep the learning label producer-only among top-level runtime scripts.
+
+    Research/CI audits under subdirectories may mention the literal label, but a
+    new top-level executable must not silently become dependent on it.
+    """
+    hits = []
+    for path in sorted(ROOT.glob("*.py")):
+        if "learning_all" in path.read_text(encoding="utf-8").lower():
+            hits.append(path.name)
+    assert hits == ["run_learning_all_realtime_pg.py"]
