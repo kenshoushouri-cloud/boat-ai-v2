@@ -9,9 +9,9 @@ from psycopg.rows import dict_row
 
 OUT = Path("motor2-retention-stats.json")
 
-SQL = r"""
+BASE_SQL = r"""
 WITH scoped AS (
-  SELECT s.race_id,s.race_date,s.ticket,s.snapshot_key,s.snapshot_at,r.deadline_at
+  SELECT s.id,s.race_id,s.race_date,s.ticket,s.snapshot_key,s.snapshot_at,r.deadline_at
   FROM v2_v24_motor2_forward_shadow s
   JOIN v2_races r ON r.race_id=s.race_id
   WHERE s.run_class='final'
@@ -48,6 +48,9 @@ WITH scoped AS (
   FROM scoped s
   LEFT JOIN chosen c ON c.race_id=s.race_id
 )
+"""
+
+SQL = BASE_SQL + r"""
 SELECT
   count(*)::bigint AS scoped_rows,
   count(DISTINCT race_id)::bigint AS scoped_races,
@@ -60,6 +63,16 @@ SELECT
   count(*) FILTER (WHERE snapshot_at>deadline_at)::bigint AS after_deadline_rows,
   pg_total_relation_size('v2_v24_motor2_forward_shadow')::bigint AS relation_bytes
 FROM marked
+"""
+
+CANDIDATE_SQL = BASE_SQL + r"""
+, candidate_ids AS (
+  SELECT id FROM marked WHERE older_row
+)
+SELECT s.*
+FROM v2_v24_motor2_forward_shadow s
+JOIN candidate_ids c ON c.id=s.id
+ORDER BY s.id
 """
 
 
