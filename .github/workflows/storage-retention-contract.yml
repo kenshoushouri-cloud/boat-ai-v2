@@ -5,6 +5,7 @@ on:
     paths:
       - 'research/storage_retention_contract.py'
       - 'tests/test_storage_retention_contract.py'
+      - '.github/scripts/storage_retention_readonly_inventory.py'
       - 'docs/STORAGE_RETENTION_RESEARCH_20260912.md'
       - '.github/workflows/storage-retention-contract.yml'
 
@@ -26,11 +27,16 @@ jobs:
         run: python -m pip install pytest
       - name: Validate isolation and run tests
         run: |
+          python -m py_compile research/storage_retention_contract.py .github/scripts/storage_retention_readonly_inventory.py
           python - <<'PY'
           from pathlib import Path
-          text = Path('research/storage_retention_contract.py').read_text(encoding='utf-8').lower()
+          pure = Path('research/storage_retention_contract.py').read_text(encoding='utf-8').lower()
           for token in ('psycopg', 'database_url', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'send_line'):
-              assert token not in text, token
+              assert token not in pure, token
+          audit = Path('.github/scripts/storage_retention_readonly_inventory.py').read_text(encoding='utf-8').lower()
+          assert 'from db_pg import fetch_all' in audit
+          for token in ('execute(', 'upsert', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'create table', 'send_line'):
+              assert token not in audit, token
           print('STORAGE_RETENTION_ISOLATION=PASS')
           PY
           pytest -q tests/test_storage_retention_contract.py
