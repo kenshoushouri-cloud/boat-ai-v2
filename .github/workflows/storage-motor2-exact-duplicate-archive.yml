@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/storage_motor2_exact_duplicate_archive.py'
+      - '.github/scripts/storage_motor2_retention_stats.py'
       - '.github/workflows/storage-motor2-exact-duplicate-archive.yml'
 
 permissions:
@@ -27,16 +28,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate research script
+      - name: Validate research scripts
         run: |
-          python -m py_compile .github/scripts/storage_motor2_exact_duplicate_archive.py
+          python -m py_compile .github/scripts/storage_motor2_exact_duplicate_archive.py .github/scripts/storage_motor2_retention_stats.py
           python - <<'PY'
           from pathlib import Path
-          p=Path('.github/scripts/storage_motor2_exact_duplicate_archive.py')
-          t=p.read_text(encoding='utf-8').lower()
+          for name in ('storage_motor2_exact_duplicate_archive.py','storage_motor2_retention_stats.py'):
+              t=(Path('.github/scripts')/name).read_text(encoding='utf-8').lower()
+              for token in ('delete from','update v2_','insert into','alter table','drop table','vacuum','truncate'):
+                  assert token not in t, f'{name}: {token}'
+          t=Path('.github/scripts/storage_motor2_exact_duplicate_archive.py').read_text(encoding='utf-8').lower()
           assert 'set transaction read only' in t
-          for token in ('delete from','update v2_','insert into','alter table','drop table','vacuum','truncate'):
-              assert token not in t, token
           PY
       - name: Install dependencies
         run: |
@@ -58,7 +60,7 @@ jobs:
           print(f'::add-mask::{value}')
           with open(os.environ['GITHUB_ENV'],'a') as fh: fh.write(f'DATABASE_URL={value}\n')
           PY
-      - name: Run read-only exact duplicate archive
+      - name: Run read-only archive preflight
         run: |
           sed -i 's/, mtime=0//' .github/scripts/storage_motor2_exact_duplicate_archive.py
           python -u .github/scripts/storage_motor2_exact_duplicate_archive.py | tee motor2-duplicate-archive.txt
@@ -67,9 +69,10 @@ jobs:
       - name: Upload candidate archive
         uses: actions/upload-artifact@v4
         with:
-          name: motor2-exact-duplicate-predelete-${{ github.run_id }}
+          name: motor2-retention-predelete-${{ github.run_id }}
           path: |
             motor2-duplicate-archive/motor2_exact_duplicate_rows.jsonl.gz
+            motor2-duplicate-archive/motor2_retention_candidate_rows.jsonl.gz
             motor2-duplicate-archive/manifest.json
             motor2-duplicate-archive.txt
           retention-days: 30
