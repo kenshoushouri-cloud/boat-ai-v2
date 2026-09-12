@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Read-only growth/coverage audit for the learning_all realtime label.
+"""Low-temp read-only growth audit for the learning_all realtime label.
 
-Capacity research only. Uses SELECT/catalog-safe expressions through fetch_all.
-It estimates logical tuple growth, not physical Railway volume reclaim.
+Capacity research only. SELECT expressions through fetch_all; no writes.
+The query shape deliberately avoids GROUP BY, DISTINCT and materialized
+full-table joins because Production capacity is tight and a previous audit
+observed PostgreSQL temporary-file ENOSPC.
 """
 from __future__ import annotations
 
@@ -26,25 +28,13 @@ TABLES = (
 )
 
 
-def rows(sql: str):
-    return [dict(r) for r in fetch_all(sql)]
-
-
 def one(sql: str):
-    data = rows(sql)
+    data = [dict(r) for r in fetch_all(sql)]
     return data[0] if data else {}
 
 
-def _ident_list(columns: tuple[str, ...]) -> str:
-    return ",".join(columns)
-
-
-def _join_pred(columns: tuple[str, ...]) -> str:
-    return " and ".join(f"f.{c}=l.{c}" for c in columns)
-
-
 def main() -> None:
-    print("STORAGE_LEARNING_ALL_GROWTH_MODE=READ_ONLY_NO_MUTATION")
+    print("STORAGE_LEARNING_ALL_GROWTH_MODE=READ_ONLY_LOW_TEMP_NO_MUTATION")
 
     aggregate_learning_rows = 0
     aggregate_learning_logical_bytes = 0
@@ -55,65 +45,61 @@ def main() -> None:
     aggregate_recent_learning_only = 0
 
     for table, identity_columns in TABLES:
-        labels = rows(
+        learning = one(
             f"""
-            select snapshot_label,
-                   count(*)::bigint as row_count,
+            select count(*)::bigint as row_count,
                    coalesce(sum(pg_column_size(t)),0)::bigint as logical_row_bytes,
-                   count(distinct race_id)::bigint as race_count,
                    min(race_date) as min_date,
                    max(race_date) as max_date
               from {table} t
-             where snapshot_label in ('final_ab','learning_all')
-             group by snapshot_label
-             order by snapshot_label
+             where snapshot_label='learning_all'
             """
         )
-        by_label = {str(r.get("snapshot_label")): r for r in labels}
-        learning = by_label.get("learning_all", {})
-        final = by_label.get("final_ab", {})
-
-        recent = rows(
+        final = one(
             f"""
-            select snapshot_label,
-                   count(*)::bigint as row_count,
-                   coalesce(sum(pg_column_size(t)),0)::bigint as logical_row_bytes,
-                   count(distinct race_id)::bigint as race_count
+            select count(*)::bigint as row_count
+              from {table}
+             where snapshot_label='final_ab'
+            """
+        )
+        recent_learning = one(
+            f"""
+            select count(*)::bigint as row_count,
+                   coalesce(sum(pg_column_size(t)),0)::bigint as logical_row_bytes
               from {table} t
-             where snapshot_label in ('final_ab','learning_all')
+             where snapshot_label='learning_all'
                and race_date >= current_date - 7
                and race_date < current_date
-             group by snapshot_label
-             order by snapshot_label
             """
         )
-        recent_by_label = {str(r.get("snapshot_label")): r for r in recent}
-        recent_learning = recent_by_label.get("learning_all", {})
-        recent_final = recent_by_label.get("final_ab", {})
+        recent_final = one(
+            f"""
+            select count(*)::bigint as row_count
+              from {table}
+             where snapshot_label='final_ab'
+               and race_date >= current_date - 7
+               and race_date < current_date
+            """
+        )
 
-        join_pred = _join_pred(identity_columns)
-        first_identity = identity_columns[0]
+        identity_pred = " and ".join(f"f.{c}=l.{c}" for c in identity_columns)
         learning_only = one(
             f"""
-            with f as (
-              select {_ident_list(identity_columns)}
-                from {table}
-               where snapshot_label='final_ab'
-            ), l as (
-              select {_ident_list(identity_columns)},race_date
-                from {table}
-               where snapshot_label='learning_all'
-            )
             select count(*)::bigint as row_count,
-                   count(distinct l.race_id)::bigint as race_count,
                    min(l.race_date) as min_date,
                    max(l.race_date) as max_date,
                    count(*) filter (
                      where l.race_date >= current_date - 7
                        and l.race_date < current_date
                    )::bigint as recent_row_count
-              from l left join f on {join_pred}
-             where f.{first_identity} is null
+              from {table} l
+             where l.snapshot_label='learning_all'
+               and not exists (
+                 select 1
+                   from {table} f
+                  where f.snapshot_label='final_ab'
+                    and {identity_pred}
+               )
             """
         )
 
@@ -143,7 +129,6 @@ def main() -> None:
             f"recent7_learning_rows:{recent_learning_rows} "
             f"recent7_learning_logical_bytes:{recent_learning_bytes} "
             f"learning_only_rows:{learning_only_rows} "
-            f"learning_only_races:{int(learning_only.get('race_count') or 0)} "
             f"recent7_learning_only_rows:{recent_learning_only_rows} "
             f"learning_only_min_date:{learning_only.get('min_date')} "
             f"learning_only_max_date:{learning_only.get('max_date')}"
