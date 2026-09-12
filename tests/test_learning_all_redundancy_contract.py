@@ -71,6 +71,17 @@ def test_targeted_decision_passes_requested_snapshot_label_through():
     assert "learning_all" not in targeted
 
 
+def test_candidate_target_scope_does_not_narrow_snapshot_collection():
+    collector = text("v21_realtime_collector_pg_safe.py")
+    assert 'elif legacy.TARGET_ID_SCOPE in ("candidates", "candidate"):' in collector
+    assert "for race in target:" in collector
+    assert "target_id_rows.append(race)" in collector
+    assert "collection_ids = [" in collector
+    assert "for race in target if race.get(\"race_id\")" in collector
+    assert "for race in target_id_rows" in collector
+    assert "for index, race in enumerate(target, 1):" in collector
+
+
 def test_no_other_top_level_runtime_hard_codes_learning_all():
     """Keep the learning label producer-only among top-level runtime scripts.
 
