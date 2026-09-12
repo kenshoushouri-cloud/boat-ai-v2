@@ -2,6 +2,8 @@
 """Read-only preview of hypothetical Motor2 retention candidates.
 
 This reports candidate scope only. It never changes database state.
+The conservative cleanup scope intentionally excludes manual/test/live rows and
+current-day FINAL rows even when the broader retention contract marks them removable.
 """
 from __future__ import annotations
 
@@ -75,17 +77,25 @@ marked as (
 """
 
 
-def main() -> None:
-    overall = fetch_all(
-        CTE + """
+def summary(where_sql: str) -> dict:
+    return fetch_all(
+        CTE + f"""
         select count(*) as candidate_rows,
                count(distinct race_id) as candidate_races,
+               count(distinct snapshot_key) as snapshot_keys,
                min(race_date) as min_race_date,
                max(race_date) as max_race_date
           from marked
-         where not keep
+         where {where_sql}
         """
     )[0]
+
+
+def main() -> None:
+    overall = summary("not keep")
+    conservative = summary(
+        "not keep and run_class='final' and window_name='final' and race_date < current_date"
+    )
     grouped = fetch_all(
         CTE + """
         select run_class,window_name,
@@ -106,7 +116,15 @@ def main() -> None:
         'STORAGE_RETENTION_CANDIDATE_TOTAL='
         f"rows:{int(overall.get('candidate_rows') or 0)} "
         f"races:{int(overall.get('candidate_races') or 0)} "
+        f"snapshot_keys:{int(overall.get('snapshot_keys') or 0)} "
         f"min_date:{overall.get('min_race_date')} max_date:{overall.get('max_race_date')}"
+    )
+    print(
+        'STORAGE_RETENTION_CONSERVATIVE_FINAL_ONLY='
+        f"rows:{int(conservative.get('candidate_rows') or 0)} "
+        f"races:{int(conservative.get('candidate_races') or 0)} "
+        f"snapshot_keys:{int(conservative.get('snapshot_keys') or 0)} "
+        f"min_date:{conservative.get('min_race_date')} max_date:{conservative.get('max_race_date')}"
     )
     for row in grouped:
         print(
