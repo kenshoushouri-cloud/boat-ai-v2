@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Read-only structural/usage audit for indexes on v2_odds_trifecta.
 
-Capacity research only. Reports index definitions, sizes, usage counters and
-planner choices for representative SELECT shapes. It performs no schema change.
+Capacity research only. Reports index definitions, sizes, usage counters,
+constraint ownership, and planner choices for representative SELECT shapes.
+It performs no schema change.
 """
 from __future__ import annotations
 
@@ -82,13 +83,23 @@ def main() -> None:
               on a.attrelid=i.indrelid and a.attnum=u.attnum
            where i.indrelid='public.v2_odds_trifecta'::regclass
            group by i.indexrelid
+        ), constraint_owner as (
+          select conindid,
+                 string_agg(conname || ':' || contype, ',' order by conname) as constraints
+            from pg_constraint
+           where conindid <> 0
+           group by conindid
         )
         select s.indexrelname as index_name,
                pg_relation_size(s.indexrelid)::bigint as bytes,
                i.indisunique as is_unique,
                i.indisprimary as is_primary,
+               i.indisvalid as is_valid,
+               i.indisready as is_ready,
+               i.indislive as is_live,
                am.amname as access_method,
                coalesce(k.key_columns,array[]::text[]) as key_columns,
+               coalesce(co.constraints,'') as constraints,
                s.idx_scan::bigint as idx_scan,
                s.idx_tup_read::bigint as idx_tup_read,
                s.idx_tup_fetch::bigint as idx_tup_fetch,
@@ -98,6 +109,7 @@ def main() -> None:
           join pg_class c on c.oid=s.indexrelid
           join pg_am am on am.oid=c.relam
           left join keys k on k.indexrelid=s.indexrelid
+          left join constraint_owner co on co.conindid=s.indexrelid
          where s.schemaname='public'
            and s.relname='v2_odds_trifecta'
          order by pg_relation_size(s.indexrelid) desc
@@ -114,8 +126,12 @@ def main() -> None:
             f"bytes:{int(item.get('bytes') or 0)} "
             f"unique:{str(bool(item.get('is_unique'))).lower()} "
             f"primary:{str(bool(item.get('is_primary'))).lower()} "
+            f"valid:{str(bool(item.get('is_valid'))).lower()} "
+            f"ready:{str(bool(item.get('is_ready'))).lower()} "
+            f"live:{str(bool(item.get('is_live'))).lower()} "
             f"method:{item.get('access_method')} "
             f"columns:{','.join(cols)} "
+            f"constraints:{item.get('constraints') or '-'} "
             f"idx_scan:{int(item.get('idx_scan') or 0)} "
             f"idx_tup_read:{int(item.get('idx_tup_read') or 0)} "
             f"idx_tup_fetch:{int(item.get('idx_tup_fetch') or 0)}"
@@ -150,36 +166,63 @@ def main() -> None:
     sample = one(
         """
         select max(race_id) as race_id,
-               min(race_id) as min_race_id
+               min(race_id) as min_race_id,
+               max(race_date) as race_date,
+               min(race_date) as min_race_date
           from v2_odds_trifecta
         """
     )
     race_id = str(sample.get("race_id") or "")
     min_race_id = str(sample.get("min_race_id") or "")
+    race_date = sample.get("race_date")
+    min_race_date = sample.get("min_race_date")
+    shapes: list[tuple[str, str, tuple[Any, ...]]] = []
     if race_id:
-        shapes = (
+        shapes.extend(
             (
-                "equality_order_ticket",
-                "select race_id,ticket,odds from v2_odds_trifecta where race_id=%s order by race_id,ticket",
-                (race_id,),
-            ),
-            (
-                "equality_count",
-                "select count(*) from v2_odds_trifecta where race_id=%s",
-                (race_id,),
-            ),
-            (
-                "range_order_ticket",
-                "select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id <= %s order by race_id,ticket",
-                (min_race_id, race_id),
-            ),
-        )
-        for name, sql, params in shapes:
-            indexes = _plan_indexes(sql, params)
-            print(
-                "STORAGE_ODDS_INDEX_PLAN="
-                f"shape:{name} indexes:{','.join(indexes) if indexes else 'none'}"
+                (
+                    "race_id_equality_order_ticket",
+                    "select race_id,ticket,odds from v2_odds_trifecta where race_id=%s order by race_id,ticket",
+                    (race_id,),
+                ),
+                (
+                    "race_id_equality_count",
+                    "select count(*) from v2_odds_trifecta where race_id=%s",
+                    (race_id,),
+                ),
+                (
+                    "race_id_range_order_ticket",
+                    "select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id <= %s order by race_id,ticket",
+                    (min_race_id, race_id),
+                ),
             )
+        )
+    if race_date is not None:
+        shapes.extend(
+            (
+                (
+                    "race_date_equality_count",
+                    "select count(*) from v2_odds_trifecta where race_date=%s",
+                    (race_date,),
+                ),
+                (
+                    "race_date_equality_rows",
+                    "select race_id,ticket,odds from v2_odds_trifecta where race_date=%s",
+                    (race_date,),
+                ),
+                (
+                    "race_date_range_count",
+                    "select count(*) from v2_odds_trifecta where race_date >= %s and race_date <= %s",
+                    (min_race_date, race_date),
+                ),
+            )
+        )
+    for name, sql, params in shapes:
+        indexes = _plan_indexes(sql, params)
+        print(
+            "STORAGE_ODDS_INDEX_PLAN="
+            f"shape:{name} indexes:{','.join(indexes) if indexes else 'none'}"
+        )
 
     total_index_bytes = sum(int(x.get("bytes") or 0) for x in parsed)
     print(f"STORAGE_ODDS_INDEX_TOTAL_BYTES={total_index_bytes}")
