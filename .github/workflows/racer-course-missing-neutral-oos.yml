@@ -1,0 +1,89 @@
+name: Racer Course Missing Neutral OOS
+
+on:
+  pull_request:
+    paths:
+      - 'docs/RACER_COURSE_MISSING_NEUTRAL_OOS_PLAN_20260911.md'
+      - '.github/scripts/racer_course_missing_neutral_oos_20260911.py'
+      - 'tests/test_racer_course_missing_neutral_oos.py'
+      - '.github/workflows/racer-course-missing-neutral-oos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-oos:
+    # Historical evidence is frozen at the already-successful research head.
+    # Later PR synchronizations must not repeatedly query Production DB.
+    if: github.event.pull_request.head.sha == 'cbc2c00c4459daf5928d5d762cb7864e266f40f9'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate frozen research contract
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/racer_course_missing_neutral_oos_20260911.py tests/test_racer_course_missing_neutral_oos.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          p=Path('.github/scripts/racer_course_missing_neutral_oos_20260911.py').read_text(encoding='utf-8').lower()
+          d=Path('docs/RACER_COURSE_MISSING_NEUTRAL_OOS_PLAN_20260911.md').read_text(encoding='utf-8').lower()
+          assert '908462848b73440359fd239d8f75dc2fa8d3a009' in p
+          assert 'course_coef = 0.50' in p
+          assert 'set transaction read only' in p
+          assert '2026, 7, 15' in p and '2026, 9, 10' in p
+          assert 'bootstrap_n = 5000' in p and 'bootstrap_seed = 20260911' in p
+          assert 'missing/unusable lanes receive course z = **0**' in d
+          assert 'no coefficient search' in d
+          assert 'v2_odds' not in p and 'v2_payout' not in p and 'payback' not in p
+          assert not re.search(r'\binsert\s+into\b', p)
+          assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', p)
+          assert not re.search(r'\bdelete\s+from\b', p)
+          print('COURSE_NEUTRAL_CONTRACT=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Run synthetic fixed-rule tests
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_racer_course_missing_neutral_oos -v
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run preregistered read-only OOS
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_missing_neutral_oos_20260911.py | tee course-neutral-oos.txt
+          grep -q '^COURSE_NEUTRAL_RESULT=PASS_READ_ONLY$' course-neutral-oos.txt
+          grep -q '^COURSE_NEUTRAL_STATUS=' course-neutral-oos.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json course-neutral-oos.txt
