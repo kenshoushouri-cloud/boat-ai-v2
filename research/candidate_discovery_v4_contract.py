@@ -1,6 +1,6 @@
 """Pure Candidate Discovery V4 contract.
 
-Research only. No DB/network/Railway/LINE/purchase integration.
+Research only. No external integration or purchase path.
 Fixed enrichments:
 - Racer Course neutral-missing coefficient = 0.50
 - Motor2 ticket factor beta = 0.06
