@@ -10,6 +10,7 @@ on:
       - '.github/scripts/storage_reclaim_readonly_stats.py'
       - '.github/scripts/storage_top_relations_readonly.py'
       - '.github/scripts/storage_odds_trifecta_readonly_inventory.py'
+      - '.github/scripts/storage_odds_index_readonly.py'
       - '.github/scripts/storage_core_tables_readonly_inventory.py'
       - '.github/scripts/storage_realtime_odds_label_readonly.py'
       - '.github/scripts/storage_realtime_label_matrix_readonly.py'
@@ -46,6 +47,7 @@ jobs:
           python -m py_compile .github/scripts/storage_reclaim_readonly_stats.py
           python -m py_compile .github/scripts/storage_top_relations_readonly.py
           python -m py_compile .github/scripts/storage_odds_trifecta_readonly_inventory.py
+          python -m py_compile .github/scripts/storage_odds_index_readonly.py
           python -m py_compile .github/scripts/storage_core_tables_readonly_inventory.py
           python -m py_compile .github/scripts/storage_realtime_odds_label_readonly.py
           python -m py_compile .github/scripts/storage_realtime_label_matrix_readonly.py
@@ -61,6 +63,7 @@ jobs:
               '.github/scripts/storage_reclaim_readonly_stats.py',
               '.github/scripts/storage_top_relations_readonly.py',
               '.github/scripts/storage_odds_trifecta_readonly_inventory.py',
+              '.github/scripts/storage_odds_index_readonly.py',
               '.github/scripts/storage_core_tables_readonly_inventory.py',
               '.github/scripts/storage_realtime_odds_label_readonly.py',
               '.github/scripts/storage_realtime_label_matrix_readonly.py',
@@ -134,6 +137,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_odds_trifecta_readonly_inventory.py | tee storage-odds-trifecta.txt
           grep -q '^STORAGE_ODDS_TRIFECTA_RESULT=PASS_READ_ONLY$' storage-odds-trifecta.txt
+      - name: Run read-only trifecta odds index audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_odds_index_readonly.py | tee storage-odds-index.txt
+          grep -q '^STORAGE_ODDS_INDEX_RESULT=PASS_READ_ONLY$' storage-odds-index.txt
       - name: Run exact read-only core-table capacity audit
         run: |
           set -euo pipefail
@@ -161,4 +169,4 @@ jobs:
           grep -Eq '^STORAGE_RETENTION_BACKUP_RESULT=(PASS_METADATA_VISIBLE|BLOCK_NO_BACKUP_VISIBLE|BLOCK_NO_VOLUME_INSTANCE)$' storage-backups.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-reclaim-stats.txt storage-top-relations.txt storage-odds-trifecta.txt storage-core-tables.txt storage-realtime-odds-labels.txt storage-realtime-label-matrix.txt storage-learning-growth.txt storage-backups.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-reclaim-stats.txt storage-top-relations.txt storage-odds-trifecta.txt storage-odds-index.txt storage-core-tables.txt storage-realtime-odds-labels.txt storage-realtime-label-matrix.txt storage-learning-growth.txt storage-backups.txt
