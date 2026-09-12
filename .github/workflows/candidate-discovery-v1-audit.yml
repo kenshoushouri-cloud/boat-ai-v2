@@ -1,0 +1,97 @@
+name: Candidate Discovery V1 Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_v1_pg.py'
+      - '.github/workflows/candidate-discovery-v1-audit.yml'
+      - 'tests/test_candidate_discovery_v1.py'
+      - 'docs/CANDIDATE_DISCOVERY_V1_20260913.md'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=180000
+  CANDIDATE_DISCOVERY_START: '2025-07-01'
+  CANDIDATE_DISCOVERY_END: '2026-09-12'
+  CANDIDATE_DISCOVERY_DAILY_CAPS: '6,9,12,18'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate frozen research contract
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_v1_pg.py
+          python -m py_compile tests/test_candidate_discovery_v1.py
+          python tests/test_candidate_discovery_v1.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_v1_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert 'v2_odds_trifecta' not in text
+          assert 'raw_ev' not in text
+          for token in (
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert token not in text, token
+          PY
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run odds-independent candidate discovery audit
+        run: |
+          python -u .github/scripts/candidate_discovery_v1_pg.py | tee candidate-discovery-v1.txt
+          grep -q '^CANDIDATE_DISCOVERY_V1_ODDS_READ=0 EV_FILTER=0 ODDS_FILTER=0$' candidate-discovery-v1.txt
+          grep -q '^CANDIDATE_DISCOVERY_V1_PURCHASE_ACTION=false$' candidate-discovery-v1.txt
+          grep -q '^CANDIDATE_DISCOVERY_V1_PROMOTION_ALLOWED=0$' candidate-discovery-v1.txt
+          grep -q '^CANDIDATE_DISCOVERY_V1_RESULT=PASS_READ_ONLY$' candidate-discovery-v1.txt
+
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-v1-${{ github.run_id }}
+          path: |
+            candidate-discovery-v1.json
+            candidate-discovery-v1.txt
+          retention-days: 30
+          if-no-files-found: error
