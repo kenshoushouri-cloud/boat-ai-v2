@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 import importlib.util
 from pathlib import Path
@@ -41,19 +41,39 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         self.assertEqual(result["ready_races"], 1)
         self.assertEqual(result["blocked_races"], 0)
         self.assertEqual(result["ready_lanes"], 6)
+        self.assertEqual(result["lane_reasons"], {})
 
-    def test_missing_exact_racer_course_row_blocks_race(self) -> None:
+    def test_missing_exact_racer_course_row_blocks_race_but_counts_other_lanes(self) -> None:
         rows = self.race()
         rows[2]["snapshot_racer_number"] = None
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["ready_races"], 0)
         self.assertEqual(result["reasons"]["missing_required_row"], 1)
+        self.assertEqual(result["lane_reasons"]["missing_required_row"], 1)
+        self.assertEqual(result["ready_lanes"], 5)
+        self.assertEqual(result["missing_required"], [("r1", 3, 1003)])
+
+    def test_multiple_missing_lanes_count_independently(self) -> None:
+        rows = self.race()
+        rows[1]["snapshot_racer_number"] = None
+        rows[4]["snapshot_racer_number"] = None
+        result = classify_required_coverage(rows, self.race_date)
+        self.assertEqual(result["ready_races"], 0)
+        self.assertEqual(result["reasons"]["missing_required_row"], 1)
+        self.assertEqual(result["lane_reasons"]["missing_required_row"], 2)
+        self.assertEqual(result["ready_lanes"], 4)
+        self.assertEqual(
+            result["missing_required"],
+            [("r1", 2, 1002), ("r1", 5, 1005)],
+        )
 
     def test_missing_top3_blocks_even_when_row_exists(self) -> None:
         rows = self.race()
         rows[4]["course_top3_rate"] = None
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["missing_or_invalid_top3"], 1)
+        self.assertEqual(result["lane_reasons"]["missing_or_invalid_top3"], 1)
+        self.assertEqual(result["ready_lanes"], 5)
 
     def test_exact_0815_snapshot_is_allowed(self) -> None:
         rows = self.race()
@@ -66,6 +86,7 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         rows[0]["snapshot_created_at"] = datetime(2026, 9, 11, 8, 15, 0, 1, tzinfo=JST)
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["created_after_0815"], 1)
+        self.assertEqual(result["ready_lanes"], 5)
 
     def test_post_deadline_snapshot_blocks(self) -> None:
         rows = self.race()
@@ -74,10 +95,12 @@ class RequiredCourseCoverageAuditTests(unittest.TestCase):
         rows[0]["snapshot_created_at"] = datetime(2026, 9, 11, 7, 30, tzinfo=JST)
         result = classify_required_coverage(rows, self.race_date)
         self.assertEqual(result["reasons"]["created_at_or_after_deadline"], 1)
+        self.assertEqual(result["ready_lanes"], 5)
 
     def test_not_exactly_six_entries_blocks(self) -> None:
         result = classify_required_coverage(self.race()[:-1], self.race_date)
         self.assertEqual(result["reasons"]["entries_not_exactly_6"], 1)
+        self.assertEqual(result["ready_lanes"], 0)
 
 
 if __name__ == "__main__":
