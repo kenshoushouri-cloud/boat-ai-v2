@@ -85,7 +85,7 @@ def main() -> None:
            group by i.indexrelid
         ), constraint_owner as (
           select conindid,
-                 string_agg(conname || ':' || contype, ',' order by conname) as constraints
+                 string_agg(conname || ':' || contype::text, ',' order by conname) as constraints
             from pg_constraint
            where conindid <> 0
            group by conindid
