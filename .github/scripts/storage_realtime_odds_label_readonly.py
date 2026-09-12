@@ -90,6 +90,43 @@ def main() -> None:
               and f.is_odds_drift is not distinct from l.is_odds_drift
               and f.is_odds_steam is not distinct from l.is_odds_steam
           )::bigint as equal_movement_features,
+          count(*) filter (where f.snapshot_at > l.snapshot_at)::bigint as final_after_learning,
+          count(*) filter (where l.snapshot_at > f.snapshot_at)::bigint as learning_after_final,
+          count(*) filter (
+            where f.snapshot_at > l.snapshot_at
+              and f.prev_odds is not distinct from l.odds
+              and f.prev_market_rank is not distinct from l.market_rank
+          )::bigint as final_prev_matches_learning,
+          count(distinct f.race_id) filter (
+            where f.snapshot_at > l.snapshot_at
+              and f.prev_odds is not distinct from l.odds
+              and f.prev_market_rank is not distinct from l.market_rank
+          )::bigint as final_prev_matches_learning_races,
+          count(*) filter (
+            where l.snapshot_at > f.snapshot_at
+              and l.prev_odds is not distinct from f.odds
+              and l.prev_market_rank is not distinct from f.market_rank
+          )::bigint as learning_prev_matches_final,
+          count(*) filter (
+            where f.snapshot_at > l.snapshot_at
+              and f.prev_odds is not distinct from l.odds
+              and f.prev_market_rank is not distinct from l.market_rank
+              and (coalesce(f.is_odds_drift,false) or coalesce(f.is_odds_steam,false))
+          )::bigint as final_crosslabel_prev_flagged,
+          count(*) filter (
+            where f.snapshot_at > l.snapshot_at
+              and f.prev_odds is not distinct from l.odds
+              and f.prev_market_rank is not distinct from l.market_rank
+              and f.market_rank=1
+              and (coalesce(f.is_odds_drift,false) or coalesce(f.is_odds_steam,false))
+          )::bigint as final_crosslabel_prev_rank1_flagged,
+          count(distinct f.race_id) filter (
+            where f.snapshot_at > l.snapshot_at
+              and f.prev_odds is not distinct from l.odds
+              and f.prev_market_rank is not distinct from l.market_rank
+              and f.market_rank=1
+              and (coalesce(f.is_odds_drift,false) or coalesce(f.is_odds_steam,false))
+          )::bigint as final_crosslabel_prev_rank1_flagged_races,
           count(*) filter (where f.snapshot_at is not distinct from l.snapshot_at)::bigint as equal_snapshot_at,
           min(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as min_abs_seconds,
           max(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as max_abs_seconds,
@@ -154,6 +191,17 @@ def main() -> None:
         f"min_abs_seconds:{pair.get('min_abs_seconds')} "
         f"max_abs_seconds:{pair.get('max_abs_seconds')} "
         f"avg_abs_seconds:{pair.get('avg_abs_seconds')}"
+    )
+    print(
+        'STORAGE_REALTIME_ODDS_CROSS_LABEL_PREV='
+        f"final_after_learning:{int(pair.get('final_after_learning') or 0)} "
+        f"learning_after_final:{int(pair.get('learning_after_final') or 0)} "
+        f"final_prev_matches_learning:{int(pair.get('final_prev_matches_learning') or 0)} "
+        f"final_prev_matches_learning_races:{int(pair.get('final_prev_matches_learning_races') or 0)} "
+        f"learning_prev_matches_final:{int(pair.get('learning_prev_matches_final') or 0)} "
+        f"final_crosslabel_prev_flagged:{int(pair.get('final_crosslabel_prev_flagged') or 0)} "
+        f"final_crosslabel_prev_rank1_flagged:{int(pair.get('final_crosslabel_prev_rank1_flagged') or 0)} "
+        f"final_crosslabel_prev_rank1_flagged_races:{int(pair.get('final_crosslabel_prev_rank1_flagged_races') or 0)}"
     )
     for row in indexes:
         print(
