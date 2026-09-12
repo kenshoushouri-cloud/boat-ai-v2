@@ -16,11 +16,16 @@ from pathlib import Path
 import official_odds3t_parser as odds_parser
 import v21_realtime_collector_pg as legacy
 
-VERSION = "2026-09-12 official-table-parser-odds-only-research-v1"
+VERSION = "2026-09-12 official-table-parser-odds-only-research-v2"
 
 
 def _env_flag(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _odds_only_allowed(requested: bool, snapshot_label: str) -> bool:
+    """Fail closed: the research mode is valid only for the learning_all label."""
+    return bool(requested and str(snapshot_label).strip() == "learning_all")
 
 
 def _choose_odds(html: str | None, base_values):
@@ -104,12 +109,23 @@ def main() -> None:
     legacy._require_settings()
     legacy._ensure_realtime_tables()
     now = legacy._now()
-    odds_only_mode = _env_flag("ODDS_ONLY_MODE", "0")
+    odds_only_requested = _env_flag("ODDS_ONLY_MODE", "0")
+    odds_only_mode = _odds_only_allowed(
+        odds_only_requested,
+        legacy.SNAPSHOT_LABEL,
+    )
+    if odds_only_requested and not odds_only_mode:
+        print(
+            "WARNING ODDS_ONLY_MODE request blocked: "
+            f"snapshot_label={legacy.SNAPSHOT_LABEL} allowed_label=learning_all",
+            flush=True,
+        )
     print(f"✅ v21_realtime_collector_pg_safe.py VERSION {VERSION}", flush=True)
     print(
         f"TARGET_DATE={legacy.TARGET_DATE} SNAPSHOT_LABEL={legacy.SNAPSHOT_LABEL} "
         f"SCOPE={legacy.COLLECT_SCOPE} TARGET_ID_SCOPE={legacy.TARGET_ID_SCOPE} "
         f"TARGET_RACE_ID={legacy.TARGET_RACE_ID or '-'} "
+        f"ODDS_ONLY_REQUESTED={int(odds_only_requested)} "
         f"ODDS_ONLY_MODE={int(odds_only_mode)} "
         "ODDS_SELECTION=exact_dynamic_120_60_24_fail_closed",
         flush=True,
@@ -297,6 +313,7 @@ def main() -> None:
 
     print("\n=== v21 safe PG realtime collection summary ===", flush=True)
     print(
+        f"odds_only_requested: {int(odds_only_requested)}\n"
         f"odds_only_mode: {int(odds_only_mode)}\n"
         f"scope_races: {len(scope)}\n"
         f"target_races: {len(target)}\n"
