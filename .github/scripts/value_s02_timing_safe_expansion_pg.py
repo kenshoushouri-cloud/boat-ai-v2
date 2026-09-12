@@ -11,15 +11,19 @@ This is hypothesis evaluation, not a Production threshold recommendation.
 from __future__ import annotations
 
 import json
-import math
 import os
+import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import v24_pre_candidate_notifier_pg as v24
 
