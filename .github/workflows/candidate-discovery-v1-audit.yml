@@ -1,11 +1,13 @@
-name: Candidate Discovery V1 Audit
+name: Candidate Discovery System Audit
 
 on:
   pull_request:
     paths:
       - '.github/scripts/candidate_discovery_v1_pg.py'
+      - '.github/scripts/candidate_discovery_v2_formation_pg.py'
       - '.github/workflows/candidate-discovery-v1-audit.yml'
       - 'tests/test_candidate_discovery_v1.py'
+      - 'tests/test_candidate_discovery_v2_formation.py'
       - 'docs/CANDIDATE_DISCOVERY_V1_20260913.md'
 
 permissions:
@@ -17,6 +19,10 @@ env:
   CANDIDATE_DISCOVERY_START: '2025-07-01'
   CANDIDATE_DISCOVERY_END: '2026-09-12'
   CANDIDATE_DISCOVERY_DAILY_CAPS: '6,9,12,18'
+  CANDIDATE_DISCOVERY_V2_START: '2025-07-01'
+  CANDIDATE_DISCOVERY_V2_END: '2026-09-12'
+  CANDIDATE_DISCOVERY_V2_RACE_CAPS: '3,6,9,12'
+  CANDIDATE_DISCOVERY_V2_FORMATIONS: '1,2,3,5'
 
 jobs:
   audit:
@@ -35,22 +41,29 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate frozen research contract
+      - name: Validate frozen research contracts
         run: |
           python -m py_compile .github/scripts/candidate_discovery_v1_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_v2_formation_pg.py
           python -m py_compile tests/test_candidate_discovery_v1.py
+          python -m py_compile tests/test_candidate_discovery_v2_formation.py
           python tests/test_candidate_discovery_v1.py
+          python tests/test_candidate_discovery_v2_formation.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('.github/scripts/candidate_discovery_v1_pg.py').read_text(encoding='utf-8').lower()
-          assert 'set transaction read only' in text
-          assert 'v2_odds_trifecta' not in text
-          assert 'raw_ev' not in text
-          for token in (
-              'delete from ', 'insert into ', 'update v2_', 'alter table ',
-              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          for path in (
+              '.github/scripts/candidate_discovery_v1_pg.py',
+              '.github/scripts/candidate_discovery_v2_formation_pg.py',
           ):
-              assert token not in text, token
+              text=Path(path).read_text(encoding='utf-8').lower()
+              assert 'set transaction read only' in text
+              assert 'v2_odds_trifecta' not in text
+              assert 'raw_ev' not in text
+              for token in (
+                  'delete from ', 'insert into ', 'update v2_', 'alter table ',
+                  'drop table ', 'truncate ', 'vacuum ', 'create table '
+              ):
+                  assert token not in text, (path, token)
           PY
 
       - name: Install dependencies
@@ -78,7 +91,7 @@ jobs:
               fh.write(f'DATABASE_URL={value}\n')
           PY
 
-      - name: Run odds-independent candidate discovery audit
+      - name: Run V1 odds-independent single-ticket baseline
         run: |
           python -u .github/scripts/candidate_discovery_v1_pg.py | tee candidate-discovery-v1.txt
           grep -q '^CANDIDATE_DISCOVERY_V1_ODDS_READ=0 EV_FILTER=0 ODDS_FILTER=0$' candidate-discovery-v1.txt
@@ -86,12 +99,22 @@ jobs:
           grep -q '^CANDIDATE_DISCOVERY_V1_PROMOTION_ALLOWED=0$' candidate-discovery-v1.txt
           grep -q '^CANDIDATE_DISCOVERY_V1_RESULT=PASS_READ_ONLY$' candidate-discovery-v1.txt
 
+      - name: Run V2 race-first small-formation audit
+        run: |
+          python -u .github/scripts/candidate_discovery_v2_formation_pg.py | tee candidate-discovery-v2-formation.txt
+          grep -q '^CANDIDATE_DISCOVERY_V2_ODDS_READ=0 EV_FILTER=0 ODDS_FILTER=0$' candidate-discovery-v2-formation.txt
+          grep -q '^CANDIDATE_DISCOVERY_V2_PURCHASE_ACTION=false$' candidate-discovery-v2-formation.txt
+          grep -q '^CANDIDATE_DISCOVERY_V2_PROMOTION_ALLOWED=0$' candidate-discovery-v2-formation.txt
+          grep -q '^CANDIDATE_DISCOVERY_V2_RESULT=PASS_READ_ONLY$' candidate-discovery-v2-formation.txt
+
       - name: Upload audit artifact
         uses: actions/upload-artifact@v4
         with:
-          name: candidate-discovery-v1-${{ github.run_id }}
+          name: candidate-discovery-system-${{ github.run_id }}
           path: |
             candidate-discovery-v1.json
             candidate-discovery-v1.txt
+            candidate-discovery-v2-formation.json
+            candidate-discovery-v2-formation.txt
           retention-days: 30
           if-no-files-found: error
