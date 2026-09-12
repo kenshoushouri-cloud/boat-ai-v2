@@ -3,7 +3,7 @@
 Research only. No external integration or purchase path.
 Fixed enrichments:
 - Racer Course neutral-missing coefficient = 0.50
-- Opponent Pressure lane-probability delta coefficient = 1.0
+- Opponent Pressure first-place-only delta coefficient = 1.0
 - Motor2 ticket factor beta = 0.06
 - No EV or absolute-odds gate
 """
@@ -61,14 +61,14 @@ def lane_probabilities(raw: Mapping[int, float]) -> dict[int, float]:
     return _normalize(weights)
 
 
-def opponent_adjust_lane_probs(
-    lane_probs: Mapping[int, float],
+def opponent_adjust_first_probs(
+    base_lane_probs: Mapping[int, float],
     opponent_delta: Mapping[int, float] | None,
 ) -> dict[int, float]:
-    if tuple(sorted(lane_probs)) != LANES:
-        raise ValueError("lane_probs must contain lanes 1..6")
+    if tuple(sorted(base_lane_probs)) != LANES:
+        raise ValueError("base_lane_probs must contain lanes 1..6")
     if opponent_delta is None:
-        return _normalize(lane_probs)
+        return _normalize(base_lane_probs)
     if tuple(sorted(opponent_delta)) != LANES:
         raise ValueError("opponent_delta must contain lanes 1..6")
     adjusted = {}
@@ -76,7 +76,7 @@ def opponent_adjust_lane_probs(
         delta = float(opponent_delta[lane])
         if not math.isfinite(delta):
             raise ValueError("opponent delta must be finite")
-        adjusted[lane] = max(EPS, min(0.999, float(lane_probs[lane]) + OPPONENT_COEF * delta))
+        adjusted[lane] = max(EPS, min(0.999, float(base_lane_probs[lane]) + OPPONENT_COEF * delta))
     return _normalize(adjusted)
 
 
@@ -89,6 +89,24 @@ def pl_trifecta(lane_probs: Mapping[int, float]) -> dict[str, float]:
         pb = probs[b] / rem_b
         rem_c = rem_b - probs[b]
         out[f"{a}-{b}-{c}"] = pa * pb * (probs[c] / rem_c)
+    z = sum(out.values())
+    return {ticket: p / z for ticket, p in out.items()}
+
+
+def head_only_trifecta(
+    base_lane_probs: Mapping[int, float],
+    adjusted_first_probs: Mapping[int, float],
+) -> dict[str, float]:
+    """Opponent affects P(first) only; second/third conditionals stay base."""
+    base = _normalize(base_lane_probs)
+    first = _normalize(adjusted_first_probs)
+    out: dict[str, float] = {}
+    for a, b, c in permutations(LANES, 3):
+        pa = first[a]
+        rem_b = 1.0 - base[a]
+        pb = base[b] / rem_b
+        rem_c = rem_b - base[b]
+        out[f"{a}-{b}-{c}"] = pa * pb * (base[c] / rem_c)
     z = sum(out.values())
     return {ticket: p / z for ticket, p in out.items()}
 
@@ -118,8 +136,10 @@ def build_v4_distribution(
     opponent_delta: Mapping[int, float] | None = None,
 ) -> dict[str, float]:
     raw = course_adjust_raw(base_raw, course_top3)
-    lane_probs = opponent_adjust_lane_probs(lane_probabilities(raw), opponent_delta)
-    return motor_adjust(pl_trifecta(lane_probs), motor_place2)
+    base_lane = lane_probabilities(raw)
+    adjusted_first = opponent_adjust_first_probs(base_lane, opponent_delta)
+    probs = head_only_trifecta(base_lane, adjusted_first)
+    return motor_adjust(probs, motor_place2)
 
 
 def top_tickets(probs: Mapping[str, float], n: int = 2) -> tuple[str, ...]:
