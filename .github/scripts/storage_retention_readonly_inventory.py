@@ -55,21 +55,73 @@ def main() -> None:
     )
     candidate = one(
         """
-        with ranked as (
-          select id,evaluated_at,
+        with base as (
+          select s.*,
                  row_number() over (
-                   partition by race_id,ticket,run_class,window_name
-                   order by snapshot_at desc,id desc
-                 ) as rn,
-                 bool_or(evaluated_at is null) over (
-                   partition by race_id,ticket,run_class,window_name
+                   partition by s.race_id,s.ticket,s.run_class,s.window_name
+                   order by s.snapshot_at desc,s.id desc
+                 ) as retain_rn,
+                 bool_or(s.evaluated_at is null) over (
+                   partition by s.race_id,s.ticket,s.run_class,s.window_name
                  ) as key_has_unevaluated
-            from v2_v24_motor2_forward_shadow
+            from v2_v24_motor2_forward_shadow s
+        ),
+        health_source as (
+          select b.*, r.deadline_at
+            from base b
+            left join v2_races r on r.race_id=b.race_id
+           where b.window_name in ('morning','day','night')
+             and b.evaluated_at is not null
+             and b.result_ticket is not null
+             and b.base_prob is not null
+             and b.motor2_prob is not null
+        ),
+        health_valid_groups as (
+          select race_id,run_class,window_name,snapshot_key,
+                 max(snapshot_at) as snapshot_at
+            from health_source
+           group by race_id,run_class,window_name,snapshot_key
+          having count(distinct result_ticket)=1
+             and max(snapshot_at) is not null
+             and min(deadline_at) is not null
+             and max(snapshot_at) < min(deadline_at)
+        ),
+        health_latest_time as (
+          select race_id,max(snapshot_at) as snapshot_at
+            from health_valid_groups
+           group by race_id
+        ),
+        health_protected_groups as (
+          select g.race_id,g.run_class,g.window_name,g.snapshot_key
+            from health_valid_groups g
+            join health_latest_time t
+              on t.race_id=g.race_id and t.snapshot_at=g.snapshot_at
+        ),
+        health_protected_ids as (
+          select h.id
+            from health_source h
+            join health_protected_groups g
+              using (race_id,run_class,window_name,snapshot_key)
+        ),
+        marked as (
+          select b.*,
+                 (b.id in (select id from health_protected_ids)) as health_protected,
+                 (
+                   b.key_has_unevaluated
+                   or b.retain_rn=1
+                   or b.id in (select id from health_protected_ids)
+                 ) as keep
+            from base b
         )
         select
-          count(*) filter (where rn > 1 and not key_has_unevaluated) as hypothetical_removable_rows,
-          count(*) filter (where key_has_unevaluated) as rows_in_blocked_keys
-        from ranked
+          count(*) filter (where not keep) as hypothetical_removable_rows,
+          count(*) filter (where keep) as retained_rows,
+          count(*) filter (where key_has_unevaluated) as rows_in_blocked_keys,
+          count(*) filter (where health_protected) as health_protected_rows,
+          count(*) filter (
+            where health_protected and retain_rn > 1 and not key_has_unevaluated
+          ) as extra_health_rows_preserved
+        from marked
         """
     )
 
@@ -98,7 +150,10 @@ def main() -> None:
     print(
         'STORAGE_RETENTION_HYPOTHETICAL='
         f"removable_rows:{int(candidate.get('hypothetical_removable_rows') or 0)} "
-        f"rows_in_blocked_keys:{int(candidate.get('rows_in_blocked_keys') or 0)}"
+        f"retained_rows:{int(candidate.get('retained_rows') or 0)} "
+        f"rows_in_blocked_keys:{int(candidate.get('rows_in_blocked_keys') or 0)} "
+        f"health_protected_rows:{int(candidate.get('health_protected_rows') or 0)} "
+        f"extra_health_rows_preserved:{int(candidate.get('extra_health_rows_preserved') or 0)}"
     )
     print('STORAGE_RETENTION_INVENTORY_RESULT=PASS_READ_ONLY')
 
