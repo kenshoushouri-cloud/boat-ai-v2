@@ -1,0 +1,99 @@
+name: Candidate Discovery Main Feed
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_main_feed_pg.py'
+      - '.github/scripts/candidate_discovery_v1_pg.py'
+      - '.github/scripts/candidate_discovery_v2_formation_pg.py'
+      - 'tests/test_candidate_discovery_main_feed.py'
+      - '.github/workflows/candidate-discovery-main-feed.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  CANDIDATE_MAIN_DATE: '2026-09-12'
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate main-feed contract
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_v1_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_v2_formation_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_main_feed_pg.py
+          python tests/test_candidate_discovery_main_feed.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_main_feed_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert 'raw_ev' not in text
+          assert 'odds_min' not in text
+          assert 'odds_max' not in text
+          for token in (
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert token not in text, token
+          PY
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Build read-only main-feed preview
+        run: |
+          python -u .github/scripts/candidate_discovery_main_feed_pg.py | tee candidate-discovery-main-feed.txt
+          grep -q '^CANDIDATE_MAIN_ODDS_ROLE=display_only$' candidate-discovery-main-feed.txt
+          grep -q '^CANDIDATE_MAIN_EV_FILTER=0 ODDS_FILTER=0 PURCHASE_ACTION=false$' candidate-discovery-main-feed.txt
+          grep -q '^CANDIDATE_MAIN_PURCHASE_ACTION=false$' candidate-discovery-main-feed.txt
+          grep -q '^CANDIDATE_MAIN_PROMOTION_ALLOWED=0$' candidate-discovery-main-feed.txt
+          grep -q '^CANDIDATE_MAIN_RESULT=PASS_READ_ONLY$' candidate-discovery-main-feed.txt
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-main-feed-${{ github.run_id }}
+          path: |
+            candidate-discovery-main-feed.json
+            candidate-discovery-main-feed.txt
+          retention-days: 30
+          if-no-files-found: error
