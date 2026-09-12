@@ -7,6 +7,7 @@ on:
       - '.github/scripts/value_s02_historical_structure_pg.py'
       - '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py'
       - '.github/scripts/value_s03_motor2_orthogonal_pg.py'
+      - '.github/scripts/value_s03_exhibition_timing_pg.py'
       - 'report_candidate_shadow_active_comparison_pg.py'
       - 'report_candidate_filter_shadow_robustness_pg.py'
       - 'analyze_candidate_walkforward_phase4_pg.py'
@@ -23,6 +24,8 @@ env:
   VALUE_PRE_BREAKDOWN_END: '2026-09-12'
   VALUE_S03_M2_DAYS: '30'
   VALUE_S03_M2_END: '2026-09-12'
+  VALUE_S03_EX_TIMING_DAYS: '30'
+  VALUE_S03_EX_TIMING_END: '2026-09-12'
 
 jobs:
   audit:
@@ -45,6 +48,7 @@ jobs:
           python -m py_compile .github/scripts/value_s02_historical_structure_pg.py
           python -m py_compile .github/scripts/value_candidate_pre_shadow_breakdown_pg.py
           python -m py_compile .github/scripts/value_s03_motor2_orthogonal_pg.py
+          python -m py_compile .github/scripts/value_s03_exhibition_timing_pg.py
           python -m py_compile analyze_candidate_walkforward_phase4_pg.py
           python - <<'PY'
           from pathlib import Path
@@ -57,6 +61,7 @@ jobs:
               '.github/scripts/value_s02_historical_structure_pg.py',
               '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py',
               '.github/scripts/value_s03_motor2_orthogonal_pg.py',
+              '.github/scripts/value_s03_exhibition_timing_pg.py',
           )
           for path in reports:
               text=Path(path).read_text(encoding='utf-8').lower()
@@ -104,6 +109,10 @@ jobs:
         run: |
           python -u .github/scripts/value_s03_motor2_orthogonal_pg.py | tee value-s03-motor2-orthogonal.txt
           grep -q '^VALUE_S03_M2_RESULT=PASS_READ_ONLY$' value-s03-motor2-orthogonal.txt
+      - name: Run S03 exhibition timing audit
+        run: |
+          python -u .github/scripts/value_s03_exhibition_timing_pg.py | tee value-s03-exhibition-timing.txt
+          grep -q '^VALUE_S03_EX_TIMING_RESULT=PASS_READ_ONLY$' value-s03-exhibition-timing.txt
       - name: Run historical N01 N02 robustness screen
         env:
           BT_START_DATE: '2025-07-01'
@@ -126,6 +135,8 @@ jobs:
             value-candidate-pre-shadow-breakdown.txt
             value-s03-motor2-orthogonal.json
             value-s03-motor2-orthogonal.txt
+            value-s03-exhibition-timing.json
+            value-s03-exhibition-timing.txt
             candidate-n01-n02-historical.txt
             value-s02-historical-structure.json
             value-s02-historical-structure.txt
