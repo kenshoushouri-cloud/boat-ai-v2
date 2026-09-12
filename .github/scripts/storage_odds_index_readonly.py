@@ -119,6 +119,7 @@ def main() -> None:
     parsed: list[dict[str, Any]] = []
     for item in index_rows:
         cols = tuple(str(x) for x in (item.get("key_columns") or []))
+        index_def = str(item.get("index_def") or "").replace("\n", " ").strip()
         parsed.append({**item, "cols": cols})
         print(
             "STORAGE_ODDS_INDEX="
@@ -135,6 +136,10 @@ def main() -> None:
             f"idx_scan:{int(item.get('idx_scan') or 0)} "
             f"idx_tup_read:{int(item.get('idx_tup_read') or 0)} "
             f"idx_tup_fetch:{int(item.get('idx_tup_fetch') or 0)}"
+        )
+        print(
+            "STORAGE_ODDS_INDEX_RECREATE="
+            f"name:{item.get('index_name')} definition:{index_def}"
         )
 
     for left in parsed:
