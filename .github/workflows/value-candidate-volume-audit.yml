@@ -8,6 +8,7 @@ on:
       - '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py'
       - 'report_candidate_shadow_active_comparison_pg.py'
       - 'report_candidate_filter_shadow_robustness_pg.py'
+      - 'analyze_candidate_walkforward_phase4_pg.py'
 
 permissions:
   contents: read
@@ -23,7 +24,7 @@ env:
 jobs:
   audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,11 +41,13 @@ jobs:
           python -m py_compile report_candidate_filter_shadow_robustness_pg.py
           python -m py_compile .github/scripts/value_s02_historical_structure_pg.py
           python -m py_compile .github/scripts/value_candidate_pre_shadow_breakdown_pg.py
+          python -m py_compile analyze_candidate_walkforward_phase4_pg.py
           python - <<'PY'
           from pathlib import Path
           reports=(
               'report_candidate_shadow_active_comparison_pg.py',
               'report_candidate_filter_shadow_robustness_pg.py',
+              'analyze_candidate_walkforward_phase4_pg.py',
           )
           strict=(
               '.github/scripts/value_s02_historical_structure_pg.py',
@@ -52,7 +55,7 @@ jobs:
           )
           for path in reports:
               text=Path(path).read_text(encoding='utf-8').lower()
-              for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table'):
+              for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table','execute(','upsert'):
                   assert token not in text,(path,token)
           for path in strict:
               text=Path(path).read_text(encoding='utf-8').lower()
@@ -92,6 +95,13 @@ jobs:
         run: |
           python -u .github/scripts/value_candidate_pre_shadow_breakdown_pg.py | tee value-candidate-pre-shadow-breakdown.txt
           grep -q '^VALUE_PRE_BREAKDOWN_RESULT=PASS_READ_ONLY$' value-candidate-pre-shadow-breakdown.txt
+      - name: Run historical N01 N02 robustness screen
+        env:
+          BT_START_DATE: '2025-07-01'
+          BT_END_DATE: '2026-08-13'
+        run: |
+          python -u analyze_candidate_walkforward_phase4_pg.py | tee candidate-n01-n02-historical.txt
+          grep -q '^PERIOD=2025-07-01..2026-08-13$' candidate-n01-n02-historical.txt
       - name: Run historical S02 structure screen
         run: |
           python -u .github/scripts/value_s02_historical_structure_pg.py | tee value-s02-historical-structure.txt
@@ -105,6 +115,7 @@ jobs:
             candidate-robustness.txt
             value-candidate-pre-shadow-breakdown.json
             value-candidate-pre-shadow-breakdown.txt
+            candidate-n01-n02-historical.txt
             value-s02-historical-structure.json
             value-s02-historical-structure.txt
           retention-days: 30
