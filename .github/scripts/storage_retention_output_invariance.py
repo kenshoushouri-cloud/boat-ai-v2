@@ -34,8 +34,49 @@ with base as (
          ) as retain_rn
     from v2_v24_motor2_forward_shadow s
 ),
+health_source as (
+  select b.*, r.deadline_at
+    from base b
+    left join v2_races r on r.race_id=b.race_id
+   where b.window_name in ('morning','day','night')
+     and b.evaluated_at is not null
+     and b.result_ticket is not null
+     and b.base_prob is not null
+     and b.motor2_prob is not null
+),
+health_valid_groups as (
+  select race_id,run_class,window_name,snapshot_key,
+         max(snapshot_at) as snapshot_at
+    from health_source
+   group by race_id,run_class,window_name,snapshot_key
+  having count(distinct result_ticket)=1
+     and max(snapshot_at) is not null
+     and min(deadline_at) is not null
+     and max(snapshot_at) < min(deadline_at)
+),
+health_latest_time as (
+  select race_id,max(snapshot_at) as snapshot_at
+    from health_valid_groups
+   group by race_id
+),
+health_protected_groups as (
+  select g.race_id,g.run_class,g.window_name,g.snapshot_key
+    from health_valid_groups g
+    join health_latest_time t
+      on t.race_id=g.race_id and t.snapshot_at=g.snapshot_at
+),
+health_protected_ids as (
+  select h.id
+    from health_source h
+    join health_protected_groups g
+      using (race_id,run_class,window_name,snapshot_key)
+),
 retained as (
-  select * from base where key_has_unevaluated or retain_rn=1
+  select *
+    from base
+   where key_has_unevaluated
+      or retain_rn=1
+      or id in (select id from health_protected_ids)
 )
 """
 
@@ -219,6 +260,7 @@ def diagnostic_change() -> dict:
 select
   (select count(*) from base) as raw_rows_full,
   (select count(*) from retained) as raw_rows_retained,
+  (select count(*) from health_protected_ids) as health_protected_rows,
   (select count(*) from full_pre_groups) as pre_snapshot_groups_full,
   (select count(*) from retained_pre_groups) as pre_snapshot_groups_retained
 """)
@@ -257,6 +299,7 @@ def main() -> None:
     print(
         'STORAGE_RETENTION_ALLOWED_DIAGNOSTIC_CHANGE='
         f"raw_rows_full:{i(diag,'raw_rows_full')} raw_rows_retained:{i(diag,'raw_rows_retained')} "
+        f"health_protected_rows:{i(diag,'health_protected_rows')} "
         f"pre_snapshot_groups_full:{i(diag,'pre_snapshot_groups_full')} "
         f"pre_snapshot_groups_retained:{i(diag,'pre_snapshot_groups_retained')}"
     )
