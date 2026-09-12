@@ -53,6 +53,28 @@ def main() -> None:
          order by run_class,window_name
         """
     )
+    ambiguity = one(
+        """
+        with latest as (
+          select race_id,ticket,run_class,window_name,max(snapshot_at) as latest_at
+            from v2_v24_motor2_forward_shadow
+           group by race_id,ticket,run_class,window_name
+        ), latest_keys as (
+          select s.race_id,s.ticket,s.run_class,s.window_name,
+                 count(distinct s.snapshot_key) as snapshot_keys
+            from v2_v24_motor2_forward_shadow s
+            join latest l
+              on l.race_id=s.race_id
+             and l.ticket=s.ticket
+             and l.run_class=s.run_class
+             and l.window_name=s.window_name
+             and l.latest_at=s.snapshot_at
+           group by s.race_id,s.ticket,s.run_class,s.window_name
+        )
+        select count(*) filter (where snapshot_keys > 1) as ambiguous_latest_keys
+          from latest_keys
+        """
+    )
     candidate = one(
         """
         with base as (
@@ -125,6 +147,7 @@ def main() -> None:
         """
     )
 
+    ambiguous_latest_keys = int(ambiguity.get('ambiguous_latest_keys') or 0)
     print('STORAGE_RETENTION_INVENTORY_MODE=READ_ONLY_NO_CLEANUP')
     print(
         'STORAGE_RETENTION_SIZE='
@@ -147,6 +170,7 @@ def main() -> None:
             f"rows:{int(r.get('rows') or 0)} snapshot_keys:{int(r.get('snapshot_keys') or 0)} "
             f"unevaluated_rows:{int(r.get('unevaluated_rows') or 0)}"
         )
+    print(f'STORAGE_RETENTION_AMBIGUOUS_LATEST_KEYS={ambiguous_latest_keys}')
     print(
         'STORAGE_RETENTION_HYPOTHETICAL='
         f"removable_rows:{int(candidate.get('hypothetical_removable_rows') or 0)} "
@@ -155,6 +179,8 @@ def main() -> None:
         f"health_protected_rows:{int(candidate.get('health_protected_rows') or 0)} "
         f"extra_health_rows_preserved:{int(candidate.get('extra_health_rows_preserved') or 0)}"
     )
+    if ambiguous_latest_keys:
+        raise SystemExit('STORAGE_RETENTION_INVENTORY_RESULT=BLOCK_AMBIGUOUS_LATEST')
     print('STORAGE_RETENTION_INVENTORY_RESULT=PASS_READ_ONLY')
 
 
