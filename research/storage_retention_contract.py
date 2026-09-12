@@ -64,3 +64,33 @@ def retained_latest_map(rows: Iterable[ShadowRow]) -> dict[tuple[str, str, str, 
         if row.logical_key not in out or row.snapshot_at > out[row.logical_key].snapshot_at:
             out[row.logical_key] = row
     return out
+
+
+def retention_impact(rows: Iterable[ShadowRow]) -> dict[str, int | float]:
+    """Summarize a hypothetical compaction plan without changing any state."""
+    materialized = tuple(rows)
+    keep, removable = retention_plan(materialized)
+
+    groups: dict[tuple[str, str, str, str], list[ShadowRow]] = {}
+    for row in materialized:
+        groups.setdefault(row.logical_key, []).append(row)
+
+    blocked_keys = sum(
+        1
+        for group in groups.values()
+        if any(not row.evaluated for row in group)
+    )
+    removable_pct = (
+        len(removable) / len(materialized) * 100.0
+        if materialized
+        else 0.0
+    )
+
+    return {
+        "input_rows": len(materialized),
+        "logical_keys": len(groups),
+        "keep_rows": len(keep),
+        "removable_candidate_rows": len(removable),
+        "unevaluated_blocked_keys": blocked_keys,
+        "removable_candidate_pct": removable_pct,
+    }
