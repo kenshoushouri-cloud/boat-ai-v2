@@ -55,11 +55,17 @@ def main() -> None:
     pair = one(
         """
         with f as (
-          select race_id,ticket,odds,snapshot_at
+          select race_id,ticket,odds,snapshot_at,
+                 market_rank,prev_odds,odds_delta,odds_delta_pct,
+                 prev_market_rank,market_rank_delta,is_favorite,
+                 is_odds_too_low,is_odds_drift,is_odds_steam
             from v2_realtime_odds_snapshots
            where snapshot_label='final_ab'
         ), l as (
-          select race_id,ticket,odds,snapshot_at
+          select race_id,ticket,odds,snapshot_at,
+                 market_rank,prev_odds,odds_delta,odds_delta_pct,
+                 prev_market_rank,market_rank_delta,is_favorite,
+                 is_odds_too_low,is_odds_drift,is_odds_steam
             from v2_realtime_odds_snapshots
            where snapshot_label='learning_all'
         )
@@ -68,6 +74,22 @@ def main() -> None:
           count(distinct f.race_id)::bigint as overlap_races,
           count(*) filter (where f.odds is not distinct from l.odds)::bigint as equal_odds,
           count(*) filter (where f.odds is distinct from l.odds)::bigint as different_odds,
+          count(*) filter (where f.market_rank is not distinct from l.market_rank)::bigint as equal_market_rank,
+          count(*) filter (where f.prev_odds is not distinct from l.prev_odds)::bigint as equal_prev_odds,
+          count(*) filter (where f.odds_delta is not distinct from l.odds_delta)::bigint as equal_odds_delta,
+          count(*) filter (where f.odds_delta_pct is not distinct from l.odds_delta_pct)::bigint as equal_odds_delta_pct,
+          count(*) filter (
+            where f.market_rank is not distinct from l.market_rank
+              and f.prev_odds is not distinct from l.prev_odds
+              and f.odds_delta is not distinct from l.odds_delta
+              and f.odds_delta_pct is not distinct from l.odds_delta_pct
+              and f.prev_market_rank is not distinct from l.prev_market_rank
+              and f.market_rank_delta is not distinct from l.market_rank_delta
+              and f.is_favorite is not distinct from l.is_favorite
+              and f.is_odds_too_low is not distinct from l.is_odds_too_low
+              and f.is_odds_drift is not distinct from l.is_odds_drift
+              and f.is_odds_steam is not distinct from l.is_odds_steam
+          )::bigint as equal_movement_features,
           count(*) filter (where f.snapshot_at is not distinct from l.snapshot_at)::bigint as equal_snapshot_at,
           min(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as min_abs_seconds,
           max(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as max_abs_seconds,
@@ -92,6 +114,7 @@ def main() -> None:
     final_rows = int((by_name.get('final_ab') or {}).get('rows') or 0)
     learning_rows = int((by_name.get('learning_all') or {}).get('rows') or 0)
     overlap_rows = int(pair.get('overlap_rows') or 0)
+    equal_movement_features = int(pair.get('equal_movement_features') or 0)
 
     print('STORAGE_REALTIME_ODDS_LABEL_MODE=READ_ONLY_NO_MUTATION')
     print(
@@ -121,6 +144,12 @@ def main() -> None:
         f"overlap_races:{int(pair.get('overlap_races') or 0)} "
         f"equal_odds:{int(pair.get('equal_odds') or 0)} "
         f"different_odds:{int(pair.get('different_odds') or 0)} "
+        f"equal_market_rank:{int(pair.get('equal_market_rank') or 0)} "
+        f"equal_prev_odds:{int(pair.get('equal_prev_odds') or 0)} "
+        f"equal_odds_delta:{int(pair.get('equal_odds_delta') or 0)} "
+        f"equal_odds_delta_pct:{int(pair.get('equal_odds_delta_pct') or 0)} "
+        f"equal_movement_features:{equal_movement_features} "
+        f"different_movement_features:{max(0, overlap_rows-equal_movement_features)} "
         f"equal_snapshot_at:{int(pair.get('equal_snapshot_at') or 0)} "
         f"min_abs_seconds:{pair.get('min_abs_seconds')} "
         f"max_abs_seconds:{pair.get('max_abs_seconds')} "
