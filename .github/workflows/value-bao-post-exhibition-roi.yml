@@ -6,6 +6,8 @@ on:
       - '.github/scripts/value_bao_post_exhibition_market_residual_pg.py'
       - '.github/scripts/value_bao_post_exhibition_roi_pg.py'
       - '.github/workflows/value-bao-post-exhibition-roi.yml'
+      - 'report_candidate_shadow_active_comparison_pg.py'
+      - 'report_candidate_filter_shadow_robustness_pg.py'
 
 permissions:
   contents: read
@@ -13,6 +15,8 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  ACTIVE_SHADOW_REPORT_DAYS: '30'
+  CANDIDATE_SHADOW_REPORT_DAYS: '30'
 
 jobs:
   audit:
@@ -32,16 +36,27 @@ jobs:
         run: |
           python -m py_compile .github/scripts/value_bao_post_exhibition_market_residual_pg.py
           python -m py_compile .github/scripts/value_bao_post_exhibition_roi_pg.py
+          python -m py_compile report_candidate_shadow_active_comparison_pg.py
+          python -m py_compile report_candidate_filter_shadow_robustness_pg.py
           python - <<'PY'
           from pathlib import Path
-          for path in (
+          strict=(
               '.github/scripts/value_bao_post_exhibition_market_residual_pg.py',
               '.github/scripts/value_bao_post_exhibition_roi_pg.py',
-          ):
-              text = Path(path).read_text(encoding='utf-8').lower()
+          )
+          reports=(
+              'report_candidate_shadow_active_comparison_pg.py',
+              'report_candidate_filter_shadow_robustness_pg.py',
+          )
+          for path in strict:
+              text=Path(path).read_text(encoding='utf-8').lower()
               assert 'set transaction read only' in text
-              for token in ('delete from', 'insert into', 'alter table', 'drop table', 'truncate ', 'vacuum ', 'create table'):
-                  assert token not in text, (path, token)
+              for token in ('delete from','insert into','alter table','drop table','truncate ','vacuum ','create table'):
+                  assert token not in text,(path,token)
+          for path in reports:
+              text=Path(path).read_text(encoding='utf-8').lower()
+              for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table'):
+                  assert token not in text,(path,token)
           PY
       - name: Install dependencies
         run: |
@@ -70,13 +85,22 @@ jobs:
         run: |
           python -u .github/scripts/value_bao_post_exhibition_roi_pg.py | tee value-bao-post-exhibition-roi.txt
           grep -q '^VALUE_BAO_ROI_RESULT=PASS_READ_ONLY$' value-bao-post-exhibition-roi.txt
-          cat value-bao-post-exhibition-roi.json
+      - name: Run active candidate volume comparison
+        run: |
+          python -u report_candidate_shadow_active_comparison_pg.py | tee candidate-active.txt
+          grep -q '^ACTIVE_SHADOW_RESULT=PASS_READ_ONLY$' candidate-active.txt
+      - name: Run candidate robustness breakdown
+        run: |
+          python -u report_candidate_filter_shadow_robustness_pg.py | tee candidate-robustness.txt
+          grep -q '^RESULT=PASS$' candidate-robustness.txt
       - name: Upload aggregate research artifact
         uses: actions/upload-artifact@v4
         with:
-          name: value-bao-post-exhibition-roi-${{ github.run_id }}
+          name: value-candidate-volume-roi-${{ github.run_id }}
           path: |
             value-bao-post-exhibition-roi.json
             value-bao-post-exhibition-roi.txt
+            candidate-active.txt
+            candidate-robustness.txt
           retention-days: 30
           if-no-files-found: error
