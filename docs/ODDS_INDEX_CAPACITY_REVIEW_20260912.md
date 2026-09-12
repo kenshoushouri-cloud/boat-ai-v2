@@ -23,9 +23,9 @@ The integrated audit runs with PostgreSQL default-transaction read-only mode, `t
 | `ux_v2_odds_trifecta_race_ticket` | 547,282,944 | unique `(race_id,ticket)` | 372,429 | heavily used; identity/query path |
 | `v2_odds_trifecta_pkey` | 202,407,936 | primary key `(id)` | 0 | zero read scans, but primary-key schema semantics; preserve |
 | `idx_v2_odds_race_id` | 109,445,120 | btree `(race_id)` | 19,587 | actively used despite structural prefix overlap |
-| `idx_v2_odds_race_date` | 70,942,720 | btree `(race_date)` | **9** | low but non-zero observed use; no longer classifiable as zero-use |
+| `idx_v2_odds_race_date` | 70,942,720 | btree `(race_date)` | **9** | counter is known to be research-audit contaminated; not valid as steady Production-demand evidence |
 
-`pg_stat_database.stats_reset` remains `NULL`. The counters are retained Production statistics, not proof of every external/ad-hoc workload. Importantly, the race-date index changed from an earlier observed zero-scan state to **9 scans / 8 tuples read / 8 tuples fetched**. Any deletion case must therefore explain those scans before the index can be called redundant or unused.
+`pg_stat_database.stats_reset` remains `NULL`, so the counters accumulate across the retained statistics lifetime. For the race-date index, however, the current count must not be interpreted naively: this research branch itself executed direct race-date probes before those probes were corrected.
 
 ## `idx_v2_odds_race_id` must not be treated as redundant
 
@@ -42,9 +42,9 @@ Production statistics and static planner checks reject that conclusion:
 
 The smaller single-column index and the larger composite index are serving different planner/cost cases. No DROP candidate is proposed for `idx_v2_odds_race_id`.
 
-## `idx_v2_odds_race_date` — low use, not zero use
+## `idx_v2_odds_race_date` — initial zero baseline, later self-contaminated counter
 
-The race-date index is about **70.9 MB** and currently records:
+The race-date index is about **70.9 MB**. The current catalog counter is:
 
 - `idx_scan=9`
 - `idx_tup_read=8`
@@ -52,15 +52,30 @@ The race-date index is about **70.9 MB** and currently records:
 - valid/ready/live = true
 - no constraint ownership
 
-Static `EXPLAIN (FORMAT JSON)` checks, without `ANALYZE`, confirm that direct predicates on `v2_odds_trifecta.race_date` are planner-eligible and select this index for the tested shapes:
+The important chronology is:
 
-- direct race-date equality count
-- direct race-date equality row retrieval
-- direct race-date range count
+1. the dedicated read-only index audit initially observed **`idx_scan=0`** before its own race-date sampling probes had accumulated;
+2. early versions of that audit executed a `min/max(race_date)` lookup to obtain planner sample values; later runs observed **2 then 6 scans**, and the PR explicitly recorded this as self-contamination rather than Production demand;
+3. commit `ef626c91920ef189f704ad2be59ff27d1e4c8a9d` changed the audit to static literals for `EXPLAIN` and removed that data-sampling query;
+4. a separate early current-growth audit initially treated `v2_odds_trifecta.race_date` as a usable date key and executed a direct bounded `WHERE race_date >= current_date - 7 AND race_date < current_date` query. Workflow run `34674650540` executed this query once and returned zero matching odds rows. The script was then corrected by commit `5a74fb58cb76180e241c4e43ce67ba8cdb4bea51` to resolve dates through `v2_races`, and that one-shot workflow was later retired;
+5. current integrated audit now reads the counter but uses only static `EXPLAIN` literals for race-date planner tests, so it no longer intentionally adds a race-date data scan.
 
-These EXPLAIN-only probes do not intentionally execute the SELECT body and are not used as evidence that the index has runtime demand. The non-zero `pg_stat_user_indexes` counter instead means some executed workload has used the index since statistics began accumulating.
+Therefore the current value 9 is **contaminated by known research/audit queries** and is not valid evidence that a steady Production runtime consumer requires this index. It is also not possible from the cumulative counter alone to attribute every one of the nine increments perfectly after the fact, so the safest statement is not “all 9 are explained,” but rather “the counter cannot be used as an uncontaminated Production-demand signal.”
 
-A bounded repository audit previously found that common owned code paths constrain `v2_races.race_date` and then reach odds through `race_id`, or convert date ranges into race-id ranges. The pure static consumer audit remains useful, but the new non-zero runtime counter means the stronger claim “unused” is no longer valid. Attribution of the 9 scans is now a required pre-drop gate.
+### Static consumer evidence
+
+A pure repository-static audit inspects checked-in Python SQL strings without PostgreSQL, Railway, or network access. Latest PASS evidence:
+
+- SQL strings containing an actual `v2_odds_trifecta` FROM/JOIN: **72**
+- direct `v2_odds_trifecta.race_date` candidates: **0**
+- qualified direct (`o.race_date` / table-qualified): **0**
+- unqualified WHERE `race_date` attributable to the odds relation: **0**
+- synthetic/static tests: **8/8 PASS**
+- the index instrumentation script itself is explicitly excluded from workload classification.
+
+This is strong evidence that current checked-in repository code has no direct odds-table race-date predicate. It does not prove that an external/ad-hoc/non-repository consumer can never use the index.
+
+Static `EXPLAIN (FORMAT JSON)`, without `ANALYZE`, confirms that if a direct odds-table race-date workload exists, the planner can select this index for equality/range shapes. Those EXPLAIN probes do not execute the SELECT body and are not counted as runtime-demand evidence.
 
 Exact recreation DDL captured from live `pg_get_indexdef`:
 
@@ -73,12 +88,12 @@ ON public.v2_odds_trifecta USING btree (race_date);
 
 `idx_v2_odds_race_date` is classified as:
 
-**`LOW_USAGE_SCHEMA_RESEARCH_CANDIDATE / NONZERO_RUNTIME_USE / NOT_AUTHORIZED_FOR_DROP`**
+**`INITIAL_ZERO_BASELINE / RESEARCH_SELF_CONTAMINATED_COUNTER / STATIC_DIRECT_CONSUMERS_ZERO / SCHEMA_CHANGE_RESEARCH_CANDIDATE / NOT_AUTHORIZED_FOR_DROP`**
 
-Reasons it is not approved as removable:
+Reasons it is still not approved as removable:
 
-1. the index now has observed runtime scans, so their source must be attributed;
-2. index statistics do not capture all workload intent or future/ad-hoc dependencies;
+1. the cumulative counter is contaminated and cannot establish a clean post-research observation window by itself;
+2. static repository evidence does not cover unknown external/ad-hoc consumers;
 3. a DROP is a Production schema change;
 4. rollback/recreation on a ~7.9M-row table has build-time, I/O, CPU and WAL risk;
 5. capacity pressure alone is not sufficient reason to remove an index without a bounded dependency/performance review;
@@ -110,10 +125,10 @@ No DROP/REINDEX/CREATE command is authorized by this research document.
 
 Before any Production drop request:
 
-1. attribute the current 9 scans using repository/workflow/runtime evidence and determine whether they are recurring;
-2. re-read current index counters immediately before the proposal;
+1. establish a clean observation strategy that does not itself execute odds-table race-date predicates; do not use the contaminated cumulative counter as sole evidence;
+2. re-read current index metadata immediately before the proposal and compare only against a deliberately frozen clean baseline if one exists;
 3. inventory all constraints/dependencies and confirm the index is still non-constraint, valid, ready and live;
-4. run static read-only `EXPLAIN` comparisons for repository-owned query shapes, including direct race-date controls;
+4. keep planner checks `EXPLAIN`-only with static literals and no `ANALYZE`/data-sampling probe;
 5. confirm repository code and scheduled Production services have no required direct odds-table race-date workload;
 6. freeze exact recreation DDL and a rollback/rebuild procedure;
 7. estimate build/drop resource risk and identify an execution window;
@@ -123,4 +138,4 @@ Before any Production drop request:
 
 ## Current decision
 
-`ODDS_TABLE_INDEX_BYTES_930078720 / RACE_TICKET_UNIQUE_HEAVILY_USED / RACE_ID_INDEX_109MB_ACTIVE_AND_PLANNER_SELECTED / RACE_ID_DROP_BLOCKED / PKEY_202MB_ZERO_READ_SCANS_BUT_SCHEMA_SEMANTIC_PRESERVE / RACE_DATE_INDEX_70_9MB_SCAN_COUNT_9 / RACE_DATE_RUNTIME_ATTRIBUTION_REQUIRED / RACE_DATE_INDEX_LOW_USAGE_RESEARCH_CANDIDATE_ONLY / DROP_CONCURRENTLY_REVIEW_IF_EVER_APPROVED / FRESH_RECOVERY_POINT_OPEN / NO_DROP_INDEX / NO_REINDEX / NO_SCHEMA_CHANGE / NO_PRODUCTION_CHANGE`
+`ODDS_TABLE_INDEX_BYTES_930078720 / RACE_TICKET_UNIQUE_HEAVILY_USED / RACE_ID_INDEX_109MB_ACTIVE_AND_PLANNER_SELECTED / RACE_ID_DROP_BLOCKED / PKEY_202MB_ZERO_READ_SCANS_BUT_SCHEMA_SEMANTIC_PRESERVE / RACE_DATE_INDEX_70_9MB_CURRENT_COUNTER_9 / INITIAL_RACE_DATE_SCAN_BASELINE_ZERO / COUNTER_RESEARCH_SELF_CONTAMINATED / STATIC_DIRECT_CONSUMERS_ZERO / RACE_DATE_INDEX_SCHEMA_RESEARCH_CANDIDATE_ONLY / DROP_CONCURRENTLY_REVIEW_IF_EVER_APPROVED / FRESH_RECOVERY_POINT_OPEN / NO_DROP_INDEX / NO_REINDEX / NO_SCHEMA_CHANGE / NO_PRODUCTION_CHANGE`
