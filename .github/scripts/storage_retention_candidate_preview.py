@@ -4,6 +4,9 @@
 This reports candidate scope only. It never changes database state.
 The conservative cleanup scope intentionally excludes manual/test/live rows and
 current-day FINAL rows even when the broader retention contract marks them removable.
+
+The base CTE projects only columns required by this audit so the read-only preview can
+stay inside a small temporary-file budget while Production storage is under pressure.
 """
 from __future__ import annotations
 
@@ -19,7 +22,18 @@ from db_pg import fetch_all
 
 CTE = """
 with base as (
-  select s.*,
+  select s.id,
+         s.race_id,
+         s.ticket,
+         s.run_class,
+         s.window_name,
+         s.snapshot_key,
+         s.snapshot_at,
+         s.race_date,
+         s.evaluated_at,
+         s.result_ticket,
+         s.base_prob,
+         s.motor2_prob,
          row_number() over (
            partition by s.race_id,s.ticket,s.run_class,s.window_name
            order by s.snapshot_at desc,s.id desc
@@ -30,7 +44,8 @@ with base as (
     from v2_v24_motor2_forward_shadow s
 ),
 health_source as (
-  select b.*, r.deadline_at
+  select b.id,b.race_id,b.run_class,b.window_name,b.snapshot_key,b.snapshot_at,
+         b.result_ticket,r.deadline_at
     from base b
     left join v2_races r on r.race_id=b.race_id
    where b.window_name in ('morning','day','night')
@@ -66,7 +81,7 @@ health_protected_ids as (
       using (race_id,run_class,window_name,snapshot_key)
 ),
 marked as (
-  select b.*,
+  select b.id,b.race_id,b.run_class,b.window_name,b.snapshot_key,b.race_date,
          (
            b.key_has_unevaluated
            or b.retain_rn=1
@@ -111,7 +126,7 @@ def main() -> None:
         """
     )
 
-    print('STORAGE_RETENTION_CANDIDATE_PREVIEW_MODE=READ_ONLY_NO_CLEANUP')
+    print('STORAGE_RETENTION_CANDIDATE_PREVIEW_MODE=READ_ONLY_LOW_TEMP_NO_CLEANUP')
     print(
         'STORAGE_RETENTION_CANDIDATE_TOTAL='
         f"rows:{int(overall.get('candidate_rows') or 0)} "
