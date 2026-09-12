@@ -31,7 +31,7 @@ def main() -> None:
         left join pg_stat_user_tables s
           on s.relid=c.oid
         where n.nspname not in ('pg_catalog','information_schema')
-          and n.nspname not like 'pg_toast%'
+          and left(n.nspname, 8) <> 'pg_toast'
           and c.relkind in ('r','p','m')
         order by pg_total_relation_size(c.oid) desc, n.nspname, c.relname
         limit 40
