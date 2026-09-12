@@ -41,12 +41,16 @@ If Production capacity action becomes necessary, use this order:
 
 1. **re-measure current disk and logical DB sizes**;
 2. **confirm the exact candidate and its current dependencies**;
-3. **create/verify a fresh restorable recovery point** — separate explicit approval required;
+3. **close the fresh recovery-point gate** — separate explicit approval required;
 4. **perform only one approved mutation class at a time**;
 5. **verify application health and capacity immediately afterward**;
 6. **do not chain DELETE + VACUUM + DROP INDEX + archive cleanup into one approval**.
 
 Every mutation class remains separately approvable and separately reversible where possible.
+
+The fresh recovery-point gate is currently **not closed**. Railway's current documentation states that manual volume backups are limited to 50% of total volume capacity. At about 4.183 GB used on a Hobby 5 GB volume, a fresh on-demand manual backup is therefore treated as blocked/unreliable. Hobby's documented volume maximum is also 5 GB, so the current volume cannot simply be enlarged enough within Hobby to satisfy the 50% rule.
+
+Reference: PR #344 / `docs/FRESH_RECOVERY_POINT_APPROVAL_PACKET_20260912.md`.
 
 ## 4. Candidate priority matrix
 
@@ -69,7 +73,7 @@ Why it ranks first if a physical-capacity action is eventually required:
 
 Remaining mandatory gates:
 
-- fresh backup/recovery point;
+- fresh recovery point;
 - fresh catalog metadata and exact index definition check;
 - fresh static dependency audit;
 - representative `EXPLAIN`/workload evidence without mutating Production data;
@@ -99,7 +103,7 @@ Why it ranks below the standalone index:
 
 Remaining mandatory gates:
 
-- fresh backup/recovery point;
+- fresh recovery point;
 - current candidate digest;
 - current zero-diff protected-output audit;
 - explicit **DELETE approval** for an exact bounded candidate;
@@ -193,13 +197,32 @@ The following are not capacity-cleanup candidates under current evidence:
 - label-scoping `_fetch_previous_odds()` — model-input semantic change, not storage maintenance
 - automatic purchase or LINE changes — unrelated to capacity and remain out of scope
 
-## 6. Fresh backup is the common Production gate
+## 6. Fresh recovery point is the common Production gate — and is currently blocked
 
 The visible backup referenced during research was created 2026-08-23 and is too old to close a 2026-09-12 cleanup recovery gate.
 
-Before **any** Production row deletion, standalone-index removal, physical rewrite, or archive-delete phase, require a fresh restorable recovery point.
+Before **any** Production row deletion, standalone-index removal, physical rewrite, or archive-delete phase, require a fresh recovery point.
 
-Backup creation/restore is itself a Production action and requires explicit user approval. This runbook does not create one.
+Current Railway documentation adds an important constraint:
+
+- manual volume backups are limited to 50% of the volume's total size;
+- current disk is about 4.183 GB on a 5 GB volume;
+- satisfying the 50% rule for current usage would require at least about 8.366 GB capacity;
+- Hobby volume size limit is 5 GB.
+
+Therefore the existing Hobby volume cannot reliably close the fresh-recovery gate with a simple on-demand manual volume backup.
+
+Research alternatives, all requiring separate explicit approval, are:
+
+1. **PITR** — Railway creates a backup bucket, changes `WAL_ARCHIVE_*` Variables and redeploys Postgres; after the first healthy base backup it supplies a restore window. PITR restore creates a sibling Postgres service and leaves the source untouched.
+2. **Scheduled volume backup** — Daily/Weekly/Monthly schedules exist, but this research has not proven that a newly enabled schedule will immediately produce a valid snapshot at the current >50% usage state.
+3. **Plan/limit enlargement** — make sufficient capacity available for a manual backup; this can require a paid-plan/limit change and is not authorized.
+
+Do not attempt a manual backup merely to see whether it fails. Resolve and approve the recovery mechanism first.
+
+Backup/PITR/schedule/resize/plan changes are Production actions and require explicit user approval. This runbook performs none of them.
+
+Reference: PR #344 / `docs/FRESH_RECOVERY_POINT_APPROVAL_PACKET_20260912.md`.
 
 ## 7. One-change-at-a-time execution policy
 
@@ -207,8 +230,8 @@ If explicit Production approval is later granted, do not combine candidates.
 
 Recommended isolation order is:
 
-1. approve/create fresh recovery point;
-2. execute exactly one approved candidate;
+1. approve and prove one recovery mechanism;
+2. execute exactly one approved capacity candidate;
 3. re-check disk, DB health, Production pipelines, and read paths;
 4. observe at least one normal operating cycle when relevant;
 5. only then consider a second capacity action.
@@ -226,7 +249,7 @@ This prevents ambiguous rollback and makes the actual physical-capacity effect m
 
 Given current evidence, if capacity pressure later requires an approved Production action, the research ordering is:
 
-1. **fresh recovery point first**;
+1. **solve and prove the fresh recovery-point mechanism first** — current manual backup path is blocked by the documented limit;
 2. **race-date standalone index candidate** — best current discrete physical-capacity/risk ratio, but still schema approval only after all gates;
 3. **Motor2 conservative retention** — proven semantic invariance, but primarily internal-space reuse unless a separate rewrite is approved;
 4. **historical-label cold archive** — largest static logical footprint studied, but archive/restore infrastructure must exist first;
@@ -237,4 +260,4 @@ This ordering is **not authorization** to perform any of the above.
 
 ## 10. Current gate
 
-`VOLUME_CURRENT_ABOUT_4_183_OF_5_GB / LOGICAL_DB_ABOUT_3700_MB / NO_EXACT_EXHAUSTION_FORECAST / FRESH_BACKUP_REQUIRED_BEFORE_MUTATION / RACE_DATE_INDEX_FIRST_RESEARCH_CANDIDATE_ONLY / MOTOR2_ZERO_DIFF_BUT_DELETE_NOT_AUTHORIZED / HISTORICAL_ARCHIVE_CONTRACT_ONLY / COMPLETED_LEARNING_ARCHIVE_CONTRACT_ONLY / ODDS_ONLY_DEFAULT_OFF / BASE_ODDS_PRESERVE / FULL_LEARNING_PAUSE_BLOCKED / ONE_MUTATION_CLASS_PER_APPROVAL / NO_DELETE / NO_DROP_INDEX / NO_VACUUM / NO_BACKUP_CREATE / NO_RAILWAY_CHANGE / NO_MODEL_CHANGE / NO_LINE_CHANGE / NO_PURCHASE`
+`VOLUME_CURRENT_ABOUT_4_183_OF_5_GB / LOGICAL_DB_ABOUT_3700_MB / NO_EXACT_EXHAUSTION_FORECAST / FRESH_RECOVERY_POINT_REQUIRED / MANUAL_BACKUP_50PCT_LIMIT_CONFLICT / HOBBY_MAX_5GB / MANUAL_FRESH_BACKUP_CURRENTLY_BLOCKED / PITR_AVAILABLE_BUT_REQUIRES_PRODUCTION_APPROVAL / SCHEDULED_BACKUP_NOT_YET_PROVEN / RACE_DATE_INDEX_FIRST_RESEARCH_CANDIDATE_ONLY / MOTOR2_ZERO_DIFF_BUT_DELETE_NOT_AUTHORIZED / HISTORICAL_ARCHIVE_CONTRACT_ONLY / COMPLETED_LEARNING_ARCHIVE_CONTRACT_ONLY / ODDS_ONLY_DEFAULT_OFF / BASE_ODDS_PRESERVE / FULL_LEARNING_PAUSE_BLOCKED / ONE_MUTATION_CLASS_PER_APPROVAL / NO_DELETE / NO_DROP_INDEX / NO_VACUUM / NO_BACKUP_CREATE / NO_PITR_ENABLE / NO_SCHEDULE_CHANGE / NO_VOLUME_RESIZE / NO_PLAN_CHANGE / NO_RAILWAY_CHANGE / NO_MODEL_CHANGE / NO_LINE_CHANGE / NO_PURCHASE`
