@@ -9,17 +9,17 @@ Both services currently run every 15 minutes during `23,0-14` UTC (about 08:00�
 - `cron-final-check` → `run_final_pg.py` → `v25_final_realtime_pipeline_pg.py` → `v21_realtime_collector_pg_safe.py`
 - `cron-learning-all` → `run_learning_all_realtime_pg.py` → `v21_realtime_collector_pg_safe.py`
 
-The safe v21 collector supports `COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates`: `target` remains the full deadline-window collection set, while `target_id_rows` is only the downstream decision subset. `collection_ids` and the data-collection loop both use the full `target`. This behavior is frozen by CI so candidate targeting cannot silently narrow snapshot collection.
+The safe v21 collector supports `COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates`: the full deadline-window `target` remains the collection set while only downstream decision IDs are narrowed. This behavior is contract-tested in CI.
 
-The learning wrapper separately forces `COLLECT_SCOPE=all`, the same 30-minute-before-deadline window, and a separate `learning_all` label.
+The learning wrapper separately forces `COLLECT_SCOPE=all`, the same 30-minute-before-deadline window, and label `learning_all`.
 
-Natural evidence on 2026-09-12 JST repeatedly showed the same race sets and almost identical saved-row counts. At 11:00, 11:15, 12:00 and 12:15 both collectors covered the same deadline-window races; at 12:30 a small start-time drift moved one edge race but 9/10 race identities still overlapped. No Cron or service setting was changed during this research.
+Natural evidence on 2026-09-12 JST repeatedly showed the same race sets and almost identical saved-row counts. No Cron or service setting was changed during this research.
 
 ## Live identity inventory: duplication is nearly complete
 
-All queries below run through a research-only live audit with `PGOPTIONS=-c default_transaction_read_only=on`, static rejection of DB mutation primitives, and SELECT/catalog queries only.
+All Production DB observations below run read-only with `PGOPTIONS=-c default_transaction_read_only=on` and static rejection of mutation primitives.
 
-Latest verified realtime-odds inventory before the indirect-dependency extension:
+Latest verified realtime-odds inventory:
 
 - `v2_realtime_odds_snapshots`: `506,904,576` bytes / `1,383,910` exact rows
 - `final_ab`: `986,420` rows / `8,453` races
@@ -41,7 +41,7 @@ For the seven completed days immediately before the current date:
 - average learning growth: about **10,890.71 rows/day**
 - average logical tuple payload: about **2,429,374 bytes/day** (~2.32 MiB/day)
 
-This proves near-total duplicate identity coverage and ongoing duplicated write/storage growth.
+Identity duplication is therefore near-total, but identity duplication is not equivalent to feature/output redundancy.
 
 ## Movement features differ materially
 
@@ -55,17 +55,11 @@ For `396,410` overlapping odds identities:
 
 The compared movement set includes previous odds/rank, delta / percentage delta, rank delta, favorite/low-odds flags, and drift/steam flags.
 
-Initially this looked like a separate research-only shifted trajectory. A deeper code audit found a stronger constraint: the two labels are **not independent feature chains**.
-
 ## Critical indirect Production dependency: previous odds are cross-label
 
-Current `v21_realtime_collector_pg.py::_fetch_previous_odds(rid)` queries:
+Current `v21_realtime_collector_pg.py::_fetch_previous_odds(rid)` selects the latest realtime odds rows for a race without filtering `snapshot_label`. The safe collector reuses this helper when building new odds rows.
 
-`v2_realtime_odds_snapshots where race_id=%s order by snapshot_at desc ... limit 240`
-
-It does **not** filter by `snapshot_label`. The safe collector reuses that helper when building each new odds row.
-
-Therefore the previous observation used to compute a new `final_ab` row may come from `learning_all`, and vice versa. The computed fields include:
+Therefore a new `final_ab` row can use a `learning_all` row as its immediate previous market sample. The derived fields include:
 
 - `prev_odds`
 - `odds_delta`
@@ -75,73 +69,107 @@ Therefore the previous observation used to compute a new `final_ab` row may come
 - `is_odds_drift`
 - `is_odds_steam`
 
-This is not merely research metadata. `v22_realtime_decision_engine_pg.py::_realtime_judge()` reads the `final_ab` odds snapshot and changes the Production realtime score when these flags are set:
+This reaches Production scoring. `v22_realtime_decision_engine_pg.py` applies:
 
-- `is_odds_steam` → `score += 0.3`
-- `is_odds_drift` → `score -= 0.5`
+- `is_odds_steam` → realtime score `+0.3`
+- `is_odds_drift` → realtime score `-0.5`
 
-Recommendations are then derived from the score (`buy` at score >= 1.0, `watch` at score >= 0.0, otherwise `skip`, absent other skip conditions).
+Thus “no Production code hard-codes literal `learning_all`” remains true, but does **not** imply independence.
 
-So the statement “no Production code hard-codes the literal `learning_all` label” remains true, but it is **not sufficient to prove output independence**. The learning collector can influence the semantics of later `final_ab` movement features through the shared previous-odds lookup.
+## Read-only coupling audit: direct evidence
 
-A dedicated read-only audit is now quantifying how often current rows visibly show this cross-label predecessor relationship and how many saved final decisions intersect it.
+A dedicated read-only audit now quantifies the cross-label predecessor relationship.
 
-## Consequence: full learning pause is currently blocked
+Across the `396,410` overlapping `(race_id,ticket)` odds identities:
 
-A future `LEARNING_ALL_ENABLED=0` observation is no longer classified as a harmless reversible data-collection test. Even with no code/threshold change, stopping the learning collector can change the time interval and source used for `final_ab.prev_odds`, which can change steam/drift flags and therefore Production BUY/WATCH/SKIP scores.
+- learning timestamp before final timestamp: `188,319`
+- final timestamp before learning timestamp: `208,091`
+- final `prev_odds` exactly equals current learning odds: **`188,080` rows**
+- final `prev_odds` and `prev_market_rank` both exactly match current learning values: **`188,080` rows**
+- direct predecessor evidence within 180 seconds: **`177,186` rows**
+- direct predecessor evidence in the latest seven completed days: **`31,617` rows**
+- average direct learning→final gap: about **77.49 seconds**
+
+This is strong empirical evidence that the learning collector is currently part of the effective input cadence for later final movement features.
+
+## Counterfactual proxy: stopping the learning hop can change v22 movement score
+
+Because realtime tables retain one current row per `(race_id,snapshot_label,ticket)`, exact historical replay of every overwritten same-label snapshot is unavailable. The audit therefore uses a bounded one-step proxy where:
+
+1. a final row demonstrably used current learning odds as `prev_odds`; and
+2. that learning row itself has a non-null `prev_odds`.
+
+For `169,758` such rows:
+
+- stored drift rows: `1,122`
+- proxy drift rows without the immediate learning hop: `12,584`
+- stored steam rows: `282`
+- proxy steam rows: `3,900`
+- rows whose drift/steam movement score changes: **`15,419`**
+- latest seven completed days with changed proxy movement score: **`10,805`**
+- proxy score higher than stored: `3,791`
+- proxy score lower than stored: `11,628`
+- possible movement-score delta in the proxy: **`-0.8` to `+0.8`**
+
+This proxy is not a claim that 15,419 saved BUY/WATCH/SKIP decisions would flip. It proves something narrower and sufficient for the safety gate: removing the learning hop can materially change a Production-scored feature, so a learning pause is not output-neutral by construction.
+
+## Consequence: full learning pause is blocked
+
+A future `LEARNING_ALL_ENABLED=0` observation is no longer classified as a harmless reversible collection test. Stopping the learning collector changes the time interval/source available to `final_ab.prev_odds`, which can change steam/drift flags and v22 realtime scores.
 
 Accordingly:
 
-- **do not pause or disable `cron-learning-all` under the current feature semantics** without explicit Production/model-impact approval and a stronger output-invariance plan;
+- **do not pause or disable `cron-learning-all` under current feature semantics** without explicit Production/model-impact approval and a stronger output-invariance experiment;
 - historical `learning_all` rows remain preservation-by-default;
-- a label-scoped `_fetch_previous_odds` rewrite would itself change feature semantics and is also a Production model-impact change, not a cleanup-only patch.
-
-## Consumer/isolation CI contract
-
-`tests/test_learning_all_redundancy_contract.py` now protects both the direct and indirect assumptions:
-
-- final/nightly chains default to `final_ab`;
-- no other top-level runtime Python script silently hard-codes `learning_all`;
-- learning wrapper remains collection-only with no decision/notifier/purchase wiring;
-- candidate decision targeting cannot narrow full snapshot collection;
-- the current previous-odds lookup is explicitly recognized as cross-label, while v22 is recognized as consuming steam/drift in its score.
-
-The last item intentionally prevents a future cleanup discussion from forgetting this hidden coupling. If the collector is later redesigned, this research contract must be updated together with a new invariance proof.
+- making `_fetch_previous_odds` label-scoped would itself change Production feature semantics and also requires model-impact review;
+- deletion of historical learning rows is not a prerequisite for capacity research and remains out of scope.
 
 ## Capacity direction after the dependency finding
 
-Three earlier choices are no longer equivalent.
-
 ### Keep both collectors
 
-This preserves current Production feature semantics exactly, at the cost of near-total identity duplication and ~10.9k extra logical learning rows/day.
+Preserves current Production feature semantics exactly, but continues nearly duplicated collection/write growth.
 
 ### Full learning pause
 
-**Blocked as an output-neutral capacity experiment.** It may alter `final_ab` movement features and v22 scores. Any future test requires explicit approval as a Production/model-impact experiment, plus a rollback and output-comparison design.
+**Blocked as an output-neutral capacity experiment.** It can alter `final_ab` movement features and v22 scores.
 
 ### Odds-only learning path
 
-This becomes the most relevant research candidate. The odds label appears to be the part needed to preserve the current cross-label market-movement predecessor behavior, while the non-odds `learning_all` tables are much more payload-redundant and are read by Production only through the `final_ab` label.
+This is the safest design candidate if the goal is to preserve current cross-label market-movement cadence while removing redundant non-odds collection.
 
 Current logical tuple split:
 
-- odds rows: about **73.6%** of stored learning tuple bytes;
-- non-odds learning tables: about **26.4%**;
-- recent non-odds learning growth: about `1,559` rows/day and ~`0.62 MiB/day` of logical tuple payload.
+- odds learning bytes: `75,876,808` / `103,050,968` = about **73.63%**
+- non-odds learning bytes: `27,174,160` = about **26.37%**
+- recent seven-day non-odds logical payload: `4,575,256` bytes
+- recent non-odds average: about **653,608 bytes/day** (~0.62 MiB/day)
+- recent non-odds rows: `10,912`, about **1,558.9 rows/day**
 
-An odds-only design would not solve the full volume-growth problem, but it could remove redundant beforeinfo/network work and non-odds writes while preserving the current odds cross-label predecessor mechanism. It remains design-only until separately reviewed and approved.
+So odds-only learning would preserve most current learning storage because odds dominate the payload. It is **not a major capacity-reclaim lever**, but it could eliminate duplicated beforeinfo HTTP work and about 26% of learning tuple payload while preserving the cross-label odds predecessor mechanism.
+
+Any implementation remains default-off research until separately approved; no Production collector has been changed.
+
+## Consumer/isolation CI contract
+
+Research CI protects these assumptions:
+
+- final/nightly scheduled chains default to `final_ab`;
+- no other top-level runtime Python script silently hard-codes `learning_all`;
+- the learning wrapper remains collection-only with no decision/notifier/purchase wiring;
+- candidate targeting cannot narrow the full snapshot collection set;
+- read-only coupling measurement cannot mutate Production data.
+
+The key architectural lesson is that literal-label dependency and semantic dependency are different. Future cleanup work must check both.
 
 ## Safe next research sequence
 
-1. Finish the cross-label predecessor and saved-decision read-only audit.
-2. Freeze the indirect dependency in docs/CI.
-3. Specify an odds-only learning mode as a separate Draft design with **default-off / no Production deployment**.
-4. Prove statically that such a mode still writes `learning_all` odds on the same schedule/window but skips only non-odds learning writes.
-5. Quantify expected write/load savings; do not claim proportional physical volume shrink.
-6. Do not merge/deploy/enable the mode without explicit approval.
-7. Treat any full pause or label-scoped previous-odds rewrite as a separate Production/model-impact change.
+1. Quantify which saved final decision candidates intersect learning-derived movement flags, read-only.
+2. Specify an odds-only learning design as a separate default-off research implementation, without deployment.
+3. Quantify HTTP/write savings and preserve current odds predecessor timing in tests.
+4. Do not claim proportional physical Railway-volume shrink from logical-row savings.
+5. Treat any full pause, Cron disable, or label-scoped previous-odds rewrite as a Production/model-impact change requiring explicit approval.
 
 ## Current decision
 
-`IDENTITY_DUPLICATION_CONFIRMED / RECENT_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / DIRECT_LITERAL_PRODUCTION_CONSUMER_NOT_FOUND / INDIRECT_CROSS_LABEL_PREVIOUS_ODDS_DEPENDENCY_CONFIRMED_STATICALLY / V22_STEAM_DRIFT_SCORE_SENSITIVE / FULL_LEARNING_PAUSE_BLOCKED / HISTORICAL_LEARNING_ROWS_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / NO_SERVICE_DISABLE_AUTHORIZED / NO_CRON_CHANGE / NO_DB_DELETE / NO_PRODUCTION_CHANGE`
+`IDENTITY_DUPLICATION_CONFIRMED / RECENT_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / INDIRECT_CROSS_LABEL_PREVIOUS_ODDS_DEPENDENCY_EMPIRICALLY_CONFIRMED / DIRECT_PREDECESSOR_MATCHES_188080 / RECENT7_DIRECT_PREDECESSOR_MATCHES_31617 / COUNTERFACTUAL_PROXY_SCORE_CHANGED_15419 / RECENT7_PROXY_SCORE_CHANGED_10805 / V22_STEAM_DRIFT_SCORE_SENSITIVE / FULL_LEARNING_PAUSE_BLOCKED / HISTORICAL_LEARNING_ROWS_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / NO_SERVICE_DISABLE_AUTHORIZED / NO_CRON_CHANGE / NO_DB_DELETE / NO_PRODUCTION_CHANGE`
