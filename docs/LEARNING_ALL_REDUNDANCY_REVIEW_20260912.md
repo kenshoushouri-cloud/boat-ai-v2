@@ -9,7 +9,9 @@ Both services currently run every 15 minutes during `23,0-14` UTC (about 08:00�
 - `cron-final-check` → `run_final_pg.py` → `v25_final_realtime_pipeline_pg.py` → `v21_realtime_collector_pg_safe.py`
 - `cron-learning-all` → `run_learning_all_realtime_pg.py` → `v21_realtime_collector_pg_safe.py`
 
-The safe v21 collector supports `COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates`: final-check stores the full deadline-window collection set while narrowing only downstream decision IDs. The learning wrapper separately forces `COLLECT_SCOPE=all`, the same 30-minute-before-deadline window, and a separate `learning_all` label.
+The safe v21 collector supports `COLLECT_SCOPE=all + TARGET_ID_SCOPE=candidates`: `target` remains the full deadline-window collection set, while `target_id_rows` is only the downstream decision subset. `collection_ids` and the data-collection loop both use the full `target`. This behavior is now frozen by CI so candidate targeting cannot silently narrow snapshot collection.
+
+The learning wrapper separately forces `COLLECT_SCOPE=all`, the same 30-minute-before-deadline window, and a separate `learning_all` label.
 
 Natural evidence on 2026-09-12 JST:
 
@@ -21,126 +23,126 @@ Natural evidence on 2026-09-12 JST:
 
 This confirms duplicate acquisition/update work under normal Production timing. No Cron or service setting was changed during this research.
 
-## Live label inventory: duplication is quantitative, not just inferred from logs
+## Live label inventory: identity duplication is nearly complete
 
-All queries below ran through the research-only live audit with:
+All queries below ran through the research-only live audit with `PGOPTIONS=-c default_transaction_read_only=on`, static rejection of DB mutation primitives, and SELECT/catalog queries only.
 
-- `PGOPTIONS=-c default_transaction_read_only=on`
-- static rejection of DB mutation primitives
-- SELECT/catalog queries only
+Latest `v2_realtime_odds_snapshots` inventory:
 
-### Trifecta realtime odds
-
-`v2_realtime_odds_snapshots` currently occupies about `506,576,896` bytes and has `1,381,750` exact rows.
-
-Label counts:
-
-- `final_ab`: `985,340` rows / `8,444` races
-- `learning_all`: `396,290` rows / `3,367` races
-- `final_ab_debug`: `120` rows / 1 race
+- relation size: `506,904,576` bytes
+- exact rows: `1,383,910`
+- `final_ab`: `986,420` rows / `8,453` races
+- `learning_all`: `397,370` rows / `3,376` races
+- `final_ab_debug`: `120` rows
 
 On `(race_id,ticket)` identity:
 
-- `learning_all` rows: `396,290`
-- also present as `final_ab`: `395,330` (**99.76%**)
-- `learning_all`-only identities: `960`
-- overlapping rows with equal odds: `383,747` (**97.07% of overlap**)
-- overlapping rows with different odds: `11,583`
-- exact-equal collection timestamp: `0`
-- average absolute collection-time difference: about `72.46s`
+- `learning_all`: `397,370` rows
+- overlap with `final_ab`: `396,410`
+- learning-only: `960` rows / 8 races
+- equal current odds within overlap: `384,472` (**96.99%**)
+- different current odds: `11,938`
+- average absolute collection-time difference: about `72.60s`
 
-The differing values are expected to exist because the two independent collectors do not start at exactly the same instant. Identity overlap therefore establishes duplicate coverage, not byte-for-byte equivalence for every odds row.
+The other realtime tables show the same coverage pattern:
 
-### Other realtime snapshot tables
-
-The same identity-overlap pattern appears across the other realtime tables:
-
-| Table | `learning_all` rows | Identity overlap with `final_ab` | Learning-only | Payload-identical within overlap |
+| Table | `learning_all` | overlap with `final_ab` | learning-only | payload-identical in overlap |
 |---|---:|---:|---:|---:|
-| weather | 3,374 | 3,368 | 6 | 3,260 |
-| exhibition | 16,128 | 16,020 | 108 | **16,020** |
-| entry | 20,244 | 20,208 | 36 | 19,956 |
-| race condition | 3,374 | 3,368 | 6 | 3,260 |
-| racer condition | 20,244 | 20,208 | 36 | 19,932 |
+| weather | 3,383 | 3,377 | 6 | 3,269 |
+| exhibition | 16,188 | 16,080 | 108 | **16,080** |
+| entry | 20,298 | 20,262 | 36 | 20,010 |
+| race condition | 3,383 | 3,377 | 6 | 3,269 |
+| racer condition | 20,298 | 20,262 | 36 | 19,986 |
 
-Across odds plus these five tables:
+Across odds plus these five tables, `learning_all` contains `460,920` identities and only `1,152` do not have the same identity under `final_ab`.
 
-- total `learning_all` identities: **459,654**
-- identities also present under `final_ab`: **458,502**
-- identity overlap: **99.75%**
-- `learning_all`-only identities: **1,152**
+## Recent seven-day coverage and growth
 
-The exhibition overlap is especially strong: all `16,020` overlapping rows had identical non-identity payloads.
+A separate read-only growth audit uses the seven completed race dates before the current date, so the in-progress current day does not distort the rate.
+
+Across the six realtime tables:
+
+- `learning_all` rows in the seven completed days: `76,235`
+- same-period `final_ab` rows: `139,386`
+- recent learning-only identities: **12**
+- recent identity overlap: **99.9843%**
+- the 12 recent learning-only identities are exhibition rows; odds/weather/entry/race-condition/racer-condition had `0` recent learning-only identities
+- average `learning_all` rows added per completed day: about **10,890.71**
+- average logical tuple payload per completed day: about **2,429,374 bytes/day** (~2.32 MiB/day)
+
+Current stored `learning_all` logical tuple payload across the six tables is about `103,050,968` bytes (~98.3 MiB). This is a logical-row measurement only: it excludes index/heap overhead and does **not** imply an equal physical Railway-volume reduction from deletion.
+
+## Important counterpoint: odds movement features are not fully redundant
+
+The two services are offset in time, so the second label acts as a separate temporal sample even when it covers the same race/ticket.
+
+For the `396,410` overlapping odds identities:
+
+- equal current odds: `384,472` (**96.99%**)
+- equal market rank: `387,059` (**97.64%**)
+- equal `prev_odds`: `314,260` (**79.28%**)
+- all compared movement features equal: `313,458` (**79.07%**)
+- movement-feature difference: `82,952` (**20.93%**)
+
+The compared movement set includes market rank, previous odds, odds delta / percentage delta, previous market rank, rank delta, favorite/low-odds flags, and drift/steam flags.
+
+Therefore the correct conclusion is nuanced:
+
+- **coverage/storage identity is almost entirely duplicated**;
+- **Production decision coverage does not depend on the learning label** based on the current scheduled chain;
+- but `learning_all` is **not byte-for-byte or feature-for-feature redundant**: it preserves an independent, roughly one-minute-shifted odds-change trajectory for research.
+
+This is why this Draft does not classify the label as disposable historical data.
 
 ## Consumer search and Production-path boundary
 
-A bounded repository search for the literal `learning_all` found:
+A bounded repository search for the literal `learning_all` found the learning producer wrapper, documentation/tests, Railway bridge allowlisting, and repository classification text. No hard-coded Production model/decision/LINE consumer of the literal label was found.
 
-- the learning producer wrapper itself;
-- service-map/documentation references;
-- a routing safety test;
-- Railway bridge variable allowlisting;
-- repository classification text.
+The scheduled Production chain instead defaults to `final_ab`:
 
-No hard-coded Production model/decision/LINE consumer of the literal `learning_all` label was found.
+- `run_final_pg.py` sets `SNAPSHOT_LABEL=final_ab` and `DECISION_LABEL=final_ab` if absent;
+- `v25_final_realtime_pipeline_pg.py` passes the same final label through collection, targeted v22 decision, exhibition Shadow, and notifier stages;
+- `v22_realtime_decision_engine_pg.py`, `v22_exhibition_shadow_pg.py`, and `v23_line_notifier_batch_pg.py` default to `final_ab`;
+- `run_v22_targeted_pg.py` passes the requested label through and contains no `learning_all` literal;
+- `run_nightly_results_pg.py` defaults to `final_ab`, and the latest natural nightly logs also printed `SNAPSHOT_LABEL=final_ab`.
 
-The currently scheduled Production chain instead has an explicit `final_ab` default:
-
-- `run_final_pg.py`: sets `SNAPSHOT_LABEL=final_ab` and `DECISION_LABEL=final_ab` if absent;
-- `v25_final_realtime_pipeline_pg.py`: defaults `SNAPSHOT_LABEL` to `final_ab` and passes the same label through collection, targeted v22 decision, exhibition Shadow, and notifier stages;
-- `v22_realtime_decision_engine_pg.py`: defaults `SNAPSHOT_LABEL` to `final_ab`;
-- `run_v22_targeted_pg.py`: passes the requested snapshot label into the realtime fetch path and contains no `learning_all` literal;
-- `v22_exhibition_shadow_pg.py`: defaults `SNAPSHOT_LABEL` to `final_ab`;
-- `v23_line_notifier_batch_pg.py`: derives its decision label from `final_ab` by default;
-- `run_nightly_results_pg.py`: uses `SNAPSHOT_LABEL=final_ab` by default for its scheduled post-race chain.
-
-Railway Production variable-name inspection is consistent with this separation:
-
-- `cron-final-check` has no `LEARNING_*` variables and currently relies on its final wrapper/default chain;
-- `cron-learning-all` owns `LEARNING_ALL_ENABLED`, `LEARNING_SNAPSHOT_LABEL`, and its learning-window variables.
-
-The learning wrapper itself only launches `v21_realtime_collector_pg_safe.py`, uses a separate target-race-id file, and explicitly states no LINE, no Production judgment, and no purchase processing.
+The learning wrapper itself only launches the safe collector, uses a separate target-race-id file, and explicitly has no LINE, Production judgment, or purchase processing.
 
 ## CI contract added by this Draft
 
-`tests/test_learning_all_redundancy_contract.py` now freezes the current isolation assumptions in CI. It fails if the known scheduled final/nightly chain starts hard-coding `learning_all`, stops defaulting to `final_ab`, or if the learning wrapper gains decision/notifier/purchase wiring.
+`tests/test_learning_all_redundancy_contract.py` now fails if:
 
-This is a static contract. It does **not** prove that every ad-hoc historical/research script is independent of `learning_all`.
+- the scheduled final/nightly chain stops defaulting to `final_ab`;
+- a known Production runtime starts hard-coding `learning_all`;
+- any other top-level runtime Python script begins hard-coding `learning_all`;
+- the learning wrapper gains decision/notifier/purchase wiring;
+- `TARGET_ID_SCOPE=candidates` starts narrowing the full snapshot collection set instead of only decision IDs.
 
-## Remaining generic-consumer risk
+This protects the current isolation assumption against future drift. It does not forbid research/CI code under subdirectories from analyzing the historical label.
 
-Generic `snapshot_label` consumers exist in the repository. Some historical/research analysis code reads realtime snapshot tables by label or iterates labels without hard-coding `learning_all`.
+## Capacity options for future approval
 
-Therefore:
+No option below is authorized by this document.
 
-- literal Production consumer absence is strong evidence that the label is not required by the scheduled decision/LINE chain;
-- it is not sufficient to authorize deletion of historical `learning_all` rows;
-- it is not sufficient to authorize a Production Cron/service change without a reversible natural-run observation.
+The evidence supports three distinct future choices:
 
-## Capacity implication
-
-The avoidable cost is not only Railway process runtime. The duplicate service creates a second label identity for almost the entire same pre-deadline race/ticket population across multiple large tables.
-
-Stopping future duplicate collection could slow growth materially, especially in `v2_realtime_odds_snapshots`, but this research deliberately does not claim that deleting rows would proportionally shrink the Railway volume. PostgreSQL row deletion/plain VACUUM mainly creates reusable internal space; physical volume shrink requires a separate high-impact reclaim plan.
+1. **Keep both collectors unchanged.** This preserves the extra shifted movement trajectory but continues near-total identity duplication and roughly 10.9k additional logical rows per completed day.
+2. **Reversible full learning pause.** If separately approved, `LEARNING_ALL_ENABLED=0` can be observed for a bounded natural race day while final-check remains untouched. Existing historical learning rows would be preserved. This reduces future duplicate collection but deliberately gives up the second temporal sample during the observation period.
+3. **Research an odds-only learning path.** About 73.6% of current learning logical tuple bytes are odds rows, and those are the rows where meaningful movement-feature divergence was demonstrated. The non-odds learning tables account for about 26.4% of current learning tuple payload and are much more payload-redundant. A future odds-only design could preserve the distinct market-movement series while avoiding duplicated weather/exhibition/entry/condition writes. This requires code and Production-behavior changes and therefore remains research-only until separately approved.
 
 ## Safest future validation sequence
 
-Any Production change requires separate explicit approval.
+Before any Production pause/change:
 
-1. Keep the current static CI consumer contract green.
-2. Immediately before any approved observation, recheck Railway service configuration and current natural overlap.
-3. Prefer a reversible observation: make the learning wrapper no-op while leaving `cron-final-check` untouched. This is a Production setting/behavior change and therefore requires explicit approval before execution.
-4. Observe at least one full eligible natural race day without manual rerun/backfill.
-5. Required pass conditions:
-   - final-check continues to cover expected deadline-window races;
-   - official odds completeness remains normal;
-   - final decision/LINE path remains normal;
-   - nightly reports/evaluations do not report missing required snapshot data;
-   - no scheduled job requests `learning_all` explicitly;
-   - DB growth attributable to duplicate labels stops as expected.
-6. Immediate rollback if any required downstream job or audit reports a missing-data regression attributable to the absent learning run.
-7. Only after the observation passes should permanent Cron retirement or a historical-row retention/deletion contract be considered under another explicit approval.
+1. keep the static isolation contract green;
+2. recheck natural final-vs-learning overlap and current service configuration;
+3. decide explicitly whether the research value of the second movement trajectory should be preserved;
+4. if a reversible pause is approved, leave all historical `learning_all` rows intact and change only the bounded collector behavior;
+5. observe at least one full eligible natural race day without manual rerun/backfill;
+6. require normal final-check race coverage, odds completeness, final decision/LINE behavior, nightly evaluations, and scheduled-job health;
+7. roll back immediately if a missing-data regression is attributable to the pause;
+8. treat permanent retirement, odds-only redesign, or historical-row deletion as separate later approvals.
 
 ## Current decision
 
-`LIVE_DUPLICATION_QUANTIFIED / LEARNING_IDENTITY_OVERLAP_99_75PCT / PRODUCTION_LITERAL_CONSUMER_NOT_FOUND / SCHEDULED_FINAL_AND_NIGHTLY_DEFAULT_FINAL_AB / STATIC_CONSUMER_ISOLATION_CONTRACT_ADDED / GENERIC_RESEARCH_LABEL_CONSUMPTION_RISK_REMAINS / REVERSIBLE_NATURAL_OBSERVATION_REQUIRED / NO_SERVICE_DISABLE_AUTHORIZED / NO_CRON_CHANGE / NO_DB_DELETE / NO_PRODUCTION_CHANGE`
+`IDENTITY_DUPLICATION_CONFIRMED / RECENT_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / LEARNING_LOGICAL_TUPLES_2_43MB_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / PRODUCTION_LITERAL_CONSUMER_NOT_FOUND / FINAL_FULL_WINDOW_COLLECTION_CONTRACT_PASS / TOP_LEVEL_RUNTIME_CONSUMER_GUARD_PASS / HISTORICAL_LEARNING_ROWS_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / REVERSIBLE_OBSERVATION_REQUIRES_APPROVAL / NO_SERVICE_DISABLE_AUTHORIZED / NO_CRON_CHANGE / NO_DB_DELETE / NO_PRODUCTION_CHANGE`
