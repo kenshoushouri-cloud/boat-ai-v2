@@ -1,0 +1,108 @@
+name: Maintenance Drop Odds Race Date Index
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/maintenance-drop-odds-race-date-index.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  drop-index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          python -m pip install 'psycopg[binary]'
+          npm install --global @railway/cli
+      - name: Load public database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Guard and drop only the standalone race-date index
+        run: |
+          python -u - <<'PY'
+          import os, re
+          import psycopg
+
+          expected='create index idx_v2_odds_race_date on public.v2_odds_trifecta using btree (race_date)'
+          with psycopg.connect(os.environ['DATABASE_URL'], autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute('''
+                    select i.indexrelid, pg_get_indexdef(i.indexrelid),
+                           i.indisvalid,i.indisready,i.indislive,i.indisunique,i.indisprimary,
+                           pg_relation_size(i.indexrelid)::bigint
+                      from pg_index i
+                      join pg_class c on c.oid=i.indexrelid
+                      join pg_class t on t.oid=i.indrelid
+                     where c.relname='idx_v2_odds_race_date'
+                       and c.relnamespace='public'::regnamespace
+                       and t.relname='v2_odds_trifecta'
+                       and t.relnamespace='public'::regnamespace
+                  ''')
+                  rows=cur.fetchall()
+                  if len(rows)!=1:
+                      raise SystemExit(f'GATE_FAIL index_count={len(rows)}')
+                  oid,indexdef,valid,ready,live,unique,primary,size=rows[0]
+                  normalized=' '.join(str(indexdef).replace('"','').lower().split())
+                  if normalized != expected:
+                      raise SystemExit(f'GATE_FAIL definition={normalized}')
+                  if not (valid and ready and live and not unique and not primary):
+                      raise SystemExit(f'GATE_FAIL flags={valid,ready,live,unique,primary}')
+                  if not (70_000_000 <= int(size) <= 72_000_000):
+                      raise SystemExit(f'GATE_FAIL size={size}')
+                  cur.execute('select count(*) from pg_constraint where conindid=%s',(oid,))
+                  constraints=int(cur.fetchone()[0])
+                  if constraints != 0:
+                      raise SystemExit(f'GATE_FAIL constraints={constraints}')
+                  print(f'INDEX_DROP_GATES=PASS size_bytes:{size} constraints:{constraints}', flush=True)
+                  cur.execute('DROP INDEX CONCURRENTLY public.idx_v2_odds_race_date')
+                  cur.execute("select to_regclass('public.idx_v2_odds_race_date')")
+                  remaining=cur.fetchone()[0]
+                  if remaining is not None:
+                      raise SystemExit(f'VERIFY_FAIL remaining={remaining}')
+                  print('INDEX_DROP_RESULT=PASS_ABSENT', flush=True)
+          PY
+      - name: Independent read-only absence check
+        env:
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          python -u - <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("select to_regclass('public.idx_v2_odds_race_date')")
+                  value=cur.fetchone()[0]
+                  if value is not None:
+                      raise SystemExit(f'POSTCHECK_FAIL remaining={value}')
+                  cur.execute("select pg_total_relation_size('public.v2_odds_trifecta')::bigint, pg_indexes_size('public.v2_odds_trifecta')::bigint")
+                  total_bytes,index_bytes=cur.fetchone()
+                  print(f'POSTCHECK_INDEX_ABSENT=PASS total_bytes:{total_bytes} index_bytes:{index_bytes}', flush=True)
+          PY
