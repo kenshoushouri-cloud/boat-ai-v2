@@ -33,7 +33,9 @@ TABLE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 UNQUALIFIED_WHERE_RACE_DATE_RE = re.compile(
-    r"\bwhere\b[\s\S]*?(?<!\.)\brace_date\b",
+    r"(?<!\()\bwhere\b"
+    r"(?:(?!\bgroup\s+by\b|\border\s+by\b|\bhaving\b|\blimit\b|\bunion\b|\bselect\b)[\s\S])*?"
+    r"(?<!\.)\brace_date\b",
     re.IGNORECASE,
 )
 SQL_ALIAS_STOPWORDS = {
@@ -93,9 +95,9 @@ def classify_sql(path: str, line: int, sql: str) -> Finding | None:
             re.search(rf"\b{re.escape(alias)}\.race_date\b", low)
         )
 
-    # Only inspect text after an actual odds-table FROM/JOIN position. This avoids
-    # treating an earlier CTE predicate such as `v2_races where race_date ...` as
-    # an unqualified predicate on the odds table.
+    # Only inspect text after an actual odds-table FROM/JOIN position. The WHERE
+    # matcher also stops at the next major SQL clause so a later CTE/SELECT cannot
+    # be attributed to the odds relation.
     unqualified = any(
         UNQUALIFIED_WHERE_RACE_DATE_RE.search(low[match.end() :]) is not None
         for match in TABLE_BASE_REF_RE.finditer(low)
