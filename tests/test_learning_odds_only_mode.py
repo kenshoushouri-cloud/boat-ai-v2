@@ -29,6 +29,14 @@ class LearningOddsOnlyModeContractTest(unittest.TestCase):
             self.assertNotIn("ODDS_ONLY_MODE", body, path)
             self.assertNotIn("LEARNING_ODDS_ONLY", body, path)
 
+    def test_collector_fails_closed_to_learning_all_label(self):
+        body = text("v21_realtime_collector_pg_safe.py")
+        self.assertIn("def _odds_only_allowed", body)
+        self.assertIn('str(snapshot_label).strip() == "learning_all"', body)
+        self.assertIn("odds_only_requested = _env_flag", body)
+        self.assertIn("odds_only_mode = _odds_only_allowed(", body)
+        self.assertIn("ODDS_ONLY_MODE request blocked", body)
+
     def test_odds_only_skips_beforeinfo_but_keeps_odds_fetch(self):
         body = text("v21_realtime_collector_pg_safe.py")
         self.assertIn('_env_flag("ODDS_ONLY_MODE", "0")', body)
