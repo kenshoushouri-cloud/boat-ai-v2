@@ -7,6 +7,8 @@ current-day FINAL rows even when the broader retention contract marks them remov
 
 The base CTE projects only columns required by this audit so the read-only preview can
 stay inside a small temporary-file budget while Production storage is under pressure.
+Logical candidate bytes are computed only after candidate IDs are resolved; they are a
+comparison metric and are not a promise of physical Railway-volume reclaim.
 """
 from __future__ import annotations
 
@@ -93,36 +95,61 @@ marked as (
 
 
 def summary(where_sql: str) -> dict:
-    return fetch_all(
+    rows = fetch_all(
         CTE + f"""
-        select count(*) as candidate_rows,
-               count(distinct race_id) as candidate_races,
-               count(distinct snapshot_key) as snapshot_keys,
-               min(race_date) as min_race_date,
-               max(race_date) as max_race_date
-          from marked
+        select count(*)::bigint as candidate_rows,
+               count(distinct m.race_id)::bigint as candidate_races,
+               count(distinct m.snapshot_key)::bigint as snapshot_keys,
+               min(m.race_date) as min_race_date,
+               max(m.race_date) as max_race_date,
+               coalesce(sum(pg_column_size(s)),0)::bigint as logical_bytes
+          from marked m
+          join v2_v24_motor2_forward_shadow s on s.id=m.id
          where {where_sql}
         """
-    )[0]
+    )
+    return dict(rows[0]) if rows else {}
 
 
 def main() -> None:
-    overall = summary("not keep")
+    overall = summary("not m.keep")
     conservative = summary(
-        "not keep and run_class='final' and window_name='final' and race_date < current_date"
+        "not m.keep and m.run_class='final' and m.window_name='final' and m.race_date < current_date"
+    )
+    recent7 = summary(
+        "not m.keep and m.run_class='final' and m.window_name='final' "
+        "and m.race_date >= current_date - 7 and m.race_date < current_date"
     )
     grouped = fetch_all(
         CTE + """
-        select run_class,window_name,
-               count(*) as candidate_rows,
-               count(distinct race_id) as candidate_races,
-               count(distinct snapshot_key) as snapshot_keys,
-               min(race_date) as min_race_date,
-               max(race_date) as max_race_date
-          from marked
-         where not keep
-         group by run_class,window_name
-         order by run_class,window_name
+        select m.run_class,m.window_name,
+               count(*)::bigint as candidate_rows,
+               count(distinct m.race_id)::bigint as candidate_races,
+               count(distinct m.snapshot_key)::bigint as snapshot_keys,
+               min(m.race_date) as min_race_date,
+               max(m.race_date) as max_race_date,
+               coalesce(sum(pg_column_size(s)),0)::bigint as logical_bytes
+          from marked m
+          join v2_v24_motor2_forward_shadow s on s.id=m.id
+         where not m.keep
+         group by m.run_class,m.window_name
+         order by m.run_class,m.window_name
+        """
+    )
+    daily = fetch_all(
+        CTE + """
+        select m.race_date,
+               count(*)::bigint as candidate_rows,
+               coalesce(sum(pg_column_size(s)),0)::bigint as logical_bytes
+          from marked m
+          join v2_v24_motor2_forward_shadow s on s.id=m.id
+         where not m.keep
+           and m.run_class='final'
+           and m.window_name='final'
+           and m.race_date >= current_date - 7
+           and m.race_date < current_date
+         group by m.race_date
+         order by m.race_date
         """
     )
 
@@ -132,6 +159,7 @@ def main() -> None:
         f"rows:{int(overall.get('candidate_rows') or 0)} "
         f"races:{int(overall.get('candidate_races') or 0)} "
         f"snapshot_keys:{int(overall.get('snapshot_keys') or 0)} "
+        f"logical_bytes:{int(overall.get('logical_bytes') or 0)} "
         f"min_date:{overall.get('min_race_date')} max_date:{overall.get('max_race_date')}"
     )
     print(
@@ -139,7 +167,19 @@ def main() -> None:
         f"rows:{int(conservative.get('candidate_rows') or 0)} "
         f"races:{int(conservative.get('candidate_races') or 0)} "
         f"snapshot_keys:{int(conservative.get('snapshot_keys') or 0)} "
+        f"logical_bytes:{int(conservative.get('logical_bytes') or 0)} "
         f"min_date:{conservative.get('min_race_date')} max_date:{conservative.get('max_race_date')}"
+    )
+    recent_rows = int(recent7.get('candidate_rows') or 0)
+    recent_bytes = int(recent7.get('logical_bytes') or 0)
+    print(
+        'STORAGE_RETENTION_CONSERVATIVE_RECENT7='
+        f"rows:{recent_rows} races:{int(recent7.get('candidate_races') or 0)} "
+        f"snapshot_keys:{int(recent7.get('snapshot_keys') or 0)} "
+        f"logical_bytes:{recent_bytes} "
+        f"avg_rows_per_calendar_day:{recent_rows/7.0:.2f} "
+        f"avg_logical_bytes_per_calendar_day:{recent_bytes/7.0:.2f} "
+        f"min_date:{recent7.get('min_race_date')} max_date:{recent7.get('max_race_date')}"
     )
     for row in grouped:
         print(
@@ -148,8 +188,16 @@ def main() -> None:
             f"rows:{int(row.get('candidate_rows') or 0)} "
             f"races:{int(row.get('candidate_races') or 0)} "
             f"snapshot_keys:{int(row.get('snapshot_keys') or 0)} "
+            f"logical_bytes:{int(row.get('logical_bytes') or 0)} "
             f"min_date:{row.get('min_race_date')} max_date:{row.get('max_race_date')}"
         )
+    for row in daily:
+        print(
+            'STORAGE_RETENTION_CONSERVATIVE_DAY='
+            f"date:{row.get('race_date')} rows:{int(row.get('candidate_rows') or 0)} "
+            f"logical_bytes:{int(row.get('logical_bytes') or 0)}"
+        )
+    print('STORAGE_RETENTION_CANDIDATE_BYTES_INTERPRETATION=LOGICAL_ONLY_NOT_PHYSICAL_RECLAIM')
     print('STORAGE_RETENTION_CANDIDATE_PREVIEW_RESULT=PASS_READ_ONLY')
 
 
