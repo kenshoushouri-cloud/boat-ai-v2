@@ -15,7 +15,8 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
-  CANDIDATE_MAIN_DATE: '2026-09-12'
+  # First prospective sample: frozen before 2026-09-13 racing results.
+  CANDIDATE_MAIN_DATE: '2026-09-13'
 
 jobs:
   preview:
