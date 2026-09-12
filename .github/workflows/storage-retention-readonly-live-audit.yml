@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/storage_retention_readonly_inventory.py'
+      - '.github/scripts/storage_retention_output_invariance.py'
       - '.github/workflows/storage-retention-readonly-live-audit.yml'
 
 permissions:
@@ -26,15 +27,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate read-only script
+      - name: Validate read-only scripts
         run: |
           python -m py_compile .github/scripts/storage_retention_readonly_inventory.py
+          python -m py_compile .github/scripts/storage_retention_output_invariance.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('.github/scripts/storage_retention_readonly_inventory.py').read_text(encoding='utf-8').lower()
-          assert 'from db_pg import fetch_all' in text
-          for token in ('execute(', 'upsert', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'create table', 'send_line'):
-              assert token not in text, token
+          for path in (
+              '.github/scripts/storage_retention_readonly_inventory.py',
+              '.github/scripts/storage_retention_output_invariance.py',
+          ):
+              text=Path(path).read_text(encoding='utf-8').lower()
+              assert 'from db_pg import fetch_all' in text
+              for token in ('execute(', 'upsert', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'create table', 'send_line'):
+                  assert token not in text, (path, token)
           print('STORAGE_RETENTION_LIVE_AUDIT_ISOLATION=PASS')
           PY
       - name: Install dependencies
@@ -64,6 +70,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_retention_readonly_inventory.py | tee storage-inventory.txt
           grep -q '^STORAGE_RETENTION_INVENTORY_RESULT=PASS_READ_ONLY$' storage-inventory.txt
+      - name: Run protected-output invariance audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_output_invariance.py | tee storage-invariance.txt
+          grep -q '^STORAGE_RETENTION_INVARIANCE_RESULT=PASS_READ_ONLY$' storage-invariance.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt
