@@ -8,12 +8,14 @@ It defines the recovery prerequisite that must be closed before any future Produ
 
 ## 1. Why the current backup is not sufficient
 
-The read-only backup inventory used by the storage research found the visible named backup:
+The current read-only backup inventory resolves the active `postgres-recovery` volume and shows exactly one visible backup:
 
 - name: `Pre-Security-Patch Backup`
 - created: 2026-08-23
 - expiry: 2026-09-22 at the audited point
 - referenced size: about 3582 MB
+- used size reported by Railway: 323 MB
+- source volume size: 5000 MB
 
 That backup predates the current 2026-09-12 data state by weeks. It is useful historical recovery evidence, but it is too old to be the immediate rollback point for a new capacity mutation.
 
@@ -23,13 +25,14 @@ Therefore all cleanup/schema-removal candidates remain blocked by:
 
 ## 2. Current Production storage context
 
-Read-only Railway metrics on 2026-09-12 JST:
+Read-only Railway metadata/metrics on 2026-09-12 JST:
 
 - service: `postgres-recovery`
-- volume capacity: 5 GB
-- current disk usage: about 4.183 GB
-- nominal headroom: about 0.817 GB
-- PostgreSQL logical database: about 3700 MB
+- volume state: READY
+- volume capacity: 5000 MB
+- current volume usage from the backup metadata audit: about `4191.019 MB`
+- separate service metric snapshots remain around `4.18 GB / 5 GB`
+- PostgreSQL logical database: about `3.88 GB` in the latest integrated audit
 
 The project is on Railway Hobby, whose documented volume size limit is **5 GB**.
 
@@ -41,7 +44,7 @@ Current Railway documentation states:
 - if data exceeds that threshold, Railway recommends growing the volume first or contacting support to raise the limit;
 - Hobby volume size limit is **5 GB**.
 
-At about 4.183 GB used on a 5 GB volume, a manual backup would need a volume capacity of at least roughly **8.366 GB** merely to place current usage at or below 50%.
+At roughly 4.19 GB used on a 5 GB volume, a manual backup would need a volume capacity of at least roughly 8.4 GB merely to place current usage at or below 50%.
 
 That exceeds the Hobby 5 GB volume limit.
 
@@ -53,7 +56,33 @@ is currently treated as **BLOCKED / NOT RELIABLE**.
 
 Do not attempt `railway postgres pitr backup create` against Production until this limit is resolved and explicit approval is given.
 
-## 4. Railway recovery mechanisms currently documented
+## 4. Current backup schedule state — now confirmed read-only
+
+Integrated storage audit run `34682494855` (run #109) extended the existing Railway GraphQL backup metadata query with `volumeInstanceBackupScheduleList`. The script is statically guarded against GraphQL mutations and backup create/delete/restore operations.
+
+At **2026-09-12 08:10:41 UTC / 17:10:41 JST**, the current Production result was:
+
+```text
+STORAGE_RETENTION_BACKUP_VOLUME=resolved:true service_match:true state:READY size_mb:5000 current_size_mb:4191.019007999999
+STORAGE_RETENTION_BACKUP_COUNT=1
+STORAGE_RETENTION_BACKUP_SCHEDULE_COUNT=0
+STORAGE_RETENTION_BACKUP_SCHEDULE=NONE
+STORAGE_RETENTION_BACKUP_RESULT=PASS_METADATA_VISIBLE
+```
+
+Therefore the current state is no longer unknown:
+
+- Daily volume backup schedule: **not configured**
+- Weekly volume backup schedule: **not configured**
+- Monthly volume backup schedule: **not configured**
+- fresh scheduled backup: **none**
+- visible backup count: **1**, still the 2026-08-23 backup
+
+Historical 2026-08-30 recovery facts also reported schedule count zero, so the new 2026-09-12 audit independently reconfirms that no volume-backup schedule is configured now.
+
+No Railway setting was changed by this audit.
+
+## 5. Railway recovery mechanisms currently documented
 
 ### A. Manual volume backup
 
@@ -77,9 +106,15 @@ Documented retention:
 - Weekly: every 7 days, kept 27 days
 - Monthly: every 30 days, kept 89 days
 
-The documentation's 50% statement specifically identifies **manual backups**. This research has not proven that a newly enabled scheduled backup will successfully create a fresh backup for the current ~4.18/5 GB volume, nor has it measured how soon the first scheduled snapshot would occur.
+The current Production schedule list is now confirmed empty. The Railway CLI distinguishes volume-backup scheduling from PITR enablement and documents a Daily schedule operation such as:
 
-The latest storage audit saw only the old 2026-08-23 backup; no fresh scheduled snapshot was available to close the gate. The existing read-only Railway recovery workflow can query `volumeInstanceBackupScheduleList`, but its control trigger was not executed in this work session because the connector safety layer blocked the issue-command mutation. No bypass was attempted.
+```text
+railway postgres pitr schedule set --daily --service postgres-recovery
+```
+
+The documentation's 50% statement specifically identifies **manual backups**. Research has not proven that a newly enabled scheduled backup will successfully create a fresh backup for the current ~4.19/5 GB volume, nor how soon the first snapshot will appear after enabling the schedule.
+
+Therefore setting Daily is not itself a recovery point. If ever explicitly approved, the gate closes only after a new backup actually appears and its metadata is verified.
 
 Changing a schedule is a Railway Production configuration change and requires separate explicit approval.
 
@@ -126,20 +161,28 @@ Therefore PITR remains a promising recovery mechanism, but its present status is
 
 PITR is also not retroactive: recovery coverage starts only after the first post-enable base backup.
 
-## 5. Candidate recovery paths
+## 6. Candidate recovery paths
 
-### Path R1 — scheduled volume backup
+### Path R1 — enable Daily volume backup schedule only
 
-Research assessment: **currently the least image-invasive native path, but success/timing at >50% usage is not yet proven**.
+Research assessment: **first Production approval candidate / least image-invasive native path**.
 
-Required if ever selected:
+Current baseline is unambiguous: schedule count is zero.
 
-1. independently re-read the current schedule list;
-2. explicit approval to change the backup schedule if no suitable schedule exists;
-3. choose a retention cadence;
-4. verify a new backup actually appears after the setting change;
-5. confirm its `createdAt`, `expiresAt`, referenced size, volume identity, and current service/volume association;
-6. do not treat the setting itself as a completed recovery point until the backup exists.
+If ever selected, use a deliberately narrow operating window:
+
+1. re-read current schedule list immediately before change;
+2. obtain explicit approval for **Daily volume backup schedule only**;
+3. do not enable PITR, Weekly, Monthly, resize, change image, or perform cleanup in the same approval;
+4. apply Daily schedule only;
+5. verify schedule metadata after the setting change;
+6. wait for an actual fresh backup to appear;
+7. verify its `createdAt`, `expiresAt`, referenced size, volume identity, and current service/volume association;
+8. verify normal PostgreSQL/service health;
+9. if no fresh backup appears or the operation errors, stop and do not proceed to cleanup;
+10. even after a fresh backup appears, request a separate approval for any later DROP/DELETE/VACUUM action.
+
+This packet does **not** authorize step 4.
 
 ### Path R2 — PITR enablement and health proof
 
@@ -167,15 +210,15 @@ Do **not** combine image-policy change, PITR enablement, and destructive cleanup
 
 Possible mechanisms include a larger permitted volume/plan or Railway support raising the applicable limit.
 
-Current Hobby volume max is 5 GB, while current data usage would require at least about 8.366 GB for the documented 50% manual-backup rule.
+Current Hobby volume max is 5 GB, while current data usage would require at least about 8.4 GB for the documented 50% manual-backup rule.
 
 This path can therefore require a plan/limit change. Any plan upgrade, paid-resource change, volume resize, or support interaction requires explicit approval.
 
-A volume resize is capacity/configuration work and must not be performed silently as part of cleanup.
+Railway volume resize expands capacity and is not a clean temporary grow-and-shrink mechanism, so this is not preferred as the first recovery action.
 
-## 6. Recovery-point acceptance criteria
+## 7. Recovery-point acceptance criteria
 
-A recovery gate is not closed merely because a command returned success.
+A recovery gate is not closed merely because a setting or command returned success.
 
 For any selected recovery method, capture at minimum:
 
@@ -187,7 +230,7 @@ For any selected recovery method, capture at minimum:
 - backup/PITR health status;
 - current referenced/base-backup evidence where exposed;
 - expiry/retention horizon sufficient to cover the planned cleanup and observation period;
-- exact restoration procedure documented before the cleanup;
+- exact restoration procedure documented before cleanup;
 - no unexpected staged Railway changes;
 - normal Postgres health after creation/enablement.
 
@@ -195,7 +238,7 @@ For PITR specifically, require a non-empty current restore range and healthy arc
 
 For a volume backup specifically, require the backup to appear in the backup inventory with a fresh timestamp and plausible source-size reference.
 
-## 7. Restore testing boundary
+## 8. Restore testing boundary
 
 ### Volume backup restore
 
@@ -211,7 +254,7 @@ PITR restore creates a sibling Postgres service and leaves the source untouched.
 
 Even a sibling restore creates new Railway resources and storage, so it still requires explicit approval and should be performed separately from cleanup.
 
-## 8. Cost boundary
+## 9. Cost boundary
 
 Railway documents PITR as using normal storage-bucket storage and service network-egress meters; there is no separate PITR fee, but it is not cost-free.
 
@@ -219,20 +262,21 @@ Volume backups are incremental/copy-on-write and billed for incremental stored d
 
 No paid-plan change, support request, bucket creation, PITR enablement, volume enlargement, or new recurring backup configuration is authorized here.
 
-## 9. Recommended research ordering
+## 10. Recommended ordering
 
 Before asking for a destructive capacity action, resolve recovery capability first.
 
-Current research ordering:
+Current ordering:
 
-1. **do not attempt a manual backup under the current 5 GB / ~4.18 GB state**;
-2. re-read current backup-schedule metadata through an approved read-only path;
-3. evaluate scheduled volume backup first because it does not inherently require changing the recovered Postgres image policy;
-4. evaluate PITR second, after digest-pin compatibility is resolved; do not change the image just to make PITR work without its own approval;
-5. use plan/limit enlargement only if necessary and explicitly approved;
-6. after a fresh recovery point is proven, return to a separate approval request for exactly one capacity mutation candidate.
+1. **do not attempt a manual backup under the current 5 GB / ~4.19 GB state**;
+2. current schedule is already confirmed zero by read-only run #109;
+3. if the user explicitly approves a recovery setting change, make **Daily volume backup schedule only** the first candidate;
+4. after enabling Daily, wait for and verify an actual fresh backup; do not combine cleanup with schedule enablement;
+5. evaluate PITR separately only after digest-pin compatibility is resolved;
+6. use plan/limit enlargement only if necessary and explicitly approved;
+7. after a fresh recovery point is proven, return to a separate approval request for exactly one capacity mutation candidate.
 
-## 10. No implicit authorization
+## 11. No implicit authorization
 
 This packet does not authorize:
 
@@ -247,6 +291,6 @@ This packet does not authorize:
 - any sibling restore service creation
 - any `DELETE`, `DROP INDEX`, `VACUUM`, `VACUUM FULL`, or table rewrite
 
-## 11. Current gate
+## 12. Current gate
 
-`OLD_BACKUP_TOO_STALE_FOR_NEW_CLEANUP / HOBBY_VOLUME_MAX_5GB / CURRENT_VOLUME_ABOUT_4_183GB / MANUAL_BACKUP_50PCT_LIMIT_CONFLICT / MANUAL_FRESH_BACKUP_BLOCKED_ON_CURRENT_HOBBY_CAPACITY / SCHEDULED_BACKUP_LEAST_IMAGE_INVASIVE_BUT_NOT_YET_PROVEN / PITR_AVAILABLE_BUT_PRODUCTION_CONFIG_CHANGE / CURRENT_POSTGRES_DIGEST_PINNED / RECOVERY_TAG_DRIFT_PREVIOUSLY_CONFIRMED / PITR_MAJOR_TAG_REQUIREMENT_CONFLICT_NOT_RESOLVED / PITR_IMAGE_POLICY_CHANGE_MAY_BE_REQUIRED / PITR_RESTORE_SOURCE_UNTOUCHED / PLAN_OR_LIMIT_CHANGE_REQUIRES_APPROVAL / FRESH_RECOVERY_POINT_NOT_YET_CLOSED / NO_BACKUP_CREATE / NO_PITR_ENABLE / NO_SCHEDULE_CHANGE / NO_IMAGE_CHANGE / NO_VOLUME_RESIZE / NO_PLAN_CHANGE / NO_RESTORE / NO_DELETE / NO_DROP_INDEX / NO_VACUUM`
+`OLD_BACKUP_TOO_STALE_FOR_NEW_CLEANUP / CURRENT_BACKUP_COUNT_1 / CURRENT_SCHEDULE_COUNT_0 / DAILY_WEEKLY_MONTHLY_ALL_UNCONFIGURED / HOBBY_VOLUME_MAX_5GB / CURRENT_VOLUME_ABOUT_4_19GB / MANUAL_BACKUP_50PCT_LIMIT_CONFLICT / MANUAL_FRESH_BACKUP_BLOCKED_ON_CURRENT_HOBBY_CAPACITY / DAILY_SCHEDULE_FIRST_APPROVAL_CANDIDATE_ONLY / DAILY_SCHEDULE_SUCCESS_NOT_YET_PROVEN / PITR_AVAILABLE_BUT_PRODUCTION_CONFIG_CHANGE / CURRENT_POSTGRES_DIGEST_PINNED / RECOVERY_TAG_DRIFT_PREVIOUSLY_CONFIRMED / PITR_MAJOR_TAG_REQUIREMENT_CONFLICT_NOT_RESOLVED / PITR_IMAGE_POLICY_CHANGE_MAY_BE_REQUIRED / FRESH_RECOVERY_POINT_NOT_YET_CLOSED / NO_BACKUP_CREATE / NO_PITR_ENABLE / NO_SCHEDULE_CHANGE / NO_IMAGE_CHANGE / NO_VOLUME_RESIZE / NO_PLAN_CHANGE / NO_RESTORE / NO_DELETE / NO_DROP_INDEX / NO_VACUUM`
