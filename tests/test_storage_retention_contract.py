@@ -17,7 +17,14 @@ retention_plan = MODULE.retention_plan
 retention_impact = MODULE.retention_impact
 
 
-def row(key: str, minute: int, *, evaluated: bool = True, window: str = "final") -> ShadowRow:
+def row(
+    key: str,
+    minute: int,
+    *,
+    evaluated: bool = True,
+    window: str = "final",
+    protected: bool = False,
+) -> ShadowRow:
     return ShadowRow(
         race_id="20260912_01_01",
         ticket="1-2-3",
@@ -26,6 +33,7 @@ def row(key: str, minute: int, *, evaluated: bool = True, window: str = "final")
         snapshot_key=key,
         snapshot_at=datetime(2026, 9, 12, 1, minute, tzinfo=timezone.utc),
         evaluated=evaluated,
+        protected=protected,
     )
 
 
@@ -33,6 +41,20 @@ def test_evaluated_group_keeps_latest_only():
     keep, removable = retention_plan([row("a", 0), row("b", 15), row("c", 30)])
     assert [x.snapshot_key for x in keep] == ["c"]
     assert [x.snapshot_key for x in removable] == ["a", "b"]
+
+
+def test_protected_older_health_row_is_kept_alongside_latest():
+    keep, removable = retention_plan(
+        [row("health-valid", 0, protected=True), row("middle", 15), row("latest", 30)]
+    )
+    assert [x.snapshot_key for x in keep] == ["health-valid", "latest"]
+    assert [x.snapshot_key for x in removable] == ["middle"]
+
+
+def test_latest_protected_row_is_not_duplicated():
+    keep, removable = retention_plan([row("a", 0), row("latest", 30, protected=True)])
+    assert [x.snapshot_key for x in keep] == ["latest"]
+    assert [x.snapshot_key for x in removable] == ["a"]
 
 
 def test_any_unevaluated_row_blocks_compaction_for_whole_logical_key():
@@ -71,19 +93,22 @@ def test_malformed_identity_fails_closed():
         retention_plan([bad])
 
 
-def test_retention_impact_counts_blocked_and_candidate_rows():
+def test_retention_impact_counts_blocked_protected_and_candidate_rows():
     rows = [
-        row("a", 0),
+        row("a", 0, protected=True),
         row("b", 15),
+        row("c", 30),
         row("u1", 30, evaluated=False, window="morning"),
         row("u2", 45, evaluated=True, window="morning"),
     ]
     impact = retention_impact(rows)
     assert impact == {
-        "input_rows": 4,
+        "input_rows": 5,
         "logical_keys": 2,
-        "keep_rows": 3,
+        "keep_rows": 4,
         "removable_candidate_rows": 1,
         "unevaluated_blocked_keys": 1,
-        "removable_candidate_pct": 25.0,
+        "protected_rows": 1,
+        "protected_keys": 1,
+        "removable_candidate_pct": 20.0,
     }
