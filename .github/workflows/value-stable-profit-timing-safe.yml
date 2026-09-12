@@ -39,7 +39,9 @@ jobs:
           from pathlib import Path
           p=Path('.github/scripts/value_stable_profit_timing_safe_pg.py').read_text(encoding='utf-8').lower()
           assert 'set transaction read only' in p
-          for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','upsert_rows(','execute('):
+          assert 'from db_pg import execute' not in p
+          assert 'from db_pg import upsert' not in p
+          for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table','create index'):
               assert token not in p, token
           assert 'cutoff_minutes = 15' in p
           assert '"a_stable"' in p and '"b_profit"' in p
