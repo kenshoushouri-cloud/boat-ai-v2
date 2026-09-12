@@ -7,6 +7,7 @@ on:
       - '.github/scripts/storage_retention_output_invariance.py'
       - '.github/scripts/storage_retention_candidate_preview.py'
       - '.github/scripts/storage_retention_candidate_digest.py'
+      - '.github/scripts/storage_retention_backup_readonly.py'
       - '.github/workflows/storage-retention-readonly-live-audit.yml'
 
 permissions:
@@ -35,18 +36,24 @@ jobs:
           python -m py_compile .github/scripts/storage_retention_output_invariance.py
           python -m py_compile .github/scripts/storage_retention_candidate_preview.py
           python -m py_compile .github/scripts/storage_retention_candidate_digest.py
+          python -m py_compile .github/scripts/storage_retention_backup_readonly.py
           python - <<'PY'
           from pathlib import Path
-          for path in (
+          db_paths = (
               '.github/scripts/storage_retention_readonly_inventory.py',
               '.github/scripts/storage_retention_output_invariance.py',
               '.github/scripts/storage_retention_candidate_preview.py',
               '.github/scripts/storage_retention_candidate_digest.py',
-          ):
+          )
+          for path in db_paths:
               text=Path(path).read_text(encoding='utf-8').lower()
               assert 'from db_pg import fetch_all' in text
               for token in ('execute(', 'upsert', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'create table', 'send_line'):
                   assert token not in text, (path, token)
+          backup = Path('.github/scripts/storage_retention_backup_readonly.py').read_text(encoding='utf-8').lower()
+          assert 'volumeinstancebackuplist' in backup
+          for token in ('mutation ', 'backupcreate', 'backupdelete', 'backuprestore', 'volumedelete', 'serviceinstanceupdate'):
+              assert token not in backup, token
           print('STORAGE_RETENTION_LIVE_AUDIT_ISOLATION=PASS')
           PY
       - name: Install dependencies
@@ -91,6 +98,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_retention_candidate_digest.py | tee storage-candidate-digest.txt
           grep -q '^STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=PASS_READ_ONLY$' storage-candidate-digest.txt
+      - name: Run read-only Railway backup metadata audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_backup_readonly.py | tee storage-backups.txt
+          grep -Eq '^STORAGE_RETENTION_BACKUP_RESULT=(PASS_METADATA_VISIBLE|BLOCK_NO_BACKUP_VISIBLE|BLOCK_NO_VOLUME_INSTANCE)$' storage-backups.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-backups.txt
