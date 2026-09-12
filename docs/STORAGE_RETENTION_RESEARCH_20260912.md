@@ -8,7 +8,7 @@ Latest read-only metadata shows the Railway PostgreSQL volume at about `4191.019
 
 Only one Railway backup is currently visible: `Pre-Security-Patch Backup`, created 2026-08-23 and expiring 2026-09-22. It is too old to serve as the recovery gate for a new cleanup. A fresh restore point would require separate explicit Production approval.
 
-## Motor2 Forward Shadow: bounded retention contract now passes protected outputs
+## Motor2 Forward Shadow: bounded retention contract passes protected outputs
 
 The first naive latest-only rule was rejected because it changed probability-health output. The refined hypothetical contract keeps:
 
@@ -52,9 +52,9 @@ The non-final rows are intentional pre-race base odds, and existing backtest/res
 
 PostgreSQL statistics are also stale for some recovered/imported legacy tables. For example `v2_result_entries` has `375,306` exact rows while stats-live is 0. Capacity decisions must use exact/read-only checks rather than infer emptiness from stale `pg_stat_user_tables` counts.
 
-## `learning_all`: near-total identity duplication, but not feature-total redundancy
+## `learning_all`: near-total identity duplication
 
-`cron-learning-all` and `cron-final-check` collect the same 30-minute pre-deadline window on the same 15-minute cadence under different labels. The final safe collector uses the full `target` set for snapshot collection even when `TARGET_ID_SCOPE=candidates` narrows only decision IDs. This behavior is now protected by CI.
+`cron-learning-all` and `cron-final-check` collect the same 30-minute pre-deadline window on the same 15-minute cadence under different labels. The final safe collector uses the full `target` set for snapshot collection even when `TARGET_ID_SCOPE=candidates` narrows only decision IDs. This behavior is protected by CI.
 
 Across odds/weather/exhibition/entry/race-condition/racer-condition tables, current `learning_all` data contains:
 
@@ -65,6 +65,7 @@ Across odds/weather/exhibition/entry/race-condition/racer-condition tables, curr
 In the seven completed days immediately before the current date:
 
 - `learning_all`: `76,235` rows
+- `final_ab`: `139,386` rows
 - learning-only identities: `12`
 - identity overlap with `final_ab`: **99.9843%**
 - average growth: about `10,890.71` learning rows/day
@@ -72,7 +73,9 @@ In the seven completed days immediately before the current date:
 
 All 12 recent learning-only identities are exhibition rows. Odds/weather/entry/race-condition/racer-condition had zero recent learning-only identities.
 
-However, the separate label preserves a shifted odds-change trajectory. Among `396,410` overlapping realtime-odds identities:
+## Movement features differ materially
+
+Among `396,410` overlapping realtime-odds identities:
 
 - current odds equal: `384,472` (**96.99%**)
 - market rank equal: `387,059` (**97.64%**)
@@ -80,38 +83,87 @@ However, the separate label preserves a shifted odds-change trajectory. Among `3
 - all compared movement features equal: `313,458` (**79.07%**)
 - movement-feature differences: `82,952` (**20.93%**)
 
-Therefore `learning_all` is strongly redundant for identity/storage coverage but is not completely redundant for research features. The correct future decision is not “delete the label”; it is a tradeoff between capacity/load and the research value of an independent ~1-minute-shifted movement sample.
+The compared fields include previous odds/rank, odds delta / percentage delta, rank delta, favorite/low-odds flags, and drift/steam flags.
 
-No hard-coded scheduled Production model/decision/LINE consumer of literal `learning_all` was found. Final/nightly chains default to `final_ab`, and CI now prevents new top-level runtime scripts from silently hard-coding `learning_all`. Generic research label consumers still exist, so historical learning rows should be preserved unless a separate retention contract is proved.
+This difference is not merely a second independent research series. A deeper audit found that the two labels are coupled during feature construction.
+
+## Critical indirect Production dependency: previous odds are cross-label
+
+Current `v21_realtime_collector_pg.py::_fetch_previous_odds(rid)` reads the newest rows for a race from `v2_realtime_odds_snapshots` without filtering `snapshot_label`. `v21_realtime_collector_pg_safe.py` reuses that helper when it saves a new odds snapshot.
+
+As a result, a new `final_ab` row may derive these fields from the latest `learning_all` observation, and vice versa:
+
+- `prev_odds`
+- `odds_delta`
+- `odds_delta_pct`
+- `prev_market_rank`
+- `market_rank_delta`
+- `is_odds_drift`
+- `is_odds_steam`
+
+The live read-only audit confirms this is common, not hypothetical:
+
+- overlapping rows where `final_ab` was collected after `learning_all`: `188,319`
+- rows where that later `final_ab.prev_odds` **and** `prev_market_rank` equal the current `learning_all` odds/rank: `188,080` (**99.87%** of final-after-learning rows)
+- affected races: `1,590`
+- reverse direction, `learning_all.prev_*` matching an earlier/current `final_ab`: `207,375` rows
+- cross-label-predecessor final rows carrying drift/steam: `1,572` (~`0.84%` of the visibly matched final predecessor rows)
+- cross-label-predecessor final rows with market rank 1 and drift/steam: `7`, across `7` races
+
+This matters to Production behavior. `v22_realtime_decision_engine_pg.py::_realtime_judge()` reads the `final_ab` snapshot and changes its realtime score when these fields are set:
+
+- `is_odds_steam` → `+0.3`
+- `is_odds_drift` → `-0.5`
+
+Recommendations then depend on that score (`buy` at >=1.0, `watch` at >=0.0, otherwise `skip`, absent stronger skip conditions).
+
+The current persisted decision table is too small to claim a historical recommendation was changed by this coupling: the audit found only one matching saved final decision, and it was not a drift/steam-flagged cross-label case. The safe conclusion is therefore **mechanistic and prospective**: the current feature path is cross-label and Production-score-sensitive, so removing the learning observations is not output-invariant by construction.
+
+No Production code needs to hard-code the literal `learning_all` string for this dependency to exist.
+
+## Consequence: full `learning_all` pause is blocked as a cleanup experiment
+
+A `LEARNING_ALL_ENABLED=0` pause would change the observation sequence available to `_fetch_previous_odds`. That can change `final_ab.prev_odds`, drift/steam flags, and therefore v22 scores even if no model coefficient or threshold is edited.
+
+Accordingly:
+
+- do **not** classify a learning-service pause as a harmless reversible capacity test;
+- any full pause requires explicit Production/model-impact approval plus an output-comparison and rollback design;
+- historical `learning_all` rows remain preservation-by-default;
+- changing `_fetch_previous_odds` to be label-scoped would also change feature semantics and therefore requires a separate Production/model-impact approval.
+
+CI now freezes this hidden dependency explicitly so future cleanup work cannot accidentally assume label independence.
 
 ## Research candidate: odds-only learning path
 
-A useful next research direction is an odds-only learning collector rather than an all-or-nothing retirement.
+The strongest safe research direction is no longer a full pause. It is an **odds-only learning** design that keeps the `learning_all` odds observations—and therefore preserves the current cross-label predecessor cadence—while skipping redundant learning-label weather/exhibition/entry/condition writes.
 
-Why it is worth studying:
+Current logical tuple split:
 
-- odds rows account for about 73.6% of current `learning_all` logical tuple payload;
-- meaningful feature divergence was demonstrated specifically in the odds movement fields;
-- the non-odds learning tables account for about 26.4% of current tuple payload and are much more payload-redundant;
-- over the latest seven completed days, non-odds learning rows added about `10,912` rows total (~1,559/day) and `4,575,256` logical tuple bytes total (~0.62 MiB/day).
+- odds rows: about **73.6%** of stored `learning_all` tuple bytes;
+- non-odds learning tables: about **26.4%**;
+- over the latest seven completed days, non-odds learning rows added `10,912` rows total (~`1,559/day`);
+- non-odds logical tuple payload added `4,575,256` bytes over seven days (~`0.62 MiB/day`).
 
-This is only a design candidate. Implementing or deploying an odds-only mode would change Production collection behavior and requires separate approval.
+This would be a modest storage-growth reduction, not a complete capacity solution, but it can also reduce duplicate beforeinfo/network/DB-write work while preserving the current odds feature chain. It remains design-only: implementing, merging, deploying, or enabling such a mode requires separate approval.
 
 ## Physical reclaim boundary
 
 Deleting historical rows is not equivalent to shrinking the Railway volume. Plain PostgreSQL DELETE/VACUUM generally turns space into internal reusable capacity; an operation intended to shrink relation files or the OS-visible volume would require a separate high-impact plan, downtime/locking analysis, fresh backup, and explicit approval.
 
-The immediate capacity benefit of reducing duplicate collection is therefore primarily **slower future growth and less duplicated network/DB write load**, not a guaranteed immediate volume-size drop.
+The immediate capacity benefit of reducing duplicate collection is primarily **slower future growth and less duplicated network/DB write load**, not a guaranteed immediate volume-size drop.
 
 ## Required gates before any Production change
 
-1. Keep the Motor2 zero-diff retention and `learning_all` isolation contracts green.
+1. Keep the Motor2 zero-diff retention and `learning_all` dependency contracts green.
 2. Obtain/verify a fresh restorable backup before any deletion/rewrite operation.
 3. For Motor2, re-run the exact approved-scope digest immediately before any future delete request.
-4. For `learning_all`, explicitly choose whether to preserve the second movement trajectory: keep both, bounded reversible pause, or research an odds-only mode.
-5. Treat collector/Cron/variable changes, historical row deletion, and physical rewrite/VACUUM actions as separate approvals.
-6. Re-measure logical and Railway volume growth after any approved change before introducing new persistent Shadow tables.
+4. Treat a full `learning_all` pause as a Production/model-impact experiment, not a cleanup-only observation.
+5. Treat any label-scoped previous-odds rewrite as a Production/model-impact change.
+6. Research odds-only learning separately and keep it default-off / undeployed until explicitly approved.
+7. Treat collector/Cron/variable changes, historical row deletion, and physical rewrite/VACUUM actions as separate approvals.
+8. Re-measure logical and Railway volume growth after any approved change before introducing new persistent Shadow tables.
 
 ## Current gate
 
-`CAPACITY_PRESSURE_CONFIRMED / MOTOR2_ZERO_DIFF_RETENTION_PASS / CONSERVATIVE_FINAL_ONLY_42552 / BASE_ODDS_NOT_CLEANUP_TARGET / REALTIME_IDENTITY_DUPLICATION_CONFIRMED / RECENT_LEARNING_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / TOP_LEVEL_RUNTIME_LEARNING_CONSUMERS_NONE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / BACKUP_STALE_FOR_CLEANUP / NO_DB_DELETE / NO_VACUUM / NO_BACKUP_CREATE / NO_CRON_CHANGE / NO_PRODUCTION_CHANGE`
+`CAPACITY_PRESSURE_CONFIRMED / MOTOR2_ZERO_DIFF_RETENTION_PASS / CONSERVATIVE_FINAL_ONLY_42552 / BASE_ODDS_NOT_CLEANUP_TARGET / REALTIME_IDENTITY_DUPLICATION_CONFIRMED / RECENT_LEARNING_IDENTITY_OVERLAP_99_9843PCT / LEARNING_GROWTH_10891_ROWS_PER_DAY / MOVEMENT_FEATURE_DIFFERENCE_20_93PCT / CROSS_LABEL_PREVIOUS_ODDS_CONFIRMED / FINAL_PREV_FROM_LEARNING_99_87PCT_WHEN_FINAL_AFTER / V22_STEAM_DRIFT_SCORE_SENSITIVE / FULL_LEARNING_PAUSE_BLOCKED / HISTORICAL_LEARNING_PRESERVE / ODDS_ONLY_REDESIGN_RESEARCH_CANDIDATE / BACKUP_STALE_FOR_CLEANUP / NO_DB_DELETE / NO_VACUUM / NO_BACKUP_CREATE / NO_CRON_CHANGE / NO_PRODUCTION_CHANGE`
