@@ -100,7 +100,7 @@ def main() -> None:
                 from {table}
                where snapshot_label='final_ab'
             ), l as (
-              select {_ident_list(identity_columns)},race_id,race_date
+              select {_ident_list(identity_columns)},race_date
                 from {table}
                where snapshot_label='learning_all'
             )
