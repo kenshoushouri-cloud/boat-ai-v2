@@ -3,10 +3,13 @@
 
 Capacity research only. Reports index definitions, sizes, usage counters,
 constraint ownership, and planner choices for representative SELECT shapes.
-It performs no schema change.
+It performs no schema change and does not execute data-sampling queries merely
+to obtain EXPLAIN parameters, so this audit does not intentionally increment
+index usage counters through its own sample lookup.
 """
 from __future__ import annotations
 
+from datetime import date
 import json
 from pathlib import Path
 import sys
@@ -17,6 +20,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db_pg import fetch_all
+
+
+# Representative literals are used only as EXPLAIN parameters. EXPLAIN without
+# ANALYZE does not execute the SELECT. Keeping them static avoids a preliminary
+# min/max lookup on the audited table that can contaminate pg_stat index usage.
+SAMPLE_RACE_ID = "20260912_21_12"
+SAMPLE_MIN_RACE_ID = "20250701_05_01"
+SAMPLE_RACE_DATE = date(2026, 9, 12)
+SAMPLE_MIN_RACE_DATE = date(2025, 7, 1)
 
 
 def rows(sql: str, params: tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
@@ -168,60 +180,39 @@ def main() -> None:
                     "structurally_subsumed:true performance_equivalent:not_proven"
                 )
 
-    sample = one(
-        """
-        select max(race_id) as race_id,
-               min(race_id) as min_race_id,
-               max(race_date) as race_date,
-               min(race_date) as min_race_date
-          from v2_odds_trifecta
-        """
-    )
-    race_id = str(sample.get("race_id") or "")
-    min_race_id = str(sample.get("min_race_id") or "")
-    race_date = sample.get("race_date")
-    min_race_date = sample.get("min_race_date")
-    shapes: list[tuple[str, str, tuple[Any, ...]]] = []
-    if race_id:
-        shapes.extend(
-            (
-                (
-                    "race_id_equality_order_ticket",
-                    "select race_id,ticket,odds from v2_odds_trifecta where race_id=%s order by race_id,ticket",
-                    (race_id,),
-                ),
-                (
-                    "race_id_equality_count",
-                    "select count(*) from v2_odds_trifecta where race_id=%s",
-                    (race_id,),
-                ),
-                (
-                    "race_id_range_order_ticket",
-                    "select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id <= %s order by race_id,ticket",
-                    (min_race_id, race_id),
-                ),
-            )
-        )
-    if race_date is not None:
-        shapes.extend(
-            (
-                (
-                    "race_date_equality_count",
-                    "select count(*) from v2_odds_trifecta where race_date=%s",
-                    (race_date,),
-                ),
-                (
-                    "race_date_equality_rows",
-                    "select race_id,ticket,odds from v2_odds_trifecta where race_date=%s",
-                    (race_date,),
-                ),
-                (
-                    "race_date_range_count",
-                    "select count(*) from v2_odds_trifecta where race_date >= %s and race_date <= %s",
-                    (min_race_date, race_date),
-                ),
-            )
-        )
+    print("STORAGE_ODDS_INDEX_PLAN_SAMPLES=STATIC_EXPLAIN_ONLY_NO_DATA_SAMPLE")
+    shapes: list[tuple[str, str, tuple[Any, ...]]] = [
+        (
+            "race_id_equality_order_ticket",
+            "select race_id,ticket,odds from v2_odds_trifecta where race_id=%s order by race_id,ticket",
+            (SAMPLE_RACE_ID,),
+        ),
+        (
+            "race_id_equality_count",
+            "select count(*) from v2_odds_trifecta where race_id=%s",
+            (SAMPLE_RACE_ID,),
+        ),
+        (
+            "race_id_range_order_ticket",
+            "select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id <= %s order by race_id,ticket",
+            (SAMPLE_MIN_RACE_ID, SAMPLE_RACE_ID),
+        ),
+        (
+            "race_date_equality_count",
+            "select count(*) from v2_odds_trifecta where race_date=%s",
+            (SAMPLE_RACE_DATE,),
+        ),
+        (
+            "race_date_equality_rows",
+            "select race_id,ticket,odds from v2_odds_trifecta where race_date=%s",
+            (SAMPLE_RACE_DATE,),
+        ),
+        (
+            "race_date_range_count",
+            "select count(*) from v2_odds_trifecta where race_date >= %s and race_date <= %s",
+            (SAMPLE_MIN_RACE_DATE, SAMPLE_RACE_DATE),
+        ),
+    ]
     for name, sql, params in shapes:
         indexes = _plan_indexes(sql, params)
         print(
