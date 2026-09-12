@@ -1,0 +1,33 @@
+name: Candidate Discovery V4 Pure Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_contract.py'
+      - 'tests/test_candidate_discovery_v4_contract.py'
+      - '.github/workflows/candidate-discovery-v4-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate pure V4 contract
+        run: |
+          python -m py_compile research/candidate_discovery_v4_contract.py
+          python tests/test_candidate_discovery_v4_contract.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('research/candidate_discovery_v4_contract.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','railway','raw_ev','odds_min','odds_max','insert into ','delete from ','update v2_'):
+              assert token not in text, token
+          PY
