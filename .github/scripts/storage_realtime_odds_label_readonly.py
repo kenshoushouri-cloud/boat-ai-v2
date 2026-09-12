@@ -3,6 +3,11 @@
 
 Capacity research only. SELECT/catalog queries only; no cleanup, schema change,
 Railway change, LINE action, model change, or purchase action.
+
+The audit avoids grouped DISTINCT aggregation across the whole 1M+ row table. Labels
+are discovered first, then summarized one at a time. Pair comparisons drive from the
+learning label and use a keyed lateral lookup for final_ab to stay inside the small
+Production temp-file safety budget.
 """
 from __future__ import annotations
 
@@ -34,41 +39,42 @@ def main() -> None:
         """
         select count(*)::bigint as rows,
                count(distinct race_id)::bigint as races,
-               count(distinct snapshot_label)::bigint as labels,
                min(race_date) as min_date,max(race_date) as max_date,
                min(snapshot_at) as min_at,max(snapshot_at) as max_at
           from v2_realtime_odds_snapshots
         """
     )
-    labels = fetch_all(
-        """
-        select snapshot_label,
-               count(*)::bigint as rows,
-               count(distinct race_id)::bigint as races,
-               min(race_date) as min_date,max(race_date) as max_date,
-               min(snapshot_at) as min_at,max(snapshot_at) as max_at
-          from v2_realtime_odds_snapshots
-         group by snapshot_label
-         order by count(*) desc,snapshot_label
-        """
-    )
+    label_names = [
+        str(r.get('snapshot_label') or '')
+        for r in fetch_all(
+            """
+            select distinct snapshot_label
+              from v2_realtime_odds_snapshots
+             where snapshot_label is not null
+             order by snapshot_label
+            """
+        )
+        if r.get('snapshot_label')
+    ]
+    labels = []
+    for label in label_names:
+        row = one(
+            """
+            select %s::text as snapshot_label,
+                   count(*)::bigint as rows,
+                   count(distinct race_id)::bigint as races,
+                   min(race_date) as min_date,max(race_date) as max_date,
+                   min(snapshot_at) as min_at,max(snapshot_at) as max_at
+              from v2_realtime_odds_snapshots
+             where snapshot_label=%s
+            """,
+            (label, label),
+        )
+        labels.append(row)
+    labels.sort(key=lambda r: (-int(r.get('rows') or 0), str(r.get('snapshot_label') or '')))
+
     pair = one(
         """
-        with f as (
-          select race_id,ticket,odds,snapshot_at,
-                 market_rank,prev_odds,odds_delta,odds_delta_pct,
-                 prev_market_rank,market_rank_delta,is_favorite,
-                 is_odds_too_low,is_odds_drift,is_odds_steam
-            from v2_realtime_odds_snapshots
-           where snapshot_label='final_ab'
-        ), l as (
-          select race_id,ticket,odds,snapshot_at,
-                 market_rank,prev_odds,odds_delta,odds_delta_pct,
-                 prev_market_rank,market_rank_delta,is_favorite,
-                 is_odds_too_low,is_odds_drift,is_odds_steam
-            from v2_realtime_odds_snapshots
-           where snapshot_label='learning_all'
-        )
         select
           count(*)::bigint as overlap_rows,
           count(distinct f.race_id)::bigint as overlap_races,
@@ -131,21 +137,23 @@ def main() -> None:
           min(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as min_abs_seconds,
           max(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as max_abs_seconds,
           avg(abs(extract(epoch from (f.snapshot_at-l.snapshot_at)))) as avg_abs_seconds
-        from f join l using (race_id,ticket)
+        from v2_realtime_odds_snapshots l
+        join lateral (
+          select race_id,ticket,odds,snapshot_at,
+                 market_rank,prev_odds,odds_delta,odds_delta_pct,
+                 prev_market_rank,market_rank_delta,is_favorite,
+                 is_odds_too_low,is_odds_drift,is_odds_steam
+            from v2_realtime_odds_snapshots f
+           where f.race_id=l.race_id
+             and f.snapshot_label='final_ab'
+             and f.ticket=l.ticket
+        ) f on true
+       where l.snapshot_label='learning_all'
         """
     )
     decisions = one(
         """
-        with f as (
-          select race_id,ticket,odds,snapshot_at,market_rank,prev_odds,
-                 prev_market_rank,is_odds_drift,is_odds_steam
-            from v2_realtime_odds_snapshots
-           where snapshot_label='final_ab'
-        ), l as (
-          select race_id,ticket,odds,snapshot_at,market_rank
-            from v2_realtime_odds_snapshots
-           where snapshot_label='learning_all'
-        ), x as (
+        with x as (
           select f.race_id,f.ticket,
                  (
                    f.snapshot_at > l.snapshot_at
@@ -153,7 +161,16 @@ def main() -> None:
                    and f.prev_market_rank is not distinct from l.market_rank
                  ) as cross_label_prev,
                  (coalesce(f.is_odds_drift,false) or coalesce(f.is_odds_steam,false)) as movement_flagged
-            from f join l using (race_id,ticket)
+            from v2_realtime_odds_snapshots l
+            join lateral (
+              select race_id,ticket,odds,snapshot_at,market_rank,prev_odds,
+                     prev_market_rank,is_odds_drift,is_odds_steam
+                from v2_realtime_odds_snapshots f
+               where f.race_id=l.race_id
+                 and f.snapshot_label='final_ab'
+                 and f.ticket=l.ticket
+            ) f on true
+           where l.snapshot_label='learning_all'
         )
         select count(distinct d.id)::bigint as decision_rows,
                count(distinct d.id) filter (where x.cross_label_prev)::bigint as cross_label_prev_decisions,
@@ -184,7 +201,7 @@ def main() -> None:
     overlap_rows = int(pair.get('overlap_rows') or 0)
     equal_movement_features = int(pair.get('equal_movement_features') or 0)
 
-    print('STORAGE_REALTIME_ODDS_LABEL_MODE=READ_ONLY_NO_MUTATION')
+    print('STORAGE_REALTIME_ODDS_LABEL_MODE=READ_ONLY_LOW_TEMP_NO_MUTATION')
     print(
         'STORAGE_REALTIME_ODDS_RELATION='
         f"total_bytes:{int(relation.get('total_bytes') or 0)} "
@@ -194,7 +211,7 @@ def main() -> None:
     print(
         'STORAGE_REALTIME_ODDS_EXACT='
         f"rows:{int(exact.get('rows') or 0)} races:{int(exact.get('races') or 0)} "
-        f"labels:{int(exact.get('labels') or 0)} min_date:{exact.get('min_date')} "
+        f"labels:{len(label_names)} min_date:{exact.get('min_date')} "
         f"max_date:{exact.get('max_date')} min_at:{exact.get('min_at')} max_at:{exact.get('max_at')}"
     )
     for row in labels:
