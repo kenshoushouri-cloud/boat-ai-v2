@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/value-candidate-volume-audit.yml'
       - '.github/scripts/value_s02_historical_structure_pg.py'
+      - '.github/scripts/value_s02_forward_frozen_pg.py'
       - '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py'
       - '.github/scripts/value_s03_motor2_orthogonal_pg.py'
       - '.github/scripts/value_s03_exhibition_timing_pg.py'
@@ -47,6 +48,7 @@ jobs:
           python -m py_compile report_candidate_shadow_active_comparison_pg.py
           python -m py_compile report_candidate_filter_shadow_robustness_pg.py
           python -m py_compile .github/scripts/value_s02_historical_structure_pg.py
+          python -m py_compile .github/scripts/value_s02_forward_frozen_pg.py
           python -m py_compile .github/scripts/value_candidate_pre_shadow_breakdown_pg.py
           python -m py_compile .github/scripts/value_s03_motor2_orthogonal_pg.py
           python -m py_compile .github/scripts/value_s03_exhibition_timing_pg.py
@@ -61,6 +63,7 @@ jobs:
           )
           strict=(
               '.github/scripts/value_s02_historical_structure_pg.py',
+              '.github/scripts/value_s02_forward_frozen_pg.py',
               '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py',
               '.github/scripts/value_s03_motor2_orthogonal_pg.py',
               '.github/scripts/value_s03_exhibition_timing_pg.py',
@@ -116,6 +119,11 @@ jobs:
         run: |
           python -u .github/scripts/value_s03_exhibition_timing_pg.py | tee value-s03-exhibition-timing.txt
           grep -q '^VALUE_S03_EX_TIMING_RESULT=PASS_READ_ONLY$' value-s03-exhibition-timing.txt
+      - name: Run frozen S02 Forward audit
+        run: |
+          python -u .github/scripts/value_s02_forward_frozen_pg.py | tee value-s02-forward-frozen.txt
+          grep -q '^VALUE_S02_FORWARD_RESULT=PASS_READ_ONLY$' value-s02-forward-frozen.txt
+          grep -q '^VALUE_S02_FORWARD_PROMOTION_ALLOWED=0$' value-s02-forward-frozen.txt
       - name: Run frozen S03 Motor2 Forward audit
         run: |
           python -u .github/scripts/value_s03_m2_forward_frozen_pg.py | tee value-s03-m2-forward-frozen.txt
@@ -140,6 +148,8 @@ jobs:
             candidate-robustness.txt
             value-candidate-pre-shadow-breakdown.json
             value-candidate-pre-shadow-breakdown.txt
+            value-s02-forward-frozen.json
+            value-s02-forward-frozen.txt
             value-s03-motor2-orthogonal.json
             value-s03-motor2-orthogonal.txt
             value-s03-exhibition-timing.json
