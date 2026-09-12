@@ -2,8 +2,8 @@
 """Read-only deterministic digest for hypothetical Motor2 cleanup candidates.
 
 This script never deletes or mutates rows. It reproduces the protected retention
-contract, materializes only candidate metadata in the client, and prints a stable
-SHA-256 digest plus breakdowns for later SQL review.
+contract, materializes only candidate metadata in the client, and prints stable
+SHA-256 digests for the complete candidate set and the conservative FINAL-only set.
 """
 from __future__ import annotations
 
@@ -108,6 +108,25 @@ select count(*) as ambiguous_latest_keys
 """
 
 
+def canonical_record(row: dict) -> bytes:
+    return (
+        '|'.join(
+            str(row.get(k) or '')
+            for k in (
+                'id','race_id','ticket','run_class','window_name',
+                'snapshot_key','snapshot_at','race_date'
+            )
+        ) + '\n'
+    ).encode('utf-8')
+
+
+def digest_rows(rows: list[dict]) -> str:
+    digest = sha256()
+    for row in rows:
+        digest.update(canonical_record(row))
+    return digest.hexdigest()
+
+
 def main() -> None:
     ambiguity_rows = fetch_all(AMBIGUITY_SQL)
     ambiguous = int(ambiguity_rows[0].get('ambiguous_latest_keys') or 0) if ambiguity_rows else 0
@@ -117,7 +136,6 @@ def main() -> None:
         )
 
     rows = [dict(r) for r in fetch_all(CANDIDATE_SQL)]
-    digest = sha256()
     by_window: Counter[tuple[str, str]] = Counter()
     by_date: Counter[str] = Counter()
 
@@ -126,23 +144,26 @@ def main() -> None:
             raise SystemExit('STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=FAIL_PROTECTED_INTERSECTION')
         if int(row.get('retain_rn') or 0) <= 1:
             raise SystemExit('STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=FAIL_LATEST_INTERSECTION')
-        record = '|'.join(
-            str(row.get(k) or '')
-            for k in (
-                'id','race_id','ticket','run_class','window_name',
-                'snapshot_key','snapshot_at','race_date'
-            )
-        )
-        digest.update(record.encode('utf-8'))
-        digest.update(b'\n')
         by_window[(str(row.get('run_class') or ''), str(row.get('window_name') or ''))] += 1
         by_date[str(row.get('race_date') or '')] += 1
+
+    final_rows = [
+        row for row in rows
+        if str(row.get('run_class') or '') == 'final'
+        and str(row.get('window_name') or '') == 'final'
+    ]
 
     print('STORAGE_RETENTION_CANDIDATE_DIGEST_MODE=READ_ONLY_NO_DELETE')
     print(
         'STORAGE_RETENTION_CANDIDATE_SET='
-        f"rows:{len(rows)} sha256:{digest.hexdigest()} "
+        f"rows:{len(rows)} sha256:{digest_rows(rows)} "
         f"min_id:{rows[0]['id'] if rows else '-'} max_id:{rows[-1]['id'] if rows else '-'}"
+    )
+    print(
+        'STORAGE_RETENTION_CONSERVATIVE_FINAL_SET='
+        f"rows:{len(final_rows)} sha256:{digest_rows(final_rows)} "
+        f"min_id:{final_rows[0]['id'] if final_rows else '-'} "
+        f"max_id:{final_rows[-1]['id'] if final_rows else '-'}"
     )
     for (run_class, window_name), count in sorted(by_window.items()):
         print(
