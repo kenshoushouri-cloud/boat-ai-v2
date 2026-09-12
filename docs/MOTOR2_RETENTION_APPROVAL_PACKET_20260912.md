@@ -8,6 +8,20 @@ Research-only design. This document does **not** authorize DELETE, VACUUM, backu
 
 The objective of any future retention action is primarily **internal PostgreSQL page reuse / slower future file expansion**. Plain DELETE plus ordinary VACUUM must not be represented as guaranteed Railway-volume shrink.
 
+## Measured recent effect
+
+Read-only audit for completed dates 2026-09-05..2026-09-11, conservative `final/final` scope only:
+
+- source rows: 29,711
+- source logical tuple bytes: 28,039,984
+- removable candidates: 14,578 rows
+- candidate logical tuple bytes: 13,759,792
+- removable share: 49.0660% of rows / 49.0720% of logical tuple bytes
+- average candidate growth: 2,082.57 rows/day / 1,965,684.57 logical bytes/day
+- unevaluated-protected rows in scope: 220
+
+This is about 32.4% of the measured total Motor2 logical growth rate and about 12.8% of the measured logical growth across the ten tracked active tables. These percentages are prioritization evidence only, not a physical-volume reclaim forecast.
+
 ## Frozen keep contract
 
 A row is preserved when any of the following is true:
@@ -79,4 +93,4 @@ Do not create or modify Railway Cron for retention as part of the first executio
 
 ## Current decision
 
-`RESEARCH_READY / ZERO_DIFF_CONTRACT_REQUIRED / CONSERVATIVE_FINAL_FINAL_ONLY / FRESH_BACKUP_REQUIRED / LIVE_DIGEST_REQUIRED / FIRST_RUN_MANUAL_ONLY / NO_DELETE_AUTHORIZED / NO_VACUUM_AUTHORIZED / NO_CRON_AUTHORIZED / NO_PHYSICAL_REWRITE_AUTHORIZED`
+`RESEARCH_READY / MEASURED_RECENT_CANDIDATE_1.97MB_LOGICAL_PER_DAY / ZERO_DIFF_CONTRACT_REQUIRED / CONSERVATIVE_FINAL_FINAL_ONLY / FRESH_BACKUP_REQUIRED / LIVE_DIGEST_REQUIRED / FIRST_RUN_MANUAL_ONLY / NO_DELETE_AUTHORIZED / NO_VACUUM_AUTHORIZED / NO_CRON_AUTHORIZED / NO_PHYSICAL_REWRITE_AUTHORIZED`
