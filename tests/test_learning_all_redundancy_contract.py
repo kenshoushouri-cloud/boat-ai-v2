@@ -82,6 +82,28 @@ def test_candidate_target_scope_does_not_narrow_snapshot_collection():
     assert "for index, race in enumerate(target, 1):" in collector
 
 
+def test_current_previous_odds_lookup_is_cross_label_and_score_sensitive():
+    """Document the current indirect Production dependency before any pause.
+
+    The collector's previous-odds lookup is race-scoped, not label-scoped. Thus
+    a learning_all row can become the predecessor used to compute a later
+    final_ab row's steam/drift flags. v22 consumes those flags in its realtime
+    score, so a learning pause is not output-invariant by construction today.
+    """
+    collector = text("v21_realtime_collector_pg.py")
+    start = collector.index("def _fetch_previous_odds")
+    end = collector.index("def _infer_venue_style", start)
+    previous_lookup = collector[start:end]
+    assert "v2_realtime_odds_snapshots where race_id=%s" in previous_lookup
+    assert "snapshot_label" not in previous_lookup
+
+    decision = text("v22_realtime_decision_engine_pg.py")
+    assert 'odds_snap.get("is_odds_steam")' in decision
+    assert 'odds_snap.get("is_odds_drift")' in decision
+    assert 'score += 0.3' in decision
+    assert 'score -= 0.5' in decision
+
+
 def test_no_other_top_level_runtime_hard_codes_learning_all():
     """Keep the learning label producer-only among top-level runtime scripts.
 
