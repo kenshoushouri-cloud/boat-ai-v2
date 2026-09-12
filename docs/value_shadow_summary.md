@@ -1,0 +1,1 @@
+Value-candidate research branch is ready for read-only historical evaluation. Current production logic is unchanged. The experiment uses compact aggregate output and avoids new persistent database storage.
