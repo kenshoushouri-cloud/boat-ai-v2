@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """Read-only deterministic digest for hypothetical Motor2 cleanup candidates.
 
-This script never deletes or mutates rows. It reproduces the protected retention
+This script never changes database state. It reproduces the protected retention
 contract, materializes only candidate metadata in the client, and prints stable
 SHA-256 digests for the complete candidate set and the conservative FINAL-only set.
+
+The base CTE is deliberately narrow so this pre-delete evidence can run with a small
+temporary-file budget instead of carrying the shadow table's wide diagnostic payload.
 """
 from __future__ import annotations
 
@@ -21,7 +24,18 @@ from db_pg import fetch_all
 
 CANDIDATE_SQL = """
 with base as (
-  select s.*,
+  select s.id,
+         s.race_id,
+         s.ticket,
+         s.run_class,
+         s.window_name,
+         s.snapshot_key,
+         s.snapshot_at,
+         s.race_date,
+         s.evaluated_at,
+         s.result_ticket,
+         s.base_prob,
+         s.motor2_prob,
          row_number() over (
            partition by s.race_id,s.ticket,s.run_class,s.window_name
            order by s.snapshot_at desc,s.id desc
@@ -32,7 +46,8 @@ with base as (
     from v2_v24_motor2_forward_shadow s
 ),
 health_source as (
-  select b.*, r.deadline_at
+  select b.id,b.race_id,b.run_class,b.window_name,b.snapshot_key,b.snapshot_at,
+         b.result_ticket,r.deadline_at
     from base b
     left join v2_races r on r.race_id=b.race_id
    where b.window_name in ('morning','day','night')
@@ -69,7 +84,8 @@ health_protected_ids as (
       using (race_id,run_class,window_name,snapshot_key)
 ),
 marked as (
-  select b.*,
+  select b.id,b.race_id,b.ticket,b.run_class,b.window_name,b.snapshot_key,
+         b.snapshot_at,b.race_date,b.key_has_unevaluated,b.retain_rn,
          (b.id in (select id from health_protected_ids)) as health_protected,
          (
            b.key_has_unevaluated
@@ -153,7 +169,7 @@ def main() -> None:
         and str(row.get('window_name') or '') == 'final'
     ]
 
-    print('STORAGE_RETENTION_CANDIDATE_DIGEST_MODE=READ_ONLY_NO_DELETE')
+    print('STORAGE_RETENTION_CANDIDATE_DIGEST_MODE=READ_ONLY_LOW_TEMP_NO_DELETE')
     print(
         'STORAGE_RETENTION_CANDIDATE_SET='
         f"rows:{len(rows)} sha256:{digest_rows(rows)} "
