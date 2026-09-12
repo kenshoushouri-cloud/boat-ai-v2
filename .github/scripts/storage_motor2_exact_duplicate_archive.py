@@ -9,6 +9,8 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
+from storage_motor2_retention_stats import SQL as RETENTION_SQL
+
 OUT_DIR = Path(os.getenv("MOTOR2_DUP_ARCHIVE_DIR", "motor2-duplicate-archive"))
 ARCHIVE_PATH = OUT_DIR / "motor2_exact_duplicate_rows.jsonl.gz"
 MANIFEST_PATH = OUT_DIR / "manifest.json"
@@ -94,6 +96,18 @@ def main() -> None:
         conn.execute("SET LOCAL temp_file_limit = '128MB'")
 
         summary = conn.execute(SUMMARY_SQL).fetchone()
+        retention = dict(conn.execute(RETENTION_SQL).fetchone())
+        retention_scoped = int(retention["scoped_rows"] or 0)
+        retention_older = int(retention["older_rows"] or 0)
+        retention_eligible = int(retention["eligible_races"] or 0)
+        retention_chosen = int(retention["chosen_rows"] or 0)
+        if retention_chosen != retention_eligible * 120:
+            raise SystemExit("fail closed: chosen generation is not 120 rows per eligible race")
+        retention["older_share_pct"] = (
+            round(retention_older / retention_scoped * 100, 6)
+            if retention_scoped else 0.0
+        )
+
         with gzip.open(ARCHIVE_PATH, "wb", compresslevel=9, mtime=0) as gz:
             with conn.cursor(name="motor2_exact_duplicate_archive") as cur:
                 cur.itersize = 1000
@@ -142,6 +156,8 @@ def main() -> None:
         "source_relation_bytes": int(summary["relation_bytes"]),
         "source_heap_bytes": int(summary["heap_bytes"]),
         "source_index_bytes": int(summary["index_bytes"]),
+        "retention_contract": "latest_complete_predeadline_generation_v1",
+        "retention_stats": {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in retention.items()},
         "archive_file": ARCHIVE_PATH.name,
         "mutation_performed": False,
     }
@@ -156,6 +172,13 @@ def main() -> None:
     print(f"MOTOR2_EXACT_DUP_DATE_RANGE={min_date or '-'}..{max_date or '-'}")
     print(f"MOTOR2_SOURCE_TOTAL_ROWS={manifest['source_total_rows']}")
     print(f"MOTOR2_SOURCE_RELATION_BYTES={manifest['source_relation_bytes']}")
+    print(f"MOTOR2_RETENTION_SCOPED_ROWS={retention_scoped}")
+    print(f"MOTOR2_RETENTION_SCOPED_RACES={int(retention['scoped_races'] or 0)}")
+    print(f"MOTOR2_RETENTION_ELIGIBLE_RACES={retention_eligible}")
+    print(f"MOTOR2_RETENTION_CHOSEN_ROWS={retention_chosen}")
+    print(f"MOTOR2_RETENTION_OLDER_ROWS={retention_older}")
+    print(f"MOTOR2_RETENTION_OLDER_SHARE_PCT={retention['older_share_pct']}")
+    print(f"MOTOR2_RETENTION_PROTECTED_RACES={int(retention['protected_races'] or 0)}")
     print("MOTOR2_EXACT_DUP_ARCHIVE_RESULT=PASS_READ_ONLY")
 
 
