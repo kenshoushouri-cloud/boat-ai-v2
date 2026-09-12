@@ -9,13 +9,18 @@ realtime odds snapshots.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
 import official_odds3t_parser as odds_parser
 import v21_realtime_collector_pg as legacy
 
-VERSION = "2026-09-10 official-table-parser-fail-closed-v3"
+VERSION = "2026-09-12 official-table-parser-odds-only-research-v1"
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _choose_odds(html: str | None, base_values):
@@ -99,11 +104,13 @@ def main() -> None:
     legacy._require_settings()
     legacy._ensure_realtime_tables()
     now = legacy._now()
+    odds_only_mode = _env_flag("ODDS_ONLY_MODE", "0")
     print(f"✅ v21_realtime_collector_pg_safe.py VERSION {VERSION}", flush=True)
     print(
         f"TARGET_DATE={legacy.TARGET_DATE} SNAPSHOT_LABEL={legacy.SNAPSHOT_LABEL} "
         f"SCOPE={legacy.COLLECT_SCOPE} TARGET_ID_SCOPE={legacy.TARGET_ID_SCOPE} "
         f"TARGET_RACE_ID={legacy.TARGET_RACE_ID or '-'} "
+        f"ODDS_ONLY_MODE={int(odds_only_mode)} "
         "ODDS_SELECTION=exact_dynamic_120_60_24_fail_closed",
         flush=True,
     )
@@ -230,37 +237,40 @@ def main() -> None:
             race.get("venue_id") or race.get("venue_code") or ""
         ).zfill(2)
         race_no = legacy._safe_int(race.get("race_no"))
-        before_html = legacy._fetch(
-            legacy._official_url("beforeinfo", legacy.TARGET_DATE, venue, race_no)
-        )
+        before_html = None
         exhibition = []
-        if legacy._looks_no_data(before_html):
-            nb += 1
-            c1, c2 = legacy.save_exhibition_and_entries(
-                race, entries_by.get(rid, []), []
+
+        if not odds_only_mode:
+            before_html = legacy._fetch(
+                legacy._official_url("beforeinfo", legacy.TARGET_DATE, venue, race_no)
             )
-            sx += c1
-            se += c2
-        else:
-            sw += legacy.save_weather(race, legacy.parse_weather(before_html or ""))
-            exhibition = legacy.parse_exhibition(before_html or "")
-            ne += int(not exhibition)
-            c1, c2 = legacy.save_exhibition_and_entries(
-                race, entries_by.get(rid, []), exhibition
-            )
-            sx += c1
-            se += c2
-            race_cond, racer_cond = legacy.parse_beforeinfo_extra(
-                before_html or "", entries_by.get(rid, [])
-            )
-            c3, c4 = legacy.save_beforeinfo_extra(
-                race,
-                entries_by.get(rid, []),
-                race_cond,
-                racer_cond,
-            )
-            src_cond += c3
-            splayer_cond += c4
+            if legacy._looks_no_data(before_html):
+                nb += 1
+                c1, c2 = legacy.save_exhibition_and_entries(
+                    race, entries_by.get(rid, []), []
+                )
+                sx += c1
+                se += c2
+            else:
+                sw += legacy.save_weather(race, legacy.parse_weather(before_html or ""))
+                exhibition = legacy.parse_exhibition(before_html or "")
+                ne += int(not exhibition)
+                c1, c2 = legacy.save_exhibition_and_entries(
+                    race, entries_by.get(rid, []), exhibition
+                )
+                sx += c1
+                se += c2
+                race_cond, racer_cond = legacy.parse_beforeinfo_extra(
+                    before_html or "", entries_by.get(rid, [])
+                )
+                c3, c4 = legacy.save_beforeinfo_extra(
+                    race,
+                    entries_by.get(rid, []),
+                    race_cond,
+                    racer_cond,
+                )
+                src_cond += c3
+                splayer_cond += c4
 
         odds_html = legacy._fetch(
             legacy._official_url("odds3t", legacy.TARGET_DATE, venue, race_no)
@@ -270,9 +280,14 @@ def main() -> None:
             so += _save_complete_odds(race, odds, source)
         else:
             no += 1
+        before_status = (
+            "skipped_odds_only"
+            if odds_only_mode
+            else ("ok" if before_html else "ng")
+        )
         print(
             f"[{index}/{len(target)}] {rid} "
-            f"before={'ok' if before_html else 'ng'} "
+            f"before={before_status} "
             f"exh_rows={len(exhibition)} odds={len(odds)} "
             f"source={source if odds else '-'}",
             flush=True,
@@ -282,6 +297,7 @@ def main() -> None:
 
     print("\n=== v21 safe PG realtime collection summary ===", flush=True)
     print(
+        f"odds_only_mode: {int(odds_only_mode)}\n"
         f"scope_races: {len(scope)}\n"
         f"target_races: {len(target)}\n"
         f"saved_weather: {sw}\n"
