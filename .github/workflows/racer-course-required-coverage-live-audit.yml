@@ -66,10 +66,15 @@ jobs:
       - name: Reproduce 2026-09-11 exact required coverage
         run: |
           set -euo pipefail
-          python -u .github/scripts/racer_course_required_coverage_audit.py --race-date 2026-09-11 | tee required-course-audit.txt
-          grep -q '^RACER_COURSE_REQUIRED_RESULT=PASS_READ_ONLY$' required-course-audit.txt
-          grep -q '^RACER_COURSE_REQUIRED_RACES=target:144 ready:117 blocked:27 ready_pct:81.25$' required-course-audit.txt
-          grep -q '^RACER_COURSE_REQUIRED_REASON=missing_required_row:27$' required-course-audit.txt
+          python -u .github/scripts/racer_course_required_coverage_audit.py --race-date 2026-09-11 | tee required-course-audit-0911.txt
+          grep -q '^RACER_COURSE_REQUIRED_RESULT=PASS_READ_ONLY$' required-course-audit-0911.txt
+          grep -q '^RACER_COURSE_REQUIRED_RACES=target:144 ready:117 blocked:27 ready_pct:81.25$' required-course-audit-0911.txt
+          grep -q '^RACER_COURSE_REQUIRED_REASON=missing_required_row:27$' required-course-audit-0911.txt
+      - name: Audit 2026-09-12 natural required coverage
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_required_coverage_audit.py --race-date 2026-09-12 | tee required-course-audit-0912.txt
+          grep -q '^RACER_COURSE_REQUIRED_RESULT=PASS_READ_ONLY$' required-course-audit-0912.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json required-course-audit.txt
+        run: rm -f railway-vars.json required-course-audit-0911.txt required-course-audit-0912.txt
