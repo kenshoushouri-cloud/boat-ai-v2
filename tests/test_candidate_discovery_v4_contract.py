@@ -18,6 +18,8 @@ class CandidateDiscoveryV4ContractTests(unittest.TestCase):
         self.assertEqual(1.0, mod.OPPONENT_COEF)
         self.assertEqual(0.06, mod.MOTOR_BETA)
         self.assertEqual(2.20, mod.PROB_TEMP)
+        self.assertEqual(6, mod.CORE_RACES)
+        self.assertEqual(2, mod.CORE_TICKETS)
 
     def test_missing_course_lane_is_neutral(self):
         base = {lane: float(lane) for lane in mod.LANES}
@@ -57,8 +59,6 @@ class CandidateDiscoveryV4ContractTests(unittest.TestCase):
         )
         baseline = mod.pl_trifecta(base_lane)
         head = mod.head_only_trifecta(base_lane, adjusted_first)
-        # Within one fixed first-place lane, Opponent Pressure must not change
-        # relative second/third conditional ordering or ratios.
         self.assertAlmostEqual(
             baseline["1-2-3"] / baseline["1-3-2"],
             head["1-2-3"] / head["1-3-2"],
@@ -81,6 +81,30 @@ class CandidateDiscoveryV4ContractTests(unittest.TestCase):
         max_abs = max(abs(plus[ticket] - baseline[ticket]) for ticket in baseline)
         self.assertGreater(max_abs, 1e-8)
         self.assertGreater(plus["1-2-3"], baseline["1-2-3"])
+
+    def test_daily_selection_is_fixed_top6_top2(self):
+        distributions = {}
+        course = {1: 52.0, 2: 48.0, 3: 45.0, 4: 43.0, 5: 40.0, 6: 38.0}
+        motor = {1: 40.0, 2: 42.0, 3: 44.0, 4: 46.0, 5: 48.0, 6: 50.0}
+        for idx in range(8):
+            base = {
+                1: 1.0 + idx * 0.22,
+                2: 0.8 - idx * 0.02,
+                3: 0.6,
+                4: 0.3,
+                5: 0.0,
+                6: -0.2,
+            }
+            distributions[f"race-{idx}"] = mod.build_v4_distribution(
+                base_raw=base,
+                course_top3=course,
+                motor_place2=motor,
+            )
+        selected = mod.select_daily(distributions)
+        self.assertEqual(6, len(selected))
+        self.assertEqual(list(range(1, 7)), [row["daily_race_rank"] for row in selected])
+        self.assertTrue(all(len(row["tickets"]) == 2 for row in selected))
+        self.assertTrue(all(0.0 <= float(row["race_score"]) <= 1.0 for row in selected))
 
     def test_source_has_no_integration_or_value_gate(self):
         text = PATH.read_text(encoding="utf-8").lower()
