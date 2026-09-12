@@ -9,10 +9,12 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
+from storage_motor2_retention_stats import CANDIDATE_SQL as RETENTION_CANDIDATE_SQL
 from storage_motor2_retention_stats import SQL as RETENTION_SQL
 
 OUT_DIR = Path(os.getenv("MOTOR2_DUP_ARCHIVE_DIR", "motor2-duplicate-archive"))
 ARCHIVE_PATH = OUT_DIR / "motor2_exact_duplicate_rows.jsonl.gz"
+RETENTION_ARCHIVE_PATH = OUT_DIR / "motor2_retention_candidate_rows.jsonl.gz"
 MANIFEST_PATH = OUT_DIR / "manifest.json"
 
 CANDIDATE_SQL = r"""
@@ -76,12 +78,7 @@ def canonical_line(row: dict) -> bytes:
     ).encode("utf-8")
 
 
-def main() -> None:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        raise SystemExit("DATABASE_URL is required")
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def archive_query(conn, sql: str, path: Path, cursor_name: str) -> dict:
     id_hash = hashlib.sha256()
     content_hash = hashlib.sha256()
     count = 0
@@ -89,11 +86,47 @@ def main() -> None:
     max_id = None
     min_date = None
     max_date = None
+    with gzip.open(path, "wb", compresslevel=9, mtime=0) as gz:
+        with conn.cursor(name=cursor_name) as cur:
+            cur.itersize = 1000
+            cur.execute(sql)
+            for record in cur:
+                row = dict(record)
+                row_id = int(row["id"])
+                race_date = str(row.get("race_date") or "")
+                line = canonical_line(row)
+                gz.write(line)
+                id_hash.update(f"{row_id}\n".encode("ascii"))
+                content_hash.update(line)
+                count += 1
+                min_id = row_id if min_id is None else min(min_id, row_id)
+                max_id = row_id if max_id is None else max(max_id, row_id)
+                if race_date:
+                    min_date = race_date if min_date is None else min(min_date, race_date)
+                    max_date = race_date if max_date is None else max(max_date, race_date)
+    return {
+        "count": count,
+        "id_sha256": id_hash.hexdigest(),
+        "content_sha256": content_hash.hexdigest(),
+        "min_id": min_id,
+        "max_id": max_id,
+        "min_race_date": min_date,
+        "max_race_date": max_date,
+        "archive_file": path.name,
+    }
+
+
+def main() -> None:
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise SystemExit("DATABASE_URL is required")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION READ ONLY")
         conn.execute("SET LOCAL statement_timeout = '120s'")
-        conn.execute("SET LOCAL temp_file_limit = '128MB'")
+        conn.execute("SET LOCAL temp_file_limit = '256MB'")
 
         summary = conn.execute(SUMMARY_SQL).fetchone()
         retention = dict(conn.execute(RETENTION_SQL).fetchone())
@@ -110,24 +143,18 @@ def main() -> None:
             if retention_scoped else 0.0
         )
 
-        with gzip.open(ARCHIVE_PATH, "wb", compresslevel=9, mtime=0) as gz:
-            with conn.cursor(name="motor2_exact_duplicate_archive") as cur:
-                cur.itersize = 1000
-                cur.execute(CANDIDATE_SQL)
-                for row in cur:
-                    row = dict(row)
-                    row_id = int(row["id"])
-                    race_date = str(row.get("race_date") or "")
-                    line = canonical_line(row)
-                    gz.write(line)
-                    id_hash.update(f"{row_id}\n".encode("ascii"))
-                    content_hash.update(line)
-                    count += 1
-                    min_id = row_id if min_id is None else min(min_id, row_id)
-                    max_id = row_id if max_id is None else max(max_id, row_id)
-                    if race_date:
-                        min_date = race_date if min_date is None else min(min_date, race_date)
-                        max_date = race_date if max_date is None else max(max_date, race_date)
+        exact = archive_query(conn, CANDIDATE_SQL, ARCHIVE_PATH, "motor2_exact_duplicate_archive")
+        retention_archive = archive_query(
+            conn,
+            RETENTION_CANDIDATE_SQL,
+            RETENTION_ARCHIVE_PATH,
+            "motor2_retention_candidate_archive",
+        )
+
+    if retention_archive["count"] != retention_older:
+        raise SystemExit(
+            "fail closed: archived retention candidate count does not match read-only stats"
+        )
 
     manifest = {
         "contract": "motor2_adjacent_exact_duplicate_v1",
@@ -145,13 +172,13 @@ def main() -> None:
                 "updated_at",
             ],
         },
-        "candidate_count": count,
-        "candidate_id_sha256": id_hash.hexdigest(),
-        "candidate_content_sha256": content_hash.hexdigest(),
-        "candidate_min_id": min_id,
-        "candidate_max_id": max_id,
-        "candidate_min_race_date": min_date,
-        "candidate_max_race_date": max_date,
+        "candidate_count": exact["count"],
+        "candidate_id_sha256": exact["id_sha256"],
+        "candidate_content_sha256": exact["content_sha256"],
+        "candidate_min_id": exact["min_id"],
+        "candidate_max_id": exact["max_id"],
+        "candidate_min_race_date": exact["min_race_date"],
+        "candidate_max_race_date": exact["max_race_date"],
         "source_total_rows": int(summary["total_rows"]),
         "source_min_race_date": str(summary["min_race_date"] or ""),
         "source_max_race_date": str(summary["max_race_date"] or ""),
@@ -160,6 +187,7 @@ def main() -> None:
         "source_index_bytes": int(summary["index_bytes"]),
         "retention_contract": "latest_sparse_predeadline_generation_v2",
         "retention_stats": {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in retention.items()},
+        "retention_archive": retention_archive,
         "archive_file": ARCHIVE_PATH.name,
         "mutation_performed": False,
     }
@@ -168,10 +196,9 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print(f"MOTOR2_EXACT_DUP_CANDIDATES={count}")
-    print(f"MOTOR2_EXACT_DUP_ID_SHA256={manifest['candidate_id_sha256']}")
-    print(f"MOTOR2_EXACT_DUP_CONTENT_SHA256={manifest['candidate_content_sha256']}")
-    print(f"MOTOR2_EXACT_DUP_DATE_RANGE={min_date or '-'}..{max_date or '-'}")
+    print(f"MOTOR2_EXACT_DUP_CANDIDATES={exact['count']}")
+    print(f"MOTOR2_EXACT_DUP_ID_SHA256={exact['id_sha256']}")
+    print(f"MOTOR2_EXACT_DUP_CONTENT_SHA256={exact['content_sha256']}")
     print(f"MOTOR2_SOURCE_TOTAL_ROWS={manifest['source_total_rows']}")
     print(f"MOTOR2_SOURCE_RELATION_BYTES={manifest['source_relation_bytes']}")
     print(f"MOTOR2_RETENTION_SCOPED_ROWS={retention_scoped}")
@@ -184,6 +211,10 @@ def main() -> None:
     print(f"MOTOR2_RETENTION_OLDER_SHARE_PCT={retention['older_share_pct']}")
     print(f"MOTOR2_RETENTION_PROTECTED_RACES={int(retention['protected_races'] or 0)}")
     print(f"MOTOR2_RETENTION_AFTER_DEADLINE_ROWS={int(retention['after_deadline_rows'] or 0)}")
+    print(f"MOTOR2_RETENTION_ARCHIVE_COUNT={retention_archive['count']}")
+    print(f"MOTOR2_RETENTION_ARCHIVE_ID_SHA256={retention_archive['id_sha256']}")
+    print(f"MOTOR2_RETENTION_ARCHIVE_CONTENT_SHA256={retention_archive['content_sha256']}")
+    print(f"MOTOR2_RETENTION_ARCHIVE_DATE_RANGE={retention_archive['min_race_date'] or '-'}..{retention_archive['max_race_date'] or '-'}")
     print("MOTOR2_EXACT_DUP_ARCHIVE_RESULT=PASS_READ_ONLY")
 
 
