@@ -8,6 +8,7 @@ on:
       - '.github/scripts/storage_retention_candidate_preview.py'
       - '.github/scripts/storage_retention_candidate_digest.py'
       - '.github/scripts/storage_reclaim_readonly_stats.py'
+      - '.github/scripts/storage_top_relations_readonly.py'
       - '.github/scripts/storage_retention_backup_readonly.py'
       - '.github/workflows/storage-retention-readonly-live-audit.yml'
 
@@ -38,6 +39,7 @@ jobs:
           python -m py_compile .github/scripts/storage_retention_candidate_preview.py
           python -m py_compile .github/scripts/storage_retention_candidate_digest.py
           python -m py_compile .github/scripts/storage_reclaim_readonly_stats.py
+          python -m py_compile .github/scripts/storage_top_relations_readonly.py
           python -m py_compile .github/scripts/storage_retention_backup_readonly.py
           python - <<'PY'
           from pathlib import Path
@@ -47,6 +49,7 @@ jobs:
               '.github/scripts/storage_retention_candidate_preview.py',
               '.github/scripts/storage_retention_candidate_digest.py',
               '.github/scripts/storage_reclaim_readonly_stats.py',
+              '.github/scripts/storage_top_relations_readonly.py',
           )
           for path in db_paths:
               text=Path(path).read_text(encoding='utf-8').lower()
@@ -106,6 +109,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_reclaim_readonly_stats.py | tee storage-reclaim-stats.txt
           grep -q '^STORAGE_RECLAIM_STATS_RESULT=PASS_READ_ONLY$' storage-reclaim-stats.txt
+      - name: Run read-only top relation capacity audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_top_relations_readonly.py | tee storage-top-relations.txt
+          grep -q '^STORAGE_TOP_RELATIONS_RESULT=PASS_READ_ONLY$' storage-top-relations.txt
       - name: Run read-only Railway backup metadata audit
         run: |
           set -euo pipefail
@@ -113,4 +121,4 @@ jobs:
           grep -Eq '^STORAGE_RETENTION_BACKUP_RESULT=(PASS_METADATA_VISIBLE|BLOCK_NO_BACKUP_VISIBLE|BLOCK_NO_VOLUME_INSTANCE)$' storage-backups.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-reclaim-stats.txt storage-backups.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-reclaim-stats.txt storage-top-relations.txt storage-backups.txt
