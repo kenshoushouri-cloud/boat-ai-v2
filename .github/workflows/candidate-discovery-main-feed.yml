@@ -15,9 +15,8 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
-  # Reproducible complete-data fixture. Prospective dates are frozen separately
-  # only after the daily race-card rows have arrived.
-  CANDIDATE_MAIN_DATE: '2026-09-12'
+  # Prospective Forward freeze. Fail-closed guards below reject missing race-card data.
+  CANDIDATE_MAIN_DATE: '2026-09-13'
 
 jobs:
   preview:
