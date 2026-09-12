@@ -79,6 +79,8 @@ Documented retention:
 
 The documentation's 50% statement specifically identifies **manual backups**. This research has not proven that a newly enabled scheduled backup will successfully create a fresh backup for the current ~4.18/5 GB volume, nor has it measured how soon the first scheduled snapshot would occur.
 
+The latest storage audit saw only the old 2026-08-23 backup; no fresh scheduled snapshot was available to close the gate. The existing read-only Railway recovery workflow can query `volumeInstanceBackupScheduleList`, but its control trigger was not executed in this work session because the connector safety layer blocked the issue-command mutation. No bypass was attempted.
+
 Changing a schedule is a Railway Production configuration change and requires separate explicit approval.
 
 ### C. Point-in-Time Recovery (PITR)
@@ -101,40 +103,65 @@ Important recovery property:
 
 This is operationally attractive for future rollback verification because a restore does not overwrite the source database.
 
-But enabling PITR is not a read-only action. It changes Variables, creates a bucket, redeploys Postgres, and adds ongoing storage/network usage. It therefore requires explicit Production approval.
+However, current Railway CLI/docs require an official Railway PostgreSQL image and instruct PITR users to run a **major version tag** such as `postgres-ssl:18` rather than a pinned minor version.
+
+Current Production `postgres-recovery` is instead configured as the official image by exact digest:
+
+```text
+ghcr.io/railwayapp-templates/postgres-ssl@sha256:e617e80d34d40def28ab197662197acc5cd6c1dc120db9cf38d835a2386c226c
+```
+
+That digest pin was intentional during the 2026-08-31 recovery: read-only verification found that the then-current `postgres-ssl:18` tag had drifted to a different digest while the deleted Production digest remained available. The recovery therefore froze the old digest to reproduce the deleted database runtime as closely as possible.
+
+Consequences:
+
+- the current image is official, but it is **not expressed as the documented major-tag form**;
+- PITR compatibility with this digest-pinned source is not proven;
+- changing the source from the frozen digest back to `postgres-ssl:18` would select the current tag digest, which historical evidence already showed differs from the recovered digest;
+- such an image-source change is itself a material Production deployment change and must not be bundled into backup enablement without explicit review/approval.
+
+Therefore PITR remains a promising recovery mechanism, but its present status is:
+
+`PITR_TECHNICALLY_AVAILABLE / CURRENT_DIGEST_PIN_COMPATIBILITY_NOT_PROVEN / IMAGE_POLICY_CHANGE_MAY_BE_REQUIRED`
 
 PITR is also not retroactive: recovery coverage starts only after the first post-enable base backup.
 
 ## 5. Candidate recovery paths
 
-### Path R1 — PITR enablement and health proof
+### Path R1 — scheduled volume backup
 
-Research assessment: **strongest recovery design, but a larger Production configuration change**.
-
-Required approvals/actions if ever selected:
-
-1. explicit approval to enable PITR on `postgres-recovery`;
-2. confirm the service image remains an official Railway Postgres image on a supported major tag;
-3. record pre-change service config and current volume metrics;
-4. enable PITR;
-5. confirm redeploy health and normal database availability;
-6. wait until PITR status proves archiving healthy and the first base backup/restore window exists;
-7. record the earliest restorable timestamp;
-8. only then close the recovery gate for a later, separately approved cleanup action.
-
-Do **not** combine PITR enablement and a destructive cleanup in one approval or one operating window.
-
-### Path R2 — scheduled volume backup
-
-Research assessment: **smaller conceptual change than PITR, but current success/timing at >50% volume usage is not yet proven**.
+Research assessment: **currently the least image-invasive native path, but success/timing at >50% usage is not yet proven**.
 
 Required if ever selected:
 
-1. explicit approval to change the backup schedule;
-2. choose a retention cadence;
-3. verify a new backup actually appears after the setting change;
-4. confirm its `createdAt`, `expiresAt`, referenced size, volume identity, and current service/volume association;
-5. do not treat the setting itself as a completed recovery point until the backup exists.
+1. independently re-read the current schedule list;
+2. explicit approval to change the backup schedule if no suitable schedule exists;
+3. choose a retention cadence;
+4. verify a new backup actually appears after the setting change;
+5. confirm its `createdAt`, `expiresAt`, referenced size, volume identity, and current service/volume association;
+6. do not treat the setting itself as a completed recovery point until the backup exists.
+
+### Path R2 — PITR enablement and health proof
+
+Research assessment: **strongest long-term recovery design, but currently carries an unresolved image-policy compatibility issue and a larger Production configuration change**.
+
+Required before enablement can even be requested safely:
+
+1. confirm from Railway whether digest-pinned `postgres-ssl` is accepted by PITR as-is;
+2. if a major tag is required, separately review the recovered old digest versus the current `:18` digest and migration risk;
+3. do not silently change image source as part of a PITR command.
+
+If PITR is later selected and image compatibility is resolved:
+
+1. explicit approval to enable PITR on `postgres-recovery`;
+2. record pre-change source image/digest, service config and current volume metrics;
+3. enable PITR;
+4. confirm redeploy health and normal database availability;
+5. wait until PITR status proves archiving healthy and the first base backup/restore window exists;
+6. record the earliest restorable timestamp;
+7. only then close the recovery gate for a later, separately approved cleanup action.
+
+Do **not** combine image-policy change, PITR enablement, and destructive cleanup in one approval or one operating window.
 
 ### Path R3 — raise the manual-backup ceiling, then create an on-demand backup
 
@@ -156,6 +183,7 @@ For any selected recovery method, capture at minimum:
 - recovery mechanism type;
 - creation/coverage timestamp after the current data state;
 - source volume identity and capacity;
+- source image/tag/digest before and after any approved configuration change;
 - backup/PITR health status;
 - current referenced/base-backup evidence where exposed;
 - expiry/retention horizon sufficient to cover the planned cleanup and observation period;
@@ -198,9 +226,9 @@ Before asking for a destructive capacity action, resolve recovery capability fir
 Current research ordering:
 
 1. **do not attempt a manual backup under the current 5 GB / ~4.18 GB state**;
-2. evaluate PITR versus scheduled backup as the two non-destructive-to-data recovery mechanisms available without deleting anything;
-3. if PITR is selected, request explicit approval for PITR enablement as its own Production change;
-4. if scheduled backup is selected, request explicit approval for the schedule change and require observed successful backup creation before proceeding;
+2. re-read current backup-schedule metadata through an approved read-only path;
+3. evaluate scheduled volume backup first because it does not inherently require changing the recovered Postgres image policy;
+4. evaluate PITR second, after digest-pin compatibility is resolved; do not change the image just to make PITR work without its own approval;
 5. use plan/limit enlargement only if necessary and explicitly approved;
 6. after a fresh recovery point is proven, return to a separate approval request for exactly one capacity mutation candidate.
 
@@ -211,6 +239,7 @@ This packet does not authorize:
 - `railway postgres pitr enable`
 - `railway postgres pitr backup create`
 - `railway postgres pitr schedule set`
+- any Postgres image/tag/digest change
 - any backup lock/delete/restore
 - any volume resize
 - any Railway plan upgrade
@@ -220,4 +249,4 @@ This packet does not authorize:
 
 ## 11. Current gate
 
-`OLD_BACKUP_TOO_STALE_FOR_NEW_CLEANUP / HOBBY_VOLUME_MAX_5GB / CURRENT_VOLUME_ABOUT_4_183GB / MANUAL_BACKUP_50PCT_LIMIT_CONFLICT / MANUAL_FRESH_BACKUP_BLOCKED_ON_CURRENT_HOBBY_CAPACITY / PITR_AVAILABLE_BUT_PRODUCTION_CONFIG_CHANGE / PITR_RESTORE_SOURCE_UNTOUCHED / SCHEDULED_BACKUP_AVAILABLE_BUT_NOT_PROVEN_AT_CURRENT_USAGE / PLAN_OR_LIMIT_CHANGE_REQUIRES_APPROVAL / FRESH_RECOVERY_POINT_NOT_YET_CLOSED / NO_BACKUP_CREATE / NO_PITR_ENABLE / NO_SCHEDULE_CHANGE / NO_VOLUME_RESIZE / NO_PLAN_CHANGE / NO_RESTORE / NO_DELETE / NO_DROP_INDEX / NO_VACUUM`
+`OLD_BACKUP_TOO_STALE_FOR_NEW_CLEANUP / HOBBY_VOLUME_MAX_5GB / CURRENT_VOLUME_ABOUT_4_183GB / MANUAL_BACKUP_50PCT_LIMIT_CONFLICT / MANUAL_FRESH_BACKUP_BLOCKED_ON_CURRENT_HOBBY_CAPACITY / SCHEDULED_BACKUP_LEAST_IMAGE_INVASIVE_BUT_NOT_YET_PROVEN / PITR_AVAILABLE_BUT_PRODUCTION_CONFIG_CHANGE / CURRENT_POSTGRES_DIGEST_PINNED / RECOVERY_TAG_DRIFT_PREVIOUSLY_CONFIRMED / PITR_MAJOR_TAG_REQUIREMENT_CONFLICT_NOT_RESOLVED / PITR_IMAGE_POLICY_CHANGE_MAY_BE_REQUIRED / PITR_RESTORE_SOURCE_UNTOUCHED / PLAN_OR_LIMIT_CHANGE_REQUIRES_APPROVAL / FRESH_RECOVERY_POINT_NOT_YET_CLOSED / NO_BACKUP_CREATE / NO_PITR_ENABLE / NO_SCHEDULE_CHANGE / NO_IMAGE_CHANGE / NO_VOLUME_RESIZE / NO_PLAN_CHANGE / NO_RESTORE / NO_DELETE / NO_DROP_INDEX / NO_VACUUM`
