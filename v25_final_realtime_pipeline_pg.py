@@ -24,7 +24,7 @@ from pathlib import Path
 
 JST = timezone(timedelta(hours=9))
 
-VERSION = "2026-09-10 safe-official-odds-collector-v6"
+VERSION = "2026-09-12 motor2-final-snapshot-mode-default-off-v1"
 
 TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
@@ -33,6 +33,14 @@ SELECTOR_MODE = os.getenv("SELECTOR_MODE", "ab").strip() or "ab"
 REQUIRE_EXHIBITION = os.getenv("REQUIRE_EXHIBITION", "0").strip()
 TEST_MODE = os.getenv("TEST_MODE", "1").strip()
 DRY_RUN = os.getenv("DRY_RUN", "0").strip()
+
+# Capacity research hook. Default preserves the current time-qualified key exactly.
+# No Railway variable is created by this file/PR. A future activation would require
+# explicit Production approval.
+MOTOR2_FINAL_SNAPSHOT_MODE = (
+    os.getenv("MOTOR2_FINAL_SNAPSHOT_MODE", "timestamped").strip().lower()
+    or "timestamped"
+)
 
 RUN_EXHIBITION_SHADOW = os.getenv(
     "RUN_EXHIBITION_SHADOW", "1"
@@ -60,6 +68,30 @@ COLLECTION_RACE_IDS_FILE = os.getenv(
 ).strip() or "/tmp/v21_collection_race_ids.txt"
 
 
+def _motor2_final_snapshot_key(
+    target_date: str,
+    observed_at: datetime,
+    mode: str = "timestamped",
+) -> str:
+    """Build Motor2 FINAL key with a fail-closed default-preserving mode.
+
+    `timestamped` preserves current behavior. `latest_per_race` uses one stable
+    date-level key; the Motor2 table's unique key still includes race_id/ticket,
+    so repeated FINAL runs update each race/ticket row rather than accumulating
+    another timestamp-keyed row.
+    """
+    normalized = (mode or "").strip().lower()
+    date_key = target_date.replace("-", "")
+    if normalized == "timestamped":
+        return f"{date_key}_final_{observed_at.strftime('%H%M%S')}"
+    if normalized == "latest_per_race":
+        return f"{date_key}_final_latest"
+    raise RuntimeError(
+        "MOTOR2_FINAL_SNAPSHOT_MODE must be timestamped or latest_per_race; "
+        f"got {mode!r}"
+    )
+
+
 def _require_settings() -> None:
     if not os.getenv("DATABASE_URL"):
         raise RuntimeError("DATABASE_URL が必要です。")
@@ -81,6 +113,7 @@ def _log_run(cmd: list[str], env: dict[str, str], optional: bool = False) -> Non
                 "TEST_MODE",
                 "DRY_RUN",
                 "RUN_MOTOR2_FINAL_SHADOW",
+                "MOTOR2_FINAL_SNAPSHOT_MODE",
                 "MOTOR2_SHADOW_RUN_CLASS",
                 "WINDOW_NAME",
                 "MOTOR2_SHADOW_COLLECTION_RACE_IDS",
@@ -140,6 +173,7 @@ def main() -> None:
         f"TARGET_DATE={TARGET_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL} "
         f"DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"RUN_MOTOR2_FINAL_SHADOW={RUN_MOTOR2_FINAL_SHADOW} "
+        f"MOTOR2_FINAL_SNAPSHOT_MODE={MOTOR2_FINAL_SNAPSHOT_MODE} "
         f"RUN_N02_WINDLT4_SHADOW={RUN_N02_WINDLT4_SHADOW} "
         f"RUN_WAVE_VL_FINAL_SHADOW={RUN_WAVE_VL_FINAL_SHADOW} "
         f"RUN_EXHIBITION_SHADOW={RUN_EXHIBITION_SHADOW}",
@@ -199,14 +233,16 @@ def main() -> None:
                 flush=True,
             )
         else:
-            motor2_snapshot_key = (
-                f"{TARGET_DATE.replace('-', '')}_final_"
-                f"{datetime.now(JST).strftime('%H%M%S')}"
+            motor2_snapshot_key = _motor2_final_snapshot_key(
+                TARGET_DATE,
+                datetime.now(JST),
+                MOTOR2_FINAL_SNAPSHOT_MODE,
             )
             _run(
                 [sys.executable, "collect_v24_motor2_forward_shadow_pg.py"],
                 {
                     **common,
+                    "MOTOR2_FINAL_SNAPSHOT_MODE": MOTOR2_FINAL_SNAPSHOT_MODE,
                     "MOTOR2_SHADOW_COLLECTION_RACE_IDS": collection_race_ids,
                     "MOTOR2_SHADOW_RUN_CLASS": "final",
                     "MOTOR2_SHADOW_SESSION": "all",
