@@ -6,6 +6,7 @@ on:
       - '.github/scripts/storage_retention_readonly_inventory.py'
       - '.github/scripts/storage_retention_output_invariance.py'
       - '.github/scripts/storage_retention_candidate_preview.py'
+      - '.github/scripts/storage_retention_candidate_digest.py'
       - '.github/workflows/storage-retention-readonly-live-audit.yml'
 
 permissions:
@@ -33,12 +34,14 @@ jobs:
           python -m py_compile .github/scripts/storage_retention_readonly_inventory.py
           python -m py_compile .github/scripts/storage_retention_output_invariance.py
           python -m py_compile .github/scripts/storage_retention_candidate_preview.py
+          python -m py_compile .github/scripts/storage_retention_candidate_digest.py
           python - <<'PY'
           from pathlib import Path
           for path in (
               '.github/scripts/storage_retention_readonly_inventory.py',
               '.github/scripts/storage_retention_output_invariance.py',
               '.github/scripts/storage_retention_candidate_preview.py',
+              '.github/scripts/storage_retention_candidate_digest.py',
           ):
               text=Path(path).read_text(encoding='utf-8').lower()
               assert 'from db_pg import fetch_all' in text
@@ -83,6 +86,11 @@ jobs:
           set -euo pipefail
           python -u .github/scripts/storage_retention_candidate_preview.py | tee storage-candidates.txt
           grep -q '^STORAGE_RETENTION_CANDIDATE_PREVIEW_RESULT=PASS_READ_ONLY$' storage-candidates.txt
+      - name: Run read-only candidate digest
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_candidate_digest.py | tee storage-candidate-digest.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=PASS_READ_ONLY$' storage-candidate-digest.txt
       - name: Clean temporary files
         if: always()
-        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt
