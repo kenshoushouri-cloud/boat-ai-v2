@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 15
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      PGOPTIONS: -c default_transaction_read_only=on
+      PGOPTIONS: -c default_transaction_read_only=on -c temp_file_limit=65536
     steps:
       - uses: actions/checkout@v4
         with:
