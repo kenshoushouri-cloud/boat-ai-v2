@@ -14,6 +14,7 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 ShadowRow = MODULE.ShadowRow
 retention_plan = MODULE.retention_plan
+retention_impact = MODULE.retention_impact
 
 
 def row(key: str, minute: int, *, evaluated: bool = True, window: str = "final") -> ShadowRow:
@@ -68,3 +69,21 @@ def test_malformed_identity_fails_closed():
     )
     with pytest.raises(ValueError, match="malformed shadow identity"):
         retention_plan([bad])
+
+
+def test_retention_impact_counts_blocked_and_candidate_rows():
+    rows = [
+        row("a", 0),
+        row("b", 15),
+        row("u1", 30, evaluated=False, window="morning"),
+        row("u2", 45, evaluated=True, window="morning"),
+    ]
+    impact = retention_impact(rows)
+    assert impact == {
+        "input_rows": 4,
+        "logical_keys": 2,
+        "keep_rows": 3,
+        "removable_candidate_rows": 1,
+        "unevaluated_blocked_keys": 1,
+        "removable_candidate_pct": 25.0,
+    }
