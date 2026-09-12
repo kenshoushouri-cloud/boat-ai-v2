@@ -16,6 +16,8 @@ Research-only capacity note. No Production DB mutation, export, archive, Railway
 
 The 466.5 MB figure is logical tuple payload, **not guaranteed physical Railway-volume reclaim**. Whole-relation bytes include non-historical labels and indexes, so 704.9 MB is also not a deletion estimate.
 
+All four historical series currently end on **2026-08-30**. Therefore this block is a large retained footprint but is **not the source of current daily database growth**. Removing it would address existing occupancy only; it would not fix the ongoing growth rate from live/Forward collection.
+
 ## Dependency classification
 
 ### Current Production PRE / FINAL
@@ -51,7 +53,7 @@ Therefore no storage decision should be based only on Railway service names.
 
 Current gate:
 
-`HISTORICAL_LABEL_LARGE_466MB_LOGICAL / NOT_CURRENT_MAIN_PRE_FINAL_INPUT / ACTIVE_RESEARCH_REPLAY_DEPENDENCIES / REPAIR_DEPENDENCIES / REPRODUCIBILITY_VALUE / NO_DELETE_CONTRACT / COLD_ARCHIVE_RESEARCH_ONLY`
+`HISTORICAL_LABEL_LARGE_466MB_LOGICAL / STATIC_END_2026_08_30 / NOT_CURRENT_GROWTH_SOURCE / NOT_CURRENT_MAIN_PRE_FINAL_INPUT / ACTIVE_RESEARCH_REPLAY_DEPENDENCIES / REPAIR_DEPENDENCIES / REPRODUCIBILITY_VALUE / NO_DELETE_CONTRACT / COLD_ARCHIVE_RESEARCH_ONLY`
 
 Policy for now:
 
@@ -59,3 +61,4 @@ Policy for now:
 2. Do not delete, VACUUM, rewrite, or move them from Production without a separate approved archive/restore design.
 3. A future cold-archive proposal must prove that current Production PRE/FINAL remains independent, identify every scheduled/manual research consumer, provide deterministic restore/checksum evidence, and state the real physical reclaim method.
 4. Do not count logical tuple bytes as guaranteed Railway volume reduction.
+5. Capacity-growth mitigation must focus on currently growing datasets; historical cold storage, if ever approved, is a one-time occupancy action rather than a growth-rate fix.
