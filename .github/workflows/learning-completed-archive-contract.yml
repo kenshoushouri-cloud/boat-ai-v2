@@ -1,0 +1,60 @@
+name: Learning Completed Archive Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/learning_completed_archive_contract.py'
+      - 'tests/test_learning_completed_archive_contract.py'
+      - '.github/workflows/learning-completed-archive-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and test pure contract
+        run: |
+          set -euo pipefail
+          python -m py_compile research/learning_completed_archive_contract.py tests/test_learning_completed_archive_contract.py
+          python -m unittest tests.test_learning_completed_archive_contract -v
+      - name: Enforce research-only isolation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path=Path('research/learning_completed_archive_contract.py')
+          source=path.read_text(encoding='utf-8')
+          tree=ast.parse(source)
+          allowed_import_roots={'dataclasses','datetime','re','typing','__future__'}
+          forbidden_calls={'open','exec','eval','compile','__import__','input'}
+
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  for alias in node.names:
+                      root=alias.name.split('.',1)[0]
+                      assert root in allowed_import_roots, ('import', alias.name)
+              elif isinstance(node, ast.ImportFrom):
+                  root=(node.module or '').split('.',1)[0]
+                  assert root in allowed_import_roots, ('from-import', node.module)
+              elif isinstance(node, ast.Call):
+                  if isinstance(node.func, ast.Name):
+                      assert node.func.id not in forbidden_calls, ('call', node.func.id)
+                  elif isinstance(node.func, ast.Attribute):
+                      assert node.func.attr not in {'execute','executemany','run','Popen','request','urlopen'}, ('attr-call', node.func.attr)
+
+          lower=source.lower()
+          for token in ('insert into','delete from','update set','create table','drop table','vacuum full','send_line'):
+              assert token not in lower, token
+          assert 'separate_approval' in lower
+          print('LEARNING_COMPLETED_ARCHIVE_ISOLATION=PASS')
+          PY
