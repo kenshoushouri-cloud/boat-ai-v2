@@ -52,10 +52,14 @@ def _lane_reason(row: dict[str, Any], cutoff: datetime) -> str:
 
 
 def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) -> dict[str, Any]:
-    """Classify exact required-row coverage without outcomes or imputation.
+    """Classify strict and neutral-source coverage without outcomes or imputation.
 
-    Race readiness is fail-closed. Lane readiness is counted independently for
-    all six lanes so a blocked race does not undercount later valid lanes.
+    Strict race readiness is fail-closed. Lane readiness is counted independently
+    for all six lanes so a blocked race does not undercount later valid lanes.
+
+    Neutral-source diagnostics mirror the frozen research rule only far enough to
+    answer whether at least two timing-safe Course Top3 observations with nonzero
+    variance exist. Missing/unusable lanes are not repaired and remain unavailable.
     """
     cutoff = datetime.combine(race_date, CUTOFF_TIME, tzinfo=JST)
     by_race: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -69,13 +73,19 @@ def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) 
     ready_races = 0
     total_lanes = 0
     ready_lanes = 0
+    neutral_usable_lane_counts: Counter[int] = Counter()
+    neutral_adjustment_ready_races = 0
+    neutral_base_only_races = 0
+    neutral_structure_blocked_races = 0
 
     for race_id, race_rows in sorted(by_race.items()):
         total_lanes += len(race_rows)
         lanes = sorted(int(r.get("lane") or 0) for r in race_rows)
         race_reason = ""
+        observed_top3: list[float] = []
         if len(race_rows) != 6 or lanes != [1, 2, 3, 4, 5, 6]:
             race_reason = "entries_not_exactly_6"
+            neutral_structure_blocked_races += 1
         else:
             for row in race_rows:
                 lane_reason = _lane_reason(row, cutoff)
@@ -94,6 +104,22 @@ def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) 
                         )
                 else:
                     ready_lanes += 1
+                    observed_top3.append(float(row["course_top3_rate"]))
+
+            neutral_usable_lane_counts[len(observed_top3)] += 1
+            if len(observed_top3) >= 2:
+                mean = sum(observed_top3) / len(observed_top3)
+                sd = math.sqrt(
+                    sum((value - mean) ** 2 for value in observed_top3)
+                    / len(observed_top3)
+                )
+                if sd >= 1e-12:
+                    neutral_adjustment_ready_races += 1
+                else:
+                    neutral_base_only_races += 1
+            else:
+                neutral_base_only_races += 1
+
         if race_reason:
             reasons[race_reason] += 1
             blocked.append((race_id, race_reason))
@@ -110,6 +136,10 @@ def classify_required_coverage(rows: Iterable[dict[str, Any]], race_date: date) 
         "lane_reasons": lane_reasons,
         "blocked": blocked,
         "missing_required": missing_required,
+        "neutral_usable_lane_counts": neutral_usable_lane_counts,
+        "neutral_adjustment_ready_races": neutral_adjustment_ready_races,
+        "neutral_base_only_races": neutral_base_only_races,
+        "neutral_structure_blocked_races": neutral_structure_blocked_races,
     }
 
 
@@ -162,6 +192,17 @@ def _print_result(prefix: str, race_date: date, result: dict[str, Any]) -> None:
         f"{prefix}_LANES=target:{result['total_lanes']} ready:{result['ready_lanes']} blocked:{result['total_lanes'] - result['ready_lanes']}",
         flush=True,
     )
+    print(
+        f"{prefix}_NEUTRAL_SOURCE=adjustment_ready:{result['neutral_adjustment_ready_races']} "
+        f"base_only:{result['neutral_base_only_races']} "
+        f"structure_blocked:{result['neutral_structure_blocked_races']}",
+        flush=True,
+    )
+    for usable, count in sorted(result["neutral_usable_lane_counts"].items()):
+        print(
+            f"{prefix}_NEUTRAL_USABLE_LANES=usable:{usable} races:{count}",
+            flush=True,
+        )
     for reason, count in sorted(result["reasons"].items()):
         print(f"{prefix}_REASON={reason}:{count}", flush=True)
     for reason, count in sorted(result["lane_reasons"].items()):
