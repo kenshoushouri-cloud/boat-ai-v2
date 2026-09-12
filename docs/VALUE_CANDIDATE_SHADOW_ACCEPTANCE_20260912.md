@@ -15,6 +15,22 @@ All of the following should be reviewed together:
 5. **Timing integrity** — only information available before the decision deadline may be used.
 6. **Calibration** — low-odds tickets must have sufficiently accurate probability estimates; apparent value from overconfident probabilities is not accepted.
 7. **Capacity safety** — no meaningful Production DB growth for the research path.
+8. **Market-residual gate** — before treating `prob * odds` as a value signal, the probability variant must show fixed out-of-sample predictive information beyond the de-vigged market baseline. If a train-only residual blend selects market-only (`alpha=0`) or the variant fails to improve future market LogLoss/Brier, its `prob * odds` output stays diagnostic only and cannot be promoted as a value rule.
+
+## Existing evidence that constrains this research
+
+The market-residual gate is not theoretical. Existing merged read-only audits already showed that the older/current-base v24 probability should not be used as a presumed value engine:
+
+- PR #104 historical full-market audit (2026-01-01..2026-08-22): naive `p_model * odds` thresholds were unprofitable overall. ROI was about 53.7% at `>=1.00`, 53.5% at `>=1.10`, 53.1% at `>=1.25`, and 52.4% at `>=1.50`.
+- PR #106 train-only market-residual OOS: all four expanding future splits selected `alpha=0.00` (market-only). Combined future market LogLoss was 3.698498 versus 4.340241 for model-only.
+
+Therefore this PR must not interpret a high `prob * odds` number from that base model as evidence of true edge.
+
+There is, however, newer timing-clean feature evidence worth testing against the market:
+
+- fixed Racer Course coefficient 0.50 + Opponent Pressure coefficient 1.0, evaluated on 1,144 common timing-clean Forward races, improved COURSE with COMBINED deltas of LogLoss -0.02814106, Brier -0.00082388, and rank -0.4685; paired-bootstrap 95% intervals excluded zero for all three metrics.
+
+That evidence is predictive-relative-to-model, not yet proof of market value. The next value gate is therefore: test the fixed newer variants against a timing-safe market baseline, then evaluate realized ROI using odds that were actually available before the decision deadline. No coefficient search or post-hoc venue/date filtering is allowed.
 
 ## Practical target bands to report
 
