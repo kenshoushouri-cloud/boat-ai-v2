@@ -15,8 +15,9 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
-  # First prospective sample: frozen before 2026-09-13 racing results.
-  CANDIDATE_MAIN_DATE: '2026-09-13'
+  # Reproducible complete-data fixture. Prospective dates are frozen separately
+  # only after the daily race-card rows have arrived.
+  CANDIDATE_MAIN_DATE: '2026-09-12'
 
 jobs:
   preview:
@@ -88,6 +89,20 @@ jobs:
           grep -q '^CANDIDATE_MAIN_PURCHASE_ACTION=false$' candidate-discovery-main-feed.txt
           grep -q '^CANDIDATE_MAIN_PROMOTION_ALLOWED=0$' candidate-discovery-main-feed.txt
           grep -q '^CANDIDATE_MAIN_RESULT=PASS_READ_ONLY$' candidate-discovery-main-feed.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('candidate-discovery-main-feed.json').read_text(encoding='utf-8'))
+          s=data['summary']
+          assert s['scheduled_races'] > 0, 'fail closed: race-card data not loaded'
+          assert s['evaluable_races'] > 0, 'fail closed: no evaluable races'
+          assert s['core_races'] == 6, s
+          assert s['feed_races'] >= 6, s
+          assert s['feed_tickets'] >= 12, s
+          assert s['legacy_added_tickets'] + s['legacy_exact_overlap_events'] == s['legacy_shadow_rows'], s
+          assert data['purchase_action'] is False
+          assert data['production_behavior_changed'] is False
+          PY
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
