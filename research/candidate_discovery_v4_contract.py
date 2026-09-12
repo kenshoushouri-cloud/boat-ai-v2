@@ -3,6 +3,7 @@
 Research only. No external integration or purchase path.
 Fixed enrichments:
 - Racer Course neutral-missing coefficient = 0.50
+- Opponent Pressure lane-probability delta coefficient = 1.0
 - Motor2 ticket factor beta = 0.06
 - No EV or absolute-odds gate
 """
@@ -13,10 +14,12 @@ from itertools import permutations
 from typing import Mapping
 
 COURSE_COEF = 0.50
+OPPONENT_COEF = 1.0
 MOTOR_BETA = 0.06
 MOTOR_POS_W = (1.0, 0.6, 0.3)
 PROB_TEMP = 2.20
 LANES = (1, 2, 3, 4, 5, 6)
+EPS = 1e-12
 
 
 def _zscore(values: Mapping[int, float], *, missing_zero: bool) -> dict[int, float]:
@@ -36,6 +39,14 @@ def _zscore(values: Mapping[int, float], *, missing_zero: bool) -> dict[int, flo
     return out
 
 
+def _normalize(values: Mapping[int, float]) -> dict[int, float]:
+    ys = {lane: max(EPS, float(values[lane])) for lane in LANES}
+    total = sum(ys.values())
+    if total <= 0 or not math.isfinite(total):
+        raise ValueError("invalid probability mass")
+    return {lane: value / total for lane, value in ys.items()}
+
+
 def course_adjust_raw(base_raw: Mapping[int, float], course_top3: Mapping[int, float]) -> dict[int, float]:
     if tuple(sorted(base_raw)) != LANES:
         raise ValueError("base_raw must contain lanes 1..6")
@@ -43,20 +54,47 @@ def course_adjust_raw(base_raw: Mapping[int, float], course_top3: Mapping[int, f
     return {lane: float(base_raw[lane]) + COURSE_COEF * z[lane] for lane in LANES}
 
 
-def ticket_probabilities(raw: Mapping[int, float]) -> dict[str, float]:
+def lane_probabilities(raw: Mapping[int, float]) -> dict[int, float]:
     if tuple(sorted(raw)) != LANES:
         raise ValueError("raw must contain lanes 1..6")
     weights = {lane: math.exp(float(raw[lane]) / PROB_TEMP) for lane in LANES}
-    total = sum(weights.values())
+    return _normalize(weights)
+
+
+def opponent_adjust_lane_probs(
+    lane_probs: Mapping[int, float],
+    opponent_delta: Mapping[int, float] | None,
+) -> dict[int, float]:
+    if tuple(sorted(lane_probs)) != LANES:
+        raise ValueError("lane_probs must contain lanes 1..6")
+    if opponent_delta is None:
+        return _normalize(lane_probs)
+    if tuple(sorted(opponent_delta)) != LANES:
+        raise ValueError("opponent_delta must contain lanes 1..6")
+    adjusted = {}
+    for lane in LANES:
+        delta = float(opponent_delta[lane])
+        if not math.isfinite(delta):
+            raise ValueError("opponent delta must be finite")
+        adjusted[lane] = max(EPS, min(0.999, float(lane_probs[lane]) + OPPONENT_COEF * delta))
+    return _normalize(adjusted)
+
+
+def pl_trifecta(lane_probs: Mapping[int, float]) -> dict[str, float]:
+    probs = _normalize(lane_probs)
     out: dict[str, float] = {}
     for a, b, c in permutations(LANES, 3):
-        pa = weights[a] / total
-        rem_b = total - weights[a]
-        pb = weights[b] / rem_b
-        rem_c = rem_b - weights[b]
-        out[f"{a}-{b}-{c}"] = pa * pb * (weights[c] / rem_c)
+        pa = probs[a]
+        rem_b = 1.0 - probs[a]
+        pb = probs[b] / rem_b
+        rem_c = rem_b - probs[b]
+        out[f"{a}-{b}-{c}"] = pa * pb * (probs[c] / rem_c)
     z = sum(out.values())
     return {ticket: p / z for ticket, p in out.items()}
+
+
+def ticket_probabilities(raw: Mapping[int, float]) -> dict[str, float]:
+    return pl_trifecta(lane_probabilities(raw))
 
 
 def motor_adjust(probs: Mapping[str, float], motor_place2: Mapping[int, float]) -> dict[str, float]:
@@ -77,9 +115,11 @@ def build_v4_distribution(
     base_raw: Mapping[int, float],
     course_top3: Mapping[int, float],
     motor_place2: Mapping[int, float],
+    opponent_delta: Mapping[int, float] | None = None,
 ) -> dict[str, float]:
     raw = course_adjust_raw(base_raw, course_top3)
-    return motor_adjust(ticket_probabilities(raw), motor_place2)
+    lane_probs = opponent_adjust_lane_probs(lane_probabilities(raw), opponent_delta)
+    return motor_adjust(pl_trifecta(lane_probs), motor_place2)
 
 
 def top_tickets(probs: Mapping[str, float], n: int = 2) -> tuple[str, ...]:
