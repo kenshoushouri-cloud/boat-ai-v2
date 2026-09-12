@@ -53,6 +53,33 @@ def main() -> None:
          order by run_class,window_name
         """
     )
+    growth7 = fetch_all(
+        """
+        select run_class,window_name,
+               count(*)::bigint as rows,
+               coalesce(sum(pg_column_size(s)),0)::bigint as logical_row_bytes,
+               count(distinct (race_id,run_class,window_name,snapshot_key))::bigint as snapshot_groups,
+               count(distinct race_id)::bigint as races,
+               count(*) filter (where evaluated_at is null)::bigint as unevaluated_rows
+          from v2_v24_motor2_forward_shadow s
+         where race_date >= current_date - 7
+           and race_date < current_date
+         group by run_class,window_name
+         order by run_class,window_name
+        """
+    )
+    growth7_total = one(
+        """
+        select count(*)::bigint as rows,
+               coalesce(sum(pg_column_size(s)),0)::bigint as logical_row_bytes,
+               count(distinct (race_id,run_class,window_name,snapshot_key))::bigint as snapshot_groups,
+               count(distinct race_id)::bigint as races,
+               count(*) filter (where evaluated_at is null)::bigint as unevaluated_rows
+          from v2_v24_motor2_forward_shadow s
+         where race_date >= current_date - 7
+           and race_date < current_date
+        """
+    )
     ambiguity = one(
         """
         with latest as (
@@ -169,6 +196,30 @@ def main() -> None:
             f"run_class:{r.get('run_class')} window:{r.get('window_name')} "
             f"rows:{int(r.get('rows') or 0)} snapshot_keys:{int(r.get('snapshot_keys') or 0)} "
             f"unevaluated_rows:{int(r.get('unevaluated_rows') or 0)}"
+        )
+    recent_rows = int(growth7_total.get('rows') or 0)
+    recent_bytes = int(growth7_total.get('logical_row_bytes') or 0)
+    print(
+        'STORAGE_RETENTION_RECENT7_TOTAL='
+        f"rows:{recent_rows} logical_row_bytes:{recent_bytes} "
+        f"snapshot_groups:{int(growth7_total.get('snapshot_groups') or 0)} "
+        f"races:{int(growth7_total.get('races') or 0)} "
+        f"unevaluated_rows:{int(growth7_total.get('unevaluated_rows') or 0)} "
+        f"avg_rows_per_completed_day:{recent_rows / 7.0:.2f} "
+        f"avg_logical_bytes_per_completed_day:{recent_bytes / 7.0:.2f}"
+    )
+    for r in growth7:
+        rows7 = int(r.get('rows') or 0)
+        bytes7 = int(r.get('logical_row_bytes') or 0)
+        print(
+            'STORAGE_RETENTION_RECENT7_WINDOW='
+            f"run_class:{r.get('run_class')} window:{r.get('window_name')} "
+            f"rows:{rows7} logical_row_bytes:{bytes7} "
+            f"snapshot_groups:{int(r.get('snapshot_groups') or 0)} "
+            f"races:{int(r.get('races') or 0)} "
+            f"unevaluated_rows:{int(r.get('unevaluated_rows') or 0)} "
+            f"avg_rows_per_completed_day:{rows7 / 7.0:.2f} "
+            f"avg_logical_bytes_per_completed_day:{bytes7 / 7.0:.2f}"
         )
     print(f'STORAGE_RETENTION_AMBIGUOUS_LATEST_KEYS={ambiguous_latest_keys}')
     print(
