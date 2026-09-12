@@ -172,6 +172,23 @@ def _print_result(prefix: str, race_date: date, result: dict[str, Any]) -> None:
         f"{prefix}_MISSING_REQUIRED=lanes:{len(missing)} distinct_racers:{len(distinct_racers)}",
         flush=True,
     )
+    missing_by_racer: dict[int, dict[str, Any]] = defaultdict(
+        lambda: {"courses": set(), "races": set(), "rows": 0}
+    )
+    for race_id, lane, racer in missing:
+        if racer is None:
+            continue
+        item = missing_by_racer[racer]
+        item["courses"].add(lane)
+        item["races"].add(race_id)
+        item["rows"] += 1
+    for racer, item in sorted(missing_by_racer.items()):
+        courses = ",".join(str(x) for x in sorted(item["courses"]))
+        print(
+            f"{prefix}_MISSING_RACER=racer:{racer} rows:{item['rows']} "
+            f"courses:{courses} races:{len(item['races'])}",
+            flush=True,
+        )
     for race_id, reason in result["blocked"]:
         print(f"{prefix}_BLOCKED=race_id:{race_id} reason:{reason}", flush=True)
 
