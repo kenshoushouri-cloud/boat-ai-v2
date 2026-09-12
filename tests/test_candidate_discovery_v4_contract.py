@@ -49,6 +49,23 @@ class CandidateDiscoveryV4ContractTests(unittest.TestCase):
         for ticket in no_opp:
             self.assertAlmostEqual(no_opp[ticket], zero[ticket], places=14)
 
+    def test_head_only_preserves_second_third_conditionals(self):
+        base_lane = {1: .30, 2: .22, 3: .18, 4: .12, 5: .10, 6: .08}
+        adjusted_first = mod.opponent_adjust_first_probs(
+            base_lane,
+            {1: .04, 2: -.01, 3: -.01, 4: -.01, 5: -.005, 6: -.005},
+        )
+        baseline = mod.pl_trifecta(base_lane)
+        head = mod.head_only_trifecta(base_lane, adjusted_first)
+        # Within one fixed first-place lane, Opponent Pressure must not change
+        # relative second/third conditional ordering or ratios.
+        self.assertAlmostEqual(
+            baseline["1-2-3"] / baseline["1-3-2"],
+            head["1-2-3"] / head["1-3-2"],
+            places=14,
+        )
+        self.assertGreater(head["1-2-3"], baseline["1-2-3"])
+
     def test_fixed_opponent_delta_changes_probability_distribution(self):
         base = {1: 2.0, 2: 1.5, 3: 1.0, 4: 0.5, 5: 0.0, 6: -0.5}
         course = {1: 52.0, 2: 48.0, 3: 45.0, 4: 43.0, 5: 40.0, 6: 38.0}
