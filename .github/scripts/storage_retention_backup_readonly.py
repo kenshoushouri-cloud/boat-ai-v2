@@ -2,8 +2,8 @@
 """Read-only Railway backup metadata audit for storage-retention research.
 
 This script sends GraphQL queries only. It never creates, restores, deletes, or
-mutates a Railway backup, volume, service, deployment, variable, or database row.
-It prints no IDs, URLs, credentials, or token values.
+mutates a Railway backup, backup schedule, volume, service, deployment,
+variable, or database row. It prints no IDs, URLs, credentials, or token values.
 """
 from __future__ import annotations
 
@@ -114,8 +114,31 @@ def main() -> None:
         """,
         {"id": instance["id"]},
     )
-    backups = [row for row in (backups_data.get("volumeInstanceBackupList") or []) if isinstance(row, dict)]
+    backups = [
+        row
+        for row in (backups_data.get("volumeInstanceBackupList") or [])
+        if isinstance(row, dict)
+    ]
     backups.sort(key=lambda row: row.get("createdAt") or "", reverse=True)
+
+    schedules_data = gql(
+        """
+        query Q($id:String!) {
+          volumeInstanceBackupScheduleList(volumeInstanceId:$id) {
+            createdAt cron kind name retentionSeconds
+          }
+        }
+        """,
+        {"id": instance["id"]},
+    )
+    schedules = [
+        row
+        for row in (schedules_data.get("volumeInstanceBackupScheduleList") or [])
+        if isinstance(row, dict)
+    ]
+    schedules.sort(
+        key=lambda row: (str(row.get("kind") or ""), str(row.get("name") or ""))
+    )
 
     print(
         "STORAGE_RETENTION_BACKUP_VOLUME="
@@ -130,6 +153,19 @@ def main() -> None:
             f"rank:{index} name:{safe_name} created_at:{row.get('createdAt')} "
             f"expires_at:{row.get('expiresAt')} referenced_mb:{row.get('referencedMB')} "
             f"used_mb:{row.get('usedMB')} volume_size_mb:{row.get('volumeInstanceSizeMB')}"
+        )
+
+    print(f"STORAGE_RETENTION_BACKUP_SCHEDULE_COUNT={len(schedules)}")
+    if not schedules:
+        print("STORAGE_RETENTION_BACKUP_SCHEDULE=NONE")
+    for index, row in enumerate(schedules, start=1):
+        safe_name = str(row.get("name") or "unnamed").replace("\n", " ").replace("\r", " ")
+        safe_kind = str(row.get("kind") or "unknown").replace("\n", " ").replace("\r", " ")
+        safe_cron = str(row.get("cron") or "-").replace("\n", " ").replace("\r", " ")
+        print(
+            "STORAGE_RETENTION_BACKUP_SCHEDULE="
+            f"rank:{index} kind:{safe_kind} name:{safe_name} cron:{safe_cron} "
+            f"retention_seconds:{row.get('retentionSeconds')} created_at:{row.get('createdAt')}"
         )
 
     print(
