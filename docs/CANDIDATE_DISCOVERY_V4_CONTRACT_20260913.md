@@ -21,15 +21,19 @@ For each six-lane race:
    - missing/unusable Course lane: `z=0`, preserving BASE raw strength for that lane.
    - no coefficient search.
 
-3. **Opponent Pressure enrichment**
+3. **Opponent Pressure enrichment — first place only**
    - fixed coefficient: `1.0`.
    - signal is the frozen lane-level difference `adj_win - base_win` from Opponent Pressure v2.
-   - apply the delta to the six normalized first-place lane probabilities, clip positive, then renormalize.
+   - apply the delta only to the six normalized **first-place** probabilities, clip positive, then renormalize.
+   - preserve the Course-adjusted BASE conditional probabilities for second and third place.
+   - fixed trifecta mapping:
+     `P(a,b,c) = P_opp_first(a) * P_base(b|a) * P_base(c|a,b)`.
+   - this head-only mapping is frozen because existing Opponent Pressure research found that applying the same adjusted lane weights to every Plackett–Luce stage can hurt realized ticket ranking, while Opponent Pressure is supported primarily as an incremental first-place signal.
    - only timing-clean Opponent Pressure evidence is eligible: v2 identity, train end before race date, complete six-lane matched-opponent evidence, and the separately frozen morning/deadline timing contract.
    - no coefficient search.
 
 4. **Ordered trifecta construction**
-   - convert the six enriched first-place lane probabilities into all 120 exact-order trifecta probabilities with the same Plackett–Luce construction.
+   - create all 120 exact-order trifecta probabilities using Opponent-adjusted P(first) and unchanged Course-adjusted BASE second/third conditionals.
 
 5. **Motor2 support factor**
    - fixed beta: `0.06`.
@@ -63,7 +67,9 @@ Pure implementation:
 - `tests/test_candidate_discovery_v4_contract.py`
 - `.github/workflows/candidate-discovery-v4-contract.yml`
 
-The pure contract contains no DB, network, Railway, LINE, or purchase integration. A direct integrated live-DB V4 evaluator was not added after the platform safety layer blocked that path; no bypass is permitted.
+The pure contract contains no DB, network, Railway, LINE, or purchase integration. Tests explicitly lock the head-only Opponent behavior: changing P(first) must not change the relative second/third conditional ratios for a fixed first-place lane.
+
+A direct integrated live-DB V4 evaluator was not added after the platform safety layer blocked that path; no bypass is permitted.
 
 ## Promotion rule
 
@@ -78,4 +84,4 @@ No Production promotion is implied by a successful pure contract. Before any Pro
 - realized flat-stake ROI as a diagnostic, without using ROI to rewrite already-frozen candidate rules;
 - timing integrity and missing-data behavior.
 
-`RESEARCH_ONLY / FIXED_COURSE_0.50 / FIXED_OPPONENT_1.0 / FIXED_MOTOR2_0.06 / NO_EV_GATE / NO_ABSOLUTE_ODDS_GATE / PURCHASE_ACTION_FALSE / NO_PRODUCTION_CHANGE`
+`RESEARCH_ONLY / FIXED_COURSE_0.50 / FIXED_OPPONENT_HEAD_ONLY_1.0 / FIXED_MOTOR2_0.06 / NO_EV_GATE / NO_ABSOLUTE_ODDS_GATE / PURCHASE_ACTION_FALSE / NO_PRODUCTION_CHANGE`
