@@ -4,6 +4,11 @@
 The script does not delete or mutate data. It constructs the proposed retained set in
 CTEs and compares protected latest-row/group identities against the current full table.
 Raw/history diagnostics are allowed to shrink and are reported separately.
+
+Capacity safety note: the base CTE intentionally projects only columns required by the
+retention/output contract. The Production shadow table also contains wider diagnostic
+payloads; carrying those through several window functions caused unnecessary temp-file
+pressure in read-only CI without changing the identities being proved.
 """
 from __future__ import annotations
 
@@ -24,7 +29,18 @@ def one(sql: str) -> dict:
 
 BASE_CTE = """
 with base as (
-  select s.*,
+  select s.id,
+         s.race_id,
+         s.ticket,
+         s.run_class,
+         s.window_name,
+         s.snapshot_key,
+         s.snapshot_at,
+         s.evaluated_at,
+         s.result_ticket,
+         s.payout_yen,
+         s.base_prob,
+         s.motor2_prob,
          bool_or(s.evaluated_at is null) over (
            partition by s.race_id,s.ticket,s.run_class,s.window_name
          ) as key_has_unevaluated,
@@ -162,7 +178,8 @@ select
 def health_compare() -> dict:
     return one(BASE_CTE + """
 , full_health_rows as (
-  select b.*, r.deadline_at
+  select b.id,b.race_id,b.run_class,b.window_name,b.snapshot_key,b.snapshot_at,
+         b.result_ticket,r.deadline_at
     from base b
     left join v2_races r on r.race_id=b.race_id
    where b.window_name in ('morning','day','night')
@@ -171,7 +188,8 @@ def health_compare() -> dict:
      and b.base_prob is not null
      and b.motor2_prob is not null
 ), retained_health_rows as (
-  select b.*, r.deadline_at
+  select b.id,b.race_id,b.run_class,b.window_name,b.snapshot_key,b.snapshot_at,
+         b.result_ticket,r.deadline_at
     from retained b
     left join v2_races r on r.race_id=b.race_id
    where b.window_name in ('morning','day','night')
@@ -277,7 +295,7 @@ def main() -> None:
     health = health_compare()
     diag = diagnostic_change()
 
-    print('STORAGE_RETENTION_INVARIANCE_MODE=READ_ONLY_HYPOTHETICAL_NO_CLEANUP')
+    print('STORAGE_RETENTION_INVARIANCE_MODE=READ_ONLY_LOW_TEMP_HYPOTHETICAL_NO_CLEANUP')
     print(
         'STORAGE_RETENTION_PERFORMANCE='
         f"full:{i(perf,'full_rows')} retained:{i(perf,'retained_rows')} diff:{i(perf,'diff_rows')}"
