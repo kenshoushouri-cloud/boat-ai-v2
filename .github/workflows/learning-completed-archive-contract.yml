@@ -1,0 +1,43 @@
+name: Learning Completed Archive Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/learning_completed_archive_contract.py'
+      - 'tests/test_learning_completed_archive_contract.py'
+      - '.github/workflows/learning-completed-archive-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and test pure contract
+        run: |
+          set -euo pipefail
+          python -m py_compile research/learning_completed_archive_contract.py tests/test_learning_completed_archive_contract.py
+          python -m unittest tests.test_learning_completed_archive_contract -v
+      - name: Enforce research-only isolation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('research/learning_completed_archive_contract.py').read_text(encoding='utf-8').lower()
+          forbidden=(
+              'psycopg', 'db_pg', 'requests', 'urllib', 'subprocess', 'railway',
+              'send_line', 'open(', 'pathlib.path(', 'execute(', 'insert into',
+              'update ', 'delete from', 'create table', 'drop table', 'vacuum'
+          )
+          for token in forbidden:
+              assert token not in text, token
+          assert 'separate_approval' in text
+          print('LEARNING_COMPLETED_ARCHIVE_ISOLATION=PASS')
+          PY
