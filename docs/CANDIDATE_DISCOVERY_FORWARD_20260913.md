@@ -11,7 +11,12 @@ Research-only prospective freeze for the new Candidate Discovery main feed.
 - Artifact: `candidate-discovery-main-feed-34726186753`
 - Artifact ID: `10308110102`
 - Artifact ZIP SHA-256: `3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236`
+- frozen JSON SHA-256: `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
+- frozen TXT SHA-256: `4e55718fd3b291c735c68374e651c535cde342a1c7b539a613d876b1e1dbb5c0`
+- JSON digest sidecar: `research/frozen/candidate-discovery-main-feed-20260913.sha256`
 - Freeze execution time: 2026-09-13 08:44 JST (GitHub log time 2026-09-12 23:44 UTC)
+
+The artifact was independently downloaded after the run and re-hashed. The ZIP digest matched GitHub's artifact digest exactly, the internal JSON/TXT digests above were recorded, and the decoded 8-race / 14-ticket feed matched this document exactly.
 
 ## Input readiness
 
@@ -63,5 +68,7 @@ The feed was generated inside an explicit read-only PostgreSQL transaction. No D
 ## Evaluation rule
 
 Do not regenerate or alter this candidate set after race results are known. Evaluation must use this exact frozen feed/artifact. Later legacy candidates, if generated after this freeze, are separate observations and must not be retroactively added to this 08:44 JST freeze.
+
+The frozen evaluator must verify the internal JSON against `research/frozen/candidate-discovery-main-feed-20260913.sha256` before reading official results.
 
 `purchase_action=false` remains mandatory.
