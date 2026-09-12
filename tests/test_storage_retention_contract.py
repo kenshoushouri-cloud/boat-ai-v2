@@ -1,8 +1,17 @@
 from datetime import datetime, timezone
+import importlib.util
+from pathlib import Path
 
 import pytest
 
-from research.storage_retention_contract import ShadowRow, retention_plan
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / "research" / "storage_retention_contract.py"
+SPEC = importlib.util.spec_from_file_location("storage_retention_contract", MODULE_PATH)
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+ShadowRow = MODULE.ShadowRow
+retention_plan = MODULE.retention_plan
 
 
 def row(key: str, minute: int, *, evaluated: bool = True, window: str = "final") -> ShadowRow:
