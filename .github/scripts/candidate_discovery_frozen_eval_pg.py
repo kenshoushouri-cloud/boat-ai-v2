@@ -24,9 +24,11 @@ INPUT = Path(os.getenv("CANDIDATE_FORWARD_INPUT", "candidate-discovery-main-feed
 HASH_FILE = Path(os.getenv("CANDIDATE_FORWARD_HASH", str(INPUT) + ".sha256"))
 OUTPUT = Path(os.getenv("CANDIDATE_FORWARD_EVAL_OUTPUT", "candidate-discovery-forward-eval.json"))
 STAKE_PER_TICKET = 100
+BASELINE_SOURCE_CONTRACT = "candidate_discovery_main_feed_v1"
+V4_SOURCE_CONTRACT = "candidate_discovery_v4_main_feed_v1"
 ALLOWED_SOURCE_CONTRACTS = {
-    "candidate_discovery_main_feed_v1",
-    "candidate_discovery_v4_main_feed_v1",
+    BASELINE_SOURCE_CONTRACT,
+    V4_SOURCE_CONTRACT,
 }
 
 
@@ -63,6 +65,16 @@ def validate_frozen_feed(data: dict[str, Any]) -> list[dict[str, Any]]:
         raise RuntimeError("candidate artifact reports LINE send")
     if data.get("purchase_action") is not False:
         raise RuntimeError("candidate artifact reports purchase action")
+    if contract == V4_SOURCE_CONTRACT:
+        if data.get("prospective_evidence_eligible") is not True:
+            raise RuntimeError("V4 evaluation requires timestamp-proven prospective freeze")
+        provenance = data.get("freeze_provenance")
+        if not isinstance(provenance, dict):
+            raise RuntimeError("V4 evaluation requires freeze_provenance")
+        if provenance.get("mode") != "prospective":
+            raise RuntimeError("V4 evaluation refuses non-prospective freeze mode")
+        if provenance.get("prospective_evidence_eligible") is not True:
+            raise RuntimeError("V4 freeze provenance is not prospective eligible")
     feed = data.get("feed")
     if not isinstance(feed, list) or not feed:
         raise RuntimeError("frozen feed is empty")
@@ -209,6 +221,7 @@ def main() -> None:
         "source_contract": data.get("contract"),
         "source_date": (data.get("summary") or {}).get("date"),
         "source_sha256": actual,
+        "source_prospective_evidence_eligible": data.get("prospective_evidence_eligible") is True,
         "stake_per_ticket_yen": STAKE_PER_TICKET,
         "summary": {k: v for k, v in evaluated.items() if k != "rows"},
         "rows": evaluated["rows"],

@@ -56,8 +56,8 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
         self.assertEqual(850, out["return_yen"])
         self.assertAlmostEqual(283.333, out["roi_pct"], places=3)
 
-    def _feed_doc(self, contract: str):
-        return {
+    def _feed_doc(self, contract: str, *, eligible: bool = False):
+        doc = {
             "contract": contract,
             "mutation_performed": False,
             "line_sent": False,
@@ -65,10 +65,26 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
             "summary": {"scheduled_races": 10, "core_races": 6},
             "feed": [{"race_id": "r1", "tickets": [{"ticket": "1-2-3"}]}],
         }
+        if eligible:
+            doc["prospective_evidence_eligible"] = True
+            doc["freeze_provenance"] = {
+                "mode": "prospective",
+                "prospective_evidence_eligible": True,
+            }
+        return doc
 
-    def test_validate_accepts_baseline_and_v4_contracts_only(self):
-        for contract in ("candidate_discovery_main_feed_v1", "candidate_discovery_v4_main_feed_v1"):
-            self.assertEqual(1, len(mod.validate_frozen_feed(self._feed_doc(contract))))
+    def test_validate_accepts_baseline_without_prospective_flag(self):
+        baseline = self._feed_doc("candidate_discovery_main_feed_v1")
+        self.assertEqual(1, len(mod.validate_frozen_feed(baseline)))
+
+    def test_validate_v4_requires_timestamp_proven_prospective_freeze(self):
+        unproven = self._feed_doc("candidate_discovery_v4_main_feed_v1")
+        with self.assertRaises(RuntimeError):
+            mod.validate_frozen_feed(unproven)
+        proven = self._feed_doc("candidate_discovery_v4_main_feed_v1", eligible=True)
+        self.assertEqual(1, len(mod.validate_frozen_feed(proven)))
+
+    def test_unknown_contract_fails_closed(self):
         with self.assertRaises(RuntimeError):
             mod.validate_frozen_feed(self._feed_doc("unknown_feed"))
 
@@ -83,6 +99,8 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
         text = SCRIPT.read_text(encoding="utf-8").lower()
         self.assertIn("set transaction read only", text)
         self.assertIn("candidate_discovery_v4_main_feed_v1", text)
+        self.assertIn("prospective_evidence_eligible", text)
+        self.assertIn("freeze_provenance", text)
         for token in (
             "delete from ", "insert into ", "update v2_", "alter table ",
             "drop table ", "truncate ", "vacuum ", "create table ",

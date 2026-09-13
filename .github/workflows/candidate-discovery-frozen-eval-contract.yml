@@ -1,0 +1,41 @@
+name: Candidate Discovery Frozen Eval Contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_frozen_eval_pg.py'
+      - 'tests/test_candidate_discovery_frozen_eval.py'
+      - '.github/workflows/candidate-discovery-frozen-eval-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen evaluator contract
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_frozen_eval_pg.py
+          python tests/test_candidate_discovery_frozen_eval.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_frozen_eval_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert 'candidate_discovery_main_feed_v1' in text
+          assert 'candidate_discovery_v4_main_feed_v1' in text
+          assert 'prospective_evidence_eligible' in text
+          assert 'freeze_provenance' in text
+          for token in (
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert token not in text, token
+          PY
