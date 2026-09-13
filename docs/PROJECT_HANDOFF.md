@@ -1,106 +1,175 @@
 # boat-ai-v2 Project Handoff
 
-更新: 2026-09-12 JST
+更新: 2026-09-13 JST
 
-この文書は**現在地だけを短く共有するための引き継ぎ**です。個別PRの経緯、日次件数、長い実験結果はここへ追記しません。
+この文書は次チャットが安全に再開するための**現在地だけ**を残します。数値・SHA・PR状態はcheckpointであり、再開時に必ずcurrent値を再取得してください。
 
-再開時は、この文書の数値やPR番号を最新値と決めつけず、必ず GitHub `main`、open PR、Railway read-only health を確認してください。
+## 再開時の最初の指示
 
-## 再開時の指示
+> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/CHATGPT_BOOTSTRAP.md` と `docs/PROJECT_HANDOFF.md` を読み、current `main`、open PR、PR #351 の最新head/Actions、Railway Productionのread-only healthを確認してから続行してください。GitHub `main`をProduction codeのSource of Truth、Railway PostgreSQLをProduction dataのSource of Truthとしてください。安全なread-only監査・研究・Draft PR・CI・文書整理は連続して進めてよいですが、Production変更は明示承認まで実施しないでください。
 
-> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/PROJECT_HANDOFF.md` を読み、現在の `main`、open PR、Railway Production の read-only health を確認してから続行してください。GitHub `main` をコードの Source of Truth、Railway PostgreSQL を本番データの Source of Truth としてください。安全な監査・研究・Draft PR・CI・文書整理は継続可、Production変更は明示承認まで実施しないでください。
-
-## Source of Truth
+## Source of Truth / checkpoint
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- Code: GitHub `main`
-- Production DB: Railway PostgreSQL
-- Railway service構成: `docs/RAILWAY_SERVICE_MAP.md`
-- 判断履歴: `docs/PROJECT_HISTORY.md`
-- 詳細研究ログ: `docs/DEVELOPMENT_STATUS.md` と各PR
-- Railway監査ログ: Issue #42
+- Production code: GitHub `main`
+- 2026-09-13 handoff時 main checkpoint: `8abbb0186852969129175848ee106118031f97e4`
+- Production DB: Railway project `boat-v2-postgres` / service `postgres-recovery`
+- Candidate Discovery primary research: Draft PR #351
+- PR #351 branch: `research/candidate-discovery-v1-20260913`
+- 2026-09-13 handoff直前 branch checkpoint: `97fa31281ffc091102abe576274b1a3a24f8b1d3`
 
-GitHubは `branch → Draft PR → CI → review → merge` を基本とし、mainを直接編集しません。
+mainやPR headは必ず再取得し、このcheckpointを固定値として扱わないでください。
 
 ## Production変更の承認境界
 
 以下は明示承認が必要です。
 
-- PRのProduction反映を伴うmerge
-- Railway Production設定・Variables・Cron・service変更
-- DB schema作成、Production DB書込み・削除・VACUUM等
-- モデル、係数、閾値、Production判定ロジック変更
-- LINE実送信に関わる変更
-- Forward予測の実保存開始
+- Production反映を伴うPR merge
+- Railway Production Variables / Cron / service / volume等の変更
+- Production DBのINSERT / UPDATE / DELETE / schema変更 / VACUUM
+- モデル係数・閾値・Production候補/判定ロジック変更
+- 実LINE送信に関わる変更
+- Production Forward persistenceの新規変更
 - 自動購入
 - 有料データ契約・外部問い合わせ送信
 
-安全なread-only監査、研究コード、Draft PR、CI、文書整理は確認なしで進めてよいです。
+安全なread-only監査、研究コード、Draft PR、CI、文書整理は確認なしで継続可です。`purchase_action=false` と fail-closed を維持してください。
 
-## 現行Productionの要点
+## 現在の戦略
 
-主軸は競艇です。Production予想は概ね次の2段階です。
+競艇が最優先です。新しい Candidate Discovery 系を将来の主候補システムとして育て、現行v24は当面benchmark/referenceとして残します。
 
-1. PRE: `run_window_pipeline_pg.py` 系
-2. FINAL: `run_final_pg.py` → realtime collection → v22判定 → LINE通知
+重要方針:
 
-自動購入はありません。Shadow / Forward研究はProduction BUY/WATCH/SKIP・LINEから隔離したまま扱います。
+- **候補表示と購入判定を分離する。**
+- 候補を極端に減らすEV閾値・絶対オッズ帯を主ゲートにしない。
+- 現行S01-S05候補は当面legacy/reference carryoverとして比較可能にする。
+- 新システムが十分に実証されるまで、Production v24を消さない。
+- 旧データ削除は新システム確立後に依存関係を分類してから検討する。実DELETE/VACUUMは別承認。
 
-正しい出走表テーブル名は `v2_race_entries` です。
+## Candidate Discovery PR #351
 
-## 2026-09-12 時点の重要な現在地
+PR #351 `Research: Candidate Discovery main feed (V1-V4)` は研究専用です。Productionへは未反映です。
 
-### 1. 精度向上研究
+### Stage 1 — V4 structural main feed
 
-- Opponent Pressure V2 は自然CronでForward観測中。Production昇格は未承認。
-- Racer Course 0.50 は有望な研究結果があるが、欠損laneをneutral扱いするForward Shadow設計を含め、まだ研究段階。
-- Shadow成功だけでProductionへ昇格しない。自然Forward日数・タイミング整合・独立評価を優先する。
+現行研究契約:
 
-### 2. PRE LINE周辺
+- 1日 TOP6レース × TOP2 3連単候補を基本feedにする。
+- Course coefficient `0.50`、欠損laneはneutral `z=0`。
+- Opponent Pressure coefficient `1.0` は**1着確率だけ**へ適用。
+- Motor2 beta `0.06`、着順weight `1.0 / 0.6 / 0.3`。
+- V2由来の4 structural metricsを等重み順位化して日次TOP6を選ぶ。
+- EV gateなし。
+- 絶対オッズmin/max gateなし。
+- `purchase_action=false`。
 
-- PRE用LINE上限変数のalias差異と、重複通知防止機能が未有効である点を研究中。
-- Production Variables、dedupe schema、通知仕様はまだ変更しない。
+詳細:
+- `docs/CANDIDATE_DISCOVERY_V4_CONTRACT_20260913.md`
+- `docs/CANDIDATE_DISCOVERY_TWO_STAGE_ARCHITECTURE_20260913.md`
 
-### 3. Railway / DB容量
+### Stage 2 — late Bao corroboration
 
-容量圧迫は確認済みです。ただし、**安全性を優先して削除・VACUUM・Cron停止は未実施**です。
+- Stage-1候補を削除しない。
+- timing-safeな完全120点市場snapshotと展示/Motor2を用いて支持タグを付ける。
+- Bao不一致でもV4候補は残す。
+- 既存Bao windowは early `20-30分前`、exhibition `8-15分前`、late `0-7分前`。
 
-重要な結論:
-- `v2_odds_trifecta` の大半は実データで、単純な削除対象ではない。
-- `learning_all` と `final_ab` は大きく重複するが、`learning_all` のオッズが FINAL の previous-odds / drift / steam 特徴へ間接的に使われるため、単純停止はProduction出力に影響し得る。
-- したがって `cron-learning-all` の全面停止や既存 `learning_all` 行削除は現在ブロック。
-- 容量対策は、Production意味を維持する設計を研究してから承認を取る。
-- DB削除を検討する場合は、直前のread-only再監査と新しい復元可能バックアップが必要。
+## 2026-09-13 公式Forward freeze
 
-## 現在の優先順位
+結果確定前に固定済みです。後から候補を再生成して評価しないでください。
 
-1. 競艇Productionの自然運用とread-only health監視を維持する。
-2. Opponent Pressure / Racer Course等のForward証拠を自然データで蓄積する。
-3. DB容量対策は、予測・学習・LINEへ影響しないことを証明してから進める。
-4. Draft研究を整理し、Production変更候補は承認単位を小さく分ける。
-5. 競艇の実戦投入・収益性を最優先とし、他競技は容量・データ取得・期待収益を見て採否判断する。
+- Actions run: `34726186753`
+- Freeze time: 約08:44 JST
+- scheduled / evaluable: 180 / 180
+- V4 core: 6レース / 12 tickets
+- legacy carryover: 2レース / 2 tickets
+- total feed: **8レース / 14 tickets**
+- Artifact ID: `10308110102`
+- Artifact ZIP SHA-256: `3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236`
+- frozen JSON SHA-256: `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
+- 詳細: `docs/CANDIDATE_DISCOVERY_FORWARD_20260913.md`
 
-## open PRの扱い
+結果評価はこのexact Artifactを使います。
 
-再開時にopen PRを必ず一覧取得してください。2026-09-12時点では、主に以下の研究Draftがあります。
+## バックテストで確定したこと
 
-- Course / Opponent Pressure のpre-production timing研究
-- Racer Course neutral-missing Forward Shadow設計
-- PRE LINE limit / dedupe契約研究
-- Storage retention / duplicate-load研究
-- `learning_all` の安全な負荷削減研究
+過去データによるbacktest / walk-forward / time-splitを実施しています。
 
-これらは**Draft研究であり、存在だけを理由にmerge・deployしません**。
+- V1 broad single-ticket: 候補数は増えるがROI約66-71%。購入ロジックには不採用。
+- V2 small formations: 2-3点で的中率は概ね16-24%へ上がるが、ROIは100%未満。
+- V3 broad market-rank archetypes: 約8候補/日、ROI約63.7%。不採用。
+- 3連単 / 2連単 / 3連複について、TOP1/2/3/5と20/35/50% coverageを100円/点で比較済み。
+- 2連単・3連複は的中率/連敗耐性を改善するが、券種変更だけでは長期ROIを100%超へ押し上げない。
+- 30日Smokeで約102%だった `A+B × 3連複 TOP1` は長期1,733レースでROI約83.01%、-29,440円まで低下。**採用しない。**
+- 長期のpredeclared Tier×券種gridでは100%超セルなし。後付けでTier/点数を切り直さない。
 
-## この文書の更新ルール
+公式K payout archiveから3連単・2連単・3連複の払戻を研究用にread-only取得できる経路は確立済みです。
 
-`PROJECT_HANDOFF.md` には次だけ残します。
+## 市場/Bao corroborationの現在地
 
-- 現在のProduction境界
-- 重要な未解決事項
-- 現在の優先順位
-- 次の担当者が知らないと危険な事項
+30日proxyでは、一般的な市場一致だけでは明確な利益改善を確認できませんでした。
 
-個別PR番号ごとの長い説明、日次ログ、検証の全数値、過去に完了した経緯は追記せず、`PROJECT_HISTORY.md`、`DEVELOPMENT_STATUS.md`、各PR本文へ残してください。
+既存Bao late window `0-7分前` に限定したproxyでは小標本ながら:
 
-目安として、引き継ぎ本文は**短く読み切れる長さを維持し、追記ではなく古い記述を置き換える**運用にします。
+- 3連単 market TOP2 support: 34 races / ROI約107.94% / +270円
+- 3連複 market TOP2 support: 47 races / ROI約109.15% / +430円
+
+ただしサンプル・利益とも小さく、**Production昇格根拠ではありません**。
+
+このため、結果を見て条件を動かさないProspective仮説を固定しています。
+
+### `MKT_LATE07_TOP2_SUPPORT_V1`
+
+- Prospective start: **2026-09-14 JST**
+- window: 締切0-7分前を固定
+- rule: structural候補を市場TOP2も支持しているか
+- 候補feed自体は削除しない。購入判断用の独立タグ研究。
+- 2026-09-13の既存結果をProspective実績へ後付け算入しない。
+- 30 / 50 / 100 evaluated opportunitiesで再判定。
+- 結果を見てTOP1/TOP3、時間窓、券種等を途中変更しない。
+
+関連:
+- `docs/CANDIDATE_DISCOVERY_MARKET_CORROBORATION_FORWARD_20260914.md`
+- `docs/CANDIDATE_DISCOVERY_MARKET_FORWARD_EVAL_CONTRACT_20260913.md`
+- `research/candidate_discovery_market_annotation_contract.py`
+- `research/candidate_discovery_market_forward_metrics.py`
+
+## 次にやること
+
+1. **最初にPR #351の最新Actionsを再取得する。** 過去のDryrun failureだけを見て修正しない。
+2. 最新branchには pure annotation contract / wiring / Forward metrics CI が追加されているため、その最新結果を確認する。
+3. 9/14以降、`MKT_LATE07_TOP2_SUPPORT_V1` を固定条件のままProspective蓄積する。
+4. 9/13 official freezeはexact Artifactでのみ結果評価する。
+5. V4/Bao/marketのForward結果を30/50/100件で評価し、retuneせず継続/棄却を判断する。
+6. 十分なForward証拠が得られてからProduction promotionを検討する。実promotionは別途明示承認が必要。
+
+## CIについての注意
+
+以前 `.github/scripts/candidate_discovery_v4_market_annotation_dryrun_pg.py` の初回CIが、docstring内の `payout` という説明語を静的guardが誤検知して本体実行前にfailureになったことがあります。これはDB mutationや結果リークではありません。
+
+その後branchにはpure annotation contract / wiring / prospective Forward metricsが追加されています。**再開時は必ず最新headのActionsを見て、古いfailureを現在の未解決障害と決めつけないでください。**
+
+## Railway / DB容量
+
+容量余裕は大きくありませんが、予測価値を犠牲にした削除はしません。
+
+- `v2_odds_trifecta` は大規模だが実データ/研究・backtest価値があり、単純削除対象ではない。
+- Motor2 older retention候補の実削除は、効果が小さいため現在保留。
+- DELETEしてもRailway物理diskが即縮むとは限らない。
+- VACUUM / VACUUM FULLは未承認。
+- 新システムが十分に確立した後、旧システムデータを `still-needed / archive-only / safe-delete` に分類して整理する。
+
+## 安全上の要点
+
+- Production Candidate Discoveryはまだ未導入。
+- current v24 / FINAL / LINEを勝手に変更しない。
+- `purchase_action=false`。
+- fail-closed維持。
+- no-future-leakageを厳守。
+- 結果を見た後に同じ実験の条件を変えない。
+- PRやCIが存在することだけを理由にmerge/deployしない。
+
+## 文書更新ルール
+
+このファイルにはCURRENT / HOLD / NEXTだけを残し、古い記述は置換してください。長い日次ログや完了経緯はPR本文・研究docs・`PROJECT_HISTORY.md`へ残します。
