@@ -25,6 +25,7 @@ def row(
     late: bool = True,
     ready: bool = True,
     source_contract: str = V4_FEED_CONTRACT,
+    source_prospective_eligible: bool = True,
 ):
     return {
         "race_id": rid,
@@ -32,6 +33,7 @@ def row(
         "venue_id": "08",
         "race_no": rno,
         "source_feed_contract": source_contract,
+        "source_prospective_evidence_eligible": source_prospective_eligible,
         "counts_as_prospective": prospective,
         "late_snapshot_available": late,
         "result_ready": ready,
@@ -74,7 +76,7 @@ class MarketForwardMetricsTest(unittest.TestCase):
             row("r2", "2026-09-14", 2, support=True, hit=False, ret=0),
             row("r3", "2026-09-15", 1, support=True, hit=True, ret=200),
             row("r4", "2026-09-15", 2, support=False, hit=False, ret=0),
-            row("old", "2026-09-13", 3, support=True, hit=True, ret=999, prospective=False, source_contract="candidate_discovery_main_feed_v1"),
+            row("old", "2026-09-13", 3, support=True, hit=True, ret=999, prospective=False, source_contract="candidate_discovery_main_feed_v1", source_prospective_eligible=False),
             row("nol", "2026-09-15", 4, support=True, hit=True, ret=999, late=False),
             row("pend", "2026-09-15", 5, support=True, hit=True, ret=999, ready=False),
         ]
@@ -104,6 +106,7 @@ class MarketForwardMetricsTest(unittest.TestCase):
         self.assertEqual(sup["max_single_hit_return_yen"], 300)
         self.assertEqual(sup["max_single_hit_share_of_returns_pct"], 60.0)
         self.assertEqual(out["source_feed_contract"], V4_FEED_CONTRACT)
+        self.assertTrue(out["source_prospective_evidence_required"])
         self.assertEqual(out["milestone"]["next_target"], 30)
         self.assertEqual(out["milestone"]["remaining_to_next"], 27)
         self.assertFalse(out["promotion_allowed"])
@@ -130,6 +133,20 @@ class MarketForwardMetricsTest(unittest.TestCase):
             ret=0,
             prospective=True,
             source_contract="candidate_discovery_main_feed_v1",
+        )
+        with self.assertRaises(ValueError):
+            summarize_forward([bad])
+
+    def test_unproven_v4_prospective_row_fails_closed(self):
+        bad = row(
+            "v4-unproven",
+            "2026-09-14",
+            1,
+            support=True,
+            hit=False,
+            ret=0,
+            prospective=True,
+            source_prospective_eligible=False,
         )
         with self.assertRaises(ValueError):
             summarize_forward([bad])

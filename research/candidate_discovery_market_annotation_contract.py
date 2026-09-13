@@ -8,6 +8,8 @@ adds descriptive market TOP2 support tags.
 Frozen prospective study: MKT_LATE07_TOP2_SUPPORT_V1
 - hypothesis start: 2026-09-14 JST
 - exact prospective evidence requires source contract candidate_discovery_v4_main_feed_v1
+- exact prospective evidence also requires a timestamp-proven pre-result freeze
+  carrying prospective_evidence_eligible=true
 - late window: 0.0..7.0 minutes before deadline
 - coherent market spread: <= 60 seconds
 - complete trifecta market: exactly 120 positive tickets
@@ -124,14 +126,20 @@ def annotate_feed(
     core = extract_core_top1(feed_doc, expected_core_races=expected_core_races)
     source_contract = str(feed_doc.get("contract") or "")
     exact_v4_source = source_contract == V4_FEED_CONTRACT
+    source_prospective_eligible = feed_doc.get("prospective_evidence_eligible") is True
     rows: list[dict[str, Any]] = []
     for frozen in core:
         snap = market_by_race.get(frozen["race_id"])
         top2 = market_top2(snap) if isinstance(snap, dict) else None
-        counts_as_prospective = exact_v4_source and frozen["race_date"] >= PROSPECTIVE_START
+        counts_as_prospective = (
+            exact_v4_source
+            and source_prospective_eligible
+            and frozen["race_date"] >= PROSPECTIVE_START
+        )
         rows.append({
             **frozen,
             "source_feed_contract": source_contract,
+            "source_prospective_evidence_eligible": source_prospective_eligible,
             "late_snapshot_available": bool(top2),
             "market_top2": list(top2) if top2 else [],
             "market_top2_support": bool(top2 and frozen["ticket"] in set(top2)),
@@ -142,6 +150,7 @@ def annotate_feed(
         "contract": "MKT_LATE07_TOP2_SUPPORT_V1",
         "source_feed_contract": source_contract,
         "exact_v4_source": exact_v4_source,
+        "source_prospective_evidence_eligible": source_prospective_eligible,
         "prospective_start": PROSPECTIVE_START,
         "late_window_minutes": [LATE_MIN_LO, LATE_MIN_HI],
         "max_spread_seconds": MAX_SPREAD_SECONDS,

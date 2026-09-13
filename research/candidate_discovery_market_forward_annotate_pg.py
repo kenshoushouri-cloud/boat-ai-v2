@@ -65,6 +65,13 @@ def _load_verified_freeze() -> tuple[dict[str, Any], str]:
         raise RuntimeError(
             f"unexpected source contract: expected={V4_FEED_CONTRACT} actual={data.get('contract')}"
         )
+    if data.get("prospective_evidence_eligible") is not True:
+        raise RuntimeError("freeze is not timestamp-proven prospective evidence")
+    provenance = data.get("freeze_provenance")
+    if not isinstance(provenance, dict):
+        raise RuntimeError("freeze_provenance object required")
+    if provenance.get("mode") != "prospective" or provenance.get("prospective_evidence_eligible") is not True:
+        raise RuntimeError("freeze_provenance does not authorize prospective evidence")
 
     core = extract_core_top1(data, expected_core_races=6)
     if any(str(row["race_date"]) < PROSPECTIVE_START for row in core):
@@ -205,6 +212,8 @@ def main() -> None:
     annotated = annotate_feed(freeze, market_by_race, expected_core_races=6)
     if annotated["core_top1"] != 6 or annotated.get("exact_v4_source") is not True:
         raise RuntimeError("fail closed: exact six-race V4 source contract required")
+    if annotated.get("source_prospective_evidence_eligible") is not True:
+        raise RuntimeError("fail closed: timestamp-proven prospective freeze required")
     if any(not bool(row.get("counts_as_prospective")) for row in annotated["rows"]):
         raise RuntimeError("fail closed: non-prospective row reached prospective annotator")
 
@@ -222,6 +231,7 @@ def main() -> None:
         "freeze_artifact_id": FREEZE_ARTIFACT_ID,
         "freeze_json_sha256": digest,
         "source_feed_contract": V4_FEED_CONTRACT,
+        "source_prospective_evidence_eligible": True,
         "annotation": annotated,
         "result_read": False,
         "mutation_performed": False,

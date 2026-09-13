@@ -1,0 +1,126 @@
+name: Candidate Discovery V4 Prospective Freeze
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_prospective_freeze_pg.py'
+      - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
+      - 'research/candidate_discovery_v4_contract.py'
+      - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'YYYY-MM-DD current JST Forward date'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+
+jobs:
+  safety:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate prospective freeze wrapper safety
+        run: |
+          python -m py_compile research/candidate_discovery_v4_prospective_freeze_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('research/candidate_discovery_v4_prospective_freeze_pg.py').read_text(encoding='utf-8').lower()
+          assert 'prospective_evidence_eligible' in text
+          assert 'source_cutoff' in text
+          assert 'earliest_core_deadline' in text
+          assert 'race universe incomplete' in text
+          assert 'candidate_discovery_v4_main_feed_pg.py' in text
+          for forbidden in (
+              'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert forbidden not in text, forbidden
+          PY
+
+  freeze:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install read-only dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run timestamp-proven pre-result V4 freeze
+        env:
+          CANDIDATE_V4_DATE: ${{ inputs.target_date }}
+          CANDIDATE_V4_RAW_OUTPUT: candidate-discovery-v4-main-feed.raw.json
+          CANDIDATE_V4_PROSPECTIVE_OUTPUT: candidate-discovery-v4-prospective-freeze.json
+        run: |
+          python -u research/candidate_discovery_v4_prospective_freeze_pg.py | tee candidate-discovery-v4-prospective-freeze.txt
+          grep -q '^CANDIDATE_V4_PROSPECTIVE_EVIDENCE_ELIGIBLE=true$' candidate-discovery-v4-prospective-freeze.txt
+          grep -q '^CANDIDATE_V4_PROSPECTIVE_PURCHASE_ACTION=false$' candidate-discovery-v4-prospective-freeze.txt
+          grep -q '^CANDIDATE_V4_PROSPECTIVE_PROMOTION_ALLOWED=0$' candidate-discovery-v4-prospective-freeze.txt
+          grep -q '^CANDIDATE_V4_PROSPECTIVE_RESULT=PASS_PRE_RESULT_FREEZE$' candidate-discovery-v4-prospective-freeze.txt
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p=Path('candidate-discovery-v4-prospective-freeze.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          assert data['contract']=='candidate_discovery_v4_main_feed_v1'
+          assert data['prospective_evidence_eligible'] is True
+          assert data['freeze_provenance']['mode']=='prospective'
+          assert data['freeze_provenance']['prospective_evidence_eligible'] is True
+          assert data['purchase_action'] is False
+          digest=hashlib.sha256(p.read_bytes()).hexdigest()
+          Path(str(p)+'.sha256').write_text(f'{digest}  {p.name}\n', encoding='utf-8')
+          print('CANDIDATE_V4_PROSPECTIVE_ARTIFACT_SHA256='+digest)
+          PY
+      - name: Upload immutable prospective freeze
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-v4-prospective-freeze-${{ github.run_id }}
+          path: |
+            candidate-discovery-v4-prospective-freeze.json
+            candidate-discovery-v4-prospective-freeze.json.sha256
+            candidate-discovery-v4-prospective-freeze.txt
+          retention-days: 90
+          if-no-files-found: error

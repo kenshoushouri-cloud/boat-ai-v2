@@ -28,7 +28,12 @@ CORE = [
 ]
 
 
-def feed_doc(date_str: str = "2026-09-13", *, contract: str = "candidate_discovery_main_feed_v1"):
+def feed_doc(
+    date_str: str = "2026-09-13",
+    *,
+    contract: str = "candidate_discovery_main_feed_v1",
+    prospective_eligible: bool = False,
+):
     rows = []
     for rank, rid, venue, rno, tier, ticket in CORE:
         rows.append({
@@ -56,6 +61,7 @@ def feed_doc(date_str: str = "2026-09-13", *, contract: str = "candidate_discove
     })
     return {
         "contract": contract,
+        "prospective_evidence_eligible": prospective_eligible,
         "feed": rows,
         "purchase_action": False,
         "production_behavior_changed": False,
@@ -93,25 +99,43 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertEqual(out["top2_supported"], 2)
         self.assertEqual(out["prospective_supported"], 0)
         self.assertFalse(out["exact_v4_source"])
+        self.assertFalse(out["source_prospective_evidence_eligible"])
         self.assertTrue(all(row["counts_as_prospective"] is False for row in out["rows"]))
         self.assertTrue(all(row["source_feed_contract"] == "candidate_discovery_main_feed_v1" for row in out["rows"]))
         self.assertEqual(feed, frozen_copy, "annotation must not mutate immutable feed")
 
-    def test_true_v4_after_start_counts_as_prospective(self):
-        feed = feed_doc("2026-09-14", contract=V4_FEED_CONTRACT)
+    def test_true_v4_after_start_requires_timestamp_proven_freeze(self):
         market = {
             "20260914_08_08": snapshot("2-3-6", "2-6-3"),
             "20260914_19_05": snapshot("1-3-4", "1-4-3"),
             "20260914_08_05": snapshot("1-2-5", "2-1-5"),
         }
-        out = annotate_feed(feed, market)
+        unproven = feed_doc("2026-09-14", contract=V4_FEED_CONTRACT)
+        unproven_out = annotate_feed(unproven, market)
+        self.assertTrue(unproven_out["exact_v4_source"])
+        self.assertFalse(unproven_out["source_prospective_evidence_eligible"])
+        self.assertEqual(unproven_out["prospective_supported"], 0)
+        self.assertTrue(all(row["counts_as_prospective"] is False for row in unproven_out["rows"]))
+
+        proven = feed_doc(
+            "2026-09-14",
+            contract=V4_FEED_CONTRACT,
+            prospective_eligible=True,
+        )
+        out = annotate_feed(proven, market)
         self.assertTrue(out["exact_v4_source"])
+        self.assertTrue(out["source_prospective_evidence_eligible"])
         self.assertEqual(out["top2_supported"], 2)
         self.assertEqual(out["prospective_supported"], 2)
         self.assertTrue(all(row["source_feed_contract"] == V4_FEED_CONTRACT for row in out["rows"]))
+        self.assertTrue(all(row["source_prospective_evidence_eligible"] is True for row in out["rows"]))
 
     def test_non_v4_feed_after_start_cannot_count_as_prospective(self):
-        feed = feed_doc("2026-09-14", contract="candidate_discovery_main_feed_v1")
+        feed = feed_doc(
+            "2026-09-14",
+            contract="candidate_discovery_main_feed_v1",
+            prospective_eligible=True,
+        )
         market = {"20260914_08_08": snapshot("2-3-6", "2-6-3")}
         out = annotate_feed(feed, market)
         self.assertFalse(out["exact_v4_source"])
@@ -144,6 +168,9 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertIn("v2_realtime_odds_snapshots", text)
         self.assertIn("v4_feed_contract", text)
         self.assertIn("unexpected source contract", text)
+        self.assertIn("prospective_evidence_eligible", text)
+        self.assertIn("freeze_provenance", text)
+        self.assertIn("last_updated_at <= deadline_at", text)
         self.assertNotIn("20260913_11_02", text)
         for forbidden in (
             "v2_results", "trifecta_payout_yen", "result_status", "race_status",
