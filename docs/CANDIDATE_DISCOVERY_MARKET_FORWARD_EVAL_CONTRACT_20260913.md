@@ -1,23 +1,30 @@
 # Candidate Discovery market Forward evaluation contract — 2026-09-13
 
-Status: **research-only / prospective from 2026-09-14 JST / purchase_action=false / promotion blocked**
+Status: **research-only / prospective hypothesis from 2026-09-14 JST / purchase_action=false / promotion blocked**
 
 This addendum fixes how `MKT_LATE07_TOP2_SUPPORT_V1` will be evaluated against exact immutable V4 Forward artifacts.
 
+## Artifact identity boundary
+
+The immutable 2026-09-13 run `34726186753` is the V1/V2 main-feed baseline artifact, **not integrated V4**. It remains a valid baseline Forward freeze but does not count as exact V4 evidence. See `docs/CANDIDATE_DISCOVERY_FORWARD_IDENTITY_CORRECTION_20260913.md`.
+
+Exact V4 evidence begins only with a pre-result artifact actually generated from the frozen V4 calculation chain on or after 2026-09-14. Missed days are unavailable and must never be reconstructed after outcomes.
+
 ## Exact Forward scope
 
-The current Candidate Discovery V4 main-feed artifact freezes **trifecta tickets** before results. It does not freeze an independent exacta or trio structural TOP1 distribution.
+The exact V4 prospective feed freezes **trifecta tickets** before results. It does not freeze an independent exacta or trio structural TOP1 distribution.
 
 Therefore the exact V4 prospective track for `MKT_LATE07_TOP2_SUPPORT_V1` is:
 
 - bet type: **trifecta only**;
-- structural ticket: the immutable V4 `DISCOVERY_CORE` ticket with `core_order=1`;
+- structural ticket: immutable V4 `DISCOVERY_CORE` ticket with `core_order=1`;
 - market window: complete coherent 120-ticket snapshot at 0.0..7.0 minutes before deadline;
-- support rule: immutable V4 trifecta TOP1 is in the de-vigged market trifecta TOP2;
+- support rule: immutable V4 trifecta TOP1 is in market trifecta TOP2;
 - stake for evaluation: flat 100 JPY per evaluated ticket;
-- prospective start: **2026-09-14 JST**.
+- hypothesis start date: **2026-09-14 JST**;
+- evidence eligibility: only dates with a true pre-result V4 artifact.
 
-The historical exacta/trio proxy audits remain diagnostics. They must not be reclassified as exact V4 Forward evidence.
+Historical exacta/trio proxy audits remain diagnostics. They must not be reclassified as exact V4 Forward evidence.
 
 Do **not** regenerate an exacta/trio structural distribution after results from the V4 model and backfill it into this study. If a future pre-result feed explicitly freezes exacta/trio structural candidates, that requires a new prospective version and a new start date.
 
@@ -63,15 +70,15 @@ For each prospective day retain, before results are scored:
 - snapshot label and timing metadata;
 - market TOP2 tickets;
 - `market_top2_support` boolean;
-- `counts_as_prospective=true` only for dates >= 2026-09-14.
+- `counts_as_prospective=true` only when date >= 2026-09-14 **and** a true pre-result V4 artifact exists.
 
-If the pre-result artifact or the timing-safe late snapshot is unavailable, record unavailable and do not reconstruct it after the outcome.
+If the pre-result artifact or timing-safe late snapshot is unavailable, record unavailable and do not reconstruct it after the outcome.
 
 ## Separation of responsibilities
 
 Candidate generation, market annotation, and outcome evaluation remain separate:
 
-- V4 main feed creates/fixes candidates before results;
+- integrated V4 main feed creates/fixes candidates before results;
 - market annotation may only add tags to those fixed candidates;
 - outcome evaluation runs later and must not alter either the candidate set or annotation;
 - market disagreement never deletes the Stage-1 prediction feed;
@@ -79,14 +86,14 @@ Candidate generation, market annotation, and outcome evaluation remain separate:
 
 ## 2026-09-13 wiring-only observation
 
-Run `34747378454` verified the wiring against the immutable 2026-09-13 V4 freeze without reading outcomes or payouts:
+Run `34747378454` verified market-annotation plumbing against the immutable 2026-09-13 **baseline** freeze without reading outcomes or payouts:
 
 - core TOP1 tickets: 6;
 - eligible late snapshots available: 3;
 - market TOP2 supported: 2;
 - counts as prospective evidence: **0**.
 
-This observation validates plumbing only and is excluded from the 30/50/100 milestones.
+This validates plumbing only. It is not exact V4 evidence and is excluded from the 30/50/100 milestones.
 
 ## Safety boundary
 

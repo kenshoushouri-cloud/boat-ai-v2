@@ -100,7 +100,7 @@ def _load(conn: psycopg.Connection[Any]):
         race_ids = [str(row["race_id"]) for row in races]
 
         entries_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        racer_numbers: set[str] = set()
+        racer_numbers: set[int] = set()
         if race_ids:
             cur.execute(
                 """
@@ -116,7 +116,7 @@ def _load(conn: psycopg.Connection[Any]):
                 item = dict(row)
                 entries_by[str(item["race_id"])].append(item)
                 if item.get("racer_number") not in (None, ""):
-                    racer_numbers.add(str(item["racer_number"]))
+                    racer_numbers.add(int(item["racer_number"]))
 
         course_by: dict[tuple[str, int], dict[str, Any]] = {}
         if racer_numbers:

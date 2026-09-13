@@ -30,17 +30,17 @@ The positive amounts are small and do not justify promotion. They only justify p
 
 Name: `MKT_LATE07_TOP2_SUPPORT_V1`
 
-Prospective start: **2026-09-14 JST**.
+Hypothesis start: **2026-09-14 JST**.
 
-No race before 2026-09-14 may count as prospective evidence for this hypothesis.
+No race before 2026-09-14 may count as prospective evidence for this hypothesis. Exact V4 milestone evidence additionally requires a true immutable pre-result V4 artifact; a missed day is unavailable and must not be reconstructed after outcome.
 
-The historical 2026-08-14..2026-09-12 sample remains development evidence only. The 2026-09-13 V4 pre-result freeze remains an independent immutable Forward artifact and must not be reclassified into this new hypothesis after results become available.
+The historical 2026-08-14..2026-09-12 sample remains development evidence only. The immutable 2026-09-13 pre-result freeze is the V1/V2 main-feed **baseline** artifact, not integrated V4, and remains an independent baseline Forward observation. It must not be reclassified into this hypothesis after results become available.
 
 ### Structural side
 
-For historical proxy diagnostics the structural side is Candidate Discovery V2 `MOTOR2_FACTOR` TOP6/TOP1. This is explicitly **not equivalent to the V4 Production candidate feed**.
+For historical proxy diagnostics the structural side is Candidate Discovery V2 `MOTOR2_FACTOR` TOP6/TOP1. This is explicitly **not equivalent to V4**.
 
-For future V4 Forward evidence, only a ticket that was already present in the immutable pre-result V4 artifact may be annotated. Market data must never create, replace, or delete a V4 Stage-1 candidate.
+For future exact V4 Forward evidence, only a ticket already present in an immutable pre-result V4 artifact may be annotated. Market data must never create, replace, or delete a V4 Stage-1 candidate.
 
 ### Market side
 
@@ -66,17 +66,17 @@ TOP1 agreement is retained only as a diagnostic negative/control view because hi
 
 ## Prospective reporting tracks
 
-Keep all three bet types visible so the study cannot silently discard a negative track:
+Keep all three historical proxy bet types visible so the study cannot silently discard a negative track:
 
 - trifecta — primary descriptive track;
-- trio — primary descriptive track;
-- exacta — negative/control track unless future evidence materially changes.
+- trio — historical proxy diagnostic;
+- exacta — negative/control historical proxy.
 
-This does **not** authorize changing the V4 bet type. It is a research comparison only.
+For **exact V4 Forward milestones**, trifecta is the only current structural track because the V4 feed freezes trifecta tickets. This does not authorize a post-result bet-type change.
 
 ## Evidence milestones
 
-Report at **30 / 50 / 100 evaluated market-TOP2-support cases**. Do not promote at a milestone merely because ROI is above 100%.
+Report exact V4 `market_top2_supported` cases at **30 / 50 / 100 evaluated cases**. Do not promote at a milestone merely because ROI is above 100%.
 
 At each milestone report at minimum:
 
@@ -88,7 +88,7 @@ At each milestone report at minimum:
 - positive-day rate;
 - maximum single-hit share of total returns;
 - baseline late-window results over the same eligible race universe;
-- whether evidence came from exact immutable V4 Forward artifacts or from the V2 proxy.
+- source immutable V4 artifact provenance.
 
 ## Fail / hold rules
 

@@ -2,174 +2,146 @@
 
 更新: 2026-09-13 JST
 
-この文書は次チャットが安全に再開するための**現在地だけ**を残します。数値・SHA・PR状態はcheckpointであり、再開時に必ずcurrent値を再取得してください。
+この文書は次チャットが安全に再開するための CURRENT / HOLD / NEXT を残します。SHA・PR・CI・Railway状態は再開時に必ず再取得してください。
 
-## 再開時の最初の指示
+## 再開時
 
-> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/CHATGPT_BOOTSTRAP.md` と `docs/PROJECT_HANDOFF.md` を読み、current `main`、open PR、PR #351 の最新head/Actions、Railway Productionのread-only healthを確認してから続行してください。GitHub `main`をProduction codeのSource of Truth、Railway PostgreSQLをProduction dataのSource of Truthとしてください。安全なread-only監査・研究・Draft PR・CI・文書整理は連続して進めてよいですが、Production変更は明示承認まで実施しないでください。
+> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/CHATGPT_BOOTSTRAP.md` と本書を読み、current `main`、open PR、PR #351の最新head/Actions、Railway Production read-only healthを確認してから続行してください。GitHub `main`をProduction codeのSource of Truth、Railway PostgreSQLをProduction dataのSource of Truthとします。安全なread-only監査・研究・Draft PR・CI・文書整理は連続して進めてよいですが、Production変更は明示承認まで実施しないでください。
 
-## Source of Truth / checkpoint
+## CURRENT — Source of Truth
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
 - Production code: GitHub `main`
-- 2026-09-13 handoff時 main checkpoint: `8abbb0186852969129175848ee106118031f97e4`
-- Production DB: Railway project `boat-v2-postgres` / service `postgres-recovery`
+- 2026-09-13 checkpoint main: `8abbb0186852969129175848ee106118031f97e4`
+- Production DB: Railway project `boat-v2-postgres` / `postgres-recovery`
 - Candidate Discovery primary research: Draft PR #351
-- PR #351 branch: `research/candidate-discovery-v1-20260913`
-- 2026-09-13 handoff直前 branch checkpoint: `97fa31281ffc091102abe576274b1a3a24f8b1d3`
+- Branch: `research/candidate-discovery-v1-20260913`
+- PR headは必ず再取得し、本書のSHAを固定値として扱わない。
+- `purchase_action=false` / fail-closed。
 
-mainやPR headは必ず再取得し、このcheckpointを固定値として扱わないでください。
+### 最重要訂正: 2026-09-13 artifact identity
 
-## Production変更の承認境界
+2026-09-13 08:44 JSTのofficial freeze（run `34726186753`, artifact `10308110102`）は **V1/V2 main-feed baseline** です。統合V4 artifactではありません。
 
-以下は明示承認が必要です。
+これは結果評価前に確認・訂正済みです。`docs/CANDIDATE_DISCOVERY_V4_CONTRACT_20260913.md`も元から「V4 was not retroactively substituted」と明記しています。
 
-- Production反映を伴うPR merge
-- Railway Production Variables / Cron / service / volume等の変更
-- Production DBのINSERT / UPDATE / DELETE / schema変更 / VACUUM
-- モデル係数・閾値・Production候補/判定ロジック変更
-- 実LINE送信に関わる変更
-- Production Forward persistenceの新規変更
-- 自動購入
-- 有料データ契約・外部問い合わせ送信
+9/13 freezeは改変せずbaseline Forwardとして評価します。9/13をV4 Forwardや`MKT_LATE07_TOP2_SUPPORT_V1`のProspective実績へ後付け算入してはいけません。
 
-安全なread-only監査、研究コード、Draft PR、CI、文書整理は確認なしで継続可です。`purchase_action=false` と fail-closed を維持してください。
+詳細: `docs/CANDIDATE_DISCOVERY_FORWARD_IDENTITY_CORRECTION_20260913.md`
 
-## 現在の戦略
-
-競艇が最優先です。新しい Candidate Discovery 系を将来の主候補システムとして育て、現行v24は当面benchmark/referenceとして残します。
-
-重要方針:
-
-- **候補表示と購入判定を分離する。**
-- 候補を極端に減らすEV閾値・絶対オッズ帯を主ゲートにしない。
-- 現行S01-S05候補は当面legacy/reference carryoverとして比較可能にする。
-- 新システムが十分に実証されるまで、Production v24を消さない。
-- 旧データ削除は新システム確立後に依存関係を分類してから検討する。実DELETE/VACUUMは別承認。
-
-## Candidate Discovery PR #351
-
-PR #351 `Research: Candidate Discovery main feed (V1-V4)` は研究専用です。Productionへは未反映です。
-
-### Stage 1 — V4 structural main feed
-
-現行研究契約:
-
-- 1日 TOP6レース × TOP2 3連単候補を基本feedにする。
-- Course coefficient `0.50`、欠損laneはneutral `z=0`。
-- Opponent Pressure coefficient `1.0` は**1着確率だけ**へ適用。
-- Motor2 beta `0.06`、着順weight `1.0 / 0.6 / 0.3`。
-- V2由来の4 structural metricsを等重み順位化して日次TOP6を選ぶ。
-- EV gateなし。
-- 絶対オッズmin/max gateなし。
-- `purchase_action=false`。
-
-詳細:
-- `docs/CANDIDATE_DISCOVERY_V4_CONTRACT_20260913.md`
-- `docs/CANDIDATE_DISCOVERY_TWO_STAGE_ARCHITECTURE_20260913.md`
-
-### Stage 2 — late Bao corroboration
-
-- Stage-1候補を削除しない。
-- timing-safeな完全120点市場snapshotと展示/Motor2を用いて支持タグを付ける。
-- Bao不一致でもV4候補は残す。
-- 既存Bao windowは early `20-30分前`、exhibition `8-15分前`、late `0-7分前`。
-
-## 2026-09-13 公式Forward freeze
-
-結果確定前に固定済みです。後から候補を再生成して評価しないでください。
+### 2026-09-13 immutable baseline freeze
 
 - Actions run: `34726186753`
-- Freeze time: 約08:44 JST
-- scheduled / evaluable: 180 / 180
-- V4 core: 6レース / 12 tickets
-- legacy carryover: 2レース / 2 tickets
-- total feed: **8レース / 14 tickets**
-- Artifact ID: `10308110102`
-- Artifact ZIP SHA-256: `3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236`
-- frozen JSON SHA-256: `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
-- 詳細: `docs/CANDIDATE_DISCOVERY_FORWARD_20260913.md`
+- Artifact: `10308110102`
+- ZIP SHA-256: `3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236`
+- JSON SHA-256: `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
+- scheduled/evaluable: 180/180
+- baseline core: 6 races / 12 tickets
+- legacy carryover: 2 races / 2 tickets
+- total: 8 races / 14 tickets
 
-結果評価はこのexact Artifactを使います。
+結果評価はこのexact artifactだけを使い、結果後の再生成・追加・変更は禁止です。
 
-## バックテストで確定したこと
+## CURRENT — True V4 Stage 1
 
-過去データによるbacktest / walk-forward / time-splitを実施しています。
+Frozen V4 contract:
 
-- V1 broad single-ticket: 候補数は増えるがROI約66-71%。購入ロジックには不採用。
-- V2 small formations: 2-3点で的中率は概ね16-24%へ上がるが、ROIは100%未満。
-- V3 broad market-rank archetypes: 約8候補/日、ROI約63.7%。不採用。
-- 3連単 / 2連単 / 3連複について、TOP1/2/3/5と20/35/50% coverageを100円/点で比較済み。
-- 2連単・3連複は的中率/連敗耐性を改善するが、券種変更だけでは長期ROIを100%超へ押し上げない。
-- 30日Smokeで約102%だった `A+B × 3連複 TOP1` は長期1,733レースでROI約83.01%、-29,440円まで低下。**採用しない。**
-- 長期のpredeclared Tier×券種gridでは100%超セルなし。後付けでTier/点数を切り直さない。
+- TOP6 races/day × TOP2 trifecta tickets/race
+- Course coefficient `0.50`, missing lane neutral
+- Opponent Pressure `adj_win - base_win` coefficient `1.0`, first-place only
+- Motor2 beta `0.06`, position weights `1.0 / 0.6 / 0.3`
+- four structural metrics equal-weight daily ranking
+- EV gateなし
+- absolute odds min/max gateなし
+- legacy S01-S05 carryoverは比較用に保持
+- `purchase_action=false`
 
-公式K payout archiveから3連単・2連単・3連複の払戻を研究用にread-only取得できる経路は確立済みです。
+Pure contract:
+- `research/candidate_discovery_v4_contract.py`
+- `tests/test_candidate_discovery_v4_contract.py`
 
-## 市場/Bao corroborationの現在地
+Integrated read-only generator:
+- `.github/scripts/candidate_discovery_v4_main_feed_pg.py`
 
-30日proxyでは、一般的な市場一致だけでは明確な利益改善を確認できませんでした。
+このrunnerはrace card / exact-date Course / timing-clean Opponent Pressure v2 / Motor2 / legacy carryoverだけを読み、結果・払戻・historical odds・realtime marketを読まず、DB write/LINE/BUY/Production変更を行いません。
 
-既存Bao late window `0-7分前` に限定したproxyでは小標本ながら:
+**True V4 Forward evidenceは、結果前にこのV4 chainからimmutable artifactを実際にfreezeできた日だけ数えます。** 取り損ねた日はunavailableとして後付け再構築しません。
 
-- 3連単 market TOP2 support: 34 races / ROI約107.94% / +270円
-- 3連複 market TOP2 support: 47 races / ROI約109.15% / +430円
+## CURRENT — Stage 2 / market corroboration
 
-ただしサンプル・利益とも小さく、**Production昇格根拠ではありません**。
+Hypothesis: `MKT_LATE07_TOP2_SUPPORT_V1`
 
-このため、結果を見て条件を動かさないProspective仮説を固定しています。
-
-### `MKT_LATE07_TOP2_SUPPORT_V1`
-
-- Prospective start: **2026-09-14 JST**
-- window: 締切0-7分前を固定
-- rule: structural候補を市場TOP2も支持しているか
-- 候補feed自体は削除しない。購入判断用の独立タグ研究。
-- 2026-09-13の既存結果をProspective実績へ後付け算入しない。
-- 30 / 50 / 100 evaluated opportunitiesで再判定。
-- 結果を見てTOP1/TOP3、時間窓、券種等を途中変更しない。
+- hypothesis start: 2026-09-14 JST
+- late window: 0.0..7.0 minutes before deadline
+- support: frozen V4 trifecta TOP1 in market trifecta TOP2
+- marketはStage-1候補を削除しない
+- TOP3/TOP4、EV、odds-band、venue/race/tier carveout、時間窓の途中変更禁止
+- exact V4 milestones: 30 / 50 / 100 supported evaluated cases
+- 9/13 wiring-only annotationはProspective count 0
+- exacta/trioはhistorical proxy diagnosticであり、V4 Forwardへ後付けしない
 
 関連:
 - `docs/CANDIDATE_DISCOVERY_MARKET_CORROBORATION_FORWARD_20260914.md`
 - `docs/CANDIDATE_DISCOVERY_MARKET_FORWARD_EVAL_CONTRACT_20260913.md`
 - `research/candidate_discovery_market_annotation_contract.py`
+- `research/candidate_discovery_market_forward_annotate_pg.py`
 - `research/candidate_discovery_market_forward_metrics.py`
+- `research/candidate_discovery_forward_stability_metrics.py`
 
-## 次にやること
+Historical late-window proxyは小標本ながら:
+- trifecta TOP2 support: n=34, ROI 107.941%, +270 JPY, max losing streak 15, max DD 1,500 JPY
+- trio TOP2 support: n=47, ROI 109.149%, +430 JPY, max losing streak 7, max DD 870 JPY
+- exacta TOP2 support: negative
 
-1. **最初にPR #351の最新Actionsを再取得する。** 過去のDryrun failureだけを見て修正しない。
-2. 最新branchには pure annotation contract / wiring / Forward metrics CI が追加されているため、その最新結果を確認する。
-3. 9/14以降、`MKT_LATE07_TOP2_SUPPORT_V1` を固定条件のままProspective蓄積する。
-4. 9/13 official freezeはexact Artifactでのみ結果評価する。
-5. V4/Bao/marketのForward結果を30/50/100件で評価し、retuneせず継続/棄却を判断する。
-6. 十分なForward証拠が得られてからProduction promotionを検討する。実promotionは別途明示承認が必要。
+proxyはProduction promotion根拠ではありません。
 
-## CIについての注意
+## CURRENT — Historical conclusions
 
-以前 `.github/scripts/candidate_discovery_v4_market_annotation_dryrun_pg.py` の初回CIが、docstring内の `payout` という説明語を静的guardが誤検知して本体実行前にfailureになったことがあります。これはDB mutationや結果リークではありません。
+- V1: ROI ~66–71%; broad feedとして候補量は出るがbuy ruleではない
+- V2: small formationでhit rate ~16–24%だがROI <100%
+- V3: ~8 candidates/day, ROI ~63.7%
+- long predeclared tier × bet-type grid: ROI>100% cellなし
+- 30-day A+B × trio TOP1 ~102%はlong 1,733 racesでROI 83.012%, -29,440 JPYへ低下。採用しない
+- generic market agreementはprofitability solutionではない
+- 結果を見た後のtier/券種/点数/時間窓retuneは禁止
 
-その後branchにはpure annotation contract / wiring / prospective Forward metricsが追加されています。**再開時は必ず最新headのActionsを見て、古いfailureを現在の未解決障害と決めつけないでください。**
+## CURRENT — Railway / capacity
 
-## Railway / DB容量
+- `postgres-recovery`はread-only監査時SUCCESS
+- 5GB volume; 直近24h diskは約4.125GB current / 約4.186GB max
+- 7日summaryはcurrent約4.125GB / min約3.989GB / max約4.212GB
+- `v2_odds_trifecta`は大容量だが研究/backtest価値があり単純削除しない
+- DELETE/VACUUM/VACUUM FULLは未承認
+- `cron-opponent-pressure-v2-runner`のFAILED表示は9/10の旧start-command build failure。実scheduled path `cron-opponent-pressure-v2-live`は9/13朝に180/180でPASS_WRITE。設定変更はしていない
 
-容量余裕は大きくありませんが、予測価値を犠牲にした削除はしません。
+## HOLD — 明示承認まで実施しない
 
-- `v2_odds_trifecta` は大規模だが実データ/研究・backtest価値があり、単純削除対象ではない。
-- Motor2 older retention候補の実削除は、効果が小さいため現在保留。
-- DELETEしてもRailway物理diskが即縮むとは限らない。
-- VACUUM / VACUUM FULLは未承認。
-- 新システムが十分に確立した後、旧システムデータを `still-needed / archive-only / safe-delete` に分類して整理する。
+- Production反映を伴うPR merge
+- Railway Production Variables / Cron / service / volume変更
+- Production DB INSERT / UPDATE / DELETE / schema / VACUUM
+- Productionモデル・係数・閾値・候補判定変更
+- LINE実送信に関わる変更
+- Production Forward persistence新規変更
+- 自動購入
+- 有料データ契約
+- 外部問い合わせ送信
 
-## 安全上の要点
+安全なread-only GitHub/Railway/DB監査、Candidate Discovery研究、過去backtest、Forward評価、Draft PR、CI、Artifact確認、docs整理、Production非影響研究コードは確認なしで継続可です。
 
-- Production Candidate Discoveryはまだ未導入。
-- current v24 / FINAL / LINEを勝手に変更しない。
-- `purchase_action=false`。
-- fail-closed維持。
-- no-future-leakageを厳守。
-- 結果を見た後に同じ実験の条件を変えない。
-- PRやCIが存在することだけを理由にmerge/deployしない。
+## NEXT
 
-## 文書更新ルール
+1. PR #351 latest head / Actionsを再取得。古いfailureを現障害と決めつけない。
+2. 2026-09-13 nightly result import後、official baseline freeze `34726186753` / `10308110102`をexact artifactのまま評価する。**V4実績として数えない。**
+3. 2026-09-14以降、true V4 integrated artifactを結果前にfreezeできた日だけV4 Prospectiveへ積む。取り損ねた日はunavailable。
+4. 同じpre-result V4 artifactへ0..7m market TOP2 tagを付け、`MKT_LATE07_TOP2_SUPPORT_V1`を30/50/100件まで固定条件で蓄積する。
+5. V4 core / legacy carryover / total feedについて、candidate volume、hit rate、ROI、profit、max losing streak、max DD、day/month stability、single/top3-hit dependency、legacy containmentを比較する。
+6. 十分なForward証拠が得られるまでProduction promotionしない。実promotionは別途明示承認。
 
-このファイルにはCURRENT / HOLD / NEXTだけを残し、古い記述は置換してください。長い日次ログや完了経緯はPR本文・研究docs・`PROJECT_HISTORY.md`へ残します。
+## Safety reminder
+
+- no-future-leakage
+- pre-result artifactを結果後に作り直さない
+- market disagreementでcandidate feedを削除しない
+- odds/EVで候補をほぼゼロへ戻さない
+- CI/PRがgreenという理由だけでmerge/deployしない
+- `purchase_action=false`
