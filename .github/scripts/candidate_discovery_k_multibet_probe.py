@@ -11,11 +11,14 @@ import importlib.util
 import json
 import os
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 SOURCE = REPO_ROOT / "probe_k_parse_compare_pg_v3.py"
 spec = importlib.util.spec_from_file_location("probe_k_parse_compare_pg_v3", SOURCE)
 k = importlib.util.module_from_spec(spec)
