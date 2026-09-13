@@ -56,7 +56,7 @@ def k_url(date_str: str) -> str:
 def get_k_text(date_str: str) -> str:
     url = k_url(date_str)
     response = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
-    print(f"CANDIDATE_K_PROBE_GET=status:{response.status_code} bytes:{len(response.content)}", flush=True)
+    print(f"CANDIDATE_K_PROBE_GET=date:{date_str} status:{response.status_code} bytes:{len(response.content)}", flush=True)
     response.raise_for_status()
     with tempfile.TemporaryDirectory(prefix="candidate_k_probe_") as td:
         archive = Path(td) / "k.lzh"
@@ -69,12 +69,8 @@ def get_k_text(date_str: str) -> str:
     return raw.decode("cp932")
 
 
-def main() -> None:
-    print("CANDIDATE_K_PROBE_MODE=official_archive_read_only", flush=True)
-    print(f"CANDIDATE_K_PROBE_DATE={TARGET_DATE}", flush=True)
-    print("CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0", flush=True)
-
-    text = get_k_text(TARGET_DATE)
+def parse_multibet_payouts(text: str) -> dict[str, Any]:
+    """Parse mapped official payouts keyed by venue/race/bet type."""
     lines = text.splitlines()
     markers = []
     payouts = []
@@ -108,6 +104,8 @@ def main() -> None:
         if bet_type not in {"trifecta", "trio", "exacta"}:
             continue
         ticket = m.group("ticket")
+        if bet_type == "trio":
+            ticket = "-".join(sorted(ticket.split("-"), key=int))
         payout = int(m.group("payout").replace(",", ""))
         counts[bet_type] += 1
         payouts.append({
@@ -122,11 +120,37 @@ def main() -> None:
 
     mapped = [x for x in payouts if x["venue"] and x["race_no"]]
     mapped_counts = Counter(x["bet_type"] for x in mapped)
+    by_key: dict[tuple[str, int, str], dict[str, Any]] = {}
+    for row in mapped:
+        key = (str(row["venue"]).zfill(2), int(row["race_no"]), str(row["bet_type"]))
+        by_key[key] = row
+    return {
+        "line_count": len(lines),
+        "markers": markers,
+        "payouts": payouts,
+        "mapped": mapped,
+        "counts": counts,
+        "mapped_counts": mapped_counts,
+        "by_key": by_key,
+    }
+
+
+def main() -> None:
+    print("CANDIDATE_K_PROBE_MODE=official_archive_read_only", flush=True)
+    print(f"CANDIDATE_K_PROBE_DATE={TARGET_DATE}", flush=True)
+    print("CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0", flush=True)
+
+    parsed = parse_multibet_payouts(get_k_text(TARGET_DATE))
+    counts: Counter[str] = parsed["counts"]
+    mapped_counts: Counter[str] = parsed["mapped_counts"]
+    payouts = parsed["payouts"]
+    mapped = parsed["mapped"]
+    markers = parsed["markers"]
     summary = {
-        "contract": "candidate_discovery_k_multibet_probe_v2_standalone",
+        "contract": "candidate_discovery_k_multibet_probe_v3_reusable",
         "date": TARGET_DATE,
         "source_url": k_url(TARGET_DATE),
-        "line_count": len(lines),
+        "line_count": parsed["line_count"],
         "marker_count": len(markers),
         "markers_sample": markers[:20],
         "payout_counts": dict(sorted(counts.items())),
