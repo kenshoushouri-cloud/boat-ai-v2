@@ -12,6 +12,7 @@ from typing import Any
 
 UNIT_YEN = 100
 MILESTONES = (30, 50, 100)
+V4_FEED_CONTRACT = "candidate_discovery_v4_main_feed_v1"
 
 
 def _ordered(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -95,8 +96,8 @@ def summarize_forward(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Summarize prospective exact-V4 trifecta records.
 
     Each input row is one immutable V4 core TOP1 race. Required flags:
-    counts_as_prospective, late_snapshot_available, result_ready,
-    market_top2_support, hit, return_yen.
+    source_feed_contract, counts_as_prospective, late_snapshot_available,
+    result_ready, market_top2_support, hit, return_yen.
     """
     seen: set[str] = set()
     prospective_ready: list[dict[str, Any]] = []
@@ -107,7 +108,13 @@ def summarize_forward(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if rid in seen:
             raise ValueError(f"duplicate race_id: {rid}")
         seen.add(rid)
-        if not bool(row.get("counts_as_prospective")):
+        counts = bool(row.get("counts_as_prospective"))
+        source_contract = str(row.get("source_feed_contract") or "")
+        if counts and source_contract != V4_FEED_CONTRACT:
+            raise ValueError(
+                f"prospective row must come from exact V4 source contract: {rid} contract={source_contract}"
+            )
+        if not counts:
             continue
         if not bool(row.get("late_snapshot_available")):
             continue
@@ -127,6 +134,7 @@ def summarize_forward(rows: list[dict[str, Any]]) -> dict[str, Any]:
     supported = [x for x in prospective_ready if bool(x.get("market_top2_support"))]
     return {
         "contract": "MKT_LATE07_TOP2_SUPPORT_V1_FORWARD_METRICS",
+        "source_feed_contract": V4_FEED_CONTRACT,
         "bet_type": "trifecta",
         "unit_yen": UNIT_YEN,
         "late_available_baseline": _summary(baseline),

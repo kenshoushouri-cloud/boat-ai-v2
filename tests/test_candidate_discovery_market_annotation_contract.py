@@ -94,6 +94,7 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertEqual(out["prospective_supported"], 0)
         self.assertFalse(out["exact_v4_source"])
         self.assertTrue(all(row["counts_as_prospective"] is False for row in out["rows"]))
+        self.assertTrue(all(row["source_feed_contract"] == "candidate_discovery_main_feed_v1" for row in out["rows"]))
         self.assertEqual(feed, frozen_copy, "annotation must not mutate immutable feed")
 
     def test_true_v4_after_start_counts_as_prospective(self):
@@ -107,6 +108,7 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertTrue(out["exact_v4_source"])
         self.assertEqual(out["top2_supported"], 2)
         self.assertEqual(out["prospective_supported"], 2)
+        self.assertTrue(all(row["source_feed_contract"] == V4_FEED_CONTRACT for row in out["rows"]))
 
     def test_non_v4_feed_after_start_cannot_count_as_prospective(self):
         feed = feed_doc("2026-09-14", contract="candidate_discovery_main_feed_v1")

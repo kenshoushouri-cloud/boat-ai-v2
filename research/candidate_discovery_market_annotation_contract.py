@@ -131,6 +131,7 @@ def annotate_feed(
         counts_as_prospective = exact_v4_source and frozen["race_date"] >= PROSPECTIVE_START
         rows.append({
             **frozen,
+            "source_feed_contract": source_contract,
             "late_snapshot_available": bool(top2),
             "market_top2": list(top2) if top2 else [],
             "market_top2_support": bool(top2 and frozen["ticket"] in set(top2)),

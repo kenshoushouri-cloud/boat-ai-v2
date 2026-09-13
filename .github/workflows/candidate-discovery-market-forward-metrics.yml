@@ -41,7 +41,8 @@ jobs:
           stability=Path('research/candidate_discovery_forward_stability_metrics.py').read_text(encoding='utf-8').lower()
           evaluator=Path('.github/scripts/candidate_discovery_frozen_eval_pg.py').read_text(encoding='utf-8').lower()
           assert 'milestones = (30, 50, 100)' in market
-          assert 'bet_type' in market and 'trifecta' in market
+          assert 'candidate_discovery_v4_main_feed_v1' in market
+          assert 'source_feed_contract' in market
           assert 'late_available_baseline' in market
           assert 'market_top2_supported' in market
           assert 'max_losing_race_streak' in market

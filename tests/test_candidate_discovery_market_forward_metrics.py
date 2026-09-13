@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research.candidate_discovery_forward_stability_metrics import summarize_frozen_forward
-from research.candidate_discovery_market_forward_metrics import summarize_forward
+from research.candidate_discovery_market_forward_metrics import V4_FEED_CONTRACT, summarize_forward
 
 
 def row(
@@ -24,12 +24,14 @@ def row(
     prospective: bool = True,
     late: bool = True,
     ready: bool = True,
+    source_contract: str = V4_FEED_CONTRACT,
 ):
     return {
         "race_id": rid,
         "race_date": ds,
         "venue_id": "08",
         "race_no": rno,
+        "source_feed_contract": source_contract,
         "counts_as_prospective": prospective,
         "late_snapshot_available": late,
         "result_ready": ready,
@@ -72,7 +74,7 @@ class MarketForwardMetricsTest(unittest.TestCase):
             row("r2", "2026-09-14", 2, support=True, hit=False, ret=0),
             row("r3", "2026-09-15", 1, support=True, hit=True, ret=200),
             row("r4", "2026-09-15", 2, support=False, hit=False, ret=0),
-            row("old", "2026-09-13", 3, support=True, hit=True, ret=999, prospective=False),
+            row("old", "2026-09-13", 3, support=True, hit=True, ret=999, prospective=False, source_contract="candidate_discovery_main_feed_v1"),
             row("nol", "2026-09-15", 4, support=True, hit=True, ret=999, late=False),
             row("pend", "2026-09-15", 5, support=True, hit=True, ret=999, ready=False),
         ]
@@ -101,6 +103,7 @@ class MarketForwardMetricsTest(unittest.TestCase):
         self.assertEqual(sup["positive_day_rate_pct"], 100.0)
         self.assertEqual(sup["max_single_hit_return_yen"], 300)
         self.assertEqual(sup["max_single_hit_share_of_returns_pct"], 60.0)
+        self.assertEqual(out["source_feed_contract"], V4_FEED_CONTRACT)
         self.assertEqual(out["milestone"]["next_target"], 30)
         self.assertEqual(out["milestone"]["remaining_to_next"], 27)
         self.assertFalse(out["promotion_allowed"])
@@ -116,6 +119,20 @@ class MarketForwardMetricsTest(unittest.TestCase):
         self.assertEqual(out["milestone"]["next_target"], 50)
         self.assertEqual(out["milestone"]["remaining_to_next"], 20)
         self.assertFalse(out["milestone"]["promotion_allowed"])
+
+    def test_non_v4_prospective_row_fails_closed(self):
+        bad = row(
+            "baseline-mislabel",
+            "2026-09-14",
+            1,
+            support=True,
+            hit=False,
+            ret=0,
+            prospective=True,
+            source_contract="candidate_discovery_main_feed_v1",
+        )
+        with self.assertRaises(ValueError):
+            summarize_forward([bad])
 
     def test_duplicate_race_fails_closed(self):
         rows = [
