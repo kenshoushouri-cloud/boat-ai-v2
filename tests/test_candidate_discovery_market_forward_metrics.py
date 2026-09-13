@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from research.candidate_discovery_forward_stability_metrics import summarize_frozen_forward
+from research.candidate_discovery_forward_stability_metrics import (
+    BASELINE_SOURCE_CONTRACT,
+    summarize_frozen_forward,
+)
 from research.candidate_discovery_market_forward_metrics import V4_FEED_CONTRACT, summarize_forward
 
 
@@ -43,9 +46,10 @@ def row(
     }
 
 
-def eval_doc(ds: str, rows: list[dict]):
+def eval_doc(ds: str, rows: list[dict], *, source_contract: str = V4_FEED_CONTRACT):
     return {
         "contract": "candidate_discovery_frozen_forward_eval_v1",
+        "source_contract": source_contract,
         "source_date": ds,
         "rows": rows,
         "mutation_performed": False,
@@ -201,6 +205,8 @@ class MarketForwardMetricsTest(unittest.TestCase):
         self.assertEqual(core["investment_yen"], 600)
         self.assertEqual(core["return_yen"], 500)
         self.assertEqual(core["roi_pct"], 83.333)
+        self.assertEqual(out["baseline_core"]["evaluated_races"], 0)
+        self.assertEqual(out["v4_source"]["evaluated_races"], 5)
 
         self.assertEqual(legacy["evaluated_races"], 2)
         self.assertEqual(legacy["tickets"], 2)
@@ -209,6 +215,34 @@ class MarketForwardMetricsTest(unittest.TestCase):
         self.assertEqual(legacy["roi_pct"], 150.0)
         self.assertFalse(out["promotion_allowed"])
         self.assertFalse(out["purchase_action"])
+
+    def test_baseline_core_is_never_counted_as_v4_core(self):
+        docs = [
+            eval_doc(
+                "2026-09-13",
+                [
+                    eval_row("20260913_08_08", "A", ["2-3-6", "2-6-3"], hit=False, ret=0),
+                    eval_row("20260913_10_01", "L", ["1-6-5"], hit=True, ret=450),
+                ],
+                source_contract=BASELINE_SOURCE_CONTRACT,
+            )
+        ]
+        out = summarize_frozen_forward(docs)
+        self.assertEqual(out["baseline_core"]["evaluated_races"], 1)
+        self.assertEqual(out["v4_core"]["evaluated_races"], 0)
+        self.assertEqual(out["baseline_source"]["evaluated_races"], 2)
+        self.assertEqual(out["v4_source"]["evaluated_races"], 0)
+        self.assertEqual(out["source_contracts_seen"], [BASELINE_SOURCE_CONTRACT])
+
+    def test_stability_unknown_source_contract_fails_closed(self):
+        with self.assertRaises(ValueError):
+            summarize_frozen_forward([
+                eval_doc(
+                    "2026-09-14",
+                    [eval_row("20260914_08_01", "A", ["1-2-3"], hit=False, ret=0)],
+                    source_contract="unknown_feed",
+                )
+            ])
 
 
 if __name__ == "__main__":
