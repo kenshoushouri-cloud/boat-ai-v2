@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/scripts/candidate_discovery_bettype_hit_audit_pg.py'
       - '.github/scripts/candidate_discovery_bettype_tier_audit_pg.py'
+      - '.github/scripts/candidate_discovery_k_multibet_probe.py'
       - '.github/workflows/candidate-discovery-bettype-hit-audit.yml'
       - 'research/candidate_discovery_bettype_contract.py'
       - '.github/scripts/candidate_discovery_v1_pg.py'
@@ -21,6 +22,7 @@ env:
   CANDIDATE_BETTYPE_RACE_CAPS: '3,6,9,12'
   CANDIDATE_BETTYPE_TIER_START: '2025-07-01'
   CANDIDATE_BETTYPE_TIER_END: '2026-09-12'
+  CANDIDATE_K_PROBE_DATE: '2026-08-12'
 
 jobs:
   audit:
@@ -43,6 +45,7 @@ jobs:
         run: |
           python -m py_compile .github/scripts/candidate_discovery_bettype_hit_audit_pg.py
           python -m py_compile .github/scripts/candidate_discovery_bettype_tier_audit_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_k_multibet_probe.py
           python -m py_compile research/candidate_discovery_bettype_contract.py
           python tests/test_candidate_discovery_bettype_contract.py
           python - <<'PY'
@@ -61,6 +64,9 @@ jobs:
                   'drop table ', 'truncate ', 'vacuum ', 'create table '
               ):
                   assert token not in text, (path, token)
+          probe=Path('.github/scripts/candidate_discovery_k_multibet_probe.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','delete from ','insert into ','update v2_','alter table '):
+              assert token not in probe, token
           PY
 
       - name: Install dependencies
@@ -104,6 +110,12 @@ jobs:
           grep -q '^CANDIDATE_BETTYPE_TIER_PROFITABILITY=NOT_EVALUATED_NO_PAYOUT_DATA$' candidate-discovery-bettype-tier-audit.txt
           grep -q '^CANDIDATE_BETTYPE_TIER_RESULT=PASS_READ_ONLY$' candidate-discovery-bettype-tier-audit.txt
 
+      - name: Probe official K archive multi-bet payouts
+        run: |
+          python -u .github/scripts/candidate_discovery_k_multibet_probe.py | tee candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_RESULT=PASS_READ_ONLY$' candidate-discovery-k-multibet-probe.txt
+
       - name: Upload audit artifact
         uses: actions/upload-artifact@v4
         with:
@@ -113,5 +125,7 @@ jobs:
             candidate-discovery-bettype-hit-audit.txt
             candidate-discovery-bettype-tier-audit.json
             candidate-discovery-bettype-tier-audit.txt
+            candidate-discovery-k-multibet-probe.json
+            candidate-discovery-k-multibet-probe.txt
           retention-days: 30
           if-no-files-found: error
