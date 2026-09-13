@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research/candidate_discovery_market_forward_metrics.py'
+      - 'research/candidate_discovery_forward_stability_metrics.py'
       - 'tests/test_candidate_discovery_market_forward_metrics.py'
       - '.github/workflows/candidate-discovery-market-forward-metrics.yml'
 
@@ -23,27 +24,40 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate pure Forward metrics contract
+      - name: Validate pure Forward metrics contracts
         run: |
           python -m py_compile research/candidate_discovery_market_forward_metrics.py
+          python -m py_compile research/candidate_discovery_forward_stability_metrics.py
           python -m py_compile tests/test_candidate_discovery_market_forward_metrics.py
           python tests/test_candidate_discovery_market_forward_metrics.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('research/candidate_discovery_market_forward_metrics.py').read_text(encoding='utf-8').lower()
-          assert 'milestones = (30, 50, 100)' in text
-          assert 'bet_type' in text and 'trifecta' in text
-          assert 'late_available_baseline' in text
-          assert 'market_top2_supported' in text
-          assert 'max_losing_race_streak' in text
-          assert 'max_drawdown_yen' in text
-          assert 'positive_day_rate_pct' in text
-          assert 'max_single_hit_share_of_returns_pct' in text
-          assert 'promotion_allowed' in text
-          for forbidden in (
-              'psycopg', 'requests', 'urllib', 'database_url', 'v2_results',
-              'parse_multibet_payouts', 'get_k_text(', 'delete from ', 'insert into ',
-              'update v2_', 'alter table ', 'truncate ', 'vacuum '
-          ):
-              assert forbidden not in text, forbidden
+          market=Path('research/candidate_discovery_market_forward_metrics.py').read_text(encoding='utf-8').lower()
+          stability=Path('research/candidate_discovery_forward_stability_metrics.py').read_text(encoding='utf-8').lower()
+          assert 'milestones = (30, 50, 100)' in market
+          assert 'bet_type' in market and 'trifecta' in market
+          assert 'late_available_baseline' in market
+          assert 'market_top2_supported' in market
+          assert 'max_losing_race_streak' in market
+          assert 'max_drawdown_yen' in market
+          assert 'positive_day_rate_pct' in market
+          assert 'max_single_hit_share_of_returns_pct' in market
+          assert 'promotion_allowed' in market
+
+          assert 'v4_core' in stability
+          assert 'legacy_carryover' in stability
+          assert 'max_losing_race_streak' in stability
+          assert 'max_drawdown_yen' in stability
+          assert 'positive_month_rate_pct' in stability
+          assert 'max_single_hit_share_of_returns_pct' in stability
+          assert 'top3_hit_share_of_returns_pct' in stability
+          assert 'promotion_allowed' in stability
+
+          for text in (market, stability):
+              for forbidden in (
+                  'psycopg', 'requests', 'urllib', 'database_url', 'v2_results',
+                  'parse_multibet_payouts', 'get_k_text(', 'delete from ', 'insert into ',
+                  'update v2_', 'alter table ', 'truncate ', 'vacuum '
+              ):
+                  assert forbidden not in text, forbidden
           PY
