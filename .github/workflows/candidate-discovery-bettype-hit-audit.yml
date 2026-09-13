@@ -74,6 +74,12 @@ jobs:
           pip install -r requirements.txt
           npm install --global @railway/cli
 
+      - name: Probe official K archive multi-bet payouts
+        run: |
+          python -u .github/scripts/candidate_discovery_k_multibet_probe.py | tee candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_RESULT=PASS_READ_ONLY$' candidate-discovery-k-multibet-probe.txt
+
       - name: Load database URL
         run: |
           railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
@@ -110,13 +116,8 @@ jobs:
           grep -q '^CANDIDATE_BETTYPE_TIER_PROFITABILITY=NOT_EVALUATED_NO_PAYOUT_DATA$' candidate-discovery-bettype-tier-audit.txt
           grep -q '^CANDIDATE_BETTYPE_TIER_RESULT=PASS_READ_ONLY$' candidate-discovery-bettype-tier-audit.txt
 
-      - name: Probe official K archive multi-bet payouts
-        run: |
-          python -u .github/scripts/candidate_discovery_k_multibet_probe.py | tee candidate-discovery-k-multibet-probe.txt
-          grep -q '^CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-k-multibet-probe.txt
-          grep -q '^CANDIDATE_K_PROBE_RESULT=PASS_READ_ONLY$' candidate-discovery-k-multibet-probe.txt
-
       - name: Upload audit artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: candidate-discovery-bettype-hit-${{ github.run_id }}
@@ -128,4 +129,4 @@ jobs:
             candidate-discovery-k-multibet-probe.json
             candidate-discovery-k-multibet-probe.txt
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
