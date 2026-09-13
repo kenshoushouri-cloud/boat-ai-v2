@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/candidate_discovery_bettype_hit_audit_pg.py'
+      - '.github/scripts/candidate_discovery_bettype_tier_audit_pg.py'
       - '.github/workflows/candidate-discovery-bettype-hit-audit.yml'
       - 'research/candidate_discovery_bettype_contract.py'
       - '.github/scripts/candidate_discovery_v1_pg.py'
@@ -18,11 +19,13 @@ env:
   CANDIDATE_BETTYPE_START: '2025-07-01'
   CANDIDATE_BETTYPE_END: '2026-09-12'
   CANDIDATE_BETTYPE_RACE_CAPS: '3,6,9,12'
+  CANDIDATE_BETTYPE_TIER_START: '2025-07-01'
+  CANDIDATE_BETTYPE_TIER_END: '2026-09-12'
 
 jobs:
   audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,20 +42,25 @@ jobs:
       - name: Validate read-only contract
         run: |
           python -m py_compile .github/scripts/candidate_discovery_bettype_hit_audit_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_bettype_tier_audit_pg.py
           python -m py_compile research/candidate_discovery_bettype_contract.py
           python tests/test_candidate_discovery_bettype_contract.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('.github/scripts/candidate_discovery_bettype_hit_audit_pg.py').read_text(encoding='utf-8').lower()
-          assert 'set transaction read only' in text
-          assert 'v2_odds_trifecta' not in text
-          assert 'trifecta_payout_yen' not in text
-          assert 'raw_ev' not in text
-          for token in (
-              'delete from ', 'insert into ', 'update v2_', 'alter table ',
-              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          for path in (
+              '.github/scripts/candidate_discovery_bettype_hit_audit_pg.py',
+              '.github/scripts/candidate_discovery_bettype_tier_audit_pg.py',
           ):
-              assert token not in text, token
+              text=Path(path).read_text(encoding='utf-8').lower()
+              assert 'set transaction read only' in text
+              assert 'v2_odds_trifecta' not in text
+              assert 'trifecta_payout_yen' not in text
+              assert 'raw_ev' not in text
+              for token in (
+                  'delete from ', 'insert into ', 'update v2_', 'alter table ',
+                  'drop table ', 'truncate ', 'vacuum ', 'create table '
+              ):
+                  assert token not in text, (path, token)
           PY
 
       - name: Install dependencies
@@ -88,6 +96,14 @@ jobs:
           grep -q '^CANDIDATE_BETTYPE_PROFITABILITY=NOT_EVALUATED_NO_PAYOUT_DATA$' candidate-discovery-bettype-hit-audit.txt
           grep -q '^CANDIDATE_BETTYPE_RESULT=PASS_READ_ONLY$' candidate-discovery-bettype-hit-audit.txt
 
+      - name: Run A/B/C bet-type tier audit
+        run: |
+          python -u .github/scripts/candidate_discovery_bettype_tier_audit_pg.py | tee candidate-discovery-bettype-tier-audit.txt
+          grep -q '^CANDIDATE_BETTYPE_TIER_ODDS_READ=0 EV_FILTER=0 PAYOUT_READ=0$' candidate-discovery-bettype-tier-audit.txt
+          grep -q '^CANDIDATE_BETTYPE_TIER_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-bettype-tier-audit.txt
+          grep -q '^CANDIDATE_BETTYPE_TIER_PROFITABILITY=NOT_EVALUATED_NO_PAYOUT_DATA$' candidate-discovery-bettype-tier-audit.txt
+          grep -q '^CANDIDATE_BETTYPE_TIER_RESULT=PASS_READ_ONLY$' candidate-discovery-bettype-tier-audit.txt
+
       - name: Upload audit artifact
         uses: actions/upload-artifact@v4
         with:
@@ -95,5 +111,7 @@ jobs:
           path: |
             candidate-discovery-bettype-hit-audit.json
             candidate-discovery-bettype-hit-audit.txt
+            candidate-discovery-bettype-tier-audit.json
+            candidate-discovery-bettype-tier-audit.txt
           retention-days: 30
           if-no-files-found: error
