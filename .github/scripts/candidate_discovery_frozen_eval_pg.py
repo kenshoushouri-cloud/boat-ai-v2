@@ -24,6 +24,10 @@ INPUT = Path(os.getenv("CANDIDATE_FORWARD_INPUT", "candidate-discovery-main-feed
 HASH_FILE = Path(os.getenv("CANDIDATE_FORWARD_HASH", str(INPUT) + ".sha256"))
 OUTPUT = Path(os.getenv("CANDIDATE_FORWARD_EVAL_OUTPUT", "candidate-discovery-forward-eval.json"))
 STAKE_PER_TICKET = 100
+ALLOWED_SOURCE_CONTRACTS = {
+    "candidate_discovery_main_feed_v1",
+    "candidate_discovery_v4_main_feed_v1",
+}
 
 
 def norm_ticket(value: Any) -> str:
@@ -50,8 +54,9 @@ def expected_sha256(path: Path) -> str:
 
 
 def validate_frozen_feed(data: dict[str, Any]) -> list[dict[str, Any]]:
-    if data.get("contract") != "candidate_discovery_main_feed_v1":
-        raise RuntimeError("unexpected candidate feed contract")
+    contract = str(data.get("contract") or "")
+    if contract not in ALLOWED_SOURCE_CONTRACTS:
+        raise RuntimeError(f"unexpected candidate feed contract: {contract}")
     if data.get("mutation_performed") is not False:
         raise RuntimeError("candidate artifact reports mutation")
     if data.get("line_sent") is not False:
@@ -214,6 +219,7 @@ def main() -> None:
     }
     OUTPUT.write_text(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     s = out["summary"]
+    print(f"CANDIDATE_FORWARD_SOURCE_CONTRACT={out['source_contract']}", flush=True)
     print(f"CANDIDATE_FORWARD_SOURCE_SHA256={actual}", flush=True)
     print(
         "CANDIDATE_FORWARD_SUMMARY="

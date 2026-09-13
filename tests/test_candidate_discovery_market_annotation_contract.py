@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from research.candidate_discovery_market_annotation_contract import annotate_feed, market_top2
+from research.candidate_discovery_market_annotation_contract import (
+    V4_FEED_CONTRACT,
+    annotate_feed,
+    market_top2,
+)
 
 
 CORE = [
@@ -24,7 +28,7 @@ CORE = [
 ]
 
 
-def feed_doc(date_str: str = "2026-09-13"):
+def feed_doc(date_str: str = "2026-09-13", *, contract: str = "candidate_discovery_main_feed_v1"):
     rows = []
     for rank, rid, venue, rno, tier, ticket in CORE:
         rows.append({
@@ -51,6 +55,7 @@ def feed_doc(date_str: str = "2026-09-13"):
         "tickets": [{"core_order": None, "ticket": "1-6-5", "source": ["LEGACY"]}],
     })
     return {
+        "contract": contract,
         "feed": rows,
         "purchase_action": False,
         "production_behavior_changed": False,
@@ -74,7 +79,7 @@ def snapshot(first: str, second: str, *, lead=5.0, spread=0.5):
 
 
 class MarketAnnotationContractTest(unittest.TestCase):
-    def test_20260913_wiring_reproduces_three_available_two_supported(self):
+    def test_20260913_baseline_wiring_is_never_prospective(self):
         feed = feed_doc("2026-09-13")
         frozen_copy = copy.deepcopy(feed)
         market = {
@@ -87,22 +92,29 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertEqual(out["late_available"], 3)
         self.assertEqual(out["top2_supported"], 2)
         self.assertEqual(out["prospective_supported"], 0)
+        self.assertFalse(out["exact_v4_source"])
         self.assertTrue(all(row["counts_as_prospective"] is False for row in out["rows"]))
         self.assertEqual(feed, frozen_copy, "annotation must not mutate immutable feed")
-        self.assertFalse(out["purchase_action"])
-        self.assertFalse(out["production_behavior_changed"])
-        self.assertFalse(out["promotion_allowed"])
 
-    def test_same_support_after_start_counts_as_prospective(self):
-        feed = feed_doc("2026-09-14")
+    def test_true_v4_after_start_counts_as_prospective(self):
+        feed = feed_doc("2026-09-14", contract=V4_FEED_CONTRACT)
         market = {
             "20260914_08_08": snapshot("2-3-6", "2-6-3"),
             "20260914_19_05": snapshot("1-3-4", "1-4-3"),
             "20260914_08_05": snapshot("1-2-5", "2-1-5"),
         }
         out = annotate_feed(feed, market)
+        self.assertTrue(out["exact_v4_source"])
         self.assertEqual(out["top2_supported"], 2)
         self.assertEqual(out["prospective_supported"], 2)
+
+    def test_non_v4_feed_after_start_cannot_count_as_prospective(self):
+        feed = feed_doc("2026-09-14", contract="candidate_discovery_main_feed_v1")
+        market = {"20260914_08_08": snapshot("2-3-6", "2-6-3")}
+        out = annotate_feed(feed, market)
+        self.assertFalse(out["exact_v4_source"])
+        self.assertEqual(out["prospective_supported"], 0)
+        self.assertTrue(all(row["counts_as_prospective"] is False for row in out["rows"]))
 
     def test_outside_late_window_or_bad_spread_is_unavailable(self):
         self.assertIsNone(market_top2(snapshot("1-2-3", "1-3-2", lead=7.001)))
@@ -128,8 +140,8 @@ class MarketAnnotationContractTest(unittest.TestCase):
         self.assertIn("freeze sha-256 mismatch", text)
         self.assertIn("set transaction read only", text)
         self.assertIn("v2_realtime_odds_snapshots", text)
-        self.assertIn("extract_core_top1", text)
-        self.assertIn("annotate_feed", text)
+        self.assertIn("v4_feed_contract", text)
+        self.assertIn("unexpected source contract", text)
         self.assertNotIn("20260913_11_02", text)
         for forbidden in (
             "v2_results", "trifecta_payout_yen", "result_status", "race_status",

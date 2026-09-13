@@ -5,7 +5,9 @@ on:
     paths:
       - 'research/candidate_discovery_market_forward_metrics.py'
       - 'research/candidate_discovery_forward_stability_metrics.py'
+      - '.github/scripts/candidate_discovery_frozen_eval_pg.py'
       - 'tests/test_candidate_discovery_market_forward_metrics.py'
+      - 'tests/test_candidate_discovery_frozen_eval.py'
       - '.github/workflows/candidate-discovery-market-forward-metrics.yml'
 
 permissions:
@@ -28,12 +30,16 @@ jobs:
         run: |
           python -m py_compile research/candidate_discovery_market_forward_metrics.py
           python -m py_compile research/candidate_discovery_forward_stability_metrics.py
+          python -m py_compile .github/scripts/candidate_discovery_frozen_eval_pg.py
           python -m py_compile tests/test_candidate_discovery_market_forward_metrics.py
+          python -m py_compile tests/test_candidate_discovery_frozen_eval.py
           python tests/test_candidate_discovery_market_forward_metrics.py
+          python tests/test_candidate_discovery_frozen_eval.py
           python - <<'PY'
           from pathlib import Path
           market=Path('research/candidate_discovery_market_forward_metrics.py').read_text(encoding='utf-8').lower()
           stability=Path('research/candidate_discovery_forward_stability_metrics.py').read_text(encoding='utf-8').lower()
+          evaluator=Path('.github/scripts/candidate_discovery_frozen_eval_pg.py').read_text(encoding='utf-8').lower()
           assert 'milestones = (30, 50, 100)' in market
           assert 'bet_type' in market and 'trifecta' in market
           assert 'late_available_baseline' in market
@@ -53,6 +59,11 @@ jobs:
           assert 'top3_hit_share_of_returns_pct' in stability
           assert 'promotion_allowed' in stability
 
+          assert 'candidate_discovery_main_feed_v1' in evaluator
+          assert 'candidate_discovery_v4_main_feed_v1' in evaluator
+          assert 'set transaction read only' in evaluator
+          assert 'source_contract' in evaluator
+
           for text in (market, stability):
               for forbidden in (
                   'psycopg', 'requests', 'urllib', 'database_url', 'v2_results',
@@ -60,4 +71,6 @@ jobs:
                   'update v2_', 'alter table ', 'truncate ', 'vacuum '
               ):
                   assert forbidden not in text, forbidden
+          for forbidden in ('delete from ','insert into ','update v2_','alter table ','truncate ','vacuum ','create table '):
+              assert forbidden not in evaluator, forbidden
           PY

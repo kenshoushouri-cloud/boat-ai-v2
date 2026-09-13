@@ -2,7 +2,7 @@
 """Read-only prospective market annotation for an immutable V4 freeze.
 
 This runner never regenerates candidates. It requires a pre-result Candidate
-Discovery freeze JSON plus its expected SHA-256 and provenance identifiers,
+Discovery V4 freeze JSON plus its expected SHA-256 and provenance identifiers,
 extracts only the immutable V4 core TOP1 tickets, and attaches timing-safe
 MKT_LATE07_TOP2_SUPPORT_V1 tags from already-stored market snapshots.
 
@@ -27,11 +27,12 @@ from candidate_discovery_market_annotation_contract import (
     LATE_MIN_LO,
     MAX_SPREAD_SECONDS,
     PROSPECTIVE_START,
+    V4_FEED_CONTRACT,
     annotate_feed,
     extract_core_top1,
 )
 
-FREEZE_PATH = Path(os.getenv("CANDIDATE_V4_FREEZE_JSON", "candidate-discovery-main-feed.json"))
+FREEZE_PATH = Path(os.getenv("CANDIDATE_V4_FREEZE_JSON", "candidate-discovery-v4-main-feed.json"))
 EXPECTED_SHA256 = (os.getenv("CANDIDATE_V4_FREEZE_SHA256") or "").strip().lower()
 FREEZE_RUN_ID = (os.getenv("CANDIDATE_V4_FREEZE_RUN_ID") or "").strip()
 FREEZE_ARTIFACT_ID = (os.getenv("CANDIDATE_V4_FREEZE_ARTIFACT_ID") or "").strip()
@@ -60,11 +61,15 @@ def _load_verified_freeze() -> tuple[dict[str, Any], str]:
     data = json.loads(FREEZE_PATH.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise RuntimeError("freeze document must be a JSON object")
+    if data.get("contract") != V4_FEED_CONTRACT:
+        raise RuntimeError(
+            f"unexpected source contract: expected={V4_FEED_CONTRACT} actual={data.get('contract')}"
+        )
 
     core = extract_core_top1(data, expected_core_races=6)
     if any(str(row["race_date"]) < PROSPECTIVE_START for row in core):
         raise RuntimeError(
-            f"generic prospective annotator refuses pre-{PROSPECTIVE_START} freezes; "
+            f"prospective annotator refuses pre-{PROSPECTIVE_START} freezes; "
             "use the dedicated historical wiring dry run instead"
         )
     return data, actual
@@ -195,8 +200,8 @@ def main() -> None:
 
     market_by_race = _market_input(labels, odds_by_race)
     annotated = annotate_feed(freeze, market_by_race, expected_core_races=6)
-    if annotated["core_top1"] != 6:
-        raise RuntimeError("fail closed: expected exactly six frozen core TOP1 rows")
+    if annotated["core_top1"] != 6 or annotated.get("exact_v4_source") is not True:
+        raise RuntimeError("fail closed: exact six-race V4 source contract required")
     if any(not bool(row.get("counts_as_prospective")) for row in annotated["rows"]):
         raise RuntimeError("fail closed: non-prospective row reached prospective annotator")
 
@@ -212,6 +217,7 @@ def main() -> None:
         "freeze_run_id": FREEZE_RUN_ID,
         "freeze_artifact_id": FREEZE_ARTIFACT_ID,
         "freeze_json_sha256": digest,
+        "source_feed_contract": V4_FEED_CONTRACT,
         "annotation": annotated,
         "result_read": False,
         "mutation_performed": False,

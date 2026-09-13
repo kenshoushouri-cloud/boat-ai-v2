@@ -2,15 +2,16 @@
 """Pure contract for prospective V4 late-market corroboration annotation.
 
 This module has no DB/network/result/payout access. It consumes an already-frozen
-Candidate Discovery main-feed document plus prevalidated timing-safe market
-snapshots and only adds descriptive market TOP2 support tags.
+Candidate Discovery feed plus prevalidated timing-safe market snapshots and only
+adds descriptive market TOP2 support tags.
 
 Frozen prospective study: MKT_LATE07_TOP2_SUPPORT_V1
-- start: 2026-09-14 JST
+- hypothesis start: 2026-09-14 JST
+- exact prospective evidence requires source contract candidate_discovery_v4_main_feed_v1
 - late window: 0.0..7.0 minutes before deadline
 - coherent market spread: <= 60 seconds
 - complete trifecta market: exactly 120 positive tickets
-- market may annotate, never create/delete/replace a Stage-1 V4 candidate
+- market may annotate, never create/delete/replace a Stage-1 candidate
 - no EV/odds/tier/venue/race-number carveout
 """
 from __future__ import annotations
@@ -19,6 +20,7 @@ import math
 from typing import Any
 
 PROSPECTIVE_START = "2026-09-14"
+V4_FEED_CONTRACT = "candidate_discovery_v4_main_feed_v1"
 LATE_MIN_LO = 0.0
 LATE_MIN_HI = 7.0
 MAX_SPREAD_SECONDS = 60.0
@@ -34,7 +36,7 @@ def _norm_ticket(value: Any) -> str:
 
 
 def extract_core_top1(feed_doc: dict[str, Any], *, expected_core_races: int = 6) -> list[dict[str, Any]]:
-    """Extract exactly one immutable core_order=1 DISCOVERY_CORE ticket per V4 race."""
+    """Extract exactly one immutable core_order=1 DISCOVERY_CORE ticket per core race."""
     if feed_doc.get("purchase_action") is not False:
         raise ValueError("feed must preserve purchase_action=false")
     if feed_doc.get("production_behavior_changed") is not False:
@@ -120,11 +122,13 @@ def annotate_feed(
 ) -> dict[str, Any]:
     """Annotate frozen core TOP1 tickets; never mutate the input feed or candidate set."""
     core = extract_core_top1(feed_doc, expected_core_races=expected_core_races)
+    source_contract = str(feed_doc.get("contract") or "")
+    exact_v4_source = source_contract == V4_FEED_CONTRACT
     rows: list[dict[str, Any]] = []
     for frozen in core:
         snap = market_by_race.get(frozen["race_id"])
         top2 = market_top2(snap) if isinstance(snap, dict) else None
-        counts_as_prospective = frozen["race_date"] >= PROSPECTIVE_START
+        counts_as_prospective = exact_v4_source and frozen["race_date"] >= PROSPECTIVE_START
         rows.append({
             **frozen,
             "late_snapshot_available": bool(top2),
@@ -135,6 +139,8 @@ def annotate_feed(
 
     return {
         "contract": "MKT_LATE07_TOP2_SUPPORT_V1",
+        "source_feed_contract": source_contract,
+        "exact_v4_source": exact_v4_source,
         "prospective_start": PROSPECTIVE_START,
         "late_window_minutes": [LATE_MIN_LO, LATE_MIN_HI],
         "max_spread_seconds": MAX_SPREAD_SECONDS,

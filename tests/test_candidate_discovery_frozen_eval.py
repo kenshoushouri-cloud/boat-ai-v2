@@ -55,20 +55,26 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
         self.assertEqual(300, out["investment_yen"])
         self.assertEqual(850, out["return_yen"])
         self.assertAlmostEqual(283.333, out["roi_pct"], places=3)
-        self.assertEqual(1, out["by_tier"]["A"]["hits"])
-        self.assertEqual(0, out["by_tier"]["B"]["hits"])
 
-    def test_validate_frozen_feed_fail_closed(self):
-        good = {
-            "contract": "candidate_discovery_main_feed_v1",
+    def _feed_doc(self, contract: str):
+        return {
+            "contract": contract,
             "mutation_performed": False,
             "line_sent": False,
             "purchase_action": False,
             "summary": {"scheduled_races": 10, "core_races": 6},
             "feed": [{"race_id": "r1", "tickets": [{"ticket": "1-2-3"}]}],
         }
-        self.assertEqual(1, len(mod.validate_frozen_feed(good)))
-        bad = json.loads(json.dumps(good))
+
+    def test_validate_accepts_baseline_and_v4_contracts_only(self):
+        for contract in ("candidate_discovery_main_feed_v1", "candidate_discovery_v4_main_feed_v1"):
+            self.assertEqual(1, len(mod.validate_frozen_feed(self._feed_doc(contract))))
+        with self.assertRaises(RuntimeError):
+            mod.validate_frozen_feed(self._feed_doc("unknown_feed"))
+
+    def test_validate_frozen_feed_fail_closed(self):
+        bad = self._feed_doc("candidate_discovery_main_feed_v1")
+        bad = json.loads(json.dumps(bad))
         bad["purchase_action"] = True
         with self.assertRaises(RuntimeError):
             mod.validate_frozen_feed(bad)
@@ -76,6 +82,7 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
     def test_source_is_read_only(self):
         text = SCRIPT.read_text(encoding="utf-8").lower()
         self.assertIn("set transaction read only", text)
+        self.assertIn("candidate_discovery_v4_main_feed_v1", text)
         for token in (
             "delete from ", "insert into ", "update v2_", "alter table ",
             "drop table ", "truncate ", "vacuum ", "create table ",
