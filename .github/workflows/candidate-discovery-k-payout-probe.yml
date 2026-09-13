@@ -1,0 +1,59 @@
+name: Candidate Discovery K Payout Probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_k_multibet_probe.py'
+      - '.github/workflows/candidate-discovery-k-payout-probe.yml'
+      - 'probe_k_parse_compare_pg_v3.py'
+      - 'repair_month_all_pg.py'
+      - 'result_detail_pg.py'
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_K_PROBE_DATE: '2026-08-12'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate disconnected read-only probe
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_k_multibet_probe.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_k_multibet_probe.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','railway','line_notify','delete from ','insert into ','update v2_','alter table '):
+              assert token not in text, token
+          PY
+
+      - name: Install HTTP and K-archive dependencies
+        run: |
+          pip install requests lhafile beautifulsoup4
+
+      - name: Probe official K archive multi-bet payouts
+        run: |
+          python -u .github/scripts/candidate_discovery_k_multibet_probe.py | tee candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-k-multibet-probe.txt
+          grep -q '^CANDIDATE_K_PROBE_RESULT=PASS_READ_ONLY$' candidate-discovery-k-multibet-probe.txt
+
+      - name: Upload probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-k-payout-probe-${{ github.run_id }}
+          path: |
+            candidate-discovery-k-multibet-probe.json
+            candidate-discovery-k-multibet-probe.txt
+          retention-days: 30
+          if-no-files-found: error
