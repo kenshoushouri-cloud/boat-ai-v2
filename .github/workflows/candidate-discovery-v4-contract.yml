@@ -1,0 +1,56 @@
+name: Candidate Discovery V4 Pure Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_contract.py'
+      - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
+      - 'tests/test_candidate_discovery_v4_contract.py'
+      - '.github/workflows/candidate-discovery-v4-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate pure V4 contract and integrated runner safety
+        run: |
+          python -m py_compile research/candidate_discovery_v4_contract.py
+          python -m py_compile .github/scripts/candidate_discovery_v4_main_feed_pg.py
+          python tests/test_candidate_discovery_v4_contract.py
+          python - <<'PY'
+          from pathlib import Path
+          pure=Path('research/candidate_discovery_v4_contract.py').read_text(encoding='utf-8').lower()
+          runner=Path('.github/scripts/candidate_discovery_v4_main_feed_pg.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','railway','raw_ev','odds_min','odds_max','insert into ','delete from ','update v2_'):
+              assert token not in pure, token
+
+          assert 'set transaction read only' in runner
+          assert 'candidate_v4_result_read=0 payout_read=0 db_write=0 line=0 buy=0 prod_change=0' in runner
+          assert 'v2_racer_course_stats_snapshots' in runner
+          assert 'v2_opponent_pressure_shadow_v2' in runner
+          assert 'v2_candidate_filter_shadow' in runner
+          assert 'v2_results' not in runner
+          assert 'v2_result_entries' not in runner
+          assert 'trifecta_payout_yen' not in runner
+          assert 'v2_odds_trifecta' not in runner
+          assert 'v2_realtime_odds_snapshots' not in runner
+          assert 'raw_ev' not in runner
+          assert '"purchase_action": false' in runner
+          assert '"promotion_allowed": false' in runner
+          assert 'v4.course_coef' in runner
+          assert 'v4.opponent_coef' in runner
+          assert 'v4.motor_beta' in runner
+          assert 'v4.core_races' in runner and 'v4.core_tickets' in runner
+          for token in ('delete from ','insert into ','update v2_','alter table ','drop table ','truncate ','vacuum ','create table '):
+              assert token not in runner, token
+          PY

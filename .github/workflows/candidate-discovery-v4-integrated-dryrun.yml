@@ -1,0 +1,130 @@
+name: Candidate Discovery V4 Integrated Dryrun
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
+      - 'research/candidate_discovery_v4_contract.py'
+      - '.github/workflows/candidate-discovery-v4-integrated-dryrun.yml'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'YYYY-MM-DD pre-result diagnostic date'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate integrated V4 runner is read-only and outcome-free
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_v4_main_feed_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_v4_main_feed_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert 'candidate_v4_result_read=0 payout_read=0 db_write=0 line=0 buy=0 prod_change=0' in text
+          assert 'candidate_discovery_v4_main_feed_v1' in text
+          for forbidden in (
+              'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
+              'v2_odds_trifecta', 'v2_realtime_odds_snapshots', 'raw_ev',
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert forbidden not in text, forbidden
+          PY
+
+      - name: Install read-only dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Resolve diagnostic date
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET='${{ inputs.target_date }}'
+          else
+            TARGET='2026-09-13'
+          fi
+          echo "CANDIDATE_V4_DATE=$TARGET" >> "$GITHUB_ENV"
+          echo "V4_INTEGRATED_DIAGNOSTIC_DATE=$TARGET"
+          echo "V4_INTEGRATED_DIAGNOSTIC_PROSPECTIVE_EVIDENCE=0"
+
+      - name: Run integrated V4 read-only diagnostic
+        env:
+          CANDIDATE_V4_OUTPUT: candidate-discovery-v4-integrated-dryrun.json
+        run: |
+          python -u .github/scripts/candidate_discovery_v4_main_feed_pg.py | tee candidate-discovery-v4-integrated-dryrun.txt
+          grep -q '^CANDIDATE_V4_EV_FILTER=0 ODDS_FILTER=0 ODDS_READ=0$' candidate-discovery-v4-integrated-dryrun.txt
+          grep -q '^CANDIDATE_V4_RESULT_READ=0 PAYOUT_READ=0 DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-v4-integrated-dryrun.txt
+          grep -q '^CANDIDATE_V4_PURCHASE_ACTION=false$' candidate-discovery-v4-integrated-dryrun.txt
+          grep -q '^CANDIDATE_V4_PROMOTION_ALLOWED=0$' candidate-discovery-v4-integrated-dryrun.txt
+          grep -q '^CANDIDATE_V4_RESULT=PASS_READ_ONLY$' candidate-discovery-v4-integrated-dryrun.txt
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p=Path('candidate-discovery-v4-integrated-dryrun.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          assert data['contract']=='candidate_discovery_v4_main_feed_v1'
+          assert data['summary']['scheduled_races'] > 0
+          assert data['summary']['core_races'] == 6
+          assert data['summary']['core_tickets'] == 12
+          assert data['mutation_performed'] is False
+          assert data['line_sent'] is False
+          assert data['purchase_action'] is False
+          assert data['production_behavior_changed'] is False
+          assert data['promotion_allowed'] is False
+          print('V4_INTEGRATED_DIAGNOSTIC_JSON_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          print('V4_INTEGRATED_DIAGNOSTIC_PROSPECTIVE_EVIDENCE=0')
+          PY
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-v4-integrated-dryrun-${{ github.run_id }}
+          path: |
+            candidate-discovery-v4-integrated-dryrun.json
+            candidate-discovery-v4-integrated-dryrun.txt
+          retention-days: 30
+          if-no-files-found: error

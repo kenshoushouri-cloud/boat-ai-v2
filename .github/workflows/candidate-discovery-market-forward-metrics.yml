@@ -1,0 +1,77 @@
+name: Candidate Discovery Market Forward Metrics
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_market_forward_metrics.py'
+      - 'research/candidate_discovery_forward_stability_metrics.py'
+      - '.github/scripts/candidate_discovery_frozen_eval_pg.py'
+      - 'tests/test_candidate_discovery_market_forward_metrics.py'
+      - 'tests/test_candidate_discovery_frozen_eval.py'
+      - '.github/workflows/candidate-discovery-market-forward-metrics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate pure Forward metrics contracts
+        run: |
+          python -m py_compile research/candidate_discovery_market_forward_metrics.py
+          python -m py_compile research/candidate_discovery_forward_stability_metrics.py
+          python -m py_compile .github/scripts/candidate_discovery_frozen_eval_pg.py
+          python -m py_compile tests/test_candidate_discovery_market_forward_metrics.py
+          python -m py_compile tests/test_candidate_discovery_frozen_eval.py
+          python tests/test_candidate_discovery_market_forward_metrics.py
+          python tests/test_candidate_discovery_frozen_eval.py
+          python - <<'PY'
+          from pathlib import Path
+          market=Path('research/candidate_discovery_market_forward_metrics.py').read_text(encoding='utf-8').lower()
+          stability=Path('research/candidate_discovery_forward_stability_metrics.py').read_text(encoding='utf-8').lower()
+          evaluator=Path('.github/scripts/candidate_discovery_frozen_eval_pg.py').read_text(encoding='utf-8').lower()
+          assert 'milestones = (30, 50, 100)' in market
+          assert 'candidate_discovery_v4_main_feed_v1' in market
+          assert 'source_feed_contract' in market
+          assert 'late_available_baseline' in market
+          assert 'market_top2_supported' in market
+          assert 'max_losing_race_streak' in market
+          assert 'max_drawdown_yen' in market
+          assert 'positive_day_rate_pct' in market
+          assert 'max_single_hit_share_of_returns_pct' in market
+          assert 'promotion_allowed' in market
+
+          assert 'v4_core' in stability
+          assert 'legacy_carryover' in stability
+          assert 'max_losing_race_streak' in stability
+          assert 'max_drawdown_yen' in stability
+          assert 'positive_month_rate_pct' in stability
+          assert 'max_single_hit_share_of_returns_pct' in stability
+          assert 'top3_hit_share_of_returns_pct' in stability
+          assert 'promotion_allowed' in stability
+
+          assert 'candidate_discovery_main_feed_v1' in evaluator
+          assert 'candidate_discovery_v4_main_feed_v1' in evaluator
+          assert 'set transaction read only' in evaluator
+          assert 'source_contract' in evaluator
+
+          for text in (market, stability):
+              for forbidden in (
+                  'psycopg', 'requests', 'urllib', 'database_url', 'v2_results',
+                  'parse_multibet_payouts', 'get_k_text(', 'delete from ', 'insert into ',
+                  'update v2_', 'alter table ', 'truncate ', 'vacuum '
+              ):
+                  assert forbidden not in text, forbidden
+          for forbidden in ('delete from ','insert into ','update v2_','alter table ','truncate ','vacuum ','create table '):
+              assert forbidden not in evaluator, forbidden
+          PY
