@@ -23,6 +23,8 @@ class CandidateDiscoveryMarketForwardAnnotateSafetyTest(unittest.TestCase):
     def test_database_contract_is_read_only_and_outcome_free(self) -> None:
         self.assertIn("set transaction read only", self.text)
         self.assertIn("v2_realtime_odds_snapshots", self.text)
+        self.assertIn("max(o.updated_at) last_updated_at", self.text)
+        self.assertIn("last_updated_at <= deadline_at", self.text)
         self.assertNotIn("v2_results", self.text)
         for forbidden in (
             "trifecta_payout_yen",
