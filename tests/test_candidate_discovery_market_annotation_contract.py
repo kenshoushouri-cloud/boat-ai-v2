@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import copy
 import itertools
+import sys
 import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from research.candidate_discovery_market_annotation_contract import annotate_feed, market_top2
 
