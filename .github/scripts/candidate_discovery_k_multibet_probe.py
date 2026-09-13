@@ -3,7 +3,8 @@
 
 Downloads one historical official K archive and checks whether venue/race context
 can be associated with trifecta, trio, and exacta payout lines. This module is
-fully standalone: no DB module, Railway connector, LINE, BUY, or persistence.
+fully standalone: no database module, external service connector, message send,
+purchase action, or persistence.
 """
 from __future__ import annotations
 
