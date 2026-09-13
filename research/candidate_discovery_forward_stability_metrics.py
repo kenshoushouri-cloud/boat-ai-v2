@@ -3,8 +3,8 @@
 
 Input is one or more outputs from candidate_discovery_frozen_eval_pg.py.
 This module performs no database/network access and changes no candidate rule.
-It exists only to compare the immutable V4 core, legacy carryover, and total
-feed on the stability metrics required for Forward review.
+It keeps V1/V2 baseline core, true V4 core, legacy carryover, and total feed
+separate so baseline evidence can never be mislabeled as V4 Forward evidence.
 """
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 UNIT_YEN = 100
+BASELINE_SOURCE_CONTRACT = "candidate_discovery_main_feed_v1"
+V4_SOURCE_CONTRACT = "candidate_discovery_v4_main_feed_v1"
+ALLOWED_SOURCE_CONTRACTS = {BASELINE_SOURCE_CONTRACT, V4_SOURCE_CONTRACT}
 
 
 def _round_pct(num: float, den: float) -> float | None:
@@ -20,8 +23,14 @@ def _round_pct(num: float, den: float) -> float | None:
     return round(num / den * 100.0, 3)
 
 
-def _segment(tier: str) -> str:
-    return "legacy" if str(tier).strip().upper() in {"L", "LEGACY"} else "v4_core"
+def _segment(tier: str, source_contract: str) -> str:
+    if str(tier).strip().upper() in {"L", "LEGACY"}:
+        return "legacy"
+    if source_contract == BASELINE_SOURCE_CONTRACT:
+        return "baseline_core"
+    if source_contract == V4_SOURCE_CONTRACT:
+        return "v4_core"
+    raise ValueError(f"unexpected source contract: {source_contract}")
 
 
 def _normalize_documents(documents: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -41,6 +50,9 @@ def _normalize_documents(documents: Iterable[dict[str, Any]]) -> tuple[list[dict
         if doc.get("production_behavior_changed") is not False:
             raise ValueError("evaluation document reports Production behavior change")
 
+        source_contract = str(doc.get("source_contract") or "")
+        if source_contract not in ALLOWED_SOURCE_CONTRACTS:
+            raise ValueError(f"unexpected source contract: {source_contract}")
         source_date = str(doc.get("source_date") or "")
         for raw in doc.get("rows") or []:
             race_id = str(raw.get("race_id") or "")
@@ -85,7 +97,8 @@ def _normalize_documents(documents: Iterable[dict[str, Any]]) -> tuple[list[dict
                 "month": date[:7],
                 "race_id": race_id,
                 "tier": tier,
-                "segment": _segment(tier),
+                "source_contract": source_contract,
+                "segment": _segment(tier, source_contract),
                 "ticket_count": len(tickets),
                 "hit": hit,
                 "investment_yen": investment,
@@ -176,13 +189,20 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def summarize_frozen_forward(documents: Iterable[dict[str, Any]]) -> dict[str, Any]:
     rows, missing = _normalize_documents(documents)
-    core = [row for row in rows if row["segment"] == "v4_core"]
+    baseline_core = [row for row in rows if row["segment"] == "baseline_core"]
+    v4_core = [row for row in rows if row["segment"] == "v4_core"]
     legacy = [row for row in rows if row["segment"] == "legacy"]
+    baseline_source = [row for row in rows if row["source_contract"] == BASELINE_SOURCE_CONTRACT]
+    v4_source = [row for row in rows if row["source_contract"] == V4_SOURCE_CONTRACT]
     return {
         "contract": "candidate_discovery_forward_stability_metrics_v1",
         "all_feed": _summary(rows),
-        "v4_core": _summary(core),
+        "baseline_source": _summary(baseline_source),
+        "v4_source": _summary(v4_source),
+        "baseline_core": _summary(baseline_core),
+        "v4_core": _summary(v4_core),
         "legacy_carryover": _summary(legacy),
+        "source_contracts_seen": sorted({row["source_contract"] for row in rows}),
         "missing_result_rows": missing,
         "purchase_action": False,
         "production_behavior_changed": False,
