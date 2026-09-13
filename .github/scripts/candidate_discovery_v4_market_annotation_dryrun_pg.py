@@ -6,7 +6,7 @@ MKT_LATE07_TOP2_SUPPORT_V1 study, whose start date is 2026-09-14 JST.
 
 The six core-order-1 trifecta tickets below come from the independently hashed
 pre-result artifact from Actions run 34726186753. No candidate is regenerated.
-No outcome/payout table or official K result is read.
+No outcome table or official K result is read.
 """
 from __future__ import annotations
 
