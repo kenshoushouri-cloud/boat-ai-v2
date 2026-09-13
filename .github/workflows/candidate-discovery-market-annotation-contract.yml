@@ -1,0 +1,45 @@
+name: Candidate Discovery Market Annotation Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_market_annotation_contract.py'
+      - 'tests/test_candidate_discovery_market_annotation_contract.py'
+      - '.github/workflows/candidate-discovery-market-annotation-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate pure prospective annotation contract
+        run: |
+          python -m py_compile research/candidate_discovery_market_annotation_contract.py
+          python -m py_compile tests/test_candidate_discovery_market_annotation_contract.py
+          python tests/test_candidate_discovery_market_annotation_contract.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('research/candidate_discovery_market_annotation_contract.py').read_text(encoding='utf-8').lower()
+          assert 'prospective_start = "2026-09-14"' in text
+          assert 'late_min_lo = 0.0' in text and 'late_min_hi = 7.0' in text
+          assert 'max_spread_seconds = 60.0' in text
+          assert 'expected_trifecta_tickets = 120' in text
+          assert 'purchase_action' in text and 'promotion_allowed' in text
+          for forbidden in (
+              'psycopg', 'requests', 'urllib', 'v2_results', 'database_url',
+              'parse_multibet_payouts', 'get_k_text(', 'delete from ', 'insert into ',
+              'update v2_', 'alter table ', 'truncate ', 'vacuum '
+          ):
+              assert forbidden not in text, forbidden
+          PY
