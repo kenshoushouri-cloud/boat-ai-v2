@@ -1,0 +1,124 @@
+name: Candidate Discovery Multi-Bet ROI Smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/candidate_discovery_multibet_roi_k_pg.py'
+      - '.github/scripts/candidate_discovery_multibet_roi_long_pg.py'
+      - '.github/scripts/candidate_discovery_k_multibet_probe.py'
+      - '.github/workflows/candidate-discovery-multibet-roi-smoke.yml'
+      - 'research/candidate_discovery_bettype_contract.py'
+      - '.github/scripts/candidate_discovery_v1_pg.py'
+      - '.github/scripts/candidate_discovery_v2_formation_pg.py'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=180000
+  CANDIDATE_MULTIBET_ROI_START: '2026-08-14'
+  CANDIDATE_MULTIBET_ROI_END: '2026-09-12'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate read-only ROI contracts
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_multibet_roi_k_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_multibet_roi_long_pg.py
+          python -m py_compile .github/scripts/candidate_discovery_k_multibet_probe.py
+          python -m py_compile research/candidate_discovery_bettype_contract.py
+          python tests/test_candidate_discovery_bettype_contract.py
+          python - <<'PY'
+          from pathlib import Path
+          base=Path('.github/scripts/candidate_discovery_multibet_roi_k_pg.py').read_text(encoding='utf-8').lower()
+          long=Path('.github/scripts/candidate_discovery_multibet_roi_long_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in base
+          assert 'v2_odds_trifecta' not in base
+          assert 'raw_ev' not in base
+          assert 'unit_yen = 100' in base
+          assert 'race_cap = 6' in base
+          assert 'promotion_allowed' in base
+          assert 'posthoc_tuning=0' in long
+          for text in (base,long):
+              for token in (
+                  'delete from ', 'insert into ', 'update v2_', 'alter table ',
+                  'drop table ', 'truncate ', 'vacuum ', 'create table '
+              ):
+                  assert token not in text, token
+          PY
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Run official K multi-bet ROI smoke
+        run: |
+          python -u .github/scripts/candidate_discovery_multibet_roi_k_pg.py | tee candidate-discovery-multibet-roi-k.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_ODDS_READ=0 EV_FILTER=0$' candidate-discovery-multibet-roi-k.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-multibet-roi-k.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_PROMOTION=BLOCK_SMOKE_ONLY$' candidate-discovery-multibet-roi-k.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_RESULT=PASS_READ_ONLY$' candidate-discovery-multibet-roi-k.txt
+
+      - name: Run fixed-grid long ROI audit
+        env:
+          CANDIDATE_MULTIBET_ROI_START: '2025-07-01'
+          CANDIDATE_MULTIBET_ROI_END: '2026-09-12'
+          CANDIDATE_MULTIBET_ROI_OUTPUT: 'candidate-discovery-multibet-roi-long.json'
+          CANDIDATE_MULTIBET_K_FETCH_WORKERS: '4'
+        run: |
+          python -u .github/scripts/candidate_discovery_multibet_roi_long_pg.py | tee candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_LONG_RULE_CHANGE=0 POSTHOC_TUNING=0$' candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_LONG_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_ODDS_READ=0 EV_FILTER=0$' candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_PROMOTION=BLOCK_SMOKE_ONLY$' candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_ROI_RESULT=PASS_READ_ONLY$' candidate-discovery-multibet-roi-long.txt
+          grep -q '^CANDIDATE_MULTIBET_LONG_RESULT=PASS_READ_ONLY$' candidate-discovery-multibet-roi-long.txt
+
+      - name: Upload ROI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-multibet-roi-${{ github.run_id }}
+          path: |
+            candidate-discovery-multibet-roi-k.json
+            candidate-discovery-multibet-roi-k.txt
+            candidate-discovery-multibet-roi-long.json
+            candidate-discovery-multibet-roi-long.txt
+          retention-days: 30
+          if-no-files-found: error

@@ -1,164 +1,154 @@
 # boat-ai-v2 — ChatGPT Lightweight Bootstrap
 
-更新日時: 2026-08-31 JST
+更新日時: 2026-09-13 JST
 
-このファイルは、新しいChatGPTプロジェクト／新しいチャットが**最初に読む唯一の常設入口**。
-過去チャット No.1〜No.6 の全文を引き継がず、GitHubに圧縮した「現在状態」から再開する。
+このファイルは、新しいChatGPTチャットが最初に読む軽量入口です。詳細は必要な範囲だけ `docs/PROJECT_HANDOFF.md` とPR #351を参照してください。
 
 ## 0. 最重要ルール
 
-- 開始時に読むのは原則このファイルだけ。
-- `PROJECT_HANDOFF.md` / `PROJECT_HISTORY.md` / `DEVELOPMENT_STATUS.md` を開始時に全文取得しない。
-- GitHub Issue #42 のコメント全件を取得しない。
-- 必要な過去情報は、対象機能名・PR番号・日付・エラー名で**部分検索**する。
-- 新しいチャットへ「前のチャットを引き継いで」と依頼しない。
-- No.1〜No.6 はArchive扱い。通常運用では読み込まない。
-- このファイルに書かれたSHA・件数はcheckpoint。再開時にはcurrent値を再取得する。
-- 安全なmaintenance writeは、ChatGPTが直前に対象・範囲・影響を1件に限定して明示した場合、ユーザーの「続けて」「進めて」「実行して」等の明確な自然言語承認を、その1件に限る明示承認として扱ってよい。ChatGPTは既存workflowが要求する完全一致commandへ変換してIssue #42へ投稿する。
-- 上記の承認は**単発・非再利用**。別の日付・別operation・追加writeには自動継承しない。
-- destructive/high-impact操作（service/volume/backupのdelete・restore・rename、Railway Variables/Cron/Start Command変更、DB service mutation、schema destructive migration、Production model/LINE/BUY-WATCH-SKIP/thresholds/coefficients変更、PR #169 activation、main merge）は自然言語の「続けて」へ自動変換せず、対象操作を明示した個別承認を必要とする。
+- 最初にcurrent GitHub `main`、open PR、PR #351 head/Actionsを再取得する。
+- SHA・件数・CI状態はcheckpointであり固定値ではない。
+- GitHub `main` = Production code Source of Truth。
+- Railway PostgreSQL = Production data Source of Truth。
+- mainへ直接編集しない。原則 `branch → Draft PR → CI → review → merge`。
+- 安全なread-only監査、研究コード、Draft PR、CI、文書整理は連続して進めてよい。
+- Production merge、Railway Production変更、Production DB write/delete/schema/VACUUM、model/係数/閾値/候補判定変更、実LINE、Forward persistence、自動購入、有料契約・外部問い合わせは明示承認が必要。
+- `purchase_action=false`、fail-closed、no-future-leakageを維持する。
+- 結果を見た後に同じ実験の条件をretuneしない。
 
-## 1. Source of Truth
+## 1. Current checkpoint
 
-### Code
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- code Source of Truth: **GitHub main**
-- mainへ直接書かない。
-- 原則: branch → Draft PR → CI → review → ready → merge。
-
-### Production data
+- handoff時 main: `8abbb0186852969129175848ee106118031f97e4`
 - Railway project: `boat-v2-postgres`
-- data Source of Truth: **Railway PostgreSQL**
-- Supabaseは削除済み。使用しない。
-- 正しい出走表テーブル: **`v2_race_entries`**
+- Production DB service: `postgres-recovery`
+- Primary research: Draft PR #351 `Research: Candidate Discovery main feed (V1-V4)`
+- Branch: `research/candidate-discovery-v1-20260913`
+- PROJECT_HANDOFF更新commit: `e273a767b0ed4afa1c5034fa9b9eb27ab2ca6d2c`
 
-## 2. Current checkpoint
+再開時は上記を必ずcurrent値と照合する。
 
-Current main checkpoint:
-- `92905b92e83b4ab39922a99ab91b148906b04506`
-- startup時は必ずcurrent mainを再取得する。
+## 2. Current strategy
 
-Persistent HOLD:
-- **#169** `Draft: temporary 10-minute base-odds refresh`
-- HOLD。明確なprediction / learning valueなしにmergeしない。
+競艇を最優先とする。
 
-## 3. Railway / PostgreSQL current topology
+- 新しい Candidate Discovery を将来の主候補システムとして育てる。
+- 現行v24は当面benchmark/referenceとして残す。
+- **候補feedと購入判断を分離する。**
+- EVや絶対オッズ帯で候補を極端に減らさない。
+- 現行S01-S05はlegacy/reference carryoverとして比較する。
+- Production Candidate Discoveryはまだ未導入。
 
-2026-08-31 Stage 2復旧後:
-- DB実体: **`postgres-recovery`**
-- compatibility namespace: **`postgres`**
-- preserved volume: **`postgres-volume`** → `postgres-recovery` に接続
-- PostgreSQL: **18.6**
-- deleted deploymentのpinned image digestを使用
-- consumer DATABASE_URLは `postgres-recovery` へのRailway Referenceへrelink済み
-- checkpointでは15 services / DB references resolved / application・cron SUCCESS
-- Railway Project Tokenは2026-08-31に実接続確認済み。inventory/configでproduction 15/15 servicesを取得できる。
-- ChatGPT管理Bridgeはread-onlyのinventory/config/Variable key・safe value/logs/deploymentsに加え、allowlisted non-DB serviceのrestart/redeploy、既存cron serviceのCron変更、repo内.pyへのStart Command変更、non-secret operational Variable設定をguarded operationとして扱う。
-- Variable setは`--skip-deploys`。反映のrestart/redeployは別operation。
-- secret-like Variable、model/LINE/threshold Variable、DB service mutation、任意shell、service/volume/backup destructive操作はBridgeで禁止。
+## 3. Candidate Discovery V4
 
-**この二層構成を、明確なmigration planなしにrename/delete/統合しない。**
-Volume / backupをwipe/delete/restoreしない。
+Stage 1 main feed:
 
-運用詳細が必要な時だけ `docs/OPS_STATE.md` を読む。
+- TOP6 races/day × TOP2 trifecta tickets/race
+- Course `0.50`, missing lane neutral
+- Opponent Pressure `1.0`, first-place-only
+- Motor2 beta `0.06`, position weights `1.0 / 0.6 / 0.3`
+- four equal-weight structural race metrics
+- no EV gate
+- no absolute odds eligibility gate
 
-## 4. Production prediction invariants
+Stage 2:
 
-Production本線:
-- v24 PRE
-- FINAL realtime
-- LINE
-- BUY / WATCH / SKIP
+- late Bao / market corroborationはタグのみ。
+- Stage-1候補を削除しない。
+- Bao disagreementでも候補feedを維持する。
 
-研究機能はProductionと分離。
-OOS / walk-forward / Forward / live evidenceなしに昇格しない。
+詳細:
+- `docs/CANDIDATE_DISCOVERY_V4_CONTRACT_20260913.md`
+- `docs/CANDIDATE_DISCOVERY_TWO_STAGE_ARCHITECTURE_20260913.md`
 
-このBootstrap作成時点で、以下は勝手に変更しない:
-- v24 / FINAL logic
-- LINE
-- BUY / WATCH / SKIP
-- thresholds / coefficients
-- N01 / N02
-- Bao
-- PR #169
-- Railway Variables / schedules
+## 4. Official Forward freeze — 2026-09-13
 
-## 5. Active operational checkpoint
+結果確定前のofficial freeze:
 
-2026-08-28〜30のDB障害復旧:
-- 8/28: repair完了
-- 8/29: repair完了
-- 8/30: guarded repair完了。DB障害復旧は**CLOSED with documented K0 exceptions**。
-- 8/30 races/results/weatherは完全。oddsは complete=164 / partial=2 / zero=2。
-- 8/30の4例外は `20260830_05_08`, `20260830_05_10`, `20260830_19_10`, `20260830_23_11`。全て1艇K0欠場。
-- official beforeinfoはこの4Rの展示情報を持たず、DB historical exhibition=984はbeforeinfo可用範囲と一致。
-- official K sourceは同4Rに各5艇、計20行の展示情報を持つが、Exhibition ST formal evidenceは**official beforeinfo only**のため通常historical beforeinfoへ混入させない。
-- zero-odds 2R (`05_08`, `19_10`) は現行公式odds3tページでも parsed=0。追加repair根拠なし。
-- 8/30へ追加DB writeを行わない。新しい公式source/evidenceが出た場合のみ再検討。
+- Actions run `34726186753`
+- 約08:44 JST
+- V4 core 6 races / 12 tickets
+- legacy 2 races / 2 tickets
+- total 8 races / 14 tickets
+- Artifact ID `10308110102`
+- ZIP SHA-256 `3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236`
+- JSON SHA-256 `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
 
-Current live Ops:
-- 2026-08-31 day windowのbounded base-odds refreshは成功。6R / saved 360 rows / fetch_failed=0 / complete_expected=6。
-- refresh後の10〜60分scopeは incomplete=0。
-- `today-health` はPASS_READ_ONLY。ただし過去締切済みのmorning/day odds gapは残るため、**DB障害復旧とは別のlive odds acquisition reliability課題**として扱う。
-- PR #169はHOLDのまま。自動有効化しない。
+評価時はexact frozen Artifactを使用し、再生成しない。
 
-重要:
-- Issue #42を全文取得しない。必要commandの新しい結果だけ扱う。
-- LINE / model / Shadow / Forward evidenceを障害補修で再生成しない。
+詳細: `docs/CANDIDATE_DISCOVERY_FORWARD_20260913.md`
 
-次の安全な運用順:
-1. current main / open PRを短く確認
-2. Ops作業なら `OPS_STATE.md` を読む
-3. live oddsは `today-health` → `window-refresh-plan` → 必要時だけlive probe
-4. bounded maintenance writeが必要ならsingle-use承認で実行し、直後にread-only再監査
-5. 8/30 outage repairへ戻らず、通常pipeline安定確認後は研究ラインへ戻る
+## 5. Backtest conclusions
 
-## 6. Research current summary
+過去データbacktest / walk-forward / time-splitを実施済み。
 
-詳細が必要な時だけ `docs/RESEARCH_STATE.md` を読む。
+- V1 ROI ~66-71%: candidate discoveryには使えるが購入ロジック不可。
+- V2: small formationでhit rateは上がるがROI <100%。
+- V3: 約8 candidates/day、ROI ~63.7%。
+- 3連単 / 2連単 / 3連複 × TOP1/2/3/5 + coverage 20/35/50 を100円/点で比較済み。
+- 2連単・3連複はhit rate/連敗耐性を改善するが、券種変更だけでは長期収支は黒字化しない。
+- 30日で約102%だったA+B×3連複TOP1は長期1,733 racesでROI約83.01%、-29,440円。採用しない。
+- 長期predeclared gridにROI 100%超セルなし。
 
-- Opponent Pressure head-only: research only / Production BLOCK
-- GUARD05: Forward Shadow / Production BLOCK
-- Exhibition ST beta=-0.02: Forward Shadow / Production BLOCK
-- Racer Course Top3 coefficient=0.50: Forward Shadow / Production BLOCK
-- Bao: formal gate待ち / automatic promotion禁止
-- N02: fixed rule維持 / 後付け条件変更禁止
-- 馬王型: 補助研究。v24 raw probabilityをそのままEVへ使わない
+券種・点数・Tierを結果後に後付けで切り直さない。
 
-## 7. Archive / deep-history usage
+## 6. Prospective market hypothesis
 
-必要な場合のみ:
-- `docs/PROJECT_HANDOFF.md`: 詳細な現在地・過去マイルストーン
-- `docs/PROJECT_HISTORY.md`: 採用/却下理由
-- `docs/DEVELOPMENT_STATUS.md`: 実験詳細
-- `docs/archive/CHATGPT_PROJECT_MIGRATION_LEGACY_20260831.md`: 旧ChatGPT移行文書
-- GitHub PR / commit / Issue #42: 必要な対象だけ
+固定研究仮説:
 
-**全文を一括で読まず、検索語・section・line rangeを限定する。**
+`MKT_LATE07_TOP2_SUPPORT_V1`
 
-## 8. New chat startup sequence
+- start: **2026-09-14 JST**
+- inherited Bao late window: 0-7 minutes predeadline
+- rule: structural candidateをmarket TOP2も支持するか
+- candidate feedを削らない。独立タグ研究。
+- 2026-09-13をprospective実績へ後付け算入しない。
+- review at 30 / 50 / 100 evaluated opportunities
+- window / TOP2定義 / thresholdを途中変更しない。
+
+30日proxyでは小標本ながら:
+
+- trifecta TOP2 support: 34 races / ROI ~107.94%
+- trio TOP2 support: 47 races / ROI ~109.15%
+
+これはPromotion根拠ではない。Forward再現性が必要。
+
+関連:
+- `docs/CANDIDATE_DISCOVERY_MARKET_CORROBORATION_FORWARD_20260914.md`
+- `docs/CANDIDATE_DISCOVERY_MARKET_FORWARD_EVAL_CONTRACT_20260913.md`
+- `research/candidate_discovery_market_annotation_contract.py`
+- `research/candidate_discovery_market_forward_metrics.py`
+
+## 7. Next actions
+
+1. PR #351の**最新headと全Actionsを再取得**する。
+2. 最新branchのmarket annotation contract / wiring / Forward metrics CIを確認する。
+3. 古い `V4 Market Annotation Dryrun` failureを現在のfailureと決めつけない。初回failureはdocstring内語句への静的guard誤検知だった。
+4. 2026-09-14以降、Prospective market tag evidenceを固定条件のまま蓄積する。
+5. 2026-09-13 official freezeはexact Artifactで結果評価する。
+6. V4/Bao/marketのForward evidenceを30/50/100件で判定する。
+7. 十分な証拠が出た後にのみProduction promotion案を作る。実promotionには明示承認が必要。
+
+## 8. Railway / storage HOLD
+
+- 容量圧迫はあるが、予測・backtest価値のあるデータを容量目的だけで削除しない。
+- `v2_odds_trifecta` は単純削除対象ではない。
+- Motor2 older-retention実削除は効果が小さいため保留。
+- DELETEしても物理diskが即縮むとは限らない。
+- VACUUM / VACUUM FULLは未承認。
+- 新システム確立後、旧データを `still-needed / archive-only / safe-delete` に分類してから整理する。
+
+## 9. Startup sequence
 
 新しいチャットでは:
+
 1. この `CHATGPT_BOOTSTRAP.md` を読む。
-2. current main SHAとopen PRだけ確認。
-3. 今回のタスクがOpsなら `OPS_STATE.md`、研究なら `RESEARCH_STATE.md` だけ追加で読む。
-4. 過去判断が必要な場合だけHISTORY/HANDOFFを部分検索。
-5. Issue #42は必要なcommandの最新結果だけ扱う。
-6. 作業後、現在状態が変わった場合だけこのBootstrapを**上書き更新**する。
+2. `docs/PROJECT_HANDOFF.md` を読む。
+3. current `main` / PR #351 / open PR / latest Actionsを確認。
+4. 必要なresearch docsだけ読む。過去Issue/履歴を一括取得しない。
+5. safe read-only/research workは確認を挟まず続行する。
+6. Production境界へ到達した時だけ対象操作を明示して承認を取る。
 
-## 9. Context budget maintenance
+## 10. Parallel projects
 
-このファイルは履歴ログではない。
-- 目安: 150行以内
-- 過去経緯を追記し続けない
-- CURRENT / HOLD / NEXTだけ残す
-- 古くなった数値・checkpointは置換する
-- 詳細な経緯はHISTORYへ移す
-
-目的は「No.7、No.8、No.20になっても、新しいチャットを軽い状態から開始できること」。
-
-## 10. Parallel project note
-
-別repo `kenshoushouri-cloud/toto-ai-v1` は別プロジェクト。
-boat-ai-v2とDB / Variables / servicesを共有しない。
-boat作業のBootstrapへTOTOの詳細を混ぜ込まない。
+TOTO / 地方競馬等は別系統。boat-ai-v2のCandidate Discovery研究を最優先し、別repo・別DB・別Variablesを混同しない。
