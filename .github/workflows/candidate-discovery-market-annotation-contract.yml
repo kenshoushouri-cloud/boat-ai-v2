@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - 'research/candidate_discovery_market_annotation_contract.py'
+      - 'research/candidate_discovery_market_forward_annotate_pg.py'
       - 'tests/test_candidate_discovery_market_annotation_contract.py'
+      - 'tests/test_candidate_discovery_market_forward_annotate.py'
       - '.github/workflows/candidate-discovery-market-annotation-contract.yml'
 
 permissions:
@@ -23,23 +25,44 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate pure prospective annotation contract
+      - name: Validate prospective annotation contracts
         run: |
           python -m py_compile research/candidate_discovery_market_annotation_contract.py
+          python -m py_compile research/candidate_discovery_market_forward_annotate_pg.py
           python -m py_compile tests/test_candidate_discovery_market_annotation_contract.py
+          python -m py_compile tests/test_candidate_discovery_market_forward_annotate.py
           python tests/test_candidate_discovery_market_annotation_contract.py
+          python tests/test_candidate_discovery_market_forward_annotate.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('research/candidate_discovery_market_annotation_contract.py').read_text(encoding='utf-8').lower()
-          assert 'prospective_start = "2026-09-14"' in text
-          assert 'late_min_lo = 0.0' in text and 'late_min_hi = 7.0' in text
-          assert 'max_spread_seconds = 60.0' in text
-          assert 'expected_trifecta_tickets = 120' in text
-          assert 'purchase_action' in text and 'promotion_allowed' in text
+          pure=Path('research/candidate_discovery_market_annotation_contract.py').read_text(encoding='utf-8').lower()
+          runner=Path('research/candidate_discovery_market_forward_annotate_pg.py').read_text(encoding='utf-8').lower()
+          assert 'prospective_start = "2026-09-14"' in pure
+          assert 'late_min_lo = 0.0' in pure and 'late_min_hi = 7.0' in pure
+          assert 'max_spread_seconds = 60.0' in pure
+          assert 'expected_trifecta_tickets = 120' in pure
+          assert 'purchase_action' in pure and 'promotion_allowed' in pure
           for forbidden in (
               'psycopg', 'requests', 'urllib', 'v2_results', 'database_url',
               'parse_multibet_payouts', 'get_k_text(', 'delete from ', 'insert into ',
               'update v2_', 'alter table ', 'truncate ', 'vacuum '
           ):
-              assert forbidden not in text, forbidden
+              assert forbidden not in pure, forbidden
+
+          assert 'set transaction read only' in runner
+          assert 'candidate_v4_freeze_sha256' in runner
+          assert 'candidate_v4_freeze_run_id' in runner
+          assert 'candidate_v4_freeze_artifact_id' in runner
+          assert 'extract_core_top1' in runner
+          assert 'v2_realtime_odds_snapshots' in runner
+          assert 'v2_results' not in runner
+          assert 'trifecta_payout_yen' not in runner
+          assert 'result_status' not in runner and 'race_status' not in runner
+          assert '"purchase_action": false' in runner
+          assert '"promotion_allowed": false' in runner
+          for forbidden in (
+              'delete from ', 'insert into ', 'update v2_', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table '
+          ):
+              assert forbidden not in runner, forbidden
           PY
