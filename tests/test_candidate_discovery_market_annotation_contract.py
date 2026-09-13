@@ -120,6 +120,24 @@ class MarketAnnotationContractTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             annotate_feed(bad, {})
 
+    def test_prospective_pg_runner_is_hash_pinned_read_only_and_outcome_free(self):
+        text = (ROOT / "research/candidate_discovery_market_forward_annotate_pg.py").read_text(encoding="utf-8").lower()
+        self.assertIn("candidate_v4_freeze_sha256", text)
+        self.assertIn("candidate_v4_freeze_run_id", text)
+        self.assertIn("candidate_v4_freeze_artifact_id", text)
+        self.assertIn("freeze sha-256 mismatch", text)
+        self.assertIn("set transaction read only", text)
+        self.assertIn("v2_realtime_odds_snapshots", text)
+        self.assertIn("extract_core_top1", text)
+        self.assertIn("annotate_feed", text)
+        self.assertNotIn("20260913_11_02", text)
+        for forbidden in (
+            "v2_results", "trifecta_payout_yen", "result_status", "race_status",
+            "delete from ", "insert into ", "update v2_", "alter table ",
+            "drop table ", "truncate ", "vacuum ", "create table "
+        ):
+            self.assertNotIn(forbidden, text, forbidden)
+
 
 if __name__ == "__main__":
     unittest.main()
