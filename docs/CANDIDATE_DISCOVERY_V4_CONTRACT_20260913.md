@@ -41,10 +41,22 @@ For each six-lane race:
    - apply the exponential Motor2 factor to the 120-ticket distribution and renormalize.
    - if complete six-lane Motor2 evidence is unavailable, the pure contract preserves the pre-Motor distribution.
 
-6. **Candidate feed**
+6. **Daily race selection**
+   - compute the same four predeclared V2 structural metrics from each enriched 120-ticket distribution:
+     - strongest first-place lane probability;
+     - first-place probability margin over runner-up lane;
+     - probability mass of the top three exact-order tickets;
+     - distribution concentration (`1 - normalized entropy`).
+   - convert each metric to a within-day percentile rank.
+   - combine the four percentile ranks with equal weight.
+   - deterministic tie-break order: race score, head P1, top3 mass, race ID.
+   - select fixed **TOP 6 races/day**.
+
+7. **Ticket selection / candidate feed**
+   - select fixed **top 2 exact-order tickets** from the V4 probability distribution for each selected core race.
    - no `raw_ev` eligibility gate.
    - no minimum/maximum absolute odds band for candidate inclusion.
-   - provisional main-feed target remains 6 races/day and 2 tickets/race, with legacy S01-S05 carryover kept separately while the new system accumulates Forward evidence.
+   - legacy S01-S05 carryover remains separate while the new system accumulates Forward evidence.
 
 ## Candidate versus purchase separation
 
@@ -67,7 +79,12 @@ Pure implementation:
 - `tests/test_candidate_discovery_v4_contract.py`
 - `.github/workflows/candidate-discovery-v4-contract.yml`
 
-The pure contract contains no DB, network, Railway, LINE, or purchase integration. Tests explicitly lock the head-only Opponent behavior: changing P(first) must not change the relative second/third conditional ratios for a fixed first-place lane.
+The pure contract contains no DB, network, Railway, LINE, or purchase integration. Tests explicitly lock:
+- Course neutral-missing behavior;
+- fixed Opponent head-only behavior;
+- unchanged second/third conditional ratios for a fixed first-place lane;
+- fixed `TOP6 races/day × TOP2 tickets/race` daily selection;
+- normalized 120-ticket probability mass.
 
 A direct integrated live-DB V4 evaluator was not added after the platform safety layer blocked that path; no bypass is permitted.
 
@@ -84,4 +101,4 @@ No Production promotion is implied by a successful pure contract. Before any Pro
 - realized flat-stake ROI as a diagnostic, without using ROI to rewrite already-frozen candidate rules;
 - timing integrity and missing-data behavior.
 
-`RESEARCH_ONLY / FIXED_COURSE_0.50 / FIXED_OPPONENT_HEAD_ONLY_1.0 / FIXED_MOTOR2_0.06 / NO_EV_GATE / NO_ABSOLUTE_ODDS_GATE / PURCHASE_ACTION_FALSE / NO_PRODUCTION_CHANGE`
+`RESEARCH_ONLY / FIXED_TOP6_X_TOP2 / FIXED_COURSE_0.50 / FIXED_OPPONENT_HEAD_ONLY_1.0 / FIXED_MOTOR2_0.06 / NO_EV_GATE / NO_ABSOLUTE_ODDS_GATE / PURCHASE_ACTION_FALSE / NO_PRODUCTION_CHANGE`
