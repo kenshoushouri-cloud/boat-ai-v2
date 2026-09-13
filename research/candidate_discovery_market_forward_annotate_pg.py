@@ -87,7 +87,8 @@ def _fetch_valid_labels(
                      count(distinct o.ticket)::bigint ticket_count,
                      count(*) filter (where o.odds is not null and o.odds > 1.0)::bigint positive_odds_count,
                      min(o.snapshot_at) first_snapshot_at,
-                     max(o.snapshot_at) last_snapshot_at
+                     max(o.snapshot_at) last_snapshot_at,
+                     max(o.updated_at) last_updated_at
                 from v2_races r
                 join v2_realtime_odds_snapshots o on o.race_id=r.race_id
                where r.race_id=any(%s)
@@ -103,13 +104,14 @@ def _fetch_valid_labels(
                  and ticket_count=%s
                  and positive_odds_count=%s
                  and last_snapshot_at <= deadline_at
+                 and last_updated_at <= deadline_at
                  and extract(epoch from (last_snapshot_at-first_snapshot_at)) <= %s
             ), late as (
               select * from valid
                where lead_minutes >= %s and lead_minutes <= %s
             )
             select distinct on (race_id)
-                   race_id,snapshot_label,last_snapshot_at,lead_minutes,spread_seconds
+                   race_id,snapshot_label,last_snapshot_at,last_updated_at,lead_minutes,spread_seconds
               from late
              order by race_id,last_snapshot_at desc,snapshot_label
             """,
@@ -168,6 +170,7 @@ def _market_input(
             "spread_seconds": float(label["spread_seconds"]),
             "snapshot_label": str(label["snapshot_label"]),
             "snapshot_at": str(label["last_snapshot_at"]),
+            "updated_at": str(label["last_updated_at"]),
             "odds": odds,
         }
     return result
@@ -209,6 +212,7 @@ def main() -> None:
         label = labels.get(str(row["race_id"]))
         row["snapshot_label"] = str(label["snapshot_label"]) if label else None
         row["snapshot_at"] = str(label["last_snapshot_at"]) if label else None
+        row["updated_at"] = str(label["last_updated_at"]) if label else None
         row["lead_minutes"] = round(float(label["lead_minutes"]), 3) if label else None
         row["spread_seconds"] = round(float(label["spread_seconds"]), 3) if label else None
 
