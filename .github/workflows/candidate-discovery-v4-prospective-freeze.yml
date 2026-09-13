@@ -14,6 +14,10 @@ on:
         description: 'YYYY-MM-DD current JST Forward date'
         required: true
         type: string
+  # 23:15 UTC = 08:15 JST. The wrapper itself fails closed unless it starts
+  # after the 08:15 source cutoff and finishes before the earliest feed deadline.
+  schedule:
+    - cron: '15 23 * * *'
 
 permissions:
   contents: read
@@ -53,10 +57,13 @@ jobs:
               'drop table ', 'truncate ', 'vacuum ', 'create table '
           ):
               assert forbidden not in text, forbidden
+          workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
+          assert "cron: '15 23 * * *'" in workflow
+          assert "github.event_name == 'schedule'" in workflow
           PY
 
   freeze:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -94,6 +101,8 @@ jobs:
           PY
       - name: Run timestamp-proven pre-result V4 freeze
         env:
+          # workflow_dispatch supplies an explicit date. Scheduled runs leave this
+          # blank, and the wrapper derives the current JST date fail-closed.
           CANDIDATE_V4_DATE: ${{ inputs.target_date }}
           CANDIDATE_V4_RAW_OUTPUT: candidate-discovery-v4-main-feed.raw.json
           CANDIDATE_V4_PROSPECTIVE_OUTPUT: candidate-discovery-v4-prospective-freeze.json
