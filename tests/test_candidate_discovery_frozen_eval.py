@@ -95,6 +95,14 @@ class CandidateDiscoveryFrozenEvalTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             mod.validate_frozen_feed(bad)
 
+    def test_source_requires_official_positive_results(self):
+        text = SCRIPT.read_text(encoding="utf-8").lower()
+        self.assertIn("result_status='official'", text)
+        self.assertIn("race_status='official'", text)
+        self.assertIn("trifecta_payout_yen > 0", text)
+        self.assertIn('item.get("result_status") != "official"', text)
+        self.assertIn('item.get("race_status") != "official"', text)
+
     def test_source_is_read_only(self):
         text = SCRIPT.read_text(encoding="utf-8").lower()
         self.assertIn("set transaction read only", text)
