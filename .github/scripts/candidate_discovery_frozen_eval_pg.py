@@ -93,7 +93,11 @@ def load_results(conn: psycopg.Connection[Any], race_ids: list[str]) -> dict[str
         cur.execute(
             """select race_id,trifecta_ticket,trifecta_payout_yen,result_status,race_status
                  from v2_results
-                where race_id=any(%s)""",
+                where race_id=any(%s)
+                  and result_status='official'
+                  and race_status='official'
+                  and trifecta_ticket is not null
+                  and trifecta_payout_yen > 0""",
             (race_ids,),
         )
         out = {}
@@ -107,6 +111,10 @@ def load_results(conn: psycopg.Connection[Any], race_ids: list[str]) -> dict[str
             try:
                 item["trifecta_payout_yen"] = int(payout)
             except Exception:
+                continue
+            if item["trifecta_payout_yen"] <= 0:
+                continue
+            if item.get("result_status") != "official" or item.get("race_status") != "official":
                 continue
             out[str(item["race_id"])] = item
         return out
