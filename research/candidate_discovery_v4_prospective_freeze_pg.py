@@ -4,7 +4,8 @@
 This wrapper runs the integrated V4 candidate generator without changing the
 candidate formula, then fails closed unless the artifact was actually generated
 on the target JST date, after the fixed 08:15 source cutoff, from a complete
-race-card universe, and before the earliest selected core-race deadline.
+race-card universe, and before the earliest deadline anywhere in the frozen feed
+(core or legacy carryover).
 
 It never reads outcomes/payouts, never writes the database, never sends LINE,
 and never authorizes purchase or Production promotion.
@@ -38,10 +39,19 @@ CORE_RACES = 6
 CORE_TICKETS = 12
 
 
+def _jst(value: datetime) -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise RuntimeError("freeze timestamps must be timezone-aware")
+    return value.astimezone(JST)
+
+
 def _aware(value: Any) -> datetime:
     if not value:
-        raise RuntimeError("core deadline missing")
-    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        raise RuntimeError("feed deadline missing")
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception as exc:
+        raise RuntimeError(f"invalid feed deadline: {value}") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=JST)
     return dt.astimezone(JST)
@@ -53,6 +63,20 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _validate_start(started: datetime) -> datetime:
+    started = _jst(started)
+    cutoff = datetime.combine(TARGET_DATE, SOURCE_CUTOFF, tzinfo=JST)
+    if started.date() != TARGET_DATE:
+        raise RuntimeError(
+            f"prospective freeze target must equal current JST date: target={TARGET_DATE} now={started.date()}"
+        )
+    if started < cutoff:
+        raise RuntimeError(
+            f"prospective freeze started before source cutoff: started={started.isoformat()} cutoff={cutoff.isoformat()}"
+        )
+    return cutoff
 
 
 def _validate_generated(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -75,12 +99,13 @@ def _validate_generated(data: dict[str, Any]) -> list[dict[str, Any]]:
         raise RuntimeError("V4 core ticket count mismatch")
 
     feed = data.get("feed")
-    if not isinstance(feed, list):
+    if not isinstance(feed, list) or not feed:
         raise RuntimeError("V4 feed list required")
+    if any(not isinstance(row, dict) or not row.get("deadline_at") for row in feed):
+        raise RuntimeError("every frozen feed row requires a deadline")
     core = [
         row for row in feed
-        if isinstance(row, dict)
-        and not bool(row.get("legacy_carryover"))
+        if not bool(row.get("legacy_carryover"))
         and row.get("daily_rank") is not None
     ]
     if len(core) != CORE_RACES:
@@ -98,6 +123,29 @@ def _validate_generated(data: dict[str, Any]) -> list[dict[str, Any]]:
     return core
 
 
+def _validate_finish(
+    started: datetime,
+    completed: datetime,
+    data: dict[str, Any],
+    core: list[dict[str, Any]],
+) -> tuple[datetime, datetime]:
+    started = _jst(started)
+    completed = _jst(completed)
+    if completed < started:
+        raise RuntimeError("freeze completion precedes freeze start")
+    feed = data.get("feed") or []
+    core_deadlines = [_aware(row.get("deadline_at")) for row in core]
+    feed_deadlines = [_aware(row.get("deadline_at")) for row in feed]
+    earliest_core = min(core_deadlines)
+    earliest_feed = min(feed_deadlines)
+    if started >= earliest_feed or completed >= earliest_feed:
+        raise RuntimeError(
+            "prospective freeze was not completed before earliest frozen-feed deadline: "
+            f"started={started.isoformat()} completed={completed.isoformat()} earliest={earliest_feed.isoformat()}"
+        )
+    return earliest_core, earliest_feed
+
+
 def main() -> None:
     if not (os.getenv("DATABASE_URL") or "").strip():
         raise RuntimeError("DATABASE_URL required")
@@ -105,15 +153,7 @@ def main() -> None:
         raise RuntimeError("raw and final freeze output paths must differ")
 
     started = datetime.now(JST)
-    cutoff = datetime.combine(TARGET_DATE, SOURCE_CUTOFF, tzinfo=JST)
-    if started.date() != TARGET_DATE:
-        raise RuntimeError(
-            f"prospective freeze target must equal current JST date: target={TARGET_DATE} now={started.date()}"
-        )
-    if started < cutoff:
-        raise RuntimeError(
-            f"prospective freeze started before source cutoff: started={started.isoformat()} cutoff={cutoff.isoformat()}"
-        )
+    cutoff = _validate_start(started)
 
     env = dict(os.environ)
     env["CANDIDATE_V4_DATE"] = TARGET_DATE.isoformat()
@@ -130,13 +170,7 @@ def main() -> None:
     if not isinstance(data, dict):
         raise RuntimeError("generated V4 artifact must be a JSON object")
     core = _validate_generated(data)
-    deadlines = [_aware(row.get("deadline_at")) for row in core]
-    earliest = min(deadlines)
-    if started >= earliest or completed >= earliest:
-        raise RuntimeError(
-            "prospective freeze was not completed before earliest selected core deadline: "
-            f"started={started.isoformat()} completed={completed.isoformat()} earliest={earliest.isoformat()}"
-        )
+    earliest_core, earliest_feed = _validate_finish(started, completed, data, core)
 
     data["generated_at_jst"] = completed.isoformat()
     data["prospective_evidence_eligible"] = True
@@ -147,8 +181,10 @@ def main() -> None:
         "started_at_jst": started.isoformat(),
         "completed_at_jst": completed.isoformat(),
         "source_cutoff_at_jst": cutoff.isoformat(),
-        "earliest_core_deadline_at_jst": earliest.isoformat(),
+        "earliest_core_deadline_at_jst": earliest_core.isoformat(),
+        "earliest_feed_deadline_at_jst": earliest_feed.isoformat(),
         "race_universe_complete": True,
+        "all_frozen_rows_pre_deadline": True,
         "prospective_evidence_eligible": True,
         "outcome_read": False,
         "payout_read": False,
@@ -160,7 +196,8 @@ def main() -> None:
     )
     digest = _sha256(OUTPUT)
     print(f"CANDIDATE_V4_PROSPECTIVE_COMPLETED_AT_JST={completed.isoformat()}", flush=True)
-    print(f"CANDIDATE_V4_PROSPECTIVE_EARLIEST_CORE_DEADLINE_JST={earliest.isoformat()}", flush=True)
+    print(f"CANDIDATE_V4_PROSPECTIVE_EARLIEST_CORE_DEADLINE_JST={earliest_core.isoformat()}", flush=True)
+    print(f"CANDIDATE_V4_PROSPECTIVE_EARLIEST_FEED_DEADLINE_JST={earliest_feed.isoformat()}", flush=True)
     print(f"CANDIDATE_V4_PROSPECTIVE_JSON_SHA256={digest}", flush=True)
     print("CANDIDATE_V4_PROSPECTIVE_EVIDENCE_ELIGIBLE=true", flush=True)
     print("CANDIDATE_V4_PROSPECTIVE_PURCHASE_ACTION=false", flush=True)

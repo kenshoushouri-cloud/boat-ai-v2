@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research/candidate_discovery_v4_prospective_freeze_pg.py'
+      - 'tests/test_candidate_discovery_v4_prospective_freeze.py'
       - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
       - 'research/candidate_discovery_v4_contract.py'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
@@ -36,12 +37,14 @@ jobs:
       - name: Validate prospective freeze wrapper safety
         run: |
           python -m py_compile research/candidate_discovery_v4_prospective_freeze_pg.py
+          python tests/test_candidate_discovery_v4_prospective_freeze.py
           python - <<'PY'
           from pathlib import Path
           text=Path('research/candidate_discovery_v4_prospective_freeze_pg.py').read_text(encoding='utf-8').lower()
           assert 'prospective_evidence_eligible' in text
           assert 'source_cutoff' in text
           assert 'earliest_core_deadline' in text
+          assert 'earliest_feed_deadline' in text
           assert 'race universe incomplete' in text
           assert 'candidate_discovery_v4_main_feed_pg.py' in text
           for forbidden in (
@@ -108,6 +111,7 @@ jobs:
           assert data['contract']=='candidate_discovery_v4_main_feed_v1'
           assert data['prospective_evidence_eligible'] is True
           assert data['freeze_provenance']['mode']=='prospective'
+          assert data['freeze_provenance']['all_frozen_rows_pre_deadline'] is True
           assert data['freeze_provenance']['prospective_evidence_eligible'] is True
           assert data['purchase_action'] is False
           digest=hashlib.sha256(p.read_bytes()).hexdigest()
