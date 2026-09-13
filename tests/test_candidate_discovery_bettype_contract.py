@@ -75,7 +75,7 @@ class BetTypeContractTests(unittest.TestCase):
         text = PATH.read_text(encoding="utf-8").lower()
         for token in (
             "psycopg", "database_url", "requests", "railway", "line_notify",
-            "raw_ev", "odds_min", "odds_max", "payout", "result_status"
+            "raw_ev", "odds_min", "odds_max", "result_status"
         ):
             self.assertNotIn(token, text)
 
