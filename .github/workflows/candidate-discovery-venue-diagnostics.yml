@@ -1,0 +1,44 @@
+name: Candidate Discovery Venue Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_venue_diagnostics.py'
+      - 'tests/test_candidate_discovery_venue_diagnostics.py'
+      - 'docs/CANDIDATE_DISCOVERY_VENUE_DIAGNOSTICS_20260914.md'
+      - '.github/workflows/candidate-discovery-venue-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-venue-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run venue diagnostics contract tests
+        run: |
+          python -m py_compile research/candidate_discovery_venue_diagnostics.py
+          python tests/test_candidate_discovery_venue_diagnostics.py
+      - name: Enforce diagnostic-only isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('research/candidate_discovery_venue_diagnostics.py').read_text(encoding='utf-8').lower()
+          for forbidden in (
+              'psycopg', 'requests', 'httpx', 'urllib', 'subprocess',
+              'insert into ', 'update v2_', 'delete from ', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table ',
+              'line_notify', 'purchase_action=true', 'venue_exclusion_allowed": true'
+          ):
+              assert forbidden not in text, forbidden
+          assert 'venue_exclusion_allowed' in text
+          assert 'diagnostic_only_no_exclusion' in text
+          assert 'promotion_allowed' in text
+          PY
