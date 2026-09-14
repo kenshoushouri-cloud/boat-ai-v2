@@ -1,0 +1,43 @@
+name: Candidate Discovery Purchase Policy Metrics
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_purchase_policy_metrics.py'
+      - 'tests/test_candidate_discovery_purchase_policy_metrics.py'
+      - '.github/workflows/candidate-discovery-purchase-policy-metrics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-metrics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run preregistered purchase-policy metrics tests
+        run: |
+          python -m py_compile research/candidate_discovery_purchase_policy_metrics.py
+          python tests/test_candidate_discovery_purchase_policy_metrics.py
+      - name: Enforce research-only isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('research/candidate_discovery_purchase_policy_metrics.py').read_text(encoding='utf-8').lower()
+          for forbidden in (
+              'psycopg', 'requests', 'httpx', 'urllib', 'subprocess',
+              'insert into ', 'update v2_', 'delete from ', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table ',
+              'line_notify', 'purchase_action=true'
+          ):
+              assert forbidden not in text, forbidden
+          assert 'stage2 v1 accepts core_order=1 only' in text
+          assert 'promotion_allowed' in text
+          assert 'purchase_action' in text
+          PY
