@@ -1,17 +1,18 @@
 # boat-ai-v2 Current State
 
-更新日時: 2026-09-14 14:22 JST
+更新日時: 2026-09-14 19:45 JST
 
 このファイルは短い運用スナップショットです。再開時は必ずGitHub main / open PR / Railway Productionを再取得し、ここに書かれたSHAや件数を固定値だと仮定しないでください。
 
 ## Current main / open research
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- Current main: `0fadbce7b3795b455f81489acb877abdf4c6d48c`
+- Current main: `61f7d6e75629ffb549a583f00bfd5dd58c186a71`
 - PR #352: merged。minimal read-only V4 prospective freeze pathをdefault branchへ追加。
+- PR #355: **merged**。daily 08:16 JST V4 prospective freeze schedule + explicit JST target-date resolutionをdefault branchへ追加。
+- PR #354: older 08:15 schedule proposal、closed / not merged / superseded by #355。
 - Draft PR #351: open / research-only / mergeable。Candidate Discovery V1-V4 + market corroboration + evaluator/stability safety。head `110af472860bd00ae6d98835ea51b4c8d9d11825`。
 - Draft PR #357: 2026-09-13 immutable BASELINE exact eval、head `a31ed3ff8c41d4860783ffac7d467926257a5d8b`。
-- Draft PR #355: future V4 prospective freezeを08:16 JSTにscheduleする案、head `02869b57f9fad493ccce26a359be538623e5fe87`。main未merge。
 
 ## Candidate Discovery current boundary
 
@@ -30,6 +31,18 @@ Frozen Stage 2 hypothesis:
 - deadline 0..7m market TOP2 support
 - 30/50/100 exact V4 supported-case milestones
 - no post-outcome retuning
+
+## Candidate count / profit objective
+
+- Stage 1の6 races / 12 ticketsは**候補フィード**で、12点購入ノルマではない。
+- 旧システムのようにeligibleな日でも候補を過度に絞って日常的に0件になる設計は避ける。
+- complete-data / timing-safe dayでは候補を順位付きで広めに維持する。
+- source incomplete / timing guard failure時は候補数よりfail-closedを優先する。
+- 実購入点数は将来の別レイヤーで可変とし、条件不十分なら0点を許容する。
+- 日次利益を達成するまでの追い買い・閾値緩和は禁止。
+- 月間利益の基本評価目安 +30,000 JPY、stretch目標 **+50,000 JPY**。
+- 月+50,000はselectorの強制最適化条件ではない。Forward evidenceが十分に集まる前にstake/thresholdを目標利益へ合わせない。
+- 将来の100/200/300円などの可変stakeは研究候補のみ。Production購入ルール化は別承認。
 
 ## 2026-09-13 immutable baseline Forward — exact evaluation complete
 
@@ -54,19 +67,28 @@ Never regenerate or relabel the source artifact. This one BASELINE day is not su
 
 ## 2026-09-14 V4 prospective evidence
 
-PR #352 merged before morning operation and guarded workflow exists on main, but a timestamp-proven V4 pre-result freeze was not captured for 2026-09-14.
+PR #352 merged before morning operation and guarded workflow existed on main, but a timestamp-proven V4 pre-result freeze was not captured for 2026-09-14.
 
 Decision:
 - 2026-09-14 is unavailable as formal V4 prospective Forward evidence.
 - Do not reconstruct candidates after outcomes.
 - Do not count the day in V4 or `MKT_LATE07_TOP2_SUPPORT_V1` milestones.
-- Resume on the next date with a valid pre-result freeze before earliest deadline.
 
 ## Next V4 capture
 
-Draft PR #355 adds a future daily `08:16 JST` schedule and explicit JST target-date resolution while preserving all existing fail-closed guards. Related CI on head `02869b57f9fad493ccce26a359be538623e5fe87` is green.
+PR #355 is merged. Default branch now schedules Candidate Discovery V4 Prospective Freeze every day at **08:16 JST** (`16 23 * * *` UTC), one minute after the fixed 08:15 source cutoff.
 
-Because this changes the default-branch workflow schedule, it remains approval-gated and is **not merged**. If main remains unchanged on the next Forward date, capture must still be initiated manually before the earliest deadline.
+Schedule path preserves:
+- explicit current JST target date via `TZ=Asia/Tokyo date +%F`
+- read-only PostgreSQL
+- complete race universe
+- exactly 6 core races / 12 core tickets
+- all frozen rows before earliest feed deadline
+- `prospective_evidence_eligible=true`
+- `purchase_action=false`
+- no Production selector/model/threshold, DB mutation, LINE or BUY change
+
+Next eligible scheduled capture: **2026-09-15 08:16 JST**. After it runs, fix run ID / head SHA / artifact ID/name / SHA256 / target date / counts / timestamps and only count it if all prospective guards pass.
 
 ## Evaluator / metric safety
 
@@ -83,8 +105,9 @@ Project `boat-v2-postgres` read-only status at update time:
 - `postgres-recovery`: SUCCESS / 5GB volume
 - `cron-nightly-results`: 23:30 JST
 - `cron-racer-course-stats`: 07:15 JST
-- `cron-opponent-pressure-v2-live`: 07:00 JST
-- main operational services: SUCCESS
+- `cron-opponent-pressure-v2-live`: 07:00 JST / SUCCESS
+- morning/day/night/FINAL and other main operational services: SUCCESS
+- old `cron-opponent-pressure-v2-runner` has a known historical FAILED deployment; current live natural Cron is separate and healthy
 
 Do not DELETE/VACUUM or change Cron/Variables/config without explicit approval. Do not place other-sport datasets in the boat Production DB.
 
@@ -120,10 +143,12 @@ TOTO:
 
 1. Keep 9/13 exact BASELINE result frozen as BASELINE-only evidence; no retune from one day.
 2. Keep 9/14 V4 Forward missed/unavailable; never backfill it.
-3. Capture next-date V4 pre-result freeze with run/artifact/SHA provenance. #355 is approval-gated, so use manual dispatch if it is still unmerged.
+3. Verify the 2026-09-15 08:16 JST scheduled V4 pre-result freeze and lock its run/artifact/SHA provenance if all guards pass.
 4. Continue PR #351 fixed Forward evidence without retuning through 30/50/100 milestones.
-5. TOTO PR #161 evidence replay is complete; Production merge remains approval-gated.
-6. TOTO Railway: user applies only the staged accidental-service removal with 2FA, then verify original three-service state.
+5. Keep candidate generation broad enough to avoid old-system-style chronic zero-candidate output, but do not force all 12 tickets into BUY.
+6. Evaluate +30,000 JPY/month as base and +50,000 JPY/month as stretch only after enough prospective evidence; never chase a daily profit target.
+7. TOTO PR #161 evidence replay is complete; Production merge remains approval-gated.
+8. TOTO Railway: user applies only the staged accidental-service removal with 2FA, then verify original three-service state.
 
 ## Safety boundary
 
