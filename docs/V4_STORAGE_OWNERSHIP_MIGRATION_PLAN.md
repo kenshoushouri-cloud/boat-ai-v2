@@ -53,6 +53,79 @@ Important boundaries:
 - Current V4 core therefore does not directly require `v2_v24_motor2_forward_shadow`.
 - Stage2 `MKT_LATE07_TOP2_SUPPORT_V1` currently requires timing-safe `v2_realtime_odds_snapshots` and must not lose its evidence source.
 
+## Snapshot retention / waste classification
+
+The new architecture should not inherit every legacy snapshot just because it exists. The intended live flow is now:
+
+`morning structural freeze -> final pre-deadline revalidation -> future auto-purchase + LINE if eligible`
+
+The legacy morning/day/night PRE triple should therefore be treated as a retirement target once the new system is independent.
+
+### Required evidence — keep
+
+Keep these classes because they directly support reproducibility or prospective evaluation:
+
+- the morning V4 structural input provenance and frozen output;
+- the exact final-decision snapshot actually used to produce BUY/SKIP in the future system;
+- the existing Stage2 late-market snapshot needed for `MKT_LATE07_TOP2_SUPPORT_V1` until that contract is replaced;
+- settlement/results evidence and hashes needed to score frozen Forward artifacts;
+- any separately preregistered Challenger snapshot required to compare morning-filtered vs final-only evaluation.
+
+### High-confidence growth-reduction candidate — Motor2 timestamped FINAL keys
+
+Current `v25_final_realtime_pipeline_pg.py` generates a Motor2 FINAL key in `timestamped` mode as:
+
+`YYYYMMDD_final_HHMMSS`
+
+and `cron-final-check` runs every 15 minutes across the operating day. This means repeated FINAL runs can create many time-qualified Motor2 snapshot keys for the same date/race/tickets.
+
+The same code already contains a dormant `latest_per_race` mode using a stable `YYYYMMDD_final_latest` key; because the table unique key still includes race/ticket, repeated FINAL runs then update the current per-race snapshot instead of accumulating another timestamp-qualified copy.
+
+Classification:
+
+- existing timestamped Motor2 history: **archive/retention-review candidate**, not immediate delete;
+- future timestamped FINAL growth: **strong suppression candidate**;
+- switching Production to `latest_per_race`: requires separate explicit Production approval even though it is Shadow/storage behavior and does not authorize BUY/LINE/model changes.
+
+### Legacy PRE Motor2 snapshots — retirement candidate
+
+`run_window_pipeline_pg.py` currently creates time-qualified Motor2 snapshot keys for `morning`, `day`, and `night` windows. Under the agreed future architecture, all three PRE stages are not required as separate long-term evidence classes.
+
+After new-system independence and zero-consumer proof:
+
+- stop creating redundant PRE Motor2 snapshots;
+- preserve only the morning structural freeze and the final-decision evidence required by the new system;
+- archive historical PRE snapshots before bounded deletion if they remain useful for research.
+
+### Realtime trifecta odds — do not confuse repeated execution with row multiplication
+
+`v21_realtime_collector_pg_safe.py` writes `v2_realtime_odds_snapshots` through an upsert keyed by:
+
+`race_id,snapshot_label,ticket`
+
+Therefore repeated execution with the same `snapshot_label` does not intentionally create a fresh row for every 15-minute run; it updates the same logical race/label/ticket record. The ~498 MB relation should not be described as pure per-run duplication.
+
+The storage question is instead whether multiple labels/legacy windows retain overlapping versions of substantially the same market state. Before consolidation:
+
+1. inventory labels and active consumers;
+2. prove which labels are required for Stage2 and future final-decision replay;
+3. preserve the complete 120-ticket source snapshot for required checkpoints;
+4. remove/archive obsolete labels only after old/new equivalence and zero-consumer proof.
+
+### Weather / exhibition / racer / race-condition realtime histories
+
+Do not keep every legacy checkpoint online by default once the new system is independent. The preferred live retention is:
+
+- final-decision checkpoint actually used by the system;
+- explicitly preregistered research checkpoints only where they answer a defined timing hypothesis;
+- older dense histories archived externally when useful for model research.
+
+Do not reduce these to result-only storage: exhibition/ST/weather may become important final-decision features, so the source values used at decision time must remain reproducible.
+
+### Legacy decisions / notifications / candidate shadow
+
+`v2_realtime_decisions`, `v2_line_notifications`, and `v2_candidate_filter_shadow` are candidates for bounded retirement after active consumers are zero and their evidence/recovery obligations are satisfied. They are not needed merely to preserve new-system candidate quality once the new system no longer reads them.
+
 ## Target ownership split
 
 ### A. Keep online in Railway
@@ -183,4 +256,4 @@ Storage migration must preserve the provenance that keeps these evidence classes
 
 ## Current decision
 
-`COMPACT_NEW_SYSTEM_OWNERSHIP_DESIGN_APPROVED_FOR_RESEARCH / ARCHIVE_FIRST / NO_PRODUCTION_DATA_MOVE_YET / NO_DELETE_YET / NO_VACUUM_YET / NO_PLAN_DOWNGRADE_YET`
+`COMPACT_NEW_SYSTEM_OWNERSHIP_DESIGN_APPROVED_FOR_RESEARCH / REDUNDANT_SNAPSHOT_GROWTH_SUPPRESSION_PREREGISTERED / ARCHIVE_FIRST / NO_PRODUCTION_DATA_MOVE_YET / NO_DELETE_YET / NO_VACUUM_YET / NO_PLAN_DOWNGRADE_YET`
