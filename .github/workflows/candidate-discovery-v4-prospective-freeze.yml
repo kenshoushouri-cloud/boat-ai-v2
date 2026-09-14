@@ -9,10 +9,11 @@ on:
       - 'research/candidate_discovery_v4_contract.py'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
   schedule:
-    # 08:20 JST every day. The Python guard still fails closed unless the
-    # current JST date, 08:15 source cutoff, completeness, and all pre-deadline
-    # requirements are satisfied.
-    - cron: '20 23 * * *'
+    # 08:16 JST every day. This is one minute after the fixed 08:15 source
+    # cutoff, leaving more headroom before an early race deadline. The Python
+    # guard still fails closed unless the current JST date, cutoff,
+    # completeness, and all pre-deadline requirements are satisfied.
+    - cron: '16 23 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -59,7 +60,7 @@ jobs:
           ):
               assert forbidden not in text, forbidden
           workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
-          assert "cron: '20 23 * * *'" in workflow
+          assert "cron: '16 23 * * *'" in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
           assert 'TZ=Asia/Tokyo date +%F' in workflow
           PY
