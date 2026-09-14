@@ -8,6 +8,11 @@ on:
       - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
       - 'research/candidate_discovery_v4_contract.py'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
+  schedule:
+    # 08:20 JST every day. The Python guard still fails closed unless the
+    # current JST date, 08:15 source cutoff, completeness, and all pre-deadline
+    # requirements are satisfied.
+    - cron: '20 23 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -53,10 +58,14 @@ jobs:
               'drop table ', 'truncate ', 'vacuum ', 'create table '
           ):
               assert forbidden not in text, forbidden
+          workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
+          assert "cron: '20 23 * * *'" in workflow
+          assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
+          assert 'TZ=Asia/Tokyo date +%F' in workflow
           PY
 
   freeze:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -73,6 +82,21 @@ jobs:
         run: |
           pip install -r requirements.txt
           npm install --global @railway/cli
+      - name: Resolve freeze target date
+        env:
+          DISPATCH_TARGET_DATE: ${{ inputs.target_date }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            target_date="$DISPATCH_TARGET_DATE"
+          else
+            target_date="$(TZ=Asia/Tokyo date +%F)"
+          fi
+          if [ -z "$target_date" ]; then
+            echo 'target date is empty' >&2
+            exit 1
+          fi
+          echo "CANDIDATE_V4_DATE=$target_date" >> "$GITHUB_ENV"
+          echo "CANDIDATE_V4_RESOLVED_TARGET_DATE=$target_date"
       - name: Load database URL
         run: |
           railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
@@ -94,7 +118,6 @@ jobs:
           PY
       - name: Run timestamp-proven pre-result V4 freeze
         env:
-          CANDIDATE_V4_DATE: ${{ inputs.target_date }}
           CANDIDATE_V4_RAW_OUTPUT: candidate-discovery-v4-main-feed.raw.json
           CANDIDATE_V4_PROSPECTIVE_OUTPUT: candidate-discovery-v4-prospective-freeze.json
         run: |
