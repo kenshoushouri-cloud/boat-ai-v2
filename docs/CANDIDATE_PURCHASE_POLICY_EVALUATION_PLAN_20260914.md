@@ -67,11 +67,13 @@ Definition already frozen elsewhere:
 
 - timing-safe market observation 0..7 minutes before deadline;
 - TOP2 market support;
+- **only the immutable `core_order=1` ticket from each of the 6 V4 core races is annotated for Stage-2 support**;
+- the second `core_order=2` Stage-1 ticket remains part of the broad candidate feed but is not a Stage-2-supported case under V1;
 - Stage 1 candidates are not removed or reranked by Stage 2;
 - supported-case milestones 30 / 50 / 100;
 - no post-outcome retuning.
 
-This plan does not invent a new odds threshold or market cutoff.
+This plan does not invent a new odds threshold or market cutoff. Extending Stage-2 support to `core_order=2` would be a **new prospective hypothesis** and must be separately preregistered before using outcomes from that extension.
 
 ## What to measure every eligible day
 
@@ -88,8 +90,8 @@ Candidate-feed metrics:
 
 Potential-purchase metrics, still research-only:
 
-- Stage-2 supported cases;
-- supported tickets/day;
+- Stage-2 supported `core_order=1` cases;
+- supported tickets/day under the frozen Stage-2 V1 contract;
 - zero-supported-ticket days;
 - result hit/miss after official settlement;
 - flat-stake investment, return, profit and ROI;
@@ -98,7 +100,7 @@ Potential-purchase metrics, still research-only:
 - largest single-hit share of total return;
 - venue/month distribution;
 - core race-rank distribution;
-- first-ticket vs second-ticket position in each V4 race.
+- first-ticket vs second-ticket position **for the all-V4 Stage-1 diagnostic only**.
 
 A day with 12 valid Stage-1 candidates but no Stage-2 support is **not** a zero-candidate day. It is a valid candidate day with zero supported purchase opportunities under the frozen Stage-2 hypothesis.
 
@@ -108,14 +110,14 @@ Until the 30/50/100 milestones are reached, report only predeclared structural s
 
 Required views:
 
-1. all V4 core candidates — diagnostic benchmark only;
-2. `MKT_LATE07_TOP2_SUPPORT_V1` supported candidates;
+1. all V4 core candidates — 12-ticket Stage-1 diagnostic benchmark only;
+2. `MKT_LATE07_TOP2_SUPPORT_V1` supported candidates — `core_order=1` only by frozen contract;
 3. V4 race-rank buckets: 1-2 / 3-4 / 5-6;
-4. ticket position within race: TOP1 candidate ticket vs TOP2 candidate ticket;
-5. supported × race-rank bucket;
-6. supported × ticket-position bucket.
+4. all-V4 Stage-1 ticket-position diagnostic: `core_order=1` vs `core_order=2`;
+5. Stage-2 supported × race-rank bucket — still `core_order=1` only;
+6. Stage-2 coverage and zero-supported-day rate under the frozen `core_order=1` contract.
 
-These are reporting slices, not automatic BUY rules.
+These are reporting slices, not automatic BUY rules. Do **not** create a `supported × core_order=2` slice from post-outcome reconstruction; that would require a separately frozen prospective Stage-2 extension.
 
 ## Stake normalization
 
@@ -202,6 +204,7 @@ Before 100 supported prospective cases:
 - do not modify V4 coefficients because of realized payouts;
 - do not modify the 0..7 minute market window;
 - do not change TOP2 support into another market threshold based on observed ROI;
+- do not extend Stage-2 from `core_order=1` to `core_order=2` based on observed outcomes;
 - do not add an odds minimum/maximum because a small sample looks better there;
 - do not remove low-performing rank buckets after seeing outcomes;
 - do not reconstruct missed Forward days;
@@ -229,4 +232,4 @@ No change to:
 
 ## Current decision
 
-`BROAD_CANDIDATE_FEED_PRESERVE / 12_TICKETS_NOT_PURCHASE_QUOTA / ZERO_BUY_ALLOWED_WHEN_EVIDENCE_WEAK / NO_DAILY_PROFIT_CHASING / MONTHLY_30K_REFERENCE / MONTHLY_50K_STRETCH / FLAT_100_RESEARCH_NORMALIZATION / 30_50_100_MILESTONES / NO_THRESHOLD_SWEEP / NO_STAKE_RETUNE / NO_PRODUCTION_CHANGE`
+`BROAD_CANDIDATE_FEED_PRESERVE / 12_TICKETS_NOT_PURCHASE_QUOTA / STAGE2_CORE_ORDER1_ONLY / CORE_ORDER2_STAGE1_DIAGNOSTIC_ONLY / ZERO_BUY_ALLOWED_WHEN_EVIDENCE_WEAK / NO_DAILY_PROFIT_CHASING / MONTHLY_30K_REFERENCE / MONTHLY_50K_STRETCH / FLAT_100_RESEARCH_NORMALIZATION / 30_50_100_MILESTONES / NO_THRESHOLD_SWEEP / NO_STAKE_RETUNE / NO_PRODUCTION_CHANGE`
