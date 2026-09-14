@@ -1,0 +1,130 @@
+name: Storage Motor2 Bounded Cleanup Once
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/storage_motor2_bounded_cleanup_once.py'
+      - '.github/workflows/storage-motor2-bounded-cleanup-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.number == 336 && github.head_ref == 'research/storage-retention-contract-20260912'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Static fail-closed mutation boundary
+        run: |
+          python -m py_compile .github/scripts/storage_motor2_bounded_cleanup_once.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/storage_motor2_bounded_cleanup_once.py')
+          text=p.read_text(encoding='utf-8').lower()
+          assert 'expected_rows = 44203' in text
+          assert '8d178d854d7b6bfb6a5c6ffdd183e1977f8c6258bd3658c9b0f75fbbf91f203f' in text
+          assert "run_class = 'final'" in text
+          assert "window_name = 'final'" in text
+          assert 'delete from v2_v24_motor2_forward_shadow' in text
+          assert text.count('delete from ') == 1
+          for forbidden in ('vacuum', 'drop table', 'drop index', 'alter table', 'truncate ', 'update ', 'insert into', 'send_line'):
+              assert forbidden not in text, forbidden
+          print('MOTOR2_CLEANUP_STATIC_BOUNDARY=PASS')
+          PY
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Load Production database URL without publishing it
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Require fresh restorable Railway volume backup metadata
+        env:
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          python -u .github/scripts/storage_retention_backup_readonly.py | tee storage-backup-preflight.txt
+          grep -q '^STORAGE_RETENTION_BACKUP_RESULT=PASS_METADATA_VISIBLE$' storage-backup-preflight.txt
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import re
+          text=Path('storage-backup-preflight.txt').read_text(encoding='utf-8')
+          assert 'STORAGE_RETENTION_BACKUP_VOLUME=resolved:true service_match:true state:READY' in text
+          line=next((x for x in text.splitlines() if x.startswith('STORAGE_RETENTION_BACKUP=rank:1 ')), '')
+          if not line:
+              raise SystemExit('latest backup metadata missing')
+          if 'name:Manual ' not in line:
+              raise SystemExit('latest backup is not the confirmed Manual backup')
+          m=re.search(r'created_at:([^ ]+)', line)
+          if not m:
+              raise SystemExit('backup created_at missing')
+          created=datetime.fromisoformat(m.group(1).replace('Z','+00:00'))
+          floor=datetime(2026,9,14,23,27,0,tzinfo=timezone.utc)
+          if created < floor:
+              raise SystemExit(f'backup too old: {created.isoformat()}')
+          m=re.search(r'referenced_mb:(\d+)', line)
+          if not m or int(m.group(1)) < 4300:
+              raise SystemExit('backup referenced size below confirmed threshold')
+          print('MOTOR2_CLEANUP_BACKUP_GATE=PASS')
+          print('MOTOR2_CLEANUP_BACKUP_CREATED_AT='+created.isoformat())
+          PY
+
+      - name: Execute exact approved Motor2 batch
+        run: |
+          python -u .github/scripts/storage_motor2_bounded_cleanup_once.py | tee motor2-cleanup.txt
+          grep -q '^MOTOR2_CLEANUP_DELETED_ROWS=44203$' motor2-cleanup.txt
+          grep -q '^MOTOR2_CLEANUP_RESULT=SUCCESS_COMMITTED$' motor2-cleanup.txt
+
+      - name: Post-delete candidate and protected-output verification
+        env:
+          PGOPTIONS: -c default_transaction_read_only=on -c temp_file_limit=65536
+        run: |
+          python -u .github/scripts/storage_retention_candidate_digest.py | tee post-digest.txt
+          grep -q '^STORAGE_RETENTION_CONSERVATIVE_FINAL_SET=rows:0 ' post-digest.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_PROTECTED_INTERSECTION=0$' post-digest.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_AMBIGUOUS_LATEST=0$' post-digest.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=PASS_READ_ONLY$' post-digest.txt
+          python -u .github/scripts/storage_retention_output_invariance.py | tee post-invariance.txt
+          grep -q '^STORAGE_RETENTION_INVARIANCE_RESULT=PASS_READ_ONLY$' post-invariance.txt
+          grep -q '^STORAGE_RETENTION_PERFORMANCE=full:123697 retained:123697 diff:0$' post-invariance.txt
+          grep -q '^STORAGE_RETENTION_ROBUSTNESS_PRE=full:51737 retained:51737 diff:0$' post-invariance.txt
+          grep -q '^STORAGE_RETENTION_ROBUSTNESS_FINAL=full:51107 retained:51107 diff:0$' post-invariance.txt
+          grep -q '^STORAGE_RETENTION_HEALTH_LATEST_PRE=full_races:2916 retained_races:2916 group_diff:0 full_sparse_rows:51598 retained_sparse_rows:51598 row_diff:0$' post-invariance.txt
+          python -u .github/scripts/storage_retention_readonly_inventory.py | tee post-inventory.txt
+          grep -q '^STORAGE_RETENTION_COUNTS=rows:137030 ' post-inventory.txt
+          echo 'MOTOR2_CLEANUP_POSTCHECK=PASS'
+
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json storage-backup-preflight.txt motor2-cleanup.txt post-digest.txt post-invariance.txt post-inventory.txt
