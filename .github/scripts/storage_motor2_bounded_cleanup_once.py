@@ -6,8 +6,9 @@ This script is intentionally fail-closed and is only for the explicitly approved
 inside one REPEATABLE READ transaction and commits only when the exact expected
 conservative FINAL/final count + SHA-256 + scope match.
 
-It does NOT VACUUM, alter schema, touch other tables, change Railway config,
-change LINE/model/purchase behavior, or create a recurring retention job.
+It does not run storage compaction maintenance, alter schema, touch other tables,
+change Railway config, change LINE/model/purchase behavior, or create a recurring
+retention job.
 """
 from __future__ import annotations
 
