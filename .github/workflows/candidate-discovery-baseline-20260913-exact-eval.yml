@@ -1,0 +1,220 @@
+name: Candidate Discovery 2026-09-13 Baseline Exact Eval
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/candidate-discovery-baseline-20260913-exact-eval.yml'
+      - '.github/scripts/candidate_discovery_frozen_eval_pg.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+
+jobs:
+  exact-eval:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install read-only dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Verify immutable source artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/10308110102" \
+            > artifact-meta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('artifact-meta.json').read_text(encoding='utf-8'))
+          assert int(data['id']) == 10308110102
+          assert data['name'] == 'candidate-discovery-main-feed-34726186753'
+          assert data['expired'] is False
+          assert data['digest'] == 'sha256:3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236'
+          run=data.get('workflow_run') or {}
+          assert int(run.get('id') or 0) == 34726186753
+          assert run.get('head_sha') == '53506eb88e37c51b1ce9d102c44bcbe2c0fb59f3'
+          print('BASELINE_ARTIFACT_META=PASS')
+          PY
+
+      - name: Download exact immutable artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: candidate-discovery-main-feed-34726186753
+          path: frozen
+          github-token: ${{ github.token }}
+          repository: kenshoushouri-cloud/boat-ai-v2
+          run-id: 34726186753
+
+      - name: Verify frozen JSON identity and contract
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          p=Path('frozen/candidate-discovery-main-feed.json')
+          digest=hashlib.sha256(p.read_bytes()).hexdigest()
+          expected='50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c'
+          assert digest == expected, (digest, expected)
+          data=json.loads(p.read_text(encoding='utf-8'))
+          assert data['contract'] == 'candidate_discovery_main_feed_v1'
+          s=data['summary']
+          assert s['date'] == '2026-09-13'
+          assert s['scheduled_races'] == 180
+          assert s['evaluable_races'] == 180
+          assert s['core_races'] == 6
+          assert s['legacy_added_races'] == 2
+          assert s['feed_races'] == 8
+          assert s['feed_tickets'] == 14
+          assert data['mutation_performed'] is False
+          assert data['line_sent'] is False
+          assert data['purchase_action'] is False
+          Path('frozen/candidate-discovery-main-feed.json.sha256').write_text(
+              f'{expected}  candidate-discovery-main-feed.json\n', encoding='utf-8')
+          print('BASELINE_FROZEN_JSON=PASS')
+          PY
+
+      - name: Enforce evaluator read-only safety
+        run: |
+          python -m py_compile .github/scripts/candidate_discovery_frozen_eval_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/scripts/candidate_discovery_frozen_eval_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in text
+          assert "result_status='official'" in text
+          assert "race_status='official'" in text
+          assert 'trifecta_payout_yen > 0' in text
+          for token in ('delete from ', 'insert into ', 'update v2_', 'alter table ', 'drop table ', 'truncate ', 'vacuum ', 'create table '):
+              assert token not in text, token
+          PY
+
+      - name: Load Production database URL read-only
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+
+      - name: Evaluate exact frozen baseline against official results only
+        env:
+          CANDIDATE_FORWARD_INPUT: frozen/candidate-discovery-main-feed.json
+          CANDIDATE_FORWARD_HASH: frozen/candidate-discovery-main-feed.json.sha256
+          CANDIDATE_FORWARD_EVAL_OUTPUT: candidate-discovery-baseline-20260913-eval.json
+        run: |
+          python -u .github/scripts/candidate_discovery_frozen_eval_pg.py | tee candidate-discovery-baseline-20260913-eval.txt
+          grep -q '^CANDIDATE_FORWARD_SOURCE_CONTRACT=candidate_discovery_main_feed_v1$' candidate-discovery-baseline-20260913-eval.txt
+          grep -q '^CANDIDATE_FORWARD_SOURCE_SHA256=50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c$' candidate-discovery-baseline-20260913-eval.txt
+          grep -q '^CANDIDATE_FORWARD_RESULT=PASS_READ_ONLY$' candidate-discovery-baseline-20260913-eval.txt
+
+      - name: Freeze BASELINE core and legacy split
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('candidate-discovery-baseline-20260913-eval.json')
+          data=json.loads(p.read_text(encoding='utf-8'))
+          assert data['source_contract'] == 'candidate_discovery_main_feed_v1'
+          assert data['source_date'] == '2026-09-13'
+          assert data['source_sha256'] == '50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c'
+          assert data['source_prospective_evidence_eligible'] is False
+          assert data['mutation_performed'] is False
+          assert data['line_sent'] is False
+          assert data['purchase_action'] is False
+          rows=data['rows']
+          assert len(rows) == 8
+          assert all(r['status'] == 'EVALUATED' for r in rows), rows
+
+          def summarize(items):
+              races=len(items)
+              tickets=sum(len(r['tickets']) for r in items)
+              hits=sum(1 for r in items if r['hit'])
+              inv=sum(int(r['investment_yen']) for r in items)
+              ret=sum(int(r['return_yen']) for r in items)
+              return {
+                  'races': races,
+                  'tickets': tickets,
+                  'hits': hits,
+                  'hit_rate_pct': round(hits/races*100,3) if races else None,
+                  'investment_yen': inv,
+                  'return_yen': ret,
+                  'profit_yen': ret-inv,
+                  'roi_pct': round(ret/inv*100,3) if inv else None,
+              }
+
+          core=[r for r in rows if r['tier'] != 'L']
+          legacy=[r for r in rows if r['tier'] == 'L']
+          assert len(core) == 6 and sum(len(r['tickets']) for r in core) == 12
+          assert len(legacy) == 2 and sum(len(r['tickets']) for r in legacy) == 2
+          out={
+              'contract':'candidate_discovery_20260913_baseline_exact_eval_v1',
+              'classification':'BASELINE_ONLY_NOT_V4',
+              'source_run_id':34726186753,
+              'source_artifact_id':10308110102,
+              'source_zip_sha256':'3930d272fa826d907454e418f4800b3018c4fda9246933f40351311e9bfe3236',
+              'source_json_sha256':'50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c',
+              'baseline_core':summarize(core),
+              'legacy':summarize(legacy),
+              'total':summarize(rows),
+              'v4_core':{'races':0,'tickets':0,'supported_cases':0},
+              'mkt_late07_top2_support_v1_cases':0,
+              'rows':rows,
+              'mutation_performed':False,
+              'line_sent':False,
+              'purchase_action':False,
+              'production_behavior_changed':False,
+          }
+          Path('candidate-discovery-baseline-20260913-exact-eval.json').write_text(
+              json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True)+'\n', encoding='utf-8')
+          print('BASELINE_CORE_SUMMARY='+json.dumps(out['baseline_core'], sort_keys=True))
+          print('BASELINE_LEGACY_SUMMARY='+json.dumps(out['legacy'], sort_keys=True))
+          print('BASELINE_TOTAL_SUMMARY='+json.dumps(out['total'], sort_keys=True))
+          print('V4_CORE_RACES=0')
+          print('MKT_LATE07_TOP2_SUPPORT_V1_CASES=0')
+          print('BASELINE_EXACT_EVAL_RESULT=PASS_READ_ONLY')
+          PY
+
+      - name: Upload exact evaluation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-baseline-20260913-exact-eval-${{ github.run_id }}
+          path: |
+            artifact-meta.json
+            candidate-discovery-baseline-20260913-eval.json
+            candidate-discovery-baseline-20260913-eval.txt
+            candidate-discovery-baseline-20260913-exact-eval.json
+          retention-days: 90
+          if-no-files-found: error
