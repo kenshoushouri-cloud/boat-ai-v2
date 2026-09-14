@@ -105,6 +105,16 @@ Purchase-layer evaluation metrics, once a frozen rule exists:
 
 Always keep BASELINE, V4 prospective, historical replay, and Production evidence separate.
 
+## Milestone review order
+
+Use the existing prospective evidence milestones without inventing a new profit-driven stopping rule:
+
+- 30 supported evaluated cases: first sanity review; no promotion and no stake escalation from this milestone alone;
+- 50 supported evaluated cases: stability review across candidate count, ROI, drawdown and no-BUY-day behavior;
+- 100 supported evaluated cases: first point at which a separate purchase-rule experiment may be proposed, still without automatic Production promotion.
+
+If evidence is weak at a milestone, record the result as weak. Do not relax the definition to manufacture a pass.
+
 ## Stake-size boundary
 
 Until enough prospective evidence exists, evaluate ticket quality using fixed-unit accounting first. Variable stake ideas such as 100/200/300 JPY or S/A/B sizing remain research-only.
@@ -126,4 +136,4 @@ The desired end state is:
 
 Current classification:
 
-`RESEARCH_POLICY_FROZEN / CANDIDATE_FEED_NOT_PURCHASE_QUOTA / AVOID_CHRONIC_ZERO_CANDIDATE_ON_ELIGIBLE_DAYS / VARIABLE_BUY_COUNT_ALLOWED_LATER / ZERO_BUY_DAY_ALLOWED / NO_DAILY_PROFIT_CHASING / MONTHLY_30K_BASE_50K_STRETCH / NO_THRESHOLD_OR_STAKE_RETUNE_BEFORE_PROSPECTIVE_EVIDENCE / NO_PRODUCTION_CHANGE`
+`RESEARCH_POLICY_FROZEN / CANDIDATE_FEED_NOT_PURCHASE_QUOTA / AVOID_CHRONIC_ZERO_CANDIDATE_ON_ELIGIBLE_DAYS / VARIABLE_BUY_COUNT_ALLOWED_LATER / ZERO_BUY_DAY_ALLOWED / NO_DAILY_PROFIT_CHASING / MONTHLY_30K_BASE_50K_STRETCH / FIXED_30_50_100_MILESTONE_REVIEWS / NO_THRESHOLD_OR_STAKE_RETUNE_BEFORE_PROSPECTIVE_EVIDENCE / NO_PRODUCTION_CHANGE`
