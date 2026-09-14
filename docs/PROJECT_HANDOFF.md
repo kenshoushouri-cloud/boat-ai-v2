@@ -1,6 +1,6 @@
 # boat-ai-v2 Project Handoff
 
-更新: 2026-09-14 14:22 JST
+更新: 2026-09-14 19:45 JST
 
 この文書は現在地点の短い引き継ぎです。再開時は必ず GitHub `main`、open PR、Railway Production を再取得し、この文書のSHA・件数を固定値だと仮定しないでください。
 
@@ -11,11 +11,12 @@
 ## Source of Truth / current snapshot
 
 - Repository: `kenshoushouri-cloud/boat-ai-v2`
-- Current main: `0fadbce7b3795b455f81489acb877abdf4c6d48c`
+- Current main: `61f7d6e75629ffb549a583f00bfd5dd58c186a71`
 - PR #352 `Research: minimal V4 prospective freeze capture path`: **merged** 2026-09-14 06:29 JST
+- PR #355 `Research: schedule daily V4 prospective freeze`: **merged** 2026-09-14 19:32 JST、main commit `61f7d6e75629ffb549a583f00bfd5dd58c186a71`
+- PR #354: older 08:15 schedule proposal、**closed / not merged / superseded by #355**
 - Draft PR #351 `Research: Candidate Discovery main feed (V1-V4)`: open / research-only / mergeable、head `110af472860bd00ae6d98835ea51b4c8d9d11825`
 - Draft PR #357 `Research: exact-evaluate immutable 2026-09-13 BASELINE`: open / stacked research-only、head `a31ed3ff8c41d4860783ffac7d467926257a5d8b`
-- Draft PR #355 `Research: schedule daily V4 prospective freeze`: open / main base / **not merged**、head `02869b57f9fad493ccce26a359be538623e5fe87`
 - Railway project: `boat-v2-postgres`
 - Production PostgreSQL: `postgres-recovery`
 - Railway status再確認時: 主要serviceはSUCCESS、環境STAGED patchなし
@@ -62,6 +63,26 @@ Stage 2 frozen hypothesis:
 - milestone 30 / 50 / 100 supported cases
 - post-outcome retuning禁止
 
+### Candidate volume / purchase policy
+ユーザー方針として、旧システムのように候補を絞りすぎて日常的に候補ゼロになる状態は避ける。
+
+ただし、候補数を増やすためにBUY閾値を無理に緩めたり、毎日必ず12点を購入する設計にはしない。
+
+研究上の役割分離:
+- Stage 1の6 races / 12 ticketsは**候補フィード**であり購入ノルマではない。
+- complete-data / eligible dayでは候補を順位付きで広めに維持し、候補生成自体を旧システム並みに極端に絞らない。
+- source incomplete / timing guard failure時は従来どおりfail-closedを優先する。
+- 実購入は将来の別レイヤーで可変点数にする。条件不十分なら0点も許容する。
+- 「候補ゼロを避ける」ために結果を見てから閾値を下げる、追い買いする、日次利益を達成するまで買う、という設計は禁止。
+
+利益目標はselectorの事後最適化条件ではなく運用評価目標として扱う:
+- 基本評価目安: 月間 +30,000 JPY
+- stretch目標: **月間 +50,000 JPY**
+- 日次 +1,000 JPYなどの必達ルールは置かない。
+- 利益だけでなく ROI、購入回数、的中率、最大ドローダウン、連敗、月間投資額を同時評価する。
+- Forward証拠が十分に蓄積する前に賭け金や閾値を利益目標へ合わせて調整しない。
+- 将来のS/A/B等級や100/200/300円の可変stakeは研究候補に留め、Production購入ルール化は別承認とする。
+
 ### 2026-09-13 immutable BASELINE freeze / exact evaluation
 これは**V4ではなくV1/V2 main-feed baseline**。
 - source run `34726186753`
@@ -88,28 +109,28 @@ Stage 2 frozen hypothesis:
 この1日BASELINE結果だけを収益性証明や閾値・モデル調整根拠に使わない。source artifactは今後も再生成・差替え禁止。V4 Forwardや`MKT_LATE07_TOP2_SUPPORT_V1`証拠へ混ぜない。
 
 ### 2026-09-14 V4 Forward
-PR #352はmainへ入ったため、workflow `.github/workflows/candidate-discovery-v4-prospective-freeze.yml` はdefault branch上で利用可能。
-
-しかし2026-09-14のGitHub Actions監査では正式なpre-result freezeを取得できていない。
+PR #352はmainへ入ったため、workflow `.github/workflows/candidate-discovery-v4-prospective-freeze.yml` はdefault branch上で利用可能だったが、2026-09-14の正式なpre-result freezeは取得できていない。
 
 したがって:
 - **2026-09-14は正式V4 prospective Forward evidenceとして使用しない**
 - 結果後の再構築は禁止
 - diagnostic/backfillをprospective扱いしない
 - milestoneへ加算しない
-- 次のForward日から、結果前かつearliest deadline前にtimestamp-proven freezeを取得する
 
-### 次回V4 freeze運用案
-Draft PR #355は、既存fail-closed workflowへ以下を追加する研究案:
+### Daily V4 prospective freeze — merged
+PR #355は明示承認後にmainへmerge済み。
+
+Default branchの現在契約:
 - daily `08:16 JST` schedule (`16 23 * * *` UTC)
 - schedule時target dateを`TZ=Asia/Tokyo date +%F`で明示解決
-- manual `workflow_dispatch`はfallbackとして維持
-- existing current-date / 08:15 cutoff / complete universe / 6 races・12 tickets / earliest-deadline guardを維持
+- manual `workflow_dispatch`をfallbackとして維持
+- current-date / 08:15 source cutoff / complete universe / 6 races・12 tickets / earliest-feed-deadline guardを維持
+- PostgreSQLはread-only
 - DB write / LINE / BUY / Production selector変更なし
+- `prospective_evidence_eligible=true`を満たさないrunは正式証拠へ数えない
+- `purchase_action=false`
 
-#355 head `02869b57f9fad493ccce26a359be538623e5fe87`の関連CIはSUCCESS。ただしdefault-branch schedule変更なので**明示承認なしにmergeしない**。旧案#354より#355を優先して監査する。
-
-freeze成功時はrun ID / head SHA / artifact ID/name / artifact SHA256 / target date / scheduled/evaluable / core 6 races・12 tickets / legacy count / generated_at_jst / earliest deadline / `prospective_evidence_eligible=true` / `purchase_action=false`を固定する。
+次のeligible scheduled runは2026-09-15 08:16 JST。成功時はrun ID / head SHA / artifact ID/name / artifact SHA256 / target date / scheduled/evaluable / core 6 races・12 tickets / legacy count / generated_at_jst / earliest deadline / `prospective_evidence_eligible=true` / `purchase_action=false`を固定する。
 
 ## V4 safety / evaluator
 
@@ -124,12 +145,13 @@ PR #351は大きなresearch packageなので、workflow availabilityだけを理
 ## Production / data safety
 
 Railway `boat-v2-postgres`再確認時:
+- environment staged changes: **なし**
 - `postgres-recovery`: SUCCESS / 5GB volume
 - `cron-nightly-results`: `30 14 * * *` UTC = 23:30 JST
 - `cron-racer-course-stats`: 07:15 JST
-- `cron-opponent-pressure-v2-live`: 07:00 JST
-- 主要service: SUCCESS
-- environment STAGED patch: **なし**
+- `cron-opponent-pressure-v2-live`: 07:00 JST / SUCCESS
+- morning/day/night/FINAL等の主要service: SUCCESS
+- legacy `cron-opponent-pressure-v2-runner`には古いFAILED deploymentがあるが、現行live natural Cronではないため触らない
 
 容量原則:
 - 予測精度を落として容量節約しない
@@ -189,21 +211,23 @@ TOTOの詳細handoffは同repoの`docs/PROJECT_HANDOFF.md`とDraft PR #160を確
 
 ## 次の安全な優先順位
 
-1. 9/13 immutable BASELINE exact評価は完了。結果をBASELINEにのみ固定し、閾値調整根拠にしない。
+1. 9/13 immutable BASELINE exact評価はBASELINE-onlyで固定し、1日結果から閾値調整しない。
 2. 9/14 V4 prospective freezeは欠測扱い固定。後付け再構築しない。
-3. 次回Forward日から、V4 freezeを結果前に確実に取得しartifact provenanceを固定する。#355はmerge承認待ちのため、main未反映のままならmanual dispatch運用が必要。
-4. PR #351のresearch-only Forward evidenceを固定条件で継続し、30/50/100 milestoneまでthreshold retuneしない。
-5. TOTO PR #161はRound 1654 evidence replayまで完了。Production mergeは別承認。
-6. TOTO Railwayのaccidental diagnostic serviceはユーザーが2FAでその1件だけApplyした後、元の3service状態をread-only確認する。
-7. 地方競馬は権利確認前にbulk ingestしない。
+3. 2026-09-15 08:16 JSTの初回daily V4 scheduled freezeをread-only確認し、正式artifact provenanceを固定する。
+4. PR #351の研究条件を維持したまま、V4 / Stage2 Forward evidenceを30/50/100 milestoneまで蓄積し、post-outcome retuneしない。
+5. 候補フィードは広めに維持する一方、12点全購入を前提にしない。月+50,000 JPYはstretch評価目標であり、BUY閾値を強制的に緩める理由にしない。
+6. TOTO PR #161はRound 1654 evidence replayまで完了。Production mergeは別承認。
+7. TOTO Railwayのaccidental diagnostic serviceはユーザーが2FAでその1件だけApplyした後、元の3service状態をread-only確認する。
+8. 地方競馬は権利確認前にbulk ingestしない。
 
 ## Restart checklist
 
 1. boat-ai-v2 current main SHAを再取得。
-2. PR #351 / #355 / #357 / #356状態を再確認。
-3. GitHub ActionsでV4 prospective freezeの最新runを確認し、prospective provenanceを検証。
+2. PR #351 / #357 / #356状態と、#355 merged / #354 closedを再確認。
+3. GitHub ActionsでV4 prospective freezeの最新scheduled runを確認し、prospective provenanceを検証。
 4. Railway `boat-v2-postgres` status / staged changes / Postgres healthをread-only確認。
 5. `docs/PROJECT_HANDOFF.md`、`docs/CURRENT_STATE.md`、`docs/PROJECT_HISTORY.md`を読む。
 6. TOTO repo PR #161 / #162 / #160 / Railway staged removalを確認。
 7. Issue #353で地方競馬rights gateを確認。
 8. historical / BASELINE Forward / V4 Forward / Production evidenceを混同しない。
+9. 候補数目標・利益目標を、結果後の閾値最適化や強制購入の理由にしない。
