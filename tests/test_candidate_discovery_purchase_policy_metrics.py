@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from research.candidate_discovery_purchase_policy_metrics import (
     V4_FEED_CONTRACT,
