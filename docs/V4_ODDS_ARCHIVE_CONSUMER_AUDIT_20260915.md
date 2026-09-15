@@ -59,7 +59,7 @@ The current V1 read-through deliberately requires one partition to cover the req
 
 ### July base odds archive
 
-A July 2026 `v2_odds_trifecta` pilot exported and read back **588,156 rows** with exact manifest/hash verification. Pilot files were ephemeral and deleted after CI.
+A July 2026 `v2_odds_trifecta` pilot exported and read back **588,156 rows** with exact manifest/hash verification. Pilot files were ephemeral and deleted after CI. The compressed archive file was 8,138,479 bytes.
 
 ### Historical readiness
 
@@ -85,17 +85,42 @@ The original `compare_motor_boat_ab_pg.py` is run unchanged once against online 
 
 ### Historical consumer matrix run
 
-Run `34966618249` / job `104372482183` completed successfully with exact online-vs-archive stdout equality for:
+Run `34970777172` / job `104386249410` completed successfully with exact online-vs-archive stdout equality for all six unchanged historical consumers:
 
 - `backtest_prob_calibration_pg.py`
   - ready races: 4,889
   - ticket rows: 586,680
+  - stdout SHA-256: `6df845c844321f6461253c661fc7bed4954d634af0a37286207a2d2ebb91cf4d`
 - `backtest_n02_walkforward_pg.py`
+  - N02 bets: 13
+  - stdout SHA-256: `2fabb92986e6e3ba1d37826954f625d2242ac1e060ccb5f94b1a0d5464ada168`
 - `backtest_n02_rolling_pg.py`
+  - N02 bets: 13
+  - stdout SHA-256: `644af07cff830dd5457add8b22a7df576c2c65b61398423f788e97ef2e0dfe14`
+- `backtest_n02_time_split_pg.py`
+  - N02 bets: 13
+  - stdout SHA-256: `33f0ab1a164799cb575bd9cba77765179a69725ff3d35b79c2d6a31b5bd20d46`
+- `backtest_n01_n02_diagnostics_pg.py`
+  - N01 bets: 25
+  - N02 bets: 13
+  - stdout SHA-256: `bbf509895835b41b4c9513e03a0ca01bc346ad56bbb23c2a3cb53a89831642f4`
 - `backtest_v24_motor2_historical_pg.py`
   - processed races: 4,853
+  - stdout SHA-256: `8859a8abdf229376d6ca7b10350b6a16f544d929992d167bd9e54133417dc228`
 
-The current branch head adds only sanitized log exposure for the N02 PASS lines; it does not relax equivalence checks or change Production code.
+`PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY` was reached only after all six exact-output comparisons passed. The archive was ephemeral and removed before job exit. No Production code, DB row, model, retention rule, or configuration was changed.
+
+### Realtime historical archive export/readback matrix
+
+Run `34970777408` / job `104386249686` proved the same immutable exporter/readback contract on four July `snapshot_label=historical` realtime tables:
+
+- weather: 4,932 rows; canonical payload 20,007,229 bytes; gzip 932,162 bytes
+- exhibition: 29,274 rows; canonical payload 15,596,488 bytes; gzip 736,063 bytes
+- race condition: 4,932 rows; canonical payload 20,145,500 bytes; gzip 933,764 bytes
+- racer condition: 29,592 rows; canonical payload 18,231,834 bytes; gzip 1,176,075 bytes
+- total: 68,730 rows; canonical payload 73,981,051 bytes; gzip 3,778,064 bytes
+
+Every manifest had `readback_verified=true`, logical-key duplicate count 0, exact canonical/file SHA-256 verification, and `source_rows_deleted=false`. Combined with the July base-odds file, the five proven July archive files occupy about 11.9 MB on the ephemeral runner. This demonstrates archive feasibility; it is not a retention cutoff or a physical Railway reclaim guarantee.
 
 ## Current migration matrix
 
@@ -112,15 +137,17 @@ The current branch head adds only sanitized log exposure for the N02 PASS lines;
 | `backtest_prob_calibration_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
 | `backtest_n02_walkforward_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
 | `backtest_n02_rolling_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
+| `backtest_n02_time_split_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
+| `backtest_n01_n02_diagnostics_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
 | `backtest_v24_motor2_historical_pg.py` | historical research | yes | **ARCHIVE EQUIVALENCE PROVEN** |
-| `backtest_n02_time_split_pg.py` | historical research | yes | **NEXT MATRIX CANDIDATE; SQL SHAPE COMPATIBLE** |
-| `backtest_n01_n02_diagnostics_pg.py` | historical research | yes | **NEXT MATRIX CANDIDATE; SQL SHAPE COMPATIBLE** |
-| `backtest_candidate_filter_rules_pg.py` | historical research | yes | pending equivalence audit |
-| `backtest_v24_motor2_base_candidate_features_pg.py` | historical research | yes | pending equivalence audit |
-| `backtest_v24_motor2_low_mid_grid_pg.py` | historical research | yes | pending equivalence audit |
+| `backtest_candidate_filter_rules_pg.py` | historical research | yes | SQL shape compatible; manual research; equivalence pending |
+| `backtest_v24_motor2_base_candidate_features_pg.py` | historical research | yes | SQL shape compatible; manual research; equivalence pending |
+| `backtest_v24_motor2_low_mid_grid_pg.py` | historical research | yes | SQL shape compatible; manual/heavy research; equivalence intentionally deferred |
 | Motor2 transition / mid-veto diagnostics | historical diagnostic | indirect/base odds | pending equivalence-or-retirement review |
 | month-gap / repair utilities | maintenance | yes | review archive-aware operation vs obsolete retirement |
 | `bao-value-calibration-oos-readonly.yml` manual report | manual research | yes | archive-read-through migration required before old online rows are removed |
+
+Default-branch reference searches for the three SQL-compatible pending backtests above found only the scripts themselves and repository classification, not a scheduled Production workflow entrypoint. They are migration backlog, not evidence that all old history must stay online.
 
 The remaining direct-SQL count is a research/maintenance migration backlog, not evidence that old history must remain in the live Production working set forever.
 
@@ -208,4 +235,4 @@ No rolling-day cutoff is authorized here. A future boundary may be chosen only a
 
 ## Current decision
 
-`FULL_HISTORY_NOT_REQUIRED_BY_LIVE_LOADERS / ARCHIVE_EQUIVALENCE_PROVEN_FOR_MULTIPLE_MAJOR_RESEARCH_CONSUMERS / N02_TIME_SPLIT_AND_DIAGNOSTICS_NEXT / MANUAL_RESEARCH_WORKFLOW_REWIRE_PENDING / 30D_REFERENCE_ONLY / NO_DELETE / NO_RETENTION_CUTOFF / NO_SERVICE_CHANGE / NO_BUCKET_CREATE`
+`FULL_HISTORY_NOT_REQUIRED_BY_LIVE_LOADERS / ARCHIVE_EQUIVALENCE_PROVEN_FOR_N02_TIME_SPLIT_AND_DIAGNOSTICS / REALTIME_HISTORICAL_EXPORT_READBACK_PROVEN / MANUAL_RESEARCH_BACKLOG_REMAINS / MANUAL_RESEARCH_WORKFLOW_REWIRE_PENDING / 30D_REFERENCE_ONLY / NO_DELETE / NO_RETENTION_CUTOFF / NO_SERVICE_CHANGE / NO_BUCKET_CREATE`
