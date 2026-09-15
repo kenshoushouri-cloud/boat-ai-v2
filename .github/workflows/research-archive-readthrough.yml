@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research_archive_readthrough.py'
+      - 'research_archive_export_pg.py'
       - 'docs/V4_REALTIME_ARCHIVE_READTHROUGH_CONTRACT_20260915.md'
       - '.github/workflows/research-archive-readthrough.yml'
   workflow_dispatch:
@@ -23,12 +24,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile research helper
-        run: python -m py_compile research_archive_readthrough.py
+      - name: Compile research helpers
+        run: |
+          python -m py_compile research_archive_readthrough.py
+          python -m py_compile research_archive_export_pg.py
 
-      - name: Read-through and digest smoke test
+      - name: Read-through, digest, and exporter guard smoke test
         run: |
           python - <<'PY'
+          from datetime import date
+          from pathlib import Path
+
           from research_archive_readthrough import (
               EvidenceQuery,
               MissingEvidenceError,
@@ -36,6 +42,7 @@ jobs:
               assert_equivalent,
               canonical_rows_digest,
           )
+          from research_archive_export_pg import ExportSpec, _select_sql, canonical_line
 
           class MemorySource:
               def __init__(self, name, covered, rows):
@@ -96,5 +103,45 @@ jobs:
           else:
               raise AssertionError('missing evidence must fail closed')
 
+          spec = ExportSpec(
+              table='v2_realtime_weather_snapshots',
+              start_date=date(2026, 7, 1),
+              end_date=date(2026, 7, 31),
+              label='historical',
+              output_dir=Path('/tmp/archive-smoke'),
+          )
+          spec.validate(today=date(2026, 9, 15))
+          sql, params = _select_sql(spec)
+          assert 'v2_realtime_weather_snapshots' in sql
+          assert 'snapshot_label = %s' in sql
+          assert params[-1] == 'historical'
+
+          try:
+              ExportSpec(
+                  table='v2_realtime_weather_snapshots',
+                  start_date=date(2026, 9, 10),
+                  end_date=date(2026, 9, 10),
+                  label='historical',
+                  output_dir=Path('/tmp/archive-smoke'),
+              ).validate(today=date(2026, 9, 15))
+          except ValueError:
+              pass
+          else:
+              raise AssertionError('too-recent archive slice must fail closed')
+
+          try:
+              ExportSpec(
+                  table='v2_odds_trifecta',
+                  start_date=date(2026, 7, 1),
+                  end_date=date(2026, 7, 31),
+                  label='historical',
+                  output_dir=Path('/tmp/archive-smoke'),
+              ).validate(today=date(2026, 9, 15))
+          except ValueError:
+              pass
+          else:
+              raise AssertionError('unsupported label filter must fail closed')
+
+          assert canonical_line({'b': 2, 'a': 1}) == canonical_line({'a': 1, 'b': 2})
           print('RESEARCH_ARCHIVE_READTHROUGH_SMOKE=PASS')
           PY
