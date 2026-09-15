@@ -213,9 +213,15 @@ def _schema_rows(conn: Any, table: str) -> list[dict[str, Any]]:
 
 def _source_identity(conn: Any) -> dict[str, str]:
     with conn.cursor() as cur:
-        cur.execute("select current_database(), current_setting('server_version_num')")
-        db_name, version_num = cur.fetchone()
-    return {"database": str(db_name), "server_version_num": str(version_num)}
+        cur.execute(
+            "select current_database(), current_setting('server_version_num'), current_setting('TimeZone')"
+        )
+        db_name, version_num, session_tz = cur.fetchone()
+    return {
+        "database": str(db_name),
+        "server_version_num": str(version_num),
+        "session_timezone": str(session_tz),
+    }
 
 
 def _race_id_prefix(value: date) -> str:
@@ -337,13 +343,20 @@ def main() -> None:
         f"label={spec.label or '-'} max_days={spec.max_days} min_age_days={spec.min_age_days}",
         flush=True,
     )
-    # Connection-level default_transaction_read_only prevents accidental writes.
-    with psycopg.connect(dsn, options="-c default_transaction_read_only=on") as conn:
+    # Read-only mode blocks writes; UTC fixes timestamptz serialization for stable hashes.
+    with psycopg.connect(
+        dsn,
+        options="-c default_transaction_read_only=on -c timezone=UTC",
+    ) as conn:
         with conn.cursor() as cur:
             cur.execute("show transaction_read_only")
             state = str(cur.fetchone()[0]).lower()
             if state != "on":
                 raise RuntimeError(f"read-only guard failed: transaction_read_only={state}")
+            cur.execute("show TimeZone")
+            tz_state = str(cur.fetchone()[0])
+            if tz_state.upper() != "UTC":
+                raise RuntimeError(f"timezone guard failed: TimeZone={tz_state}")
         data_path, manifest_path, manifest = export_partition(conn, spec)
 
     print(f"archive_file={data_path}", flush=True)
