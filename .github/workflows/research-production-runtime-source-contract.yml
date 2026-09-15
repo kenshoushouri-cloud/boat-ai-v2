@@ -25,7 +25,27 @@ jobs:
       - name: Compile and run focused contract tests
         run: |
           python -m py_compile research/production_runtime_source_contract.py tests/test_production_runtime_source_contract.py
-          python -m pytest -q tests/test_production_runtime_source_contract.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tests/test_production_runtime_source_contract.py')
+          spec = importlib.util.spec_from_file_location('runtime_source_contract_tests', path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(module)
+
+          tests = [
+              (name, getattr(module, name))
+              for name in sorted(dir(module))
+              if name.startswith('test_') and callable(getattr(module, name))
+          ]
+          assert tests, 'no tests discovered'
+          for name, fn in tests:
+              fn()
+              print(f'PASS {name}')
+          print(f'RUNTIME_SOURCE_CONTRACT_TESTS={len(tests)} PASS')
+          PY
       - name: Enforce pure/offline isolation
         run: |
           python - <<'PY'
