@@ -72,11 +72,25 @@ Use a second scheduler that is operationally independent of the primary GitHub s
 2. a pre-registered exact-time orchestration task that dispatches the existing GitHub `workflow_dispatch` only when the primary run is missing;
 3. a second GitHub schedule only as a weaker fallback because it shares the same scheduler failure domain.
 
-The preregistered fallback checkpoint is **08:25 JST exactly**. Scheduler delivery may itself be late, but the intended checkpoint must not be moved later based on same-day observations. The actual run remains valid only if all original timing guards pass. The 08:25 checkpoint leaves substantial headroom before the observed 09:36 earliest deadline on the incident date; it is an operational resilience checkpoint, not a model threshold.
+The preregistered fallback checkpoint is **08:25 JST exactly**. Scheduler delivery may itself be late, but the intended checkpoint must not be moved later based on same-day observations. The actual run remains valid only if all original timing guards pass. The 08:25 checkpoint provided substantial headroom before the observed 09:36 earliest frozen-feed deadline on the 2026-09-15 incident date; that incident-specific margin must **not** be generalized into a claim that 08:25 is always safely early. The checkpoint is an operational resilience checkpoint, not a model threshold or an evidence-validity override.
 
 At the fallback checkpoint, the fallback should no-op when a valid primary artifact for the same target date is already independently observable. Otherwise it may attempt capture only while all original prospective guards can still pass. If timing is no longer safely pre-deadline, it must fail closed and mark that date unavailable.
 
 No fallback may use results, payouts, post-race data, or a reconstructed candidate set.
+
+### Timing-feasibility clarification frozen before the 2026-09-16 primary
+
+A natural 2026-09-16 data-preparation run completed before the primary and populated a full 156-race / 936-entry universe with no failed race task. The earliest prepared race deadline observed in that universe was **08:32 JST** (`20260916_14_01`). Therefore an 08:25 checkpoint can have as little as **7 minutes of worst-case wall-clock margin** if such an early race becomes part of the frozen feed.
+
+This observation was recorded before the 2026-09-16 08:16 primary and before outcomes. It does not retune the 08:25 checkpoint and does not activate fallback. It clarifies the adoption rule:
+
+- 08:25 is a fixed attempt checkpoint, not a guarantee of sufficient per-date headroom;
+- formal validity is determined only by the existing actual-start/actual-completion versus earliest-frozen-feed-deadline guard;
+- a fallback delivered late, or one whose generated feed includes a deadline too close to completion, must fail closed even if it was nominally scheduled for 08:25;
+- no same-day deadline observation may be used to move the checkpoint later or rescue an otherwise invalid capture;
+- before Production activation, fallback operational testing must demonstrate that the chosen independent scheduler and capture runtime are plausibly capable of completing within the available prospective window, while preserving the original fail-closed guard as final authority.
+
+The prepared-universe earliest deadline is not itself the formal frozen-feed deadline. The actual feed may or may not contain that race. It is used here only to reject the unsafe assumption that every date resembles the 2026-09-15 09:36 incident margin.
 
 ## Daily official-artifact rule
 
@@ -92,6 +106,18 @@ GitHub and Railway run identifiers are provider-local identifiers and must not b
 Any later valid capture is diagnostic-only and must not be mixed into formal Forward scoring.
 
 If the primary succeeds, fallback should no-op where technically possible. If duplicate execution still occurs, the earliest-valid rule removes ordinary ambiguity without changing predictions after outcomes, while payload disagreement at the same earliest timestamp remains fail-closed.
+
+## Pure artifact-arbitration contract
+
+Before the 2026-09-16 primary and before outcomes, Draft PR #364 added:
+
+- `research/candidate_discovery_v4_capture_arbiter.py`;
+- `tests/test_candidate_discovery_v4_capture_arbiter.py`;
+- `.github/workflows/candidate-discovery-v4-capture-arbiter.yml`.
+
+Focused run `35032223334` passed. Seven synthetic tests cover unique-earliest selection, same-time/same-hash duplicate collapse, same-time/different-hash fail-closed behavior, provider-run-ID non-precedence, invalid-capture rejection, cutoff/core completeness, and purchase/promotion/pre-deadline safety flags.
+
+The arbiter consumes already-produced metadata only. It does not run a capture, access Production data or providers, write files, send LINE, or authorize purchase/promotion. Passing these tests satisfies only the duplicate-selection contract-test portion of the adoption gate.
 
 ## Monitoring requirement
 
@@ -122,6 +148,7 @@ Before any fallback scheduler is activated:
 - choose exactly one independent fallback mechanism;
 - freeze its 08:25 JST checkpoint and permission boundary before the first date it can affect;
 - prove it cannot write Production DB or send LINE/purchase actions;
+- prove operational timing feasibility without weakening the actual pre-deadline fail-closed guard;
 - add contract tests for primary/fallback artifact equivalence under identical source inputs;
 - add tests for duplicate-artifact selection and fail-closed payload disagreement;
 - preregister the official-artifact rule on `main` before the next date it is used;
@@ -129,4 +156,4 @@ Before any fallback scheduler is activated:
 
 Current decision:
 
-`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
+`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_ARBITER_7_OF_7_PASS / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
