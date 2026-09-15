@@ -2,7 +2,7 @@
 
 Status: `RESEARCH_ONLY / READ_ONLY_EVIDENCE / NO_RETENTION_CUTOFF / NO_PRODUCTION_MUTATION`
 
-This addendum narrows the archive migration backlog using evidence already produced on Draft PR #363 plus a fresh default-branch reference scan on 2026-09-15 JST. It does not authorize a permanent archive upload, retention cutoff, online-row deletion, schema/VACUUM action, Railway service/Cron/variable change, model/threshold change, LINE behavior change, or purchase action.
+This addendum narrows the archive migration backlog using evidence already produced on Draft PR #363 plus fresh default-branch and Railway Production reference scans. It does not authorize a permanent archive upload, retention cutoff, online-row deletion, schema/VACUUM action, Railway service/Cron/variable change, model/threshold change, LINE behavior change, or purchase action.
 
 ## Source-of-truth boundary
 
@@ -43,40 +43,66 @@ These are not reasons to keep all old historical rows online:
 
 They remain `KEEP ONLINE`. Archive migration must preserve their current-day working set and fail-closed completeness behavior.
 
+## 2026-09-16 inactive-consumer retirement proof
+
+A fresh exact-name reference scan of current `main` plus a read-only Railway Production start-command scan was used to separate historical tools that must remain operational from standalone research/diagnostic code that can be retired as an online-history consumer while retaining the source file for reproducibility.
+
+Railway Production active/scheduled entrypoints rechecked include:
+
+- `run_daily_data_prepare_pg.py`;
+- `run_final_pg.py`;
+- `run_nightly_results_pg.py`;
+- `run_window_pipeline_pg.py` for morning/day/night;
+- `run_daily_status_report.py`;
+- `run_monthly_performance_report.py`;
+- `collect_racer_course_stats_pg.py`;
+- `run_learning_all_realtime_pg.py`;
+- `.github/scripts/opponent_pressure_shadow_v2_compact.py`;
+- `diagnose_motor2_parser_pg.py` on the service named `historical-backfill`;
+- `collect_v24_motor2_forward_shadow_pg.py` on the service named `backtest-analysis`.
+
+None invokes the three consumers below. Current main exact-name searches also find no caller/workflow entrypoint beyond each script itself and repository classification metadata.
+
+### `backtest_v24_motor2_low_mid_grid_pg.py`
+
+`REPOSITORY_CLASSIFICATION.md` classifies this as C / Research. It is a standalone historical grid and is not a Production or scheduled Railway entrypoint.
+
+Retirement decision: preserve the source file and historical research meaning, but **retire the assumption that its historical odds must remain online in PostgreSQL**. After archive migration, any future rerun must first be explicitly ported to the verified archive/read-through layer or run against a separately restored research database. Its current direct PostgreSQL historical query is not a reason to block archival/removal by itself.
+
+Classification: `RESEARCH_SOURCE_RETAINED / ONLINE_HISTORY_CONSUMER_RETIRED / FUTURE_USE_REQUIRES_ARCHIVE_PORT_OR_RESTORE`.
+
+### `diagnose_v24_motor2_transitions_pg.py` and `diagnose_motor2_mid_veto_pg.py`
+
+Both are D / Maintenance-diagnostic examples in `REPOSITORY_CLASSIFICATION.md`. Exact-name scans find no current default-branch caller. The Railway Production start-command scan finds no active/scheduled service invoking either script; the current `historical-backfill` service invokes `diagnose_motor2_parser_pg.py`, not these diagnostics.
+
+Retirement decision: retain the scripts as historical diagnostics, but retire online-history compatibility as a migration requirement. A future manual use after archival must be ported to archive/read-through or a restored research database before execution.
+
+Classification: `DIAGNOSTIC_SOURCE_RETAINED / ONLINE_HISTORY_CONSUMER_RETIRED / NOT_ACTIVE_RUNTIME`.
+
+This retirement proof does **not** delete these files, run them, change Railway, or weaken archive/recovery requirements.
+
 ## Residual historical/manual blockers before old online odds can be removed
 
-### 1. `backtest_v24_motor2_low_mid_grid_pg.py`
+### 1. `run_historical_month_gap_repair_pg.py`
 
-This is a heavier manual historical research grid. Default-branch reference review found no scheduled Production entrypoint. Its archive adapter shape is compatible with the already-proven bounded odds reads, but exact-output equivalence remains intentionally deferred to avoid widening CI/timeout or weakening equality merely to force completion.
+Current `main` directly inspects `v2_odds_trifecta`, identifies incomplete historical races, and can invoke `repair_month_all_pg.py` with `REPAIR_DO_ODDS=1`. A fresh exact-name scan finds no default-branch caller, and the current Railway start-command scan finds no active/scheduled service invoking this wrapper.
 
-Classification: `MANUAL_RESEARCH / NOT_LIVE_RUNTIME / EQUIVALENCE_DEFERRED`.
+However, unlike the research/diagnostic scripts retired above, this utility is write-capable maintenance logic. If archived rows disappear from the online DB, the current gap detector could misclassify intentionally archived history as missing and attempt re-ingestion if somebody runs it manually.
 
-It can be cleared either by a future bounded exact-equivalence run or by explicit retirement evidence. Its existence alone is not a reason to keep old history permanently online, but old rows must not be removed while the workflow remains expected to work only against PostgreSQL history.
+Therefore it remains a blocker until one of these is explicitly frozen before deletion:
 
-### 2. `run_historical_month_gap_repair_pg.py` and related historical repair utilities
+1. archive-aware gap semantics that distinguish `archived` from `missing`, fail closed on archive overlap/unknown coverage, and never reconstruct archived rows merely because they are absent online; or
+2. a stronger maintenance retirement guard that makes the wrapper unavailable for post-archive use unless an explicitly restored research/maintenance database is selected.
 
-Current `main` still contains a direct `v2_odds_trifecta` historical range audit in `run_historical_month_gap_repair_pg.py`. This is maintenance/recovery logic rather than current-day scoring. Before historical odds leave the online database, this path must have one of two proofs:
+Classification: `STANDALONE_MAINTENANCE / NO_ACTIVE_CALLER / WRITE_CAPABLE / ARCHIVE-AWARE-OR-GUARDED-RETIREMENT REQUIRED`.
 
-1. archive-aware audit/repair semantics with explicit online/archive gap and overlap handling; or
-2. obsolete/retired proof showing the maintenance path is no longer needed.
-
-A repair tool must never silently treat archived rows as missing online data and re-ingest/reconstruct them.
-
-Classification: `MAINTENANCE / DIRECT_HISTORICAL_SQL / ARCHIVE-AWARE-OR-RETIRE REQUIRED`.
-
-### 3. `.github/workflows/bao-value-calibration-oos-readonly.yml`
+### 2. `.github/workflows/bao-value-calibration-oos-readonly.yml`
 
 Current `main` still has a manual `workflow_dispatch` / owner issue-comment report path that loads Production PostgreSQL and runs `backtest_prob_calibration_pg.py` for the fixed 2026-07-01..2026-08-15 range. The consumer itself has exact archive-equivalence proof, but this workflow wiring still points at online PostgreSQL historical odds.
 
 Classification: `MANUAL_RESEARCH WORKFLOW / CONSUMER PROVEN / WIRING MIGRATION OR RETIREMENT REQUIRED`.
 
-Before old online odds are removed, rewire this workflow to a verified archive/read-through source or explicitly retire it. Do not change its report semantics, thresholds, model coefficients, or purchase/LINE behavior as part of storage migration.
-
-### 4. remaining Motor2 transition/mid-veto diagnostics
-
-Any remaining historical diagnostics that indirectly assume online base odds need a final reference scan and either archive-equivalence or retirement proof. They are not current Production selector dependencies unless separately demonstrated.
-
-Classification: `DIAGNOSTIC BACKLOG / ZERO-CONSUMER PROOF PENDING`.
+Before old online odds are removed, rewire this workflow to a verified permanent archive/read-through source or explicitly retire/disable the manual historical workflow. Do not change its report semantics, thresholds, model coefficients, or purchase/LINE behavior as part of storage migration.
 
 ## Fresh Production retention reference
 
@@ -96,7 +122,7 @@ The following are still mandatory before any historical online-row removal:
 
 1. choose and approve a permanent recoverable archive destination;
 2. prove upload, immutable manifest/hash, readback, restore, and credential boundaries;
-3. close the residual consumer list above by archive migration or retirement proof;
+3. close the two residual consumer blockers above by archive migration or guarded retirement proof;
 4. rerun a fresh default-branch + Railway dependency scan and require zero unclassified old-history consumers;
 5. freeze exact inventory/digests for the proposed move/remove scope;
 6. prove recovery from archive plus the retained online working set;
@@ -120,4 +146,4 @@ not:
 
 ## Current decision
 
-`CANDIDATE_FILTER_ARCHIVE_EQUIVALENCE_PROVEN / MOTOR2_BASE_FEATURE_ARCHIVE_EQUIVALENCE_PROVEN / FRESH_RETENTION_REFERENCE_RECONFIRMED / LIVE_CURRENT_DAY_PATHS_KEEP_ONLINE / LOW_MID_GRID_DEFERRED_MANUAL / MONTH_GAP_REPAIR_ARCHIVE_AWARE_OR_RETIRE / BAO_WORKFLOW_REWIRE_OR_RETIRE / FINAL_ZERO_CONSUMER_SCAN_PENDING / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / HOBBY_FRESH_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
+`CANDIDATE_FILTER_ARCHIVE_EQUIVALENCE_PROVEN / MOTOR2_BASE_FEATURE_ARCHIVE_EQUIVALENCE_PROVEN / LOW_MID_GRID_ONLINE_CONSUMER_RETIRED / MOTOR2_DIAGNOSTIC_ONLINE_CONSUMERS_RETIRED / LIVE_CURRENT_DAY_PATHS_KEEP_ONLINE / MONTH_GAP_REPAIR_ARCHIVE_AWARE_OR_GUARDED_RETIREMENT / BAO_WORKFLOW_REWIRE_OR_RETIRE / TWO_RESIDUAL_CONSUMER_BLOCKERS / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / HOBBY_FRESH_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
