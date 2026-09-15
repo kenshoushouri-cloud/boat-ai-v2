@@ -228,5 +228,6 @@ def main() -> None:
     print("STORAGE_ODDS_INDEX_RESULT=PASS_READ_ONLY")
 
 
+# Fresh verification marker after bounded maintenance attempt: 2026-09-12 JST.
 if __name__ == "__main__":
     main()
