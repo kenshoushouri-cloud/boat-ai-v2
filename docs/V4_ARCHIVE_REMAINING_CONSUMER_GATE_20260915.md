@@ -13,18 +13,20 @@ This addendum narrows the archive migration backlog using evidence already produ
 
 ## Historical consumers whose archive equivalence is now proven
 
-The latest exact-output archive matrix evidence supersedes older `equivalence pending` labels for two consumers.
+The latest exact-output archive matrix evidence supersedes older `equivalence pending` labels for candidate-filter and Motor2 base-candidate features. The verified output counts are:
 
 | consumer | verified result |
 |---|---|
-| `backtest_prob_calibration_pg.py` | ready races 4,889; ticket rows 586,680; stdout SHA-256 `6df845c844321f6461253c661fc7bed4954d634af0a37286207a2d2ebb91cf4d` |
-| `backtest_n02_walkforward_pg.py` | 13 bets; stdout SHA-256 `2fabb92986e6e3ba1d37826954f625d2242ac1e060ccb5f94b1a0d5464ada168` |
-| `backtest_n02_rolling_pg.py` | 13 bets; stdout SHA-256 `644af07cff830dd5457add8b22a7df576c2c65b61398423f788e97ef2e0dfe14` |
-| `backtest_n02_time_split_pg.py` | 13 bets; stdout SHA-256 `33f0ab1a164799cb575bd9cba77765179a69725ff3d35b79c2d6a31b5bd20d46` |
-| `backtest_n01_n02_diagnostics_pg.py` | N01 25 bets / N02 13 bets; stdout SHA-256 `bbf509895835b41b4c9513e03a0ca01bc346ad56bbb23c2a3cb53a89831642f4` |
-| `backtest_candidate_filter_rules_pg.py` | ready 4,889 / rule selections 586; stdout SHA-256 `a14d628905c392b548f0f7d9713627dc0c9ef26b5d0a830e6ca6a4b5cb985e00` |
-| `backtest_v24_motor2_base_candidate_features_pg.py` | processed 4,853 / candidate rows 75; stdout SHA-256 `065f8e161e3cf83a77c8c3e468de1d553490c2c5024bde421eeaedce433b4f2a` |
-| `backtest_v24_motor2_historical_pg.py` | processed 4,853; stdout SHA-256 `8859a8abdf229376d6ca7b10350b6a16f544d929992d167bd9e54133417dc228` |
+| `backtest_prob_calibration_pg.py` | ready races 4,889; ticket rows 586,680 |
+| `backtest_n02_walkforward_pg.py` | 13 bets |
+| `backtest_n02_rolling_pg.py` | 13 bets |
+| `backtest_n02_time_split_pg.py` | 13 bets |
+| `backtest_n01_n02_diagnostics_pg.py` | N01 25 bets / N02 13 bets |
+| `backtest_candidate_filter_rules_pg.py` | ready 4,889 / rule selections 586; verified stdout SHA-256 `a14d628905c392b548f0f7d9713627dc0c9ef26b5d0a830e6ca6a4b5cb985e00` |
+| `backtest_v24_motor2_base_candidate_features_pg.py` | processed 4,853 / candidate rows 75; verified stdout SHA-256 `065f8e161e3cf83a77c8c3e468de1d553490c2c5024bde421eeaedce433b4f2a` |
+| `backtest_v24_motor2_historical_pg.py` | processed 4,853 |
+
+Only digests whose complete values were re-available in the current evidence record are repeated here. Other previously recorded exact-output SHA-256 values remain in the original PR #363 evidence/comments rather than being reconstructed from prefixes.
 
 The matrix final gate was `PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY`. The archive was removed from ephemeral runner storage before job exit. No Production rows or configuration were changed by those equivalence runs.
 
@@ -76,6 +78,18 @@ Any remaining historical diagnostics that indirectly assume online base odds nee
 
 Classification: `DIAGNOSTIC BACKLOG / ZERO-CONSUMER PROOF PENDING`.
 
+## Fresh Production retention reference
+
+A new read-only PR #363 run (`34983004242`) measured Railway PostgreSQL at 2026-09-15 23:38 JST with `default_transaction_read_only=on`. It reconfirmed, rather than assumed, the current planning reference:
+
+- `v2_odds_trifecta`: 7,981,493 rows; logical payload 830,075,423 bytes; relation 1,844,002,816 bytes;
+- 30-day reference: hot 545,940 rows / 56,777,757 logical bytes; cold 7,435,553 rows / 773,297,666 logical bytes;
+- realtime relation: 536,854,528 bytes;
+- `final_ab`: 1,056,020 rows; 30-day hot 498,208 / 94,924,296 bytes; cold 557,812 / 106,331,968 bytes;
+- `learning_all`: 467,690 rows; 30-day hot 445,565 / 84,861,496 bytes; cold 22,125 / 4,248,000 bytes.
+
+These are logical planning measurements except where `relation` is explicitly named. They do not authorize a cutoff and do not imply physical reclaim after DELETE.
+
 ## Permanent archive and DELETE gate remain closed
 
 The following are still mandatory before any historical online-row removal:
@@ -106,4 +120,4 @@ not:
 
 ## Current decision
 
-`CANDIDATE_FILTER_ARCHIVE_EQUIVALENCE_PROVEN / MOTOR2_BASE_FEATURE_ARCHIVE_EQUIVALENCE_PROVEN / LIVE_CURRENT_DAY_PATHS_KEEP_ONLINE / LOW_MID_GRID_DEFERRED_MANUAL / MONTH_GAP_REPAIR_ARCHIVE_AWARE_OR_RETIRE / BAO_WORKFLOW_REWIRE_OR_RETIRE / FINAL_ZERO_CONSUMER_SCAN_PENDING / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / HOBBY_FRESH_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
+`CANDIDATE_FILTER_ARCHIVE_EQUIVALENCE_PROVEN / MOTOR2_BASE_FEATURE_ARCHIVE_EQUIVALENCE_PROVEN / FRESH_RETENTION_REFERENCE_RECONFIRMED / LIVE_CURRENT_DAY_PATHS_KEEP_ONLINE / LOW_MID_GRID_DEFERRED_MANUAL / MONTH_GAP_REPAIR_ARCHIVE_AWARE_OR_RETIRE / BAO_WORKFLOW_REWIRE_OR_RETIRE / FINAL_ZERO_CONSUMER_SCAN_PENDING / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / HOBBY_FRESH_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
