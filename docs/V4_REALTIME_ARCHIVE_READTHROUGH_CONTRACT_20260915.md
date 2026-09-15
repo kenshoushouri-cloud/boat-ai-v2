@@ -103,6 +103,23 @@ Each tool must be classified as either:
 
 The presence of an old maintenance script alone must not force all historical rows to remain online forever.
 
+### Evidence-sensitive `historical` snapshot label
+
+Default-branch code confirms that `snapshot_label='historical'` is still consumed by multiple research and evidence workflows, including weather/wave profile analysis, candidate-feature research, historical data diagnostics and exhibition-ST Forward-shadow collection.
+
+Therefore `historical` rows are **not** a blind-delete target.
+
+They are, however, a strong archive-read-through pilot candidate because:
+
+- the label represents historical/research evidence rather than today's live FINAL decision state;
+- the consumers are identifiable and bounded;
+- those consumers can be migrated one by one to a shared archive reader;
+- exact PostgreSQL-vs-archive equality can be tested before any online row is removed.
+
+The first archive pilot should preserve the `historical` label exactly and prove that at least one representative consumer returns identical rows/metrics from PostgreSQL and archive input.
+
+Do not rename or collapse `historical` into another label because the label itself is part of the evidence contract in several scripts.
+
 ## Proposed read-through interface
 
 Research code should stop hard-coding direct historical SQL against large live tables. A shared research-only adapter should expose logical operations such as:
@@ -156,6 +173,22 @@ A simple first implementation may use deterministic database exports plus compre
 
 Do not choose a format merely for maximum compression if it weakens restoration or auditability.
 
+## First pilot scope
+
+Before selecting a global retention boundary, use one old, completed calendar month as a read-only pilot.
+
+Pilot requirements:
+
+1. export only; do not delete source rows;
+2. start with `snapshot_label='historical'` for the large realtime weather/exhibition/racer-condition families and, separately, a bounded old-month slice of base trifecta odds;
+3. produce per-table manifests and SHA-256 hashes;
+4. read the exported data back through the research adapter;
+5. compare row counts, logical keys and representative research outputs with the original PostgreSQL query;
+6. require zero logical differences;
+7. retain the source rows online after the pilot until a later explicit Production removal approval.
+
+A pilot month should be chosen only after confirming it is fully settled and not part of an active prospective evidence window.
+
 ## Online retention boundary
 
 No arbitrary `N days` cutoff is authorized yet.
@@ -187,4 +220,4 @@ A future retention boundary may be proposed only after:
 
 ## Current decision
 
-`OLD_REALTIME_HISTORY_NOT_DIRECT_LIVE_DEPENDENCY / SAME_RACE_PREVIOUS_ODDS_MUST_STAY_AVAILABLE_DURING_ACTIVE_RACE / HISTORICAL_RESEARCH_NEEDS_READ_THROUGH / NO_RETENTION_CUTOFF_YET / NO_DELETE / NO_SERVICE_CHANGE`
+`OLD_REALTIME_HISTORY_NOT_DIRECT_LIVE_DEPENDENCY / SAME_RACE_PREVIOUS_ODDS_MUST_STAY_AVAILABLE_DURING_ACTIVE_RACE / HISTORICAL_LABEL_IS_EVIDENCE_SENSITIVE_BUT_ARCHIVEABLE_AFTER_EQUIVALENCE / HISTORICAL_RESEARCH_NEEDS_READ_THROUGH / NO_RETENTION_CUTOFF_YET / NO_DELETE / NO_SERVICE_CHANGE`
