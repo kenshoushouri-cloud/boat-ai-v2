@@ -6,6 +6,7 @@ on:
       - 'research_archive_export_pg.py'
       - 'research_final_ab_entry_archive_consumer.py'
       - 'research_final_ab_weather_archive_consumer.py'
+      - 'research_final_ab_exhibition_archive_consumer.py'
       - '.github/workflows/research-realtime-archive-export-matrix-production-readonly.yml'
   workflow_dispatch:
 
@@ -214,9 +215,40 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Export and compare final_ab exhibition analysis online vs archive
+        shell: bash
+        env:
+          ANALYZE_START_DATE: '2026-07-01'
+          ANALYZE_END_DATE: '2026-07-31'
+          SNAPSHOT_LABEL: final_ab
+        run: |
+          set -euo pipefail
+          exhibition_dir=/tmp/boat-final-ab-exhibition-archive
+          rm -rf "$exhibition_dir"
+          mkdir -p "$exhibition_dir"
+          export ARCHIVE_OUTPUT_DIR="$exhibition_dir"
+          export ARCHIVE_TABLE=v2_realtime_exhibition_snapshots
+          export ARCHIVE_LABEL=final_ab
+          python -u research_archive_export_pg.py > exhibition-final-ab-export.log
+          grep -q '^RESEARCH_ARCHIVE_EXPORT=PASS_READ_ONLY$' exhibition-final-ab-export.log
+          manifest="$(find "$exhibition_dir" -maxdepth 1 -type f -name 'v2_realtime_exhibition_snapshots_*_final_ab.manifest.json' -print -quit)"
+          test -n "$manifest"
+          export FINAL_AB_EXHIBITION_ARCHIVE_MANIFEST="$manifest"
+          python -u research_final_ab_exhibition_archive_consumer.py > exhibition-consumer.txt
+          grep -q '^FINAL_AB_EXHIBITION_ARCHIVE_COMPARE=PASS ' exhibition-consumer.txt
+          grep -q '^FINAL_AB_EXHIBITION_ARCHIVE_RESULT=PASS_READ_ONLY$' exhibition-consumer.txt
+          cat exhibition-consumer.txt
+          {
+            echo '## final_ab exhibition archive consumer equivalence — Production read-only'
+            echo
+            echo '```text'
+            cat exhibition-consumer.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Remove all Production-derived local files
         if: always()
         shell: bash
         run: |
-          rm -rf /tmp/boat-realtime-archive-matrix /tmp/boat-final-ab-weather-archive
-          rm -f railway-vars.json archive-matrix.txt entry-consumer.txt weather-consumer.txt weather-final-ab-export.log v2_realtime_*_snapshots_*.log
+          rm -rf /tmp/boat-realtime-archive-matrix /tmp/boat-final-ab-weather-archive /tmp/boat-final-ab-exhibition-archive
+          rm -f railway-vars.json archive-matrix.txt entry-consumer.txt weather-consumer.txt weather-final-ab-export.log exhibition-consumer.txt exhibition-final-ab-export.log v2_realtime_*_snapshots_*.log
