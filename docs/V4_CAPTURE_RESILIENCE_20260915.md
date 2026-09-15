@@ -94,20 +94,25 @@ The prepared-universe earliest deadline is not itself the formal frozen-feed dea
 
 ## Daily official-artifact rule
 
-For any future date with more than one valid pre-result capture, define the official V4 Forward artifact prospectively as:
+For any future date with more than one valid pre-result capture, define the official V4 Forward evidence prospectively as:
 
 1. every candidate artifact must independently satisfy the full safety contract;
-2. choose the unique artifact with the earliest `generated_at_jst` after 08:15 JST;
-3. if multiple artifacts have the same earliest `generated_at_jst` and the same canonical payload SHA-256, treat them as duplicate copies of the same evidence and retain one deterministic metadata record for audit;
-4. if multiple artifacts have the same earliest `generated_at_jst` but different canonical payload SHA-256 values, do **not** choose by GitHub/Railway run ID or channel identity; classify the date `UNAVAILABLE / AMBIGUOUS_DUPLICATE_CAPTURE` and preserve both artifacts as diagnostic evidence only.
+2. choose the unique valid artifact with the earliest `generated_at_jst` after 08:15 JST;
+3. if multiple artifacts have the same earliest `generated_at_jst` and the same **canonical formal-core payload SHA-256**, treat them as duplicate copies of the same formal core evidence and retain one deterministic metadata record for audit;
+4. if multiple artifacts have the same earliest `generated_at_jst` but different canonical formal-core SHA-256 values, do **not** choose by GitHub/Railway run ID or channel identity; classify the date `UNAVAILABLE / AMBIGUOUS_DUPLICATE_CAPTURE` and preserve both artifacts as diagnostic evidence only.
 
 GitHub and Railway run identifiers are provider-local identifiers and must not be compared numerically to decide evidence precedence.
 
 Any later valid capture is diagnostic-only and must not be mixed into formal Forward scoring.
 
-If the primary succeeds, fallback should no-op where technically possible. If duplicate execution still occurs, the earliest-valid rule removes ordinary ambiguity without changing predictions after outcomes, while payload disagreement at the same earliest timestamp remains fail-closed.
+If the primary succeeds, fallback should no-op where technically possible. If duplicate execution still occurs, the earliest-valid rule removes ordinary ambiguity without changing predictions after outcomes, while formal-core disagreement at the same earliest timestamp remains fail-closed.
 
-## Pure artifact-arbitration contract
+The full artifact SHA-256 and canonical formal-core SHA-256 serve different purposes and must both be retained:
+
+- **full-file SHA-256** proves byte integrity of the exact artifact, including timestamps/provenance and any auxiliary legacy content;
+- **canonical formal-core SHA-256** proves equality of the frozen structural 6-race/12-ticket evidence across channels while excluding capture-channel/timestamp noise and auxiliary legacy carryover.
+
+## Pure artifact-arbitration and canonical-core contract
 
 Before the 2026-09-16 primary and before outcomes, Draft PR #364 added:
 
@@ -115,9 +120,44 @@ Before the 2026-09-16 primary and before outcomes, Draft PR #364 added:
 - `tests/test_candidate_discovery_v4_capture_arbiter.py`;
 - `.github/workflows/candidate-discovery-v4-capture-arbiter.yml`.
 
-Focused run `35032223334` passed. Seven synthetic tests cover unique-earliest selection, same-time/same-hash duplicate collapse, same-time/different-hash fail-closed behavior, provider-run-ID non-precedence, invalid-capture rejection, cutoff/core completeness, and purchase/promotion/pre-deadline safety flags.
+Latest focused run **`35033821144`** passed **11/11 synthetic tests** plus pure/offline isolation. The tests cover:
 
-The arbiter consumes already-produced metadata only. It does not run a capture, access Production data or providers, write files, send LINE, or authorize purchase/promotion. Passing these tests satisfies only the duplicate-selection contract-test portion of the adoption gate.
+- unique-earliest valid capture selection;
+- same-time/same-hash duplicate collapse;
+- same-time/different-hash fail-closed behavior;
+- provider-run-ID non-precedence;
+- invalid capture rejection;
+- cutoff/core completeness;
+- purchase/promotion/pre-deadline safety flags;
+- canonical hash stability across capture timestamp/provenance changes;
+- canonical hash stability when only auxiliary legacy rows/annotations change;
+- canonical hash change when a formal core ticket changes;
+- canonical hash change when frozen formal policy or structural score changes;
+- fail-closed behavior for incomplete/invalid core ticket ordering.
+
+The canonical payload includes the structural universe diagnostics, frozen formal policy, six ranked core races, relevant structural fields/deadlines and only `core_order` 1-2 tickets. It excludes provider/run metadata, capture/freeze timestamps, file hashes, legacy-only races/tickets and LEGACY annotations on otherwise identical core tickets.
+
+The arbiter and canonicalizer do not run a capture, access Production data or providers, write files, send LINE, or authorize purchase/promotion.
+
+Draft #364 also wires the future prospective-freeze workflow to emit both the normal full-file `.sha256` and `candidate-discovery-v4-prospective-freeze.json.core.sha256`. On PR validation, workflow run **`35033919799`** completed the safety job successfully and correctly skipped the actual freeze job. This wiring is **Draft only**; current `main` does not emit the canonical-core hash unless an approved future merge lands it.
+
+Passing these tests closes the canonical-hash definition and duplicate-selection contract portions only. Primary-vs-fallback operational equivalence under an actually selected independent fallback execution path remains an open adoption gate.
+
+## Legacy carryover provenance clarification frozen before the 2026-09-16 primary
+
+A pre-primary static audit found that current `main` selects the formal six-race core before appending S01-S05 rows from `v2_candidate_filter_shadow`, and `summary.core_tickets` counts only tickets with a non-null `core_order`. Therefore candidate-shadow legacy carryover does **not** determine or rerank the formal structural 6-race/12-ticket core.
+
+However, the current legacy query is scoped by target `race_date` and rule ID and ordered by `snapshot_at`, but it does **not** enforce `snapshot_at < 08:15 JST`. Course and Opponent Pressure inputs do enforce the frozen cutoff.
+
+This was discovered and recorded before the 2026-09-16 primary and before outcomes. The preregistered interpretation is:
+
+- the 6-race/12-ticket structural core remains the formal V4 evidence unit;
+- legacy carryover is auxiliary/reference evidence and is excluded from canonical formal-core equivalence;
+- no missing legacy row may ever be reconstructed after the fact;
+- any legacy row present in the full artifact still remains subject to the existing full-feed pre-deadline guard;
+- before fallback adoption or candidate-shadow retirement, legacy auxiliary evidence must either remain outside formal canonical equivalence or gain an explicit pre-08:15 provenance guard with unknown/late timestamps failing closed.
+
+This clarification does not modify `main`, candidate selection, or Production behavior.
 
 ## Capture bootstrap failures are evidence failures
 
@@ -149,7 +189,7 @@ A daily read-only audit should record:
 - earliest relevant deadline;
 - 6-race / 12-ticket completeness;
 - artifact ID/name;
-- canonical payload SHA-256 and archive/file SHA-256 where applicable;
+- canonical formal-core SHA-256 and full-file/archive SHA-256 where applicable;
 - `prospective_evidence_eligible`;
 - `purchase_action`;
 - final classification: `FORMAL_AVAILABLE` or a specific `UNAVAILABLE / ...` reason.
@@ -164,11 +204,13 @@ Before any fallback scheduler is activated:
 - freeze its 08:25 JST checkpoint and permission boundary before the first date it can affect;
 - prove it cannot write Production DB or send LINE/purchase actions;
 - prove operational timing feasibility without weakening the actual pre-deadline fail-closed guard;
-- add contract tests for primary/fallback artifact equivalence under identical source inputs;
-- add tests for duplicate-artifact selection and fail-closed payload disagreement;
+- make every channel emit/record the same frozen canonical formal-core hash contract plus its exact full-file hash;
+- prove primary/fallback formal-core equivalence under identical frozen source inputs;
+- retain duplicate-artifact selection and fail-closed payload-disagreement tests;
+- resolve legacy auxiliary provenance as described above;
 - preregister the official-artifact rule on `main` before the next date it is used;
 - obtain any explicit Railway Production approval if a Railway Cron/service is selected.
 
 Current decision:
 
-`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_BOOTSTRAP_FAILURE_FAIL_CLOSED / CAPTURE_ARBITER_7_OF_7_PASS / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
+`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_BOOTSTRAP_FAILURE_FAIL_CLOSED / CANONICAL_FORMAL_CORE_HASH_DEFINED / CAPTURE_ARBITER_11_OF_11_PASS / DRAFT_FUTURE_WORKFLOW_DUAL_HASH_SUCCESS / LEGACY_AUXILIARY_EXCLUDED_FROM_FORMAL_CORE_EQUIVALENCE / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
