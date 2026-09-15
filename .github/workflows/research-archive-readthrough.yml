@@ -196,6 +196,11 @@ jobs:
                   'start_date': '2026-07-01',
                   'end_date': '2026-07-31',
                   'label': 'historical',
+                  'schema': [
+                      {'column_name':'race_id','data_type':'text','udt_name':'text'},
+                      {'column_name':'snapshot_label','data_type':'text','udt_name':'text'},
+                      {'column_name':'weather','data_type':'text','udt_name':'text'},
+                  ],
                   'row_count': 2,
                   'canonical_payload_bytes': len(payload),
                   'canonical_payload_sha256': hashlib.sha256(payload).hexdigest(),
