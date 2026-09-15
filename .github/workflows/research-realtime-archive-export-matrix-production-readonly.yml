@@ -80,6 +80,7 @@ jobs:
           for table in \
             v2_realtime_weather_snapshots \
             v2_realtime_exhibition_snapshots \
+            v2_realtime_entry_snapshots \
             v2_realtime_race_condition_snapshots \
             v2_realtime_racer_condition_snapshots
           do
@@ -95,6 +96,7 @@ jobs:
           expected = {
               'v2_realtime_weather_snapshots',
               'v2_realtime_exhibition_snapshots',
+              'v2_realtime_entry_snapshots',
               'v2_realtime_race_condition_snapshots',
               'v2_realtime_racer_condition_snapshots',
           }
