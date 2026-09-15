@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research_archive_export_pg.py'
+      - 'research_final_ab_entry_archive_consumer.py'
       - '.github/workflows/research-realtime-archive-export-matrix-production-readonly.yml'
   workflow_dispatch:
 
@@ -155,7 +156,30 @@ jobs:
             cat archive-matrix.txt
             echo '```'
             echo
-            echo 'All files were ephemeral runner files and are removed before job exit. No upload, DB mutation, retention change, or Production config change was performed.'
+            echo 'All files are ephemeral runner files. No upload, DB mutation, retention change, or Production config change was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compare final_ab entry analysis online vs archive
+        shell: bash
+        env:
+          ANALYZE_START_DATE: '2026-07-01'
+          ANALYZE_END_DATE: '2026-07-31'
+          SNAPSHOT_LABEL: final_ab
+        run: |
+          set -euo pipefail
+          manifest="$(find "$ARCHIVE_OUTPUT_DIR" -maxdepth 1 -type f -name 'v2_realtime_entry_snapshots_*_final_ab.manifest.json' -print -quit)"
+          test -n "$manifest"
+          export FINAL_AB_ENTRY_ARCHIVE_MANIFEST="$manifest"
+          python -u research_final_ab_entry_archive_consumer.py > entry-consumer.txt
+          grep -q '^FINAL_AB_ENTRY_ARCHIVE_COMPARE=PASS ' entry-consumer.txt
+          grep -q '^FINAL_AB_ENTRY_ARCHIVE_RESULT=PASS_READ_ONLY$' entry-consumer.txt
+          cat entry-consumer.txt
+          {
+            echo '## final_ab entry archive consumer equivalence — Production read-only'
+            echo
+            echo '```text'
+            cat entry-consumer.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove all Production-derived local files
@@ -163,4 +187,4 @@ jobs:
         shell: bash
         run: |
           rm -rf /tmp/boat-realtime-archive-matrix
-          rm -f railway-vars.json archive-matrix.txt v2_realtime_*_snapshots_*.log
+          rm -f railway-vars.json archive-matrix.txt entry-consumer.txt v2_realtime_*_snapshots_*.log
