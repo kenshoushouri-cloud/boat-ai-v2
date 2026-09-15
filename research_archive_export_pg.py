@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Bounded research-only PostgreSQL archive exporter.
 
-This helper is intentionally not referenced by Production services.  It exports
+This helper is intentionally not referenced by Production services. It exports
 one allow-listed table/date slice through a read-only PostgreSQL session, writes
 canonical JSONL.gz plus a manifest, and never deletes or updates source rows.
 
@@ -17,7 +17,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 JST = timezone(timedelta(hours=9))
 MAX_DAYS_DEFAULT = 31
@@ -84,6 +84,10 @@ class ExportSpec:
         today = today or datetime.now(JST).date()
         if self.table not in TABLES:
             raise ValueError(f"table is not allow-listed: {self.table}")
+        if self.max_days <= 0:
+            raise ValueError("max_days must be positive")
+        if self.min_age_days < 0:
+            raise ValueError("min_age_days must be >= 0")
         if self.start_date > self.end_date:
             raise ValueError("start_date must be <= end_date")
         if self.days > self.max_days:
@@ -162,6 +166,18 @@ def _sha256_file(path: Path) -> str:
     return sha.hexdigest()
 
 
+def _verify_gzip_readback(path: Path) -> tuple[int, int, str]:
+    row_count = 0
+    payload_bytes = 0
+    sha = hashlib.sha256()
+    with gzip.open(path, "rb") as fh:
+        for line in fh:
+            row_count += 1
+            payload_bytes += len(line)
+            sha.update(line)
+    return row_count, payload_bytes, sha.hexdigest()
+
+
 def _key_tuple(row: Mapping[str, Any], key_fields: Sequence[str]) -> tuple[str, ...]:
     return tuple(json.dumps(_jsonable(row.get(k)), ensure_ascii=False, sort_keys=True) for k in key_fields)
 
@@ -187,6 +203,13 @@ def _schema_rows(conn: Any, table: str) -> list[dict[str, Any]]:
             }
             for r in cur.fetchall()
         ]
+
+
+def _source_identity(conn: Any) -> dict[str, str]:
+    with conn.cursor() as cur:
+        cur.execute("select current_database(), current_setting('server_version_num')")
+        db_name, version_num = cur.fetchone()
+    return {"database": str(db_name), "server_version_num": str(version_num)}
 
 
 def _select_sql(spec: ExportSpec) -> tuple[str, list[Any]]:
@@ -222,18 +245,34 @@ def export_partition(conn: Any, spec: ExportSpec) -> tuple[Path, Path, dict[str,
         cur.itersize = 2000
         cur.execute(sql, params)
         columns = [d.name for d in cur.description]
-        with gzip.open(data_path, "wb", compresslevel=6, mtime=0) as gz:
-            for raw in cur:
-                row = dict(zip(columns, raw))
-                key = _key_tuple(row, key_fields)
-                if key == previous_key:
-                    duplicate_count += 1
-                previous_key = key
-                line = canonical_line(row)
-                payload_sha.update(line)
-                payload_bytes += len(line)
-                gz.write(line)
-                row_count += 1
+        with data_path.open("wb") as raw_fh:
+            with gzip.GzipFile(
+                filename="",
+                mode="wb",
+                compresslevel=6,
+                fileobj=raw_fh,
+                mtime=0,
+            ) as gz:
+                for raw in cur:
+                    row = dict(zip(columns, raw))
+                    key = _key_tuple(row, key_fields)
+                    if key == previous_key:
+                        duplicate_count += 1
+                    previous_key = key
+                    line = canonical_line(row)
+                    payload_sha.update(line)
+                    payload_bytes += len(line)
+                    gz.write(line)
+                    row_count += 1
+
+    readback_rows, readback_bytes, readback_sha = _verify_gzip_readback(data_path)
+    expected_sha = payload_sha.hexdigest()
+    if (readback_rows, readback_bytes, readback_sha) != (row_count, payload_bytes, expected_sha):
+        raise RuntimeError(
+            "archive readback mismatch: "
+            f"written=({row_count},{payload_bytes},{expected_sha}) "
+            f"readback=({readback_rows},{readback_bytes},{readback_sha})"
+        )
 
     manifest = {
         "archive_contract_version": 1,
@@ -244,16 +283,19 @@ def export_partition(conn: Any, spec: ExportSpec) -> tuple[Path, Path, dict[str,
         "logical_key": list(key_fields),
         "row_count": row_count,
         "logical_key_duplicate_count": duplicate_count,
-        "canonical_payload_sha256": payload_sha.hexdigest(),
+        "canonical_payload_sha256": expected_sha,
         "canonical_payload_bytes": payload_bytes,
         "archive_file": data_path.name,
         "archive_file_sha256": _sha256_file(data_path),
         "archive_file_bytes": data_path.stat().st_size,
         "schema": _schema_rows(conn, spec.table),
         "exported_at": datetime.now(timezone.utc).isoformat(),
+        "source_identity": _source_identity(conn),
         "source_mode": "postgresql_read_only",
         "source_rows_deleted": False,
-        "readback_verified": False,
+        "readback_verified": True,
+        "readback_row_count": readback_rows,
+        "readback_payload_sha256": readback_sha,
     }
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
