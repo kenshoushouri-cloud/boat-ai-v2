@@ -47,7 +47,7 @@ jobs:
               print(f'PASS {name}')
           print(f'CAPTURE_ARBITER_TESTS={len(tests)} PASS')
           PY
-          python tests/test_candidate_discovery_v4_capture_policy_parity.py
+          PYTHONPATH=. python tests/test_candidate_discovery_v4_capture_policy_parity.py
       - name: Enforce pure/offline isolation
         run: |
           python - <<'PY'
