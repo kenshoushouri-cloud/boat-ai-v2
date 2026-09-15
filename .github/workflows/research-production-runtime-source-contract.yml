@@ -1,0 +1,56 @@
+name: Research Production runtime source contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/production_runtime_source_contract.py'
+      - 'tests/test_production_runtime_source_contract.py'
+      - '.github/workflows/research-production-runtime-source-contract.yml'
+      - 'docs/V4_PRODUCTION_RUNTIME_SOURCE_INVENTORY_20260916.md'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run focused contract tests
+        run: |
+          python -m py_compile research/production_runtime_source_contract.py tests/test_production_runtime_source_contract.py
+          python -m pytest -q tests/test_production_runtime_source_contract.py
+      - name: Enforce pure/offline isolation
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('research/production_runtime_source_contract.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          imported = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+
+          allowed = {'__future__', 'dataclasses', 'typing'}
+          forbidden = imported - allowed
+          assert not forbidden, sorted(forbidden)
+
+          lower = text.lower()
+          for token in (
+              'psycopg', 'requests', 'urllib', 'socket', 'subprocess',
+              'database_url', 'railway_token', 'github_token', 'os.environ',
+          ):
+              assert token not in lower, token
+          print('RUNTIME_SOURCE_CONTRACT_ISOLATION=PASS')
+          PY
