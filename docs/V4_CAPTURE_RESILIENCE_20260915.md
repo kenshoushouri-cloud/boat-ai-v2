@@ -119,6 +119,20 @@ Focused run `35032223334` passed. Seven synthetic tests cover unique-earliest se
 
 The arbiter consumes already-produced metadata only. It does not run a capture, access Production data or providers, write files, send LINE, or authorize purchase/promotion. Passing these tests satisfies only the duplicate-selection contract-test portion of the adoption gate.
 
+## Capture bootstrap failures are evidence failures
+
+A static check of the current `main` scheduled workflow before the 2026-09-16 primary confirms that the formal freeze job performs environment/bootstrap work before the guarded Python freeze itself: Python setup, Node setup, `pip install -r requirements.txt`, global Railway CLI installation, target-date resolution, and read-only database-URL resolution. A transient failure in any of those steps can prevent a formal artifact even when the scheduler fires on time.
+
+This is part of the evidence contract, not a reason to weaken it:
+
+- if the scheduled primary fails before producing a valid guarded artifact, that channel did **not** produce formal Forward evidence;
+- classify such a day/channel as `UNAVAILABLE / CAPTURE_BOOTSTRAP_FAILURE` (or a more specific preregistered infrastructure reason) unless an independently preregistered fallback already produces a valid artifact under the full original guard;
+- do not manually rerun or dispatch the primary after observing the failure and then relabel the later artifact as the missing scheduled evidence;
+- a later diagnostic run may help root-cause infrastructure, but it is not the original formal capture;
+- dependency-install success, credential resolution, and provider availability must never relax the source cutoff, complete-universe, pre-deadline, no-result-read, or purchase/promotion false requirements.
+
+This clarification was frozen before the 2026-09-16 08:16 primary and before outcomes. It does not activate a fallback and does not modify the `main` workflow.
+
 ## Monitoring requirement
 
 A daily read-only audit should record:
@@ -126,6 +140,7 @@ A daily read-only audit should record:
 - target date;
 - primary run present/missing/late;
 - primary scheduled-vs-start delay;
+- bootstrap/setup stage reached and any failure stage;
 - fallback checkpoint and actual start time;
 - fallback invoked/not invoked;
 - capture channel;
@@ -139,7 +154,7 @@ A daily read-only audit should record:
 - `purchase_action`;
 - final classification: `FORMAL_AVAILABLE` or a specific `UNAVAILABLE / ...` reason.
 
-A missing or late-rejected day is acceptable evidence. A reconstructed day is not.
+A missing, bootstrap-failed, or late-rejected day is acceptable evidence. A reconstructed day is not.
 
 ## Adoption gate
 
@@ -156,4 +171,4 @@ Before any fallback scheduler is activated:
 
 Current decision:
 
-`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_ARBITER_7_OF_7_PASS / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
+`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_BOOTSTRAP_FAILURE_FAIL_CLOSED / CAPTURE_ARBITER_7_OF_7_PASS / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
