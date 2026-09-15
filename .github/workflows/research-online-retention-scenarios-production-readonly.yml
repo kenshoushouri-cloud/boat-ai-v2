@@ -1,0 +1,91 @@
+name: Research online retention scenarios production read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research_online_retention_scenarios_pg.py'
+      - '.github/workflows/research-online-retention-scenarios-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readonly-retention-scenarios:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=240000 -c timezone=UTC
+      RETENTION_AS_OF_DATE: '2026-09-15'
+      RETENTION_DAYS: '7,14,30,60'
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install read-only audit dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q psycopg[binary]
+          npm install -g @railway/cli >/dev/null 2>&1
+
+      - name: Resolve Production public database URL without publishing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway variable list \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-recovery \
+            --environment production \
+            --json > railway-vars.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), dict):
+                  value = data['variables'].get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), list):
+                  for item in data['variables']:
+                      if isinstance(item, dict) and item.get('name') == 'DATABASE_PUBLIC_URL':
+                          value = item.get('value')
+                          break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL unavailable')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+
+      - name: Measure candidate online windows only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u research_online_retention_scenarios_pg.py > retention-scenarios.txt
+          grep -E '^(ONLINE_RETENTION_SCENARIOS=|BASE_TOTAL |BASE_WINDOW |REALTIME_RELATION |REALTIME_TOTAL |REALTIME_WINDOW |ONLINE_RETENTION_NOTE=)' retention-scenarios.txt > retention-scenarios-sanitized.txt
+          test -s retention-scenarios-sanitized.txt
+          cat retention-scenarios-sanitized.txt
+          {
+            echo '## Candidate online retention windows — Production read-only'
+            echo
+            echo '```text'
+            cat retention-scenarios-sanitized.txt
+            echo '```'
+            echo
+            echo 'These are logical tuple-payload measurements only. They do not authorize a cutoff or imply physical volume reclaim. No export, delete, update, retention change, or Production config change was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local audit outputs
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-vars.json retention-scenarios.txt retention-scenarios-sanitized.txt
