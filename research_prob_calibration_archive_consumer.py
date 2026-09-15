@@ -191,6 +191,13 @@ def main() -> None:
         flush=True,
     )
 
+    # Set the V24 historical window before base-candidate features imports that
+    # module as a helper, so module-level constants are frozen to this archive month.
+    os.environ["MOTOR2_BT_START_DATE"] = start.isoformat()
+    os.environ["MOTOR2_BT_END_DATE"] = end.isoformat()
+    os.environ["MOTOR2_BT_PROGRESS_EVERY"] = "1000000"
+    os.environ["MOTOR2_BT_MAX_RACES"] = "0"
+
     # Base-candidate feature research uses separate environment variable names.
     os.environ["MOTOR2_BASEFEAT_START_DATE"] = start.isoformat()
     os.environ["MOTOR2_BASEFEAT_END_DATE"] = end.isoformat()
@@ -209,12 +216,7 @@ def main() -> None:
         flush=True,
     )
 
-    # V24 Motor2 historical uses its own environment variable names, but the
-    # requested evidence window must remain exactly the same archive partition.
-    os.environ["MOTOR2_BT_START_DATE"] = start.isoformat()
-    os.environ["MOTOR2_BT_END_DATE"] = end.isoformat()
-    os.environ["MOTOR2_BT_PROGRESS_EVERY"] = "1000000"
-    os.environ["MOTOR2_BT_MAX_RACES"] = "0"
+    # The helper module is already imported with the exact July window above.
     motor_output, motor_sha = _compare_module("backtest_v24_motor2_historical_pg", archive_rows)
     motor_processed = re.search(r"^processed=(\d+)$", motor_output, re.MULTILINE)
     print(
