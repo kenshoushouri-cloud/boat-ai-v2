@@ -163,7 +163,7 @@ def load_fav():
             count,digest=assert_equivalent(
                 rows,
                 online,
-                key_fields=("race_id",),
+                key_fields=("race_id","ticket"),
                 fields=("race_id","ticket","odds","odds_delta_pct","is_odds_drift","is_odds_steam"),
             )
             print(f"odds_archive_equivalence=PASS rows={count} sha256={digest}")
@@ -183,7 +183,7 @@ def show(title,a):
 
 def main():
     if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL が必要です。")
-    print("✅ analyze_final_ab_features_pg.py VERSION 2026-09-15 archive-weather-odds-v2")
+    print("✅ analyze_final_ab_features_pg.py VERSION 2026-09-15 archive-weather-odds-v3")
     print(f"PERIOD={START_DATE}..{END_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL}")
     print("読み取り専用です。LINE送信・DB更新は行いません。")
     res=load_results(); wea=load_weather(); exh=load_exh(); ent=load_entry(); fav=load_fav()
