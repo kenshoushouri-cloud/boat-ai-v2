@@ -66,9 +66,10 @@ jobs:
           forbidden = imported - allowed
           assert not forbidden, sorted(forbidden)
 
+          # Imports are allowlisted structurally above. Keep text guards only
+          # for secret/env/runtime hooks that must never appear in this pure module.
           lower = text.lower()
           for token in (
-              'psycopg', 'requests', 'urllib', 'socket', 'subprocess',
               'database_url', 'railway_token', 'github_token', 'os.environ',
           ):
               assert token not in lower, token
