@@ -5,6 +5,7 @@ on:
     paths:
       - 'research_archive_readthrough.py'
       - 'research_archive_export_pg.py'
+      - 'analyze_final_ab_features_pg.py'
       - 'docs/V4_REALTIME_ARCHIVE_READTHROUGH_CONTRACT_20260915.md'
       - '.github/workflows/research-archive-readthrough.yml'
   workflow_dispatch:
@@ -24,10 +25,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile research helpers
+      - name: Compile research helpers and first consumer
         run: |
           python -m py_compile research_archive_readthrough.py
           python -m py_compile research_archive_export_pg.py
+          python -m py_compile analyze_final_ab_features_pg.py
 
       - name: Read-through, digest, archive integrity, and exporter guard smoke test
         run: |
@@ -167,7 +169,6 @@ jobs:
 
           assert canonical_line({'b': 2, 'a': 1}) == canonical_line({'a': 1, 'b': 2})
 
-          # Verify a realistic manifest-backed gzip partition and tamper detection.
           with tempfile.TemporaryDirectory() as td:
               root = Path(td)
               archive = root / 'weather.jsonl.gz'
