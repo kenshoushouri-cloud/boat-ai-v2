@@ -1,106 +1,274 @@
 # boat-ai-v2 Project Handoff
 
-更新: 2026-09-12 JST
+更新: 2026-09-15 23:24 JST
 
-この文書は**現在地だけを短く共有するための引き継ぎ**です。個別PRの経緯、日次件数、長い実験結果はここへ追記しません。
+この文書はトーク上限・担当交代時のSource of Truthです。再開時は、ここに書かれたSHA・件数・Railway状態を固定値とみなさず、必ずGitHub `main` / open PR / Railway Productionを再取得してから作業してください。
 
-再開時は、この文書の数値やPR番号を最新値と決めつけず、必ず GitHub `main`、open PR、Railway read-only health を確認してください。
+## 再開時の最初の指示
 
-## 再開時の指示
+> `kenshoushouri-cloud/boat-ai-v2` の `docs/PROJECT_HANDOFF.md` と `docs/CURRENT_STATE.md` を最初に読み、GitHub main / open Draft PR / CI / Railway Production health をread-onlyで再確認してから続行する。GitHub mainをコードのSource of Truth、Railway PostgreSQLをProduction dataのSource of Truthとする。安全なread-only監査、research、Draft PR、CI、docs更新は継続可。Productionへ影響する変更は明示承認まで実施しない。
 
-> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/PROJECT_HANDOFF.md` を読み、現在の `main`、open PR、Railway Production の read-only health を確認してから続行してください。GitHub `main` をコードの Source of Truth、Railway PostgreSQL を本番データの Source of Truth としてください。安全な監査・研究・Draft PR・CI・文書整理は継続可、Production変更は明示承認まで実施しないでください。
+## Source of Truth / approvals
 
-## Source of Truth
+- Boat repository: `kenshoushouri-cloud/boat-ai-v2`
+- Current main at this update: `61f7d6e75629ffb549a583f00bfd5dd58c186a71`
+- TOTO repository: `kenshoushouri-cloud/toto-ai-v1`
+- TOTO current main: `74fe4cdf470f553883da88b6e19528ec82e9b079`
+- Boat Railway project: `boat-v2-postgres`
+- Production PostgreSQL service: `postgres-recovery`
+- Production volume: `postgres-volume`, 20GB, mount `/var/lib/postgresql/data`
+- Safety default: fail-closed / `purchase_action=false`
 
-- Repository: `kenshoushouri-cloud/boat-ai-v2`
-- Code: GitHub `main`
-- Production DB: Railway PostgreSQL
-- Railway service構成: `docs/RAILWAY_SERVICE_MAP.md`
-- 判断履歴: `docs/PROJECT_HISTORY.md`
-- 詳細研究ログ: `docs/DEVELOPMENT_STATUS.md` と各PR
-- Railway監査ログ: Issue #42
+明示承認が必要:
+- Production-effect PR merge
+- Railway Production Variables / Cron / service / volume / migration変更
+- Production DB INSERT / UPDATE / DELETE / schema / VACUUM
+- Production model / coefficient / threshold / candidate logic変更
+- LINE actual-send behavior変更
+- Production Forward persistence新規変更
+- automatic purchase
+- paid data contract
+- external inquiry send
 
-GitHubは `branch → Draft PR → CI → review → merge` を基本とし、mainを直接編集しません。
+ユーザーは安全なread-only監査、研究、Draft PR、CI、docs/handoff更新を継続してよいと承認済み。必要データは容量節約だけを理由に捨てない。
 
-## Production変更の承認境界
+## 新システム本命アーキテクチャ
 
-以下は明示承認が必要です。
+本命は以下:
 
-- PRのProduction反映を伴うmerge
-- Railway Production設定・Variables・Cron・service変更
-- DB schema作成、Production DB書込み・削除・VACUUM等
-- モデル、係数、閾値、Production判定ロジック変更
-- LINE実送信に関わる変更
-- Forward予測の実保存開始
-- 自動購入
-- 有料データ契約・外部問い合わせ送信
+`朝の構造評価 / candidate freeze -> 直前の展示・ST・天候・完全オッズ等で全再検証 -> 条件合格時だけ将来自動購入 + LINE`
 
-安全なread-only監査、研究コード、Draft PR、CI、文書整理は確認なしで進めてよいです。
+重要:
+- 朝はPurchase確定ではなくCandidate Discovery。
+- 旧morning/day/nightの3回PREは、そのまま新システムへ継承しない。
+- 直前判定で朝候補を全て却下して0件でもよい。
+- Challengerとして `直前のみ全対象を評価 -> BUY/SKIP` をShadow比較する。
+- Primary vs Challengerはprospective 30/50/100 casesで比較し、結果後に都合のよい方式を選ばない。
+- automatic purchaseは別途明示承認とfail-closed safety validation完了まで有効化しない。
 
-## 現行Productionの要点
+旧Production FINALはT-30..0分を15分刻みで回し、通常は約15〜30分前にdecision/LINEへ入る。したがって現在のStage2 `0..7m` はlate-market research専用で、将来の人間向けLINE/購入時刻へそのまま流用しない。
 
-主軸は競艇です。Production予想は概ね次の2段階です。
+## Candidate Discovery V4
 
-1. PRE: `run_window_pipeline_pg.py` 系
-2. FINAL: `run_final_pg.py` → realtime collection → v22判定 → LINE通知
+固定Stage1 research contract:
+- 6 races/day
+- TOP2 exact-order trifecta = 12 core tickets
+- Course coefficient `0.50`
+- Opponent Pressure `1.0`, first-place only
+- Motor2 beta `0.06`, weights `1.0 / 0.6 / 0.3`
+- 4 structural metrics equal-weight rank
+- Stage1 EV/odds gateなし
+- legacy S01-S05 carryoverは現在比較用に残る
+- `purchase_action=false`
 
-自動購入はありません。Shadow / Forward研究はProduction BUY/WATCH/SKIP・LINEから隔離したまま扱います。
+Stage2 frozen hypothesis:
+- `MKT_LATE07_TOP2_SUPPORT_V1`
+- complete 120-ticket market snapshot, deadline 0..7m
+- core_order1のみ市場TOP2 support注記
+- Stage1を削除・rerankしない
+- milestone 30/50/100 supported cases
+- post-outcome retuning禁止
 
-正しい出走表テーブル名は `v2_race_entries` です。
+Trio副研究はDraft PR #362で別track。trifectaとpoolしない。
 
-## 2026-09-12 時点の重要な現在地
+### 9/13 BASELINE
 
-### 1. 精度向上研究
+これはV4ではない。immutable baseline artifactをexact評価済み:
+- core 6 races / 12 tickets / 2 hits / +220 JPY / ROI 118.333%
+- legacy 2 races / 2 tickets / -200 JPY
+- total +20 JPY / ROI 101.429%
+- source JSON SHA256 `50be76554372fb0a54a979b04d2b991cdcb15cc699e48bcf7623e1ca0032129c`
 
-- Opponent Pressure V2 は自然CronでForward観測中。Production昇格は未承認。
-- Racer Course 0.50 は有望な研究結果があるが、欠損laneをneutral扱いするForward Shadow設計を含め、まだ研究段階。
-- Shadow成功だけでProductionへ昇格しない。自然Forward日数・タイミング整合・独立評価を優先する。
+1日だけのBASELINE結果をV4性能やthreshold調整へ混ぜない。
 
-### 2. PRE LINE周辺
+### 9/15 formal V4 incident
 
-- PRE用LINE上限変数のalias差異と、重複通知防止機能が未有効である点を研究中。
-- Production Variables、dedupe schema、通知仕様はまだ変更しない。
+2026-09-15 formal V4 evidenceは:
 
-### 3. Railway / DB容量
+`UNAVAILABLE / LATE_SCHEDULED_CAPTURE_REJECTED_PREDEADLINE_GUARD`
 
-容量圧迫は確認済みです。ただし、**安全性を優先して削除・VACUUM・Cron停止は未実施**です。
+確定事実:
+- planned primary: 08:16 JST
+- natural scheduled run `34917166205`
+- started 10:25:18 JST, 約2h09m遅延
+- read-only feedは6 core races / 12 ticketsを計算
+- earliest frozen-feed deadlineは09:36 JST
+- deadline後だったためwrapperが正しくfail-closed
+- artifact uploadなし
+- backfill / manual reconstruction / result-after relabelingなし
 
-重要な結論:
-- `v2_odds_trifecta` の大半は実データで、単純な削除対象ではない。
-- `learning_all` と `final_ab` は大きく重複するが、`learning_all` のオッズが FINAL の previous-odds / drift / steam 特徴へ間接的に使われるため、単純停止はProduction出力に影響し得る。
-- したがって `cron-learning-all` の全面停止や既存 `learning_all` 行削除は現在ブロック。
-- 容量対策は、Production意味を維持する設計を研究してから承認を取る。
-- DB削除を検討する場合は、直前のread-only再監査と新しい復元可能バックアップが必要。
+これはmodel品質失敗ではなくcapture orchestration/timing failure。
 
-## 現在の優先順位
+Draft PR #364 `Research: preregister V4 capture resilience after 9/15 schedule delay`:
+- open / Draft / mergeable
+- head `52c081871d38b10b5709eb5a7aa2d2784cb1d7c7`
+- primary 08:16 GitHub schedule維持
+- future-only independent fallbackを08:25頃に検討
+- duplicate valid capture時は最初のvalid post-08:15 artifactだけformal
+- Railway Cron/serviceをfallbackとして有効化する場合は別途明示承認が必要
+- 自動merge禁止
 
-1. 競艇Productionの自然運用とread-only health監視を維持する。
-2. Opponent Pressure / Racer Course等のForward証拠を自然データで蓄積する。
-3. DB容量対策は、予測・学習・LINEへ影響しないことを証明してから進める。
-4. Draft研究を整理し、Production変更候補は承認単位を小さく分ける。
-5. 競艇の実戦投入・収益性を最優先とし、他競技は容量・データ取得・期待収益を見て採否判断する。
+## Motor2 cleanup — 完了
 
-## open PRの扱い
+ユーザー明示承認済みの限定cleanupは完了済み。
 
-再開時にopen PRを必ず一覧取得してください。2026-09-12時点では、主に以下の研究Draftがあります。
+Fresh manual backup:
+- 2026-09-15 08:27 JST
+- Railway UI表示は約4.28GB referenced
+- restore可能なfresh safety pointとして確認済み
 
-- Course / Opponent Pressure のpre-production timing研究
-- Racer Course neutral-missing Forward Shadow設計
-- PRE LINE limit / dedupe契約研究
-- Storage retention / duplicate-load研究
-- `learning_all` の安全な負荷削減研究
+Cleanup:
+- exact candidate 44,203 rows
+- 2,456 races
+- 908 snapshot keys
+- range 2026-08-20..2026-09-12
+- SHA256 `8d178d854d7b6bfb6a5c6ffdd183e1977f8c6258bd3658c9b0f75fbbf91f203f`
+- run `34909832046`: `SUCCESS_COMMITTED`
+- protected intersection=0 / ambiguous latest=0
+- Performance/PRE/FINAL/latest-PRE-health outputs diff=0
+- post rows=137,030
+- conservative final/final removable=0 after cleanup
+- `VACUUM FULL`未実施
 
-これらは**Draft研究であり、存在だけを理由にmerge・deployしません**。
+Production `MOTOR2_FINAL_SNAPSHOT_MODE=latest_per_race` は既に自然Cronで有効。再設定不要。Motor2 one-time cleanupを再実行しない。
 
-## この文書の更新ルール
+## Storage / Archive / October cost plan
 
-`PROJECT_HANDOFF.md` には次だけ残します。
+Draft PR #363 `Research: preregister V4 storage ownership migration`:
+- open / Draft / mergeable
+- branch `research/v4-storage-ownership-migration-20260915`
+- current head at this update `7f5198082e0c3362d701906c1eeb9aea382fc0e9`
+- latest listed CI / read-only workflows are all SUCCESS
+- Production mutationなし
 
-- 現在のProduction境界
-- 重要な未解決事項
-- 現在の優先順位
-- 次の担当者が知らないと危険な事項
+Latest read-only retention audit (2026-09-15):
+- `v2_odds_trifecta`: 7,981,493 rows / logical payload 830,075,423 bytes / relation 1,844,002,816 bytes
+- 30d reference: hot 545,940 rows / 56,777,757 bytes; cold 7,435,553 / 773,297,666
+- `v2_realtime_odds_snapshots` relation: 536,854,528 bytes
+- `final_ab`: 1,056,020 rows; 30d hot 498,208 / 94,924,296 bytes; cold 557,812 / 106,331,968
+- `learning_all`: 467,690 rows; 30d hot 445,565 / 84,861,496; cold 22,125 / 4,248,000
+- 30dは承認済みretention cutoffではない。容量比較用referenceのみ。
+- DELETE直後のphysical volume reclaim値ではない。
 
-個別PR番号ごとの長い説明、日次ログ、検証の全数値、過去に完了した経緯は追記せず、`PROJECT_HISTORY.md`、`DEVELOPMENT_STATUS.md`、各PR本文へ残してください。
+Archive pilot / exact-output equivalence:
+- July `v2_odds_trifecta` verified archive: 588,156 rows
+- online/archive exact-output PASS:
+  - Historical readiness
+  - Feature Lab
+  - `compare_motor_boat_ab_pg.py`
+  - `analyze_final_ab_features_pg.py`
+  - probability calibration: ready 4,889 / ticket rows 586,680
+  - N02 walk-forward: 13 bets
+  - N02 rolling: 13 bets
+  - N02 time-split: 13 bets
+  - N01/N02 diagnostics: N01 25 bets / N02 13 bets
+  - candidate-filter historical: ready 4,889 / rule selections 586
+  - Motor2 base-feature: processed 4,853 / candidate rows 75
+  - V24 Motor2 historical: processed 4,853
+- all are Production read-only, ephemeral archive, permanent uploadなし
+- current PR also has realtime archive export/entry footprint/read-through validation; latest corresponding CIはSUCCESS
 
-目安として、引き継ぎ本文は**短く読み切れる長さを維持し、追記ではなく古い記述を置き換える**運用にします。
+重要なblocker:
+- Permanent archive/Bucketはまだ作成していない。
+- old rowsのDELETEはまだBLOCK。
+- `run_odds_window_pg.py` / daily prepare等のcurrent-day Production pathはKEEP ONLINE。
+- manual OOS / historical consumersはarchive read-through対応またはretirement proofが必要。
+- `learning_all`はold FINALのprevious-odds/drift/steamへ間接依存するため、blind stop/delete禁止。
+- `v2_odds_trifecta`は「無駄」ではなくresearch/backtest asset。archive-first。
+
+Railway Hobbyはper-volume 5GB上限。現在の20GB volumeはin-place downsize不可なので、Pro→Hobbyは**fresh <=5GB compatible volume/serviceへのlogical migration**が前提。必要データを削って5GBへ押し込まない。fresh restore後の実サイズ/headroomで判断する。
+
+Cost target:
+- October: ChatGPT Go + Railway Hobby/low usageでcombined <= USD20/monthを目標
+- Oct 1–2: read-only usage/storage/dependency audit
+- Oct 3 billing boundary: independence/data-preservation/migration safetyが通ればRailway Pro→Hobbyを検討
+- Oct 14までにChatGPT Plus→Goを検討
+- コスト回収のためにprediction threshold/stake/candidate countを変えない
+
+## Old-system retirement
+
+Issue #360 `Migration: retire old selector data after V4 independence` がgate。
+
+旧システム専用データを広く削除する条件:
+1. V4 feedがlegacy shadowを読まない
+2. Stage2 market ownershipが新システム側で保全
+3. prospective evidence蓄積
+4. old selector/report停止が新システムへ無影響
+5. fresh dependency scanでzero consumers
+6. exact inventory rows/date/size + digest
+7. recovery proof
+8. shared tables除外
+9. explicit approval後にbounded delete/drop + verify
+
+旧daily/monthly report LINE actual-sendは既にDRY_RUN=1へ変更済み。
+
+Railway no-Cron audit/maintenance servicesはcleanup候補だが、依存確認と明示承認なしに削除しない。特に監査のためにaudit serviceを再deployする方法は使わない。過去にread-only監査のつもりでstaged Function作成やaudit service redeployが発生したため、今後はProduction service mutationを伴わない経路だけ使う。
+
+## TOTO handoff
+
+Repository `kenshoushouri-cloud/toto-ai-v1`。
+
+PR #161はユーザー明示承認でmerge済み:
+- current main `74fe4cdf470f553883da88b6e19528ec82e9b079`
+- Railway `toto-ai-core` deployment `b9475314-be87-4f3c-b496-1ac4cca3ba64`: SUCCESS
+- Cron `0 */12 * * *`
+- same-round A/B pairing / effective deadline=`min(A,B)` fail-closed
+
+Round 1654 Production natural validation:
+- 2026-09-15 09:04 JST: PASS
+- 2026-09-15 21:04 JST: PASS
+- A=5 matches / 5 live votes
+- B=5 matches / 5 live votes
+- target_round=1654
+- effective deadline = 2026-09-19 17:50 JST
+- delivery_window=`too-early`
+- Forward A/B=0/0
+- `TOTO_WEEKLY_PIPELINE=SKIP reason=delivery-window-too-early`
+- `purchase_action=false`
+- manual rerun / retuneなし
+
+Round1653 frozen baseline:
+- A 4/5
+- B 1/5
+- combined 5/10
+- mini-toto ticket 0/2
+- post-result retune禁止
+
+Unrelated `diagnostic-round-1654-reader` staged removalは別Production action。自動適用しない。
+
+## Local horse
+
+Issue #353。
+
+Current decision:
+`TECHNICALLY_PROMISING / RIGHTS_BLOCKED / NO_DATA_INGEST_YET`
+
+権利が明確になるまで:
+- NAR bulk ingestしない
+- long-term storageしない
+- persistent ML trainingしない
+- commercialize/distributeしない
+- external inquiryを勝手に送らない
+
+ここは容量ではなく利用権がblocker。
+
+## Immediate next work
+
+1. 9/15 V4を正式unavailableのまま固定し、後付け再構築しない。
+2. PR #364 fallback設計をreviewし、Production scheduler変更が必要ならユーザー承認を取る。
+3. PR #363で残るhistorical/manual consumersをverified archive read-throughへ移すかobsolete retirementを証明する。
+4. Permanent archive先を決める前にold rowsを削除しない。
+5. archive + online hot-set + fresh logical restoreの実サイズでHobby 5GB readinessを証明する。
+6. Issue #360の旧システムzero-consumer gateを継続する。
+7. TOTO Round1654は自然Cronだけを監視し、締切前にmanual rerunしない。
+8. V4 / TOTO / Storage evidenceを混ぜず、historical / BASELINE / V4 prospective / Productionを明確に分離する。
+
+## 最後の安全ルール
+
+- fail-closed
+- `purchase_action=false`
+- thresholdを候補数・料金回収・月利益目標のために緩めない
+- 結果後にForwardを作り直さない
+- historical / BASELINE / V4 Forward / Production evidenceを混ぜない
+- 必要なraw/timing/reproducibility dataを容量節約だけで捨てない
+- Production mutationは必ず明示承認範囲を確認する

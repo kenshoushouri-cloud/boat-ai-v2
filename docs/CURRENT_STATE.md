@@ -1,192 +1,140 @@
 # boat-ai-v2 Current State
 
-更新日時: 2026-09-11 JST
+更新日時: 2026-09-15 23:24 JST
 
-このファイルは、`docs/PROJECT_HANDOFF.md` / `docs/PROJECT_HISTORY.md` の長期記録を補完する現在地点の短い運用スナップショットです。再開時は必ずGitHub mainとRailway productionを再取得し、この内容を固定の現在値だと仮定しないでください。
+再開時はGitHub main / open PR / Railway Productionを必ず再取得し、この文書のSHA・件数を固定値とみなさないでください。
 
-## Current main / open PR
+## Current source of truth
 
-- Repository: `kenshoushouri-cloud/boat-ai-v2`
-- 確認時main: `0f44d401107f9b68fb74faeacdc973c867f776c3`（PR #330）。
-- PR #330: merged。Opponent Pressureをtiming-safe Railway Cronへ移行。
-- Open PR: #329 `Research: audit Course + Opponent pre-production timing integrity` のみ。Draft / research-only。
-- PR #331: SELECT-only zero-write監査。2026-09-11の0書込み確認後、証拠を#329へ移して未マージclose。
+- Boat main: `61f7d6e75629ffb549a583f00bfd5dd58c186a71`
+- Railway project: `boat-v2-postgres`
+- PostgreSQL service: `postgres-recovery`
+- Volume: 20GB
+- Safety: fail-closed / `purchase_action=false`
+- Production mutationは明示承認制
 
-## Railway production
+## V4
 
-Project: `boat-v2-postgres`
+本命アーキテクチャ:
+`朝の構造評価/freeze -> 直前の展示・ST・天候・完全オッズ等で全再検証 -> 条件合格時だけ将来自動購入+LINE`
 
-主要既存service:
-- `cron-racer-course-stats`: `python -u collect_racer_course_stats_pg.py`, Cron `15 22 * * *` UTC = 07:15 JST, SUCCESS。
-- `cron-final-check`: SUCCESS。
-- `cron-learning-all`: SUCCESS。
-- PostgreSQL `postgres-recovery`: SUCCESS / 1 replica / 5,000 MB volume。
+Stage1:
+- 6 races / 12 TOP2 exact-order trifecta tickets
+- Course 0.50
+- Opponent Pressure 1.0 first-place only
+- Motor2 beta 0.06, weights 1.0/0.6/0.3
+- no Stage1 EV/odds gate
+- `purchase_action=false`
 
-Opponent Pressure dedicated service:
-- service: `cron-opponent-pressure-v2-live`
-- source: `kenshoushouri-cloud/boat-ai-v2`
-- branch: `runtime/opponent-pressure-railway-cron`
-- start: `python -u .github/scripts/opponent_pressure_shadow_v2_compact.py`
-- Cron: `0 22 * * *` UTC = 07:00 JST
-- restart: `NEVER`
-- latest deployment: SUCCESS
+Stage2:
+- `MKT_LATE07_TOP2_SUPPORT_V1`
+- 0..7m complete120 market support
+- research-only timing; future LINE/manual purchase timingには流用しない
 
-Migration試行時に作られた補助service:
-- `cron-opponent-pressure-v2`: 空 / Cronなし。
-- `cron-opponent-pressure-v2-runner`: Cronなし。Production実行経路として使用しない。
+9/15 formal V4:
+- `UNAVAILABLE / LATE_SCHEDULED_CAPTURE_REJECTED_PREDEADLINE_GUARD`
+- natural run `34917166205`
+- 08:16予定 -> 10:25:18 JST開始
+- 6 races / 12 ticketsは計算したがearliest deadline 09:36後
+- fail-closed、artifactなし、backfill禁止
 
-### STAGED patch safety
+Draft PR #364:
+- V4 capture resilience preregistration
+- head `52c081871d38b10b5709eb5a7aa2d2784cb1d7c7`
+- fallback scheduler未有効化 / 未merge
 
-- 現在、新しいRailway environment STAGED patchが存在し、確認時は180 changes。
-- patch IDや件数は将来変わり得るので再開時に再取得する。
-- **内容を独立確認するまでaccept-deployしない。**
-- active `cron-opponent-pressure-v2-live` の07:00 JST Cron / restart NEVERはすでに実効設定として確認済み。
+## Motor2 cleanup
 
-### PostgreSQL capacity
+完了済み:
+- fresh Manual backup 2026-09-15 08:27 JST
+- 44,203 redundant rows削除
+- SHA256 `8d178d854d7b6bfb6a5c6ffdd183e1977f8c6258bd3658c9b0f75fbbf91f203f`
+- run `34909832046` SUCCESS_COMMITTED
+- protected/ambiguous=0
+- evaluator/output diff=0
+- post rows=137,030
+- `VACUUM FULL`なし
+- `MOTOR2_FINAL_SNAPSHOT_MODE=latest_per_race`有効
+- one-time cleanup再実行禁止
 
-2026-09-11 24h read-only metrics:
-- disk current: 約4.107 GB / 5 GB = 約82.1%
-- disk max: 約4.107 GB
-- memory current: 約1.162 GB
-- memory 24h average: 約0.731 GB
-- CPU: low
+## Storage / archive
 
-判断:
-- DB volume headroomは約0.893 GB。
-- 地方競馬等の別競技データをこのDBへ同居させない。
-- Opponent追加はcompact daily rowsのみとし、容量監視を継続する。
+Draft PR #363:
+- `Research: preregister V4 storage ownership migration`
+- head `7f5198082e0c3362d701906c1eeb9aea382fc0e9`
+- latest listed CI/read-only workflows SUCCESS
+- Production mutationなし
 
-## Realtime trifecta odds
+Latest retention measurement:
+- base odds `v2_odds_trifecta`: 7,981,493 rows / relation 1,844,002,816 bytes
+- 30d ref: hot 545,940 / cold 7,435,553
+- realtime odds relation 536,854,528 bytes
+- final_ab 30d: hot 498,208 / cold 557,812
+- learning_all 30d: hot 445,565 / cold 22,125
 
-PR #320後:
-- 公式`official_odds3t`由来の120/60/24完全ticket集合のみ採用。
-- 不完全fallbackはfail-closed。
-- 自然Production CronでLIVE_VALIDATED済み。
+30dはcutoff承認ではなく容量比較のみ。old rows DELETEはBLOCK。
 
-ただし2026-09-08 historical market odds値そのものは独立認証できていないため、その値を使うhistorical ROI承認/model-threshold promotionは引き続きBLOCK。
+July verified archive 588,156 base-odds rowsでonline/archive exact-output PASS済み:
+- probability calibration
+- N02 walk-forward / rolling / time-split
+- N01/N02 diagnostics
+- candidate-filter historical
+- Motor2 base-feature
+- V24 Motor2 historical
+- Feature Lab
+- motor/boat A/B
+- final_ab analysis
 
-## Racer Course Top3
+Permanent archiveは未作成。current-day Production consumersはonline保持。`learning_all`はold FINAL previous-odds/drift/steam依存があるためblind stop/delete禁止。
 
-Frozen contract:
-- BASE = current v24
-- COURSE = BASE raw strength + `0.50 * z(official racer-by-course top3 rate)`
-- coefficient 0.50固定。再探索しない。
-- exact-date official source
-- source timestamp <= 08:15 JSTかつrace deadline前
-- 必要6艇の当該lane Top3が揃わなければfail-closed
+Railway Hobbyは5GB/volume上限。20GB volumeはdownsize不可なので、Hobby移行はfresh <=5GB logical migration + restore-size/headroom proofが必要。
 
-2026-09-10 research evidence:
-- evaluated: 1,168 races
-- LogLoss delta: `-0.23874376`
-- Brier delta: `-0.00606810`
-- winner rank delta: `-7.2877`
-- 23/23 venues、13/13 datesで3指標すべて改善
-- paired bootstrap 5,000 reps: 3指標の95% CIはいずれも0未跨ぎ
+## Old-system retirement
 
-2026-09-11 natural collector validation:
-- collector version: `2026-09-10 partial-slots-v3`
-- target racers: 530
-- success: 518
-- partial: 22
-- failed: 12
-- saved rows: 3,045
-- racer coverage: 97.7%
-- failed 12は`no_usable_metrics`
-- timing-safe six-lane Top3 coverage: **117/144 = 81.25%**
-- fail-closed: 27 races
+Issue #360が削除gate。legacy/shared dependenciesがゼロになるまで広い削除はしない。
 
-旧complete-only実績 83/132=62.88%、事前構造simulation 105/132=79.55%に対し、実運用でもcoverage改善を確認。
+旧daily/monthly LINE reportはDRY_RUN=1済み。
 
-判断: source parser/readinessは改善確認済み。ただしCourse 0.50のProduction昇格はまだ許可しない。
+監査用no-Cron serviceやmaintenance serviceは、dependency proof + explicit approvalなしに削除しない。監査目的でservice redeployしない。
 
-## Opponent Pressure
+## TOTO
 
-Historical research evidence:
-- evaluated: 2,579 races
-- winner Brier delta: `-0.00098501`
-- winner LogLoss delta: `-0.01503974`
-- winner rank delta: `-0.0450`
-- fixed coefficient 1.0
+- main `74fe4cdf470f553883da88b6e19528ec82e9b079`
+- PR #161 merge済み
+- `toto-ai-core` deployment `b9475314-be87-4f3c-b496-1ac4cca3ba64` SUCCESS
+- natural Cron 9/15 09:04 / 21:04 JSTともRound1654 pairing PASS
+- A/B each 5 matches + 5 live votes
+- effective deadline 2026-09-19 17:50 JST
+- `delivery_window=too-early`
+- Forward A/B=0/0
+- `purchase_action=false`
+- manual rerun/retune禁止
+- unrelated `diagnostic-round-1654-reader` removalは自動適用しない
 
-Fixed Course 0.50 + Opponent 1.0 common timing-clean sample 1,144R:
-- COMBINED vs COURSE LogLoss: `-0.02814106`
-- Brier: `-0.00082388`
-- rank: `-0.4685`
-- paired bootstrap 95% CIはいずれも0未満
+## Local horse
 
-### Timing problem and migration
+`TECHNICALLY_PROMISING / RIGHTS_BLOCKED / NO_DATA_INGEST_YET`
 
-2026-08-25..2026-09-10 read-only timing audit:
-- 15 dates / 2,256 rows
-- created after 08:15 cutoff: 1,932
-- created at/after race deadline: 183
-- cutoffを満たした観測日は2/15のみ
-- observed later mutation `updated_at > created_at`: 0
+権利明確化までbulk ingest / persistent training / commercial use / external inquiry sendなし。
 
-このためquality evidenceだけではProductionに上げず、PR #330でcollectorをtiming-safe Railway Cronへ移行。
+## Immediate next work
 
-New collector contract:
-- 07:00 JST natural Cron
-- complete card必須
-- 08:15 JST cutoff
-- race deadline前必須
-- first-write-wins `ON CONFLICT DO NOTHING`
-- GitHub側の旧書込み経路は停止
+1. 9/15 V4 unavailableを固定し、後付け再構築しない。
+2. PR #364 fallback設計をreview。Production scheduler変更なら承認を取る。
+3. PR #363で残るhistorical/manual consumerのArchive対応またはretirement proofを続ける。
+4. Permanent archive先決定前にold rowsを削除しない。
+5. fresh logical restoreサイズでHobby 5GB readinessを証明する。
+6. Issue #360のzero-consumer gateを継続する。
+7. TOTO Round1654は自然Cronだけ監視する。
 
-2026-09-11:
-- migration deploymentは約08:28 JSTに初回起動したためcutoff guardが拒否。
-- Production DB SELECT-only監査で当日Opponent rows=0、cutoff後created=0、updated=0を確認。
-- したがって9/11はnatural success dayに数えない。
+## Safety boundary
 
-次gate:
-- 2026-09-12 07:00 JSTから5日連続の自然Cronを監査。
-- 毎日、完全行数・model_version・train_end・6艇配列・matched opponents・created/updated timing・deadline timing・後更新有無をread-only確認。
-- 5/5でも自動昇格しない。別のProduction promotion reviewが必要。
-
-Current decision:
-`RAILWAY_MIGRATION_COMPLETE / OPPONENT_5_DAY_TIMING_VALIDATION_PENDING / BLOCK_NO_PRODUCTION_CHANGE`
-
-## Exhibition ST / Motor GUARD05
-
-Exhibition ST:
-- evaluated: 865
-- directionally positive but venue heterogeneous
-- `BLOCK_MANUAL_REVIEW_ONLY`
-
-Motor GUARD05:
-- evaluated: 262
-- `affected_evaluated=0`
-- treatment effect未識別
-- `BLOCK_MANUAL_REVIEW_ONLY`
-
-## Production boundaries
-
-明示的な追加判断なしに変更しない:
-- Production v24/FINAL probability logic
-- Racer Course coefficient 0.50
-- Opponent Pressure coefficient 1.0 / filter
-- Racer Course + Opponent combined logic
-- BUY/WATCH/SKIP
-- LINE notification behavior
+明示承認なしで変更しない:
+- Production v24/FINAL
+- coefficients / thresholds / BUY/WATCH/SKIP
+- LINE actual send
+- Railway Production config/Cron/Variables/services/volume
+- Production DB writes/deletes/schema/VACUUM
 - automatic purchase
-- N01/N02/Bao thresholds/coefficients
-- Railway variables/config/Cron
-- 現在のRailway STAGED patch
 
-## Next safe boundary
-
-1. 2026-09-12 07:00 JST `cron-opponent-pressure-v2-live` の最初の自然Cronをread-only監査。
-2. 5日連続timing-clean gateを積み上げる。
-3. Racer Courseは117/144 source readinessを基準に、欠損27Rの原因分布をread-onlyで追跡する。
-4. Production昇格・係数変更・手動backfill/collector再実行はしない。
-5. PostgreSQL disk usageを継続監視し、5GB volumeの余裕を守る。
-
-## Restart checklist
-
-1. current GitHub main SHAを確認。
-2. open PRを確認。
-3. Railway production statusとSTAGED patch件数をread-only確認。
-4. `cron-opponent-pressure-v2-live` のsource/start/Cron/restartを確認。
-5. `docs/CURRENT_STATE.md`、`docs/PROJECT_HANDOFF.md`、`docs/PROJECT_HISTORY.md`を読む。
-6. Issue #42の最新監査ログを確認。
-7. 研究結果とProduction昇格を混同しない。
+必要データを容量節約だけで削除しない。historical / BASELINE / V4 Forward / Production evidenceを混ぜない。
