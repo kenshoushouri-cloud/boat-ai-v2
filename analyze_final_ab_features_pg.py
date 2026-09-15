@@ -11,6 +11,8 @@ END_DATE = os.getenv("ANALYZE_END_DATE") or datetime.now(JST).strftime("%Y-%m-%d
 START_DATE = os.getenv("ANALYZE_START_DATE") or (datetime.strptime(END_DATE, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
 SNAPSHOT_LABEL = os.getenv("SNAPSHOT_LABEL", "final_ab").strip() or "final_ab"
 WEATHER_ARCHIVE_MANIFEST = os.getenv("ANALYZE_WEATHER_ARCHIVE_MANIFEST", "").strip()
+ODDS_ARCHIVE_MANIFEST = os.getenv("ANALYZE_ODDS_ARCHIVE_MANIFEST", "").strip()
+ODDS_ARCHIVE_COMPARE_ONLINE = os.getenv("ANALYZE_ODDS_ARCHIVE_COMPARE_ONLINE", "0").strip() == "1"
 
 def si(v, d=0):
     try: return int(float(str(v).replace(",", ""))) if v not in (None, "") else d
@@ -128,9 +130,47 @@ def load_entry():
         if rid and 1<=lane<=6: out[rid][lane]=r
     return dict(out)
 
+def _fav_archive_rows():
+    from research_archive_readthrough import EvidenceQuery, JsonlGzipPartitionSource
+
+    source = JsonlGzipPartitionSource(ODDS_ARCHIVE_MANIFEST)
+    query = EvidenceQuery(
+        table="v2_realtime_odds_snapshots",
+        start_date=START_DATE,
+        end_date=END_DATE,
+        labels=(SNAPSHOT_LABEL,),
+    )
+    rows = source.fetch(query)
+    keep = (
+        "race_id",
+        "ticket",
+        "odds",
+        "odds_delta_pct",
+        "is_odds_drift",
+        "is_odds_steam",
+    )
+    return [{k: r.get(k) for k in keep} for r in rows if si(r.get("market_rank"),0)==1]
+
 def load_fav():
-    if not exists("v2_realtime_odds_snapshots"):return {}
-    rows=fetch_all("select race_id,ticket,odds,odds_delta_pct,is_odds_drift,is_odds_steam from v2_realtime_odds_snapshots where race_date >= %s and race_date <= %s and snapshot_label=%s and market_rank=1",(START_DATE,END_DATE,SNAPSHOT_LABEL))
+    online_sql="select race_id,ticket,odds,odds_delta_pct,is_odds_drift,is_odds_steam from v2_realtime_odds_snapshots where race_date >= %s and race_date <= %s and snapshot_label=%s and market_rank=1"
+    if ODDS_ARCHIVE_MANIFEST:
+        rows=_fav_archive_rows()
+        print(f"odds_source=archive manifest={ODDS_ARCHIVE_MANIFEST} rows={len(rows)}")
+        if ODDS_ARCHIVE_COMPARE_ONLINE:
+            if not exists("v2_realtime_odds_snapshots"): raise RuntimeError("online realtime odds table missing for equivalence check")
+            online=fetch_all(online_sql,(START_DATE,END_DATE,SNAPSHOT_LABEL))
+            from research_archive_readthrough import assert_equivalent
+            count,digest=assert_equivalent(
+                rows,
+                online,
+                key_fields=("race_id",),
+                fields=("race_id","ticket","odds","odds_delta_pct","is_odds_drift","is_odds_steam"),
+            )
+            print(f"odds_archive_equivalence=PASS rows={count} sha256={digest}")
+    else:
+        if not exists("v2_realtime_odds_snapshots"):return {}
+        rows=fetch_all(online_sql,(START_DATE,END_DATE,SNAPSHOT_LABEL))
+        print(f"odds_source=postgres rows={len(rows)}")
     return {str(r["race_id"]):r for r in rows if r.get("race_id")}
 
 def add(a:Dict[str,Counter],k:str,fl:int,hit:bool):
@@ -143,7 +183,7 @@ def show(title,a):
 
 def main():
     if not os.getenv("DATABASE_URL"): raise RuntimeError("DATABASE_URL が必要です。")
-    print("✅ analyze_final_ab_features_pg.py VERSION 2026-09-15 archive-weather-v1")
+    print("✅ analyze_final_ab_features_pg.py VERSION 2026-09-15 archive-weather-odds-v2")
     print(f"PERIOD={START_DATE}..{END_DATE} SNAPSHOT_LABEL={SNAPSHOT_LABEL}")
     print("読み取り専用です。LINE送信・DB更新は行いません。")
     res=load_results(); wea=load_weather(); exh=load_exh(); ent=load_entry(); fav=load_fav()
