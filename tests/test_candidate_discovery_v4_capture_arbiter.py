@@ -6,6 +6,7 @@ from research.candidate_discovery_v4_capture_arbiter import (
     Capture,
     arbitrate_captures,
     canonical_core_payload_sha256,
+    capture_from_mapping,
 )
 
 JST = timezone(timedelta(hours=9))
@@ -127,6 +128,24 @@ def artifact():
     }
 
 
+def capture_mapping(**overrides):
+    row = {
+        "channel": "github-primary",
+        "provider_run_id": "100",
+        "target_date": "2026-09-16",
+        "generated_at_jst": "2026-09-16T08:16:30+09:00",
+        "canonical_payload_sha256": "a" * 64,
+        "prospective_evidence_eligible": True,
+        "purchase_action": False,
+        "promotion_allowed": False,
+        "core_races": 6,
+        "core_tickets": 12,
+        "all_frozen_rows_pre_deadline": True,
+    }
+    row.update(overrides)
+    return row
+
+
 def assert_value_error(fn):
     try:
         fn()
@@ -197,6 +216,16 @@ def test_purchase_promotion_or_postdeadline_flags_fail_closed():
     assert len(result.rejected_captures) == 3
 
 
+def test_capture_mapping_requires_exact_boolean_and_integer_types():
+    assert_value_error(
+        lambda: capture_from_mapping(capture_mapping(prospective_evidence_eligible="false"))
+    )
+    assert_value_error(
+        lambda: capture_from_mapping(capture_mapping(all_frozen_rows_pre_deadline="true"))
+    )
+    assert_value_error(lambda: capture_from_mapping(capture_mapping(core_races=6.0)))
+
+
 def test_canonical_hash_ignores_capture_timestamps_and_legacy_auxiliary_changes():
     first = artifact()
     second = deepcopy(first)
@@ -247,15 +276,43 @@ def test_canonical_hash_changes_when_formal_core_ticket_changes():
     assert canonical_core_payload_sha256(first) != canonical_core_payload_sha256(second)
 
 
-def test_canonical_hash_changes_when_formal_policy_or_score_changes():
+def test_canonical_hash_rejects_frozen_policy_drift_but_tracks_score_change():
     base = artifact()
     policy_changed = deepcopy(base)
     policy_changed["policy"]["motor2_beta"] = 0.07
+    assert_value_error(lambda: canonical_core_payload_sha256(policy_changed))
+
     score_changed = deepcopy(base)
     score_changed["feed"][0]["race_score"] = 0.12345678
-    base_hash = canonical_core_payload_sha256(base)
-    assert base_hash != canonical_core_payload_sha256(policy_changed)
-    assert base_hash != canonical_core_payload_sha256(score_changed)
+    assert canonical_core_payload_sha256(base) != canonical_core_payload_sha256(score_changed)
+
+
+def test_canonical_hash_rejects_missing_required_formal_fields():
+    missing_policy = artifact()
+    del missing_policy["policy"]["motor2_beta"]
+    assert_value_error(lambda: canonical_core_payload_sha256(missing_policy))
+
+    missing_core = artifact()
+    del missing_core["feed"][0]["deadline_at"]
+    assert_value_error(lambda: canonical_core_payload_sha256(missing_core))
+
+    null_core = artifact()
+    null_core["feed"][0]["race_score"] = None
+    assert_value_error(lambda: canonical_core_payload_sha256(null_core))
+
+
+def test_canonical_hash_rejects_malformed_formal_core_types():
+    bad_legacy_flag = artifact()
+    bad_legacy_flag["feed"][0]["legacy_carryover"] = "false"
+    assert_value_error(lambda: canonical_core_payload_sha256(bad_legacy_flag))
+
+    bad_opponent_flag = artifact()
+    bad_opponent_flag["feed"][0]["opponent_pressure_available"] = "false"
+    assert_value_error(lambda: canonical_core_payload_sha256(bad_opponent_flag))
+
+    bad_ticket = artifact()
+    bad_ticket["feed"][0]["tickets"][0]["ticket"] = "1-1-2"
+    assert_value_error(lambda: canonical_core_payload_sha256(bad_ticket))
 
 
 def test_canonical_hash_rejects_incomplete_or_duplicate_core_orders():

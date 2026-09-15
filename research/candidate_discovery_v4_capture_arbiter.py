@@ -51,6 +51,20 @@ FORMAL_POLICY_KEYS = (
     "odds_filter",
     "odds_read",
 )
+EXPECTED_FORMAL_POLICY = {
+    "course_coefficient": 0.5,
+    "course_missing_lane": "neutral",
+    "course_source_cutoff_jst": "08:15",
+    "opponent_pressure_coefficient": 1.0,
+    "opponent_pressure_role": "first_place_only",
+    "motor2_beta": 0.06,
+    "motor2_position_weights": [1.0, 0.6, 0.3],
+    "core_races_per_day": 6,
+    "core_tickets_per_race": 2,
+    "expected_value_filter": False,
+    "odds_filter": False,
+    "odds_read": False,
+}
 CORE_ROW_KEYS = (
     "race_id",
     "race_date",
@@ -97,6 +111,8 @@ class ArbitrationResult:
 
 
 def _aware_jst(value: datetime) -> datetime:
+    if not isinstance(value, datetime):
+        raise ValueError("generated_at_jst must be a datetime")
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("generated_at_jst must be timezone-aware")
     return value.astimezone(JST)
@@ -111,6 +127,46 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{name} must be a mapping")
     return value
+
+
+def _require_keys(row: Mapping[str, Any], keys: Iterable[str], name: str) -> None:
+    missing = [key for key in keys if key not in row or row.get(key) is None]
+    if missing:
+        raise ValueError(f"{name} missing required fields: {','.join(sorted(missing))}")
+
+
+def _strict_bool(value: Any, name: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be an exact boolean")
+    return value
+
+
+def _strict_int(value: Any, name: str) -> int:
+    if type(value) is not int:
+        raise ValueError(f"{name} must be an exact integer")
+    return value
+
+
+def _parse_iso_date(value: Any, name: str) -> date:
+    try:
+        return date.fromisoformat(str(value))
+    except Exception as exc:
+        raise ValueError(f"{name} must be an ISO date") from exc
+
+
+def _parse_aware_datetime(value: Any, name: str) -> datetime:
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception as exc:
+        raise ValueError(f"{name} must be an ISO datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{name} must be timezone-aware")
+    return parsed
+
+
+def _valid_ticket(value: str) -> bool:
+    parts = value.split("-")
+    return len(parts) == 3 and len(set(parts)) == 3 and all(part in {"1", "2", "3", "4", "5", "6"} for part in parts)
 
 
 def canonical_core_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
@@ -134,21 +190,47 @@ def canonical_core_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(feed, list):
         raise ValueError("feed must be a list")
 
-    if int(summary.get("core_races") or 0) != CORE_RACES:
-        raise ValueError("core race count mismatch")
-    if int(summary.get("core_tickets") or 0) != CORE_TICKETS:
-        raise ValueError("core ticket count mismatch")
-    scheduled = int(summary.get("scheduled_races") or 0)
-    evaluable = int(summary.get("evaluable_races") or 0)
-    if scheduled <= 0 or evaluable != scheduled:
+    _require_keys(summary, FORMAL_SUMMARY_KEYS, "summary")
+    _require_keys(policy, FORMAL_POLICY_KEYS, "policy")
+
+    target_date = _parse_iso_date(summary["date"], "summary.date")
+    scheduled = _strict_int(summary["scheduled_races"], "summary.scheduled_races")
+    evaluable = _strict_int(summary["evaluable_races"], "summary.evaluable_races")
+    skipped = _strict_int(
+        summary["skipped_incomplete_entries_or_deadline"],
+        "summary.skipped_incomplete_entries_or_deadline",
+    )
+    if scheduled <= 0 or evaluable != scheduled or skipped != 0:
         raise ValueError("race universe incomplete")
+    if _strict_int(summary["core_races"], "summary.core_races") != CORE_RACES:
+        raise ValueError("core race count mismatch")
+    if _strict_int(summary["core_tickets"], "summary.core_tickets") != CORE_TICKETS:
+        raise ValueError("core ticket count mismatch")
+    for key in (
+        "course_supported_races",
+        "course_usable_lanes",
+        "opponent_pressure_supported_races",
+        "motor2_complete_races",
+    ):
+        if _strict_int(summary[key], f"summary.{key}") < 0:
+            raise ValueError(f"summary.{key} must be non-negative")
+
+    for key, expected in EXPECTED_FORMAL_POLICY.items():
+        actual = policy[key]
+        if key in ("expected_value_filter", "odds_filter", "odds_read"):
+            actual = _strict_bool(actual, f"policy.{key}")
+        if actual != expected:
+            raise ValueError(f"frozen policy mismatch: {key}")
 
     core_rows: list[Mapping[str, Any]] = []
     for raw in feed:
         if not isinstance(raw, Mapping):
             continue
-        if raw.get("daily_rank") is None or bool(raw.get("legacy_carryover")):
+        if raw.get("daily_rank") is None:
             continue
+        _require_keys(raw, CORE_ROW_KEYS + ("tickets", "legacy_carryover"), "core row")
+        if _strict_bool(raw["legacy_carryover"], "core row legacy_carryover") is not False:
+            raise ValueError("ranked formal core row cannot be legacy carryover")
         core_rows.append(raw)
 
     if len(core_rows) != CORE_RACES:
@@ -161,6 +243,29 @@ def canonical_core_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
 
     normalized_rows: list[dict[str, Any]] = []
     for row in sorted(core_rows, key=lambda item: int(item["daily_rank"])):
+        rank = _strict_int(row["daily_rank"], "core row daily_rank")
+        race_no = _strict_int(row["race_no"], "core row race_no")
+        head_lane = _strict_int(row["head_lane"], "core row head_lane")
+        course_lanes = _strict_int(row["course_usable_lanes"], "core row course_usable_lanes")
+        if not 1 <= race_no <= 12:
+            raise ValueError("core row race_no out of range")
+        if not 1 <= head_lane <= 6:
+            raise ValueError("core row head_lane out of range")
+        if not 0 <= course_lanes <= 6:
+            raise ValueError("core row course_usable_lanes out of range")
+        _strict_bool(row["opponent_pressure_available"], "core row opponent_pressure_available")
+        _strict_bool(row["motor2_complete"], "core row motor2_complete")
+        if str(row["race_id"]).strip() == "" or str(row["venue_id"]).strip() == "":
+            raise ValueError("core row race identity required")
+        if _parse_iso_date(row["race_date"], "core row race_date") != target_date:
+            raise ValueError("core row race_date mismatch")
+        deadline = _parse_aware_datetime(row["deadline_at"], "core row deadline_at").astimezone(JST)
+        if deadline.date() != target_date:
+            raise ValueError("core row deadline date mismatch")
+        expected_tier = "A" if rank <= 2 else ("B" if rank <= 4 else "C")
+        if str(row["tier"]) != expected_tier:
+            raise ValueError("core row tier/rank mismatch")
+
         raw_tickets = row.get("tickets")
         if not isinstance(raw_tickets, list):
             raise ValueError("core race tickets must be a list")
@@ -172,8 +277,8 @@ def canonical_core_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
             if type(order) is not int or order not in (1, 2):
                 continue
             value = str(ticket.get("ticket") or "").strip()
-            if not value:
-                raise ValueError("core ticket string required")
+            if not _valid_ticket(value):
+                raise ValueError("valid exact-order trifecta core ticket required")
             core_tickets.append({"core_order": order, "ticket": value})
         core_tickets.sort(key=lambda item: item["core_order"])
         if len(core_tickets) != 2 or [item["core_order"] for item in core_tickets] != [1, 2]:
@@ -204,23 +309,44 @@ def canonical_core_payload_sha256(artifact: Mapping[str, Any]) -> str:
 
 
 def capture_from_mapping(row: Mapping[str, Any]) -> Capture:
-    raw_date = row.get("target_date")
-    target = raw_date if isinstance(raw_date, date) and not isinstance(raw_date, datetime) else date.fromisoformat(str(raw_date))
-    generated = row.get("generated_at_jst")
+    _require_keys(
+        row,
+        (
+            "target_date",
+            "generated_at_jst",
+            "canonical_payload_sha256",
+            "prospective_evidence_eligible",
+            "purchase_action",
+            "promotion_allowed",
+            "core_races",
+            "core_tickets",
+            "all_frozen_rows_pre_deadline",
+        ),
+        "capture metadata",
+    )
+    raw_date = row["target_date"]
+    target = raw_date if isinstance(raw_date, date) and not isinstance(raw_date, datetime) else _parse_iso_date(raw_date, "target_date")
+    generated = row["generated_at_jst"]
     if not isinstance(generated, datetime):
-        generated = datetime.fromisoformat(str(generated).replace("Z", "+00:00"))
+        generated = _parse_aware_datetime(generated, "generated_at_jst")
+    else:
+        generated = _parse_aware_datetime(generated, "generated_at_jst")
     return Capture(
         channel=str(row.get("channel") or ""),
         provider_run_id=str(row.get("provider_run_id") or ""),
         target_date=target,
         generated_at_jst=generated,
-        canonical_payload_sha256=str(row.get("canonical_payload_sha256") or "").lower(),
-        prospective_evidence_eligible=bool(row.get("prospective_evidence_eligible")),
-        purchase_action=bool(row.get("purchase_action")),
-        promotion_allowed=bool(row.get("promotion_allowed")),
-        core_races=int(row.get("core_races") or 0),
-        core_tickets=int(row.get("core_tickets") or 0),
-        all_frozen_rows_pre_deadline=bool(row.get("all_frozen_rows_pre_deadline")),
+        canonical_payload_sha256=str(row["canonical_payload_sha256"]).lower(),
+        prospective_evidence_eligible=_strict_bool(
+            row["prospective_evidence_eligible"], "prospective_evidence_eligible"
+        ),
+        purchase_action=_strict_bool(row["purchase_action"], "purchase_action"),
+        promotion_allowed=_strict_bool(row["promotion_allowed"], "promotion_allowed"),
+        core_races=_strict_int(row["core_races"], "core_races"),
+        core_tickets=_strict_int(row["core_tickets"], "core_tickets"),
+        all_frozen_rows_pre_deadline=_strict_bool(
+            row["all_frozen_rows_pre_deadline"], "all_frozen_rows_pre_deadline"
+        ),
     )
 
 
@@ -238,7 +364,9 @@ def is_formally_valid(capture: Capture, *, target_date: date) -> bool:
         and capture.prospective_evidence_eligible is True
         and capture.purchase_action is False
         and capture.promotion_allowed is False
+        and type(capture.core_races) is int
         and capture.core_races == CORE_RACES
+        and type(capture.core_tickets) is int
         and capture.core_tickets == CORE_TICKETS
         and capture.all_frozen_rows_pre_deadline is True
     )
