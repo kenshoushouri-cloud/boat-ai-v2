@@ -51,9 +51,18 @@ Railway Production config currently points at repo `main` and start command:
 
 `python -u collect_candidate_filter_shadow_pg.py`
 
-The service has no Cron schedule, but the deploy config contains a one-replica region setting and candidate-shadow variables. The invoked script is not read-only: current main can create/alter/deduplicate/write `v2_candidate_filter_shadow` and reads same-day `v2_odds_trifecta`.
+The service has no Cron schedule, but the deploy config contains a one-replica region setting, candidate-shadow variables, and repository watch patterns including top-level Python files. The invoked script is not read-only: current main can create/alter/deduplicate/write `v2_candidate_filter_shadow` and reads same-day `v2_odds_trifecta`.
 
-Therefore this service is an additional Production execution surface for the old candidate-shadow chain even though its name looks like a test service. It must be included in Issue #360 zero-consumer/retirement proof. No redeploy or config change was made.
+This is not merely a theoretical config surface. Railway deployment `f047dabd-1179-4e87-bc0f-2a0a1e513f80`, triggered from main commit `8abbb0186852969129175848ee106118031f97e4`, completed SUCCESS on 2026-09-12 and its runtime log reported:
+
+- `TARGET_DATE=2026-09-12 WINDOW_NAME=day ENABLED=True REQUIRE_COMPLETE_ODDS=True`
+- `races=156 ready_races=120 skipped_entries=0 skipped_odds=36`
+- `candidate_rows=11 saved_rows=11`
+- S01/S02/S03 matched `1/5/5`
+
+Later main changes outside its watch scope were recorded as `SKIPPED`, which does **not** prove retirement: a future matching repository change can still trigger the configured start command unless the service is separately retired/isolated under an approved Production change.
+
+Therefore this service is an additional Production execution surface for the old candidate-shadow chain even though its name looks like a test service. It must be included in Issue #360 zero-consumer/retirement proof. No redeploy or config change was made by this audit.
 
 ### `cron-opponent-pressure-v2-runner`
 
@@ -93,16 +102,16 @@ A future `ZERO_CONSUMER=PASS` for an old-history table or label is invalid unles
 2. every Railway Production service's actual `source.repo`, `source.branch`, and `startCommand`;
 3. every non-main branch currently referenced by a Railway Production service;
 4. inline/image-backed Railway start commands that have no GitHub source file;
-5. scheduled services, continuously configured services, manual/no-Cron services, and diagnostic/maintenance services separately classified;
+5. scheduled services, continuously configured services, repository-triggered/no-Cron services, manual/no-Cron services, and diagnostic/maintenance services separately classified;
 6. workflow-dispatch / owner-command GitHub Actions paths that can still read Production history;
 7. Draft-only retirement/guards are not counted as current-main removal until landed under the applicable approval boundary;
 8. ambiguous or unreachable service config => fail closed, not “probably unused”.
 
-A service being named `test`, `audit`, `backtest`, `historical`, or `once` is not classification evidence. Actual source/start command controls.
+A service being named `test`, `audit`, `backtest`, `historical`, or `once` is not classification evidence. Actual source/start command and deploy trigger behavior control.
 
 ## 6. Current implications
 
-- `v2_candidate_filter_shadow` zero-consumer proof is **not reached**: PRE windows, nightly evaluation, V4 legacy carryover on current main, and `test-beforeinfo-extra` still provide current Production dependencies/surfaces.
+- `v2_candidate_filter_shadow` zero-consumer proof is **not reached**: PRE windows, nightly evaluation, V4 legacy carryover on current main, and `test-beforeinfo-extra` still provide current Production dependencies/execution surfaces.
 - `v2_realtime_decisions` / `v2_line_notifications` remain tied to the active FINAL/LINE chain until that chain is separately retired/replaced.
 - `v2_realtime_odds_snapshots` remains shared/new-system-required Stage2 market evidence and is not a legacy-delete target.
 - `learning_all` remains protected because of its previous-odds/drift/steam semantics and is not a capacity-driven stop/delete candidate.
@@ -110,4 +119,4 @@ A service being named `test`, `audit`, `backtest`, `historical`, or `once` is no
 
 ## 7. Current gate
 
-`MAIN_ONLY_SCAN_INSUFFICIENT / RAILWAY_RUNTIME_BRANCH_SCAN_REQUIRED / OPPONENT_LIVE_NONMAIN_BRANCH_ACCOUNTED / TEST_BEFOREINFO_EXTRA_IS_CANDIDATE_SHADOW_EXECUTION_SURFACE / DORMANT_DESTRUCTIVE_MAINTENANCE_COMMAND_IDENTIFIED_NO_REDEPLOY / ZERO_CONSUMER_NOT_REACHED / NO_PRODUCTION_MUTATION / NO_DELETE / PURCHASE_FALSE`
+`MAIN_ONLY_SCAN_INSUFFICIENT / RAILWAY_RUNTIME_BRANCH_SCAN_REQUIRED / OPPONENT_LIVE_NONMAIN_BRANCH_ACCOUNTED / TEST_BEFOREINFO_EXTRA_CONFIRMED_WRITER_DEPLOY_SURFACE / DORMANT_DESTRUCTIVE_MAINTENANCE_COMMAND_IDENTIFIED_NO_REDEPLOY / ZERO_CONSUMER_NOT_REACHED / NO_PRODUCTION_MUTATION / NO_DELETE / PURCHASE_FALSE`
