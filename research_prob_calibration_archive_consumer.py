@@ -180,6 +180,35 @@ def main() -> None:
         flush=True,
     )
 
+    filter_output, filter_sha = _compare_module("backtest_candidate_filter_rules_pg", archive_rows)
+    filter_ready = re.search(r"^ready_races=(\d+)$", filter_output, re.MULTILINE)
+    filter_selections = re.search(r"^rule_selections=(\d+)$", filter_output, re.MULTILINE)
+    print(
+        "CANDIDATE_FILTER_ARCHIVE_COMPARE=PASS "
+        f"ready_races={filter_ready.group(1) if filter_ready else 'unknown'} "
+        f"rule_selections={filter_selections.group(1) if filter_selections else 'unknown'} "
+        f"stdout_sha256={filter_sha}",
+        flush=True,
+    )
+
+    # Base-candidate feature research uses separate environment variable names.
+    os.environ["MOTOR2_BASEFEAT_START_DATE"] = start.isoformat()
+    os.environ["MOTOR2_BASEFEAT_END_DATE"] = end.isoformat()
+    os.environ["MOTOR2_BASEFEAT_PROGRESS_EVERY"] = "1000000"
+    os.environ["MOTOR2_BASEFEAT_MAX_RACES"] = "0"
+    basefeat_output, basefeat_sha = _compare_module(
+        "backtest_v24_motor2_base_candidate_features_pg", archive_rows
+    )
+    basefeat_processed = re.search(r"^processed=(\d+)$", basefeat_output, re.MULTILINE)
+    basefeat_candidates = re.search(r"^candidate_rows=(\d+)$", basefeat_output, re.MULTILINE)
+    print(
+        "MOTOR2_BASEFEAT_ARCHIVE_COMPARE=PASS "
+        f"processed={basefeat_processed.group(1) if basefeat_processed else 'unknown'} "
+        f"candidate_rows={basefeat_candidates.group(1) if basefeat_candidates else 'unknown'} "
+        f"stdout_sha256={basefeat_sha}",
+        flush=True,
+    )
+
     # V24 Motor2 historical uses its own environment variable names, but the
     # requested evidence window must remain exactly the same archive partition.
     os.environ["MOTOR2_BT_START_DATE"] = start.isoformat()
@@ -195,8 +224,7 @@ def main() -> None:
         flush=True,
     )
 
-    # Keep the existing workflow gate name stable; reaching this line means all
-    # six unchanged historical consumers matched exactly.
+    # Reaching this line means all eight unchanged historical consumers matched exactly.
     print("PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY", flush=True)
 
 
