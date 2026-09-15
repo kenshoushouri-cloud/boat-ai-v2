@@ -70,35 +70,45 @@ jobs:
           PY
           rm -f railway-vars.json
 
-      - name: Export and verify July realtime historical partitions
+      - name: Export and verify July realtime archive partitions
         shell: bash
         run: |
           set -euo pipefail
           rm -rf "$ARCHIVE_OUTPUT_DIR"
           mkdir -p "$ARCHIVE_OUTPUT_DIR"
           : > archive-matrix.txt
+
+          # These four tables have a July `historical` partition.
+          export ARCHIVE_LABEL=historical
           for table in \
             v2_realtime_weather_snapshots \
             v2_realtime_exhibition_snapshots \
-            v2_realtime_entry_snapshots \
             v2_realtime_race_condition_snapshots \
             v2_realtime_racer_condition_snapshots
           do
             export ARCHIVE_TABLE="$table"
-            python -u research_archive_export_pg.py > "${table}.log"
-            grep -q '^RESEARCH_ARCHIVE_EXPORT=PASS_READ_ONLY$' "${table}.log"
+            python -u research_archive_export_pg.py > "${table}_${ARCHIVE_LABEL}.log"
+            grep -q '^RESEARCH_ARCHIVE_EXPORT=PASS_READ_ONLY$' "${table}_${ARCHIVE_LABEL}.log"
           done
+
+          # Entry snapshots have no `historical` label in Production. July data
+          # exists under `final_ab`, so validate the real label rather than an empty partition.
+          export ARCHIVE_TABLE=v2_realtime_entry_snapshots
+          export ARCHIVE_LABEL=final_ab
+          python -u research_archive_export_pg.py > "${ARCHIVE_TABLE}_${ARCHIVE_LABEL}.log"
+          grep -q '^RESEARCH_ARCHIVE_EXPORT=PASS_READ_ONLY$' "${ARCHIVE_TABLE}_${ARCHIVE_LABEL}.log"
+
           python - <<'PY'
           import json
           from pathlib import Path
           root = Path('/tmp/boat-realtime-archive-matrix')
           manifests = sorted(root.glob('*.manifest.json'))
-          expected = {
-              'v2_realtime_weather_snapshots',
-              'v2_realtime_exhibition_snapshots',
-              'v2_realtime_entry_snapshots',
-              'v2_realtime_race_condition_snapshots',
-              'v2_realtime_racer_condition_snapshots',
+          expected_labels = {
+              'v2_realtime_weather_snapshots': 'historical',
+              'v2_realtime_exhibition_snapshots': 'historical',
+              'v2_realtime_entry_snapshots': 'final_ab',
+              'v2_realtime_race_condition_snapshots': 'historical',
+              'v2_realtime_racer_condition_snapshots': 'historical',
           }
           seen = set()
           lines = []
@@ -108,11 +118,13 @@ jobs:
           for p in manifests:
               m = json.loads(p.read_text(encoding='utf-8'))
               table = str(m.get('table') or '')
+              label = str(m.get('label') or '')
               seen.add(table)
+              assert table in expected_labels, table
+              assert label == expected_labels[table], (table, label, expected_labels[table])
               assert m.get('readback_verified') is True
               assert m.get('source_rows_deleted') is False
               assert int(m.get('logical_key_duplicate_count', -1)) == 0
-              assert str(m.get('label') or '') == 'historical'
               rows = int(m.get('row_count', -1))
               payload = int(m.get('canonical_payload_bytes', -1))
               archive = int(m.get('archive_file_bytes', -1))
@@ -123,10 +135,10 @@ jobs:
               total_payload += payload
               total_archive += archive
               lines.append(
-                  f'REALTIME_ARCHIVE_EXPORT=PASS table={table} rows={rows} '
+                  f'REALTIME_ARCHIVE_EXPORT=PASS table={table} label={label} rows={rows} '
                   f'payload_bytes={payload} archive_bytes={archive}'
               )
-          assert seen == expected, (seen, expected)
+          assert seen == set(expected_labels), (seen, set(expected_labels))
           lines.append(
               f'REALTIME_ARCHIVE_EXPORT_TOTAL=PASS tables={len(seen)} rows={total_rows} '
               f'payload_bytes={total_payload} archive_bytes={total_archive}'
@@ -135,8 +147,9 @@ jobs:
           PY
           cat archive-matrix.txt
           grep -q '^REALTIME_ARCHIVE_EXPORT_TOTAL=PASS ' archive-matrix.txt
+          grep -q '^REALTIME_ARCHIVE_EXPORT=PASS table=v2_realtime_entry_snapshots label=final_ab rows=[1-9]' archive-matrix.txt
           {
-            echo '## Realtime historical archive export/readback — Production read-only'
+            echo '## Realtime archive export/readback — Production read-only'
             echo
             echo '```text'
             cat archive-matrix.txt
@@ -150,4 +163,4 @@ jobs:
         shell: bash
         run: |
           rm -rf /tmp/boat-realtime-archive-matrix
-          rm -f railway-vars.json archive-matrix.txt v2_realtime_*_snapshots.log
+          rm -f railway-vars.json archive-matrix.txt v2_realtime_*_snapshots_*.log
