@@ -89,16 +89,18 @@ jobs:
           test -n "$manifest"
           echo "PROB_CAL_BASE_ODDS_ARCHIVE_MANIFEST=$manifest" >> "$GITHUB_ENV"
 
-      - name: Compare probability calibration online vs archive odds
+      - name: Compare historical odds consumers online vs archive odds
         shell: bash
         run: |
           set -euo pipefail
           python -u research_prob_calibration_archive_consumer.py > prob-cal-archive.txt
-          grep -E '^(PROB_CAL_ARCHIVE_COMPARE=|PROB_CAL_ARCHIVE_RESULT=)' prob-cal-archive.txt > prob-cal-archive-sanitized.txt
+          grep -E '^(PROB_CAL_ARCHIVE_COMPARE=|N02_WALKFORWARD_ARCHIVE_COMPARE=|N02_ROLLING_ARCHIVE_COMPARE=|PROB_CAL_ARCHIVE_RESULT=)' prob-cal-archive.txt > prob-cal-archive-sanitized.txt
           grep -q '^PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY$' prob-cal-archive-sanitized.txt
+          grep -q '^N02_WALKFORWARD_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
+          grep -q '^N02_ROLLING_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
           cat prob-cal-archive-sanitized.txt
           {
-            echo '## Probability calibration archive equivalence — Production read-only'
+            echo '## Historical odds consumer archive equivalence — Production read-only'
             echo
             echo '```text'
             cat prob-cal-archive-sanitized.txt
