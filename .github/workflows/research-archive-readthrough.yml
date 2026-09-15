@@ -5,6 +5,7 @@ on:
     paths:
       - 'research_archive_readthrough.py'
       - 'research_archive_export_pg.py'
+      - 'research_archive_pilot_readiness_pg.py'
       - 'analyze_final_ab_features_pg.py'
       - 'docs/V4_REALTIME_ARCHIVE_READTHROUGH_CONTRACT_20260915.md'
       - '.github/workflows/research-archive-readthrough.yml'
@@ -29,9 +30,10 @@ jobs:
         run: |
           python -m py_compile research_archive_readthrough.py
           python -m py_compile research_archive_export_pg.py
+          python -m py_compile research_archive_pilot_readiness_pg.py
           python -m py_compile analyze_final_ab_features_pg.py
 
-      - name: Read-through, digest, archive integrity, and exporter guard smoke test
+      - name: Read-through, digest, archive integrity, exporter, and pilot guard smoke test
         run: |
           python - <<'PY'
           from datetime import date
@@ -51,6 +53,7 @@ jobs:
               canonical_rows_digest,
           )
           from research_archive_export_pg import ExportSpec, _select_sql, canonical_line
+          from research_archive_pilot_readiness_pg import candidate_months, month_bounds
 
           class MemorySource:
               def __init__(self, name, covered, rows):
@@ -168,6 +171,12 @@ jobs:
               raise AssertionError('unsupported label filter must fail closed')
 
           assert canonical_line({'b': 2, 'a': 1}) == canonical_line({'a': 1, 'b': 2})
+
+          # Pilot readiness must choose only whole months old enough for safe research.
+          assert month_bounds(2026, 7) == (date(2026, 7, 1), date(2026, 7, 31))
+          pilot_months = candidate_months(today=date(2026, 9, 15), lookback_months=4, min_age_days=30)
+          assert (date(2026, 7, 1), date(2026, 7, 31)) in pilot_months
+          assert (date(2026, 8, 1), date(2026, 8, 31)) not in pilot_months
 
           with tempfile.TemporaryDirectory() as td:
               root = Path(td)
