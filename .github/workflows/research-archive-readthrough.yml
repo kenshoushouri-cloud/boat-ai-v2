@@ -29,14 +29,20 @@ jobs:
           python -m py_compile research_archive_readthrough.py
           python -m py_compile research_archive_export_pg.py
 
-      - name: Read-through, digest, and exporter guard smoke test
+      - name: Read-through, digest, archive integrity, and exporter guard smoke test
         run: |
           python - <<'PY'
           from datetime import date
+          import gzip
+          import hashlib
+          import json
           from pathlib import Path
+          import tempfile
 
           from research_archive_readthrough import (
+              ArchiveIntegrityError,
               EvidenceQuery,
+              JsonlGzipPartitionSource,
               MissingEvidenceError,
               ReadThroughStore,
               assert_equivalent,
@@ -160,5 +166,53 @@ jobs:
               raise AssertionError('unsupported label filter must fail closed')
 
           assert canonical_line({'b': 2, 'a': 1}) == canonical_line({'a': 1, 'b': 2})
+
+          # Verify a realistic manifest-backed gzip partition and tamper detection.
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td)
+              archive = root / 'weather.jsonl.gz'
+              archived_rows = [
+                  {'race_id':'202607010101','snapshot_label':'historical','weather':'晴'},
+                  {'race_id':'202607020202','snapshot_label':'historical','weather':'曇り'},
+              ]
+              payload = b''.join(canonical_line(r) for r in archived_rows)
+              with archive.open('wb') as raw:
+                  with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=0) as gz:
+                      gz.write(payload)
+              archive_bytes = archive.read_bytes()
+              manifest = {
+                  'archive_contract_version': 1,
+                  'table': 'v2_realtime_weather_snapshots',
+                  'start_date': '2026-07-01',
+                  'end_date': '2026-07-31',
+                  'label': 'historical',
+                  'row_count': 2,
+                  'canonical_payload_bytes': len(payload),
+                  'canonical_payload_sha256': hashlib.sha256(payload).hexdigest(),
+                  'archive_file': archive.name,
+                  'archive_file_sha256': hashlib.sha256(archive_bytes).hexdigest(),
+                  'readback_verified': True,
+                  'source_rows_deleted': False,
+              }
+              manifest_path = root / 'weather.manifest.json'
+              manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+              source = JsonlGzipPartitionSource(manifest_path)
+              aq = EvidenceQuery(
+                  table='v2_realtime_weather_snapshots',
+                  start_date='2026-07-01',
+                  end_date='2026-07-31',
+                  labels=('historical',),
+              )
+              assert source.covers(aq)
+              assert source.fetch(aq) == archived_rows
+
+              archive.write_bytes(archive_bytes + b'tamper')
+              try:
+                  source.fetch(aq)
+              except ArchiveIntegrityError:
+                  pass
+              else:
+                  raise AssertionError('tampered archive must fail closed')
+
           print('RESEARCH_ARCHIVE_READTHROUGH_SMOKE=PASS')
           PY
