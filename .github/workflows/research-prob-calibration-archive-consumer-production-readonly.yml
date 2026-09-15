@@ -7,6 +7,11 @@ on:
       - 'research_archive_export_pg.py'
       - 'research_archive_readthrough.py'
       - 'backtest_prob_calibration_pg.py'
+      - 'backtest_n02_walkforward_pg.py'
+      - 'backtest_n02_rolling_pg.py'
+      - 'backtest_n02_time_split_pg.py'
+      - 'backtest_n01_n02_diagnostics_pg.py'
+      - 'backtest_v24_motor2_historical_pg.py'
       - '.github/workflows/research-prob-calibration-archive-consumer-production-readonly.yml'
   workflow_dispatch:
 
@@ -17,7 +22,7 @@ jobs:
   july-prob-calibration-archive-equivalence:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=240000 -c temp_file_limit=131072 -c timezone=UTC
@@ -94,10 +99,12 @@ jobs:
         run: |
           set -euo pipefail
           python -u research_prob_calibration_archive_consumer.py > prob-cal-archive.txt
-          grep -E '^(PROB_CAL_ARCHIVE_COMPARE=|N02_WALKFORWARD_ARCHIVE_COMPARE=|N02_ROLLING_ARCHIVE_COMPARE=|PROB_CAL_ARCHIVE_RESULT=)' prob-cal-archive.txt > prob-cal-archive-sanitized.txt
+          grep -E '^(PROB_CAL_ARCHIVE_COMPARE=|N02_WALKFORWARD_ARCHIVE_COMPARE=|N02_ROLLING_ARCHIVE_COMPARE=|N02_TIME_SPLIT_ARCHIVE_COMPARE=|N01_N02_DIAGNOSTICS_ARCHIVE_COMPARE=|PROB_CAL_ARCHIVE_RESULT=)' prob-cal-archive.txt > prob-cal-archive-sanitized.txt
           grep -q '^PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY$' prob-cal-archive-sanitized.txt
           grep -q '^N02_WALKFORWARD_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
           grep -q '^N02_ROLLING_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
+          grep -q '^N02_TIME_SPLIT_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
+          grep -q '^N01_N02_DIAGNOSTICS_ARCHIVE_COMPARE=PASS ' prob-cal-archive-sanitized.txt
           cat prob-cal-archive-sanitized.txt
           {
             echo '## Historical odds consumer archive equivalence — Production read-only'
