@@ -60,7 +60,7 @@ jobs:
                   imported.update(alias.name.split('.')[0] for alias in node.names)
               elif isinstance(node, ast.ImportFrom) and node.module:
                   imported.add(node.module.split('.')[0])
-          allowed = {'__future__', 'dataclasses', 'datetime', 'typing'}
+          allowed = {'__future__', 'dataclasses', 'datetime', 'hashlib', 'json', 'typing'}
           forbidden = imported - allowed
           assert not forbidden, sorted(forbidden)
           lower = text.lower()
