@@ -159,8 +159,23 @@ def main() -> None:
         flush=True,
     )
 
+    # V24 Motor2 historical uses its own environment variable names, but the
+    # requested evidence window must remain exactly the same archive partition.
+    os.environ["MOTOR2_BT_START_DATE"] = start.isoformat()
+    os.environ["MOTOR2_BT_END_DATE"] = end.isoformat()
+    os.environ["MOTOR2_BT_PROGRESS_EVERY"] = "1000000"
+    os.environ["MOTOR2_BT_MAX_RACES"] = "0"
+    motor_output, motor_sha = _compare_module("backtest_v24_motor2_historical_pg", archive_rows)
+    motor_processed = re.search(r"^processed=(\d+)$", motor_output, re.MULTILINE)
+    print(
+        "PROB_CAL_ARCHIVE_COMPARE=PASS consumer=v24_motor2_historical "
+        f"processed={motor_processed.group(1) if motor_processed else 'unknown'} "
+        f"stdout_sha256={motor_sha}",
+        flush=True,
+    )
+
     # Keep the existing workflow gate name stable; reaching this line means all
-    # three unchanged historical consumers matched exactly.
+    # four unchanged historical consumers matched exactly.
     print("PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY", flush=True)
 
 
