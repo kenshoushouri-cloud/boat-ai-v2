@@ -105,6 +105,78 @@ def _safe_archive_path(manifest_path: Path, archive_file: str) -> Path:
     return manifest_path.parent / archive_file
 
 
+def _restore_scalar(value: Any, data_type: str, udt_name: str) -> Any:
+    """Restore JSON-safe archive scalars to PostgreSQL-like Python values.
+
+    The exporter serializes Decimal/date/datetime values into stable strings so
+    JSON does not lose precision. The manifest preserves the original schema;
+    read-through uses that schema to reconstruct the value types seen by
+    psycopg research consumers. Unknown types remain unchanged and null always
+    remains null.
+    """
+    if value is None:
+        return None
+    dt = (data_type or "").lower()
+    udt = (udt_name or "").lower()
+    try:
+        if dt in {"numeric", "decimal"} or udt == "numeric":
+            return Decimal(str(value))
+        if dt in {"smallint", "integer", "bigint"} or udt in {"int2", "int4", "int8"}:
+            return int(value)
+        if dt in {"real", "double precision"} or udt in {"float4", "float8"}:
+            return float(value)
+        if dt == "boolean" or udt == "bool":
+            if isinstance(value, bool):
+                return value
+            raw = str(value).strip().lower()
+            if raw in {"true", "t", "1"}:
+                return True
+            if raw in {"false", "f", "0"}:
+                return False
+            raise ValueError(f"invalid boolean value: {value!r}")
+        if dt == "date" or udt == "date":
+            return date.fromisoformat(str(value))
+        if "timestamp" in dt or udt in {"timestamp", "timestamptz"}:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception as exc:
+        raise ArchiveIntegrityError(
+            f"cannot restore archive scalar type data_type={data_type!r} "
+            f"udt_name={udt_name!r} value={value!r}"
+        ) from exc
+    return value
+
+
+def _schema_type_map(manifest: Mapping[str, Any]) -> dict[str, tuple[str, str]]:
+    raw_schema = manifest.get("schema")
+    if not isinstance(raw_schema, list) or not raw_schema:
+        raise ArchiveIntegrityError("manifest schema is missing or empty")
+    out: dict[str, tuple[str, str]] = {}
+    for item in raw_schema:
+        if not isinstance(item, Mapping):
+            raise ArchiveIntegrityError("manifest schema entry is invalid")
+        name = str(item.get("column_name") or "").strip()
+        if not name:
+            raise ArchiveIntegrityError("manifest schema column_name is missing")
+        if name in out:
+            raise ArchiveIntegrityError(f"manifest schema has duplicate column: {name}")
+        out[name] = (str(item.get("data_type") or ""), str(item.get("udt_name") or ""))
+    return out
+
+
+def _restore_row_types(
+    row: Mapping[str, Any], schema_types: Mapping[str, tuple[str, str]]
+) -> dict[str, Any]:
+    unknown = set(row) - set(schema_types)
+    if unknown:
+        raise ArchiveIntegrityError(
+            f"archive row contains columns not present in manifest schema: {sorted(unknown)}"
+        )
+    return {
+        key: _restore_scalar(value, *schema_types[key]) if key in schema_types else value
+        for key, value in row.items()
+    }
+
+
 class JsonlGzipPartitionSource:
     """Verified single-partition archive source for research jobs.
 
@@ -125,6 +197,7 @@ class JsonlGzipPartitionSource:
             raise ArchiveIntegrityError("manifest is not readback-verified")
         if self.manifest.get("source_rows_deleted") is not False:
             raise ArchiveIntegrityError("pilot manifest must assert source_rows_deleted=false")
+        self.schema_types = _schema_type_map(self.manifest)
         self.archive_path = _safe_archive_path(
             self.manifest_path, str(self.manifest.get("archive_file") or "")
         )
@@ -162,7 +235,7 @@ class JsonlGzipPartitionSource:
         expected_payload_bytes = int(self.manifest.get("canonical_payload_bytes", -1))
         payload_sha = hashlib.sha256()
         payload_bytes = 0
-        rows: list[dict[str, Any]] = []
+        raw_rows: list[dict[str, Any]] = []
         with gzip.open(self.archive_path, "rb") as fh:
             for raw_line in fh:
                 payload_sha.update(raw_line)
@@ -173,12 +246,12 @@ class JsonlGzipPartitionSource:
                     raise ArchiveIntegrityError("archive contains invalid JSONL") from exc
                 if not isinstance(row, dict):
                     raise ArchiveIntegrityError("archive row is not a JSON object")
-                rows.append(row)
+                raw_rows.append(row)
 
         actual_payload_sha = payload_sha.hexdigest()
-        if len(rows) != expected_rows:
+        if len(raw_rows) != expected_rows:
             raise ArchiveIntegrityError(
-                f"archive row-count mismatch: expected={expected_rows} actual={len(rows)}"
+                f"archive row-count mismatch: expected={expected_rows} actual={len(raw_rows)}"
             )
         if payload_bytes != expected_payload_bytes:
             raise ArchiveIntegrityError(
@@ -190,7 +263,7 @@ class JsonlGzipPartitionSource:
                 "archive payload SHA mismatch: "
                 f"expected={expected_payload_sha} actual={actual_payload_sha}"
             )
-        return rows
+        return [_restore_row_types(row, self.schema_types) for row in raw_rows]
 
     def fetch(self, query: EvidenceQuery) -> Sequence[Mapping[str, Any]]:
         if not self.covers(query):
