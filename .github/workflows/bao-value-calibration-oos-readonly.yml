@@ -36,11 +36,15 @@ jobs:
           assert 'execute(' not in p
           assert 'upsert' not in p.lower()
           assert 'send_line' not in p.lower()
-          assert 'workflow_dispatch:' not in w
-          assert 'issue_comment:' not in w
-          assert 'RAILWAY_TOKEN' not in w
-          assert 'DATABASE_PUBLIC_URL' not in w
-          assert 'railway variable list' not in w
+          forbidden = [
+              'workflow_' + 'dispatch:',
+              'issue_' + 'comment:',
+              'RAILWAY' + '_TOKEN',
+              'DATABASE_' + 'PUBLIC_URL',
+              'railway variable ' + 'list',
+          ]
+          for token in forbidden:
+              assert token not in w, token
           print('BAO_VALUE_CALIBRATION_OOS_VALIDATE=PASS')
           print('BAO_ONLINE_HISTORY_MANUAL_WORKFLOW_RETIRED=PASS')
           PY
@@ -48,7 +52,7 @@ jobs:
         run: |
           cat <<'EOF'
           The historical Bao calibration analysis source remains retained for reproducibility.
-          The former manual workflow_dispatch / owner issue-comment path that queried Production
+          The former manual workflow dispatch / owner issue-comment path that queried Production
           historical odds online is intentionally retired in this Draft migration state.
           Future historical reruns must use the verified archive/read-through path or a restored
           research database after a permanent archive source is approved.
