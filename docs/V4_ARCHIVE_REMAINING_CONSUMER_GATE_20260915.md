@@ -9,7 +9,8 @@ This addendum narrows the archive migration backlog using evidence already produ
 - code/runtime dependency classification is based on current `main` at `61f7d6e75629ffb549a583f00bfd5dd58c186a71`;
 - Production data remains authoritative in Railway PostgreSQL;
 - archive-equivalence files used by this research are ephemeral verification artifacts unless/until a permanent archive destination is separately approved;
-- `30d` remains a capacity reference only and is not an approved retention cutoff.
+- `30d` remains a capacity reference only and is not an approved retention cutoff;
+- Draft PR changes below are **not current-main state** and cannot be used to justify deletion until they are separately reviewed/landed under the applicable approval boundary.
 
 ## Historical consumers whose archive equivalence is now proven
 
@@ -27,8 +28,6 @@ The latest exact-output archive matrix evidence supersedes older `equivalence pe
 | `backtest_v24_motor2_historical_pg.py` | processed 4,853 |
 
 Only digests whose complete values were re-available in the current evidence record are repeated here. Other previously recorded exact-output SHA-256 values remain in the original PR #363 evidence/comments rather than being reconstructed from prefixes.
-
-The matrix final gate was `PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY`. The archive was removed from ephemeral runner storage before job exit. No Production rows or configuration were changed by those equivalence runs.
 
 Historical readiness, Feature Lab, `compare_motor_boat_ab_pg.py`, `analyze_final_ab_features_pg.py`, and the July realtime historical export/readback tracks are already covered by earlier PR #363 evidence and remain archive-equivalence proven.
 
@@ -67,7 +66,7 @@ None invokes the three consumers below. Current main exact-name searches also fi
 
 `REPOSITORY_CLASSIFICATION.md` classifies this as C / Research. It is a standalone historical grid and is not a Production or scheduled Railway entrypoint.
 
-Retirement decision: preserve the source file and historical research meaning, but **retire the assumption that its historical odds must remain online in PostgreSQL**. After archive migration, any future rerun must first be explicitly ported to the verified archive/read-through layer or run against a separately restored research database. Its current direct PostgreSQL historical query is not a reason to block archival/removal by itself.
+Retirement decision: preserve the source file and historical research meaning, but **retire the assumption that its historical odds must remain online in PostgreSQL**. After archive migration, any future rerun must first be explicitly ported to the verified archive/read-through layer or run against a separately restored research database.
 
 Classification: `RESEARCH_SOURCE_RETAINED / ONLINE_HISTORY_CONSUMER_RETIRED / FUTURE_USE_REQUIRES_ARCHIVE_PORT_OR_RESTORE`.
 
@@ -79,34 +78,42 @@ Retirement decision: retain the scripts as historical diagnostics, but retire on
 
 Classification: `DIAGNOSTIC_SOURCE_RETAINED / ONLINE_HISTORY_CONSUMER_RETIRED / NOT_ACTIVE_RUNTIME`.
 
-This retirement proof does **not** delete these files, run them, change Railway, or weaken archive/recovery requirements.
+## Cutover guards staged in Draft PR #363
 
-## Residual historical/manual blockers before old online odds can be removed
+These close the design gap in the Draft branch, but current `main` remains the Source of Truth until an approved merge/landing occurs.
 
-### 1. `run_historical_month_gap_repair_pg.py`
+### Historical month-gap repair
 
-Current `main` directly inspects `v2_odds_trifecta`, identifies incomplete historical races, and can invoke `repair_month_all_pg.py` with `REPAIR_DO_ODDS=1`. A fresh exact-name scan finds no default-branch caller, and the current Railway start-command scan finds no active/scheduled service invoking this wrapper.
+Current `main` `run_historical_month_gap_repair_pg.py` directly inspects `v2_odds_trifecta`, identifies incomplete historical races, and can invoke `repair_month_all_pg.py` with `REPAIR_DO_ODDS=1`. No current-main caller or active/scheduled Railway start command invokes the wrapper, but its manual semantics are dangerous after archival because intentionally archived rows could look missing online.
 
-However, unlike the research/diagnostic scripts retired above, this utility is write-capable maintenance logic. If archived rows disappear from the online DB, the current gap detector could misclassify intentionally archived history as missing and attempt re-ingestion if somebody runs it manually.
+Draft #363 now changes the wrapper to fail closed before historical DB audit/target detection unless all required source assertions are explicit:
 
-Therefore it remains a blocker until one of these is explicitly frozen before deletion:
+- default `HISTORICAL_GAP_REPAIR_ENABLE=0` blocks execution;
+- `prearchive_production_full_history` is allowed only while `HISTORICAL_ARCHIVE_ACTIVE=0`;
+- `restored_nonproduction_full_history` requires `HISTORICAL_GAP_REPAIR_NONPROD_ASSERT=1`;
+- ambiguous source roles are rejected.
 
-1. archive-aware gap semantics that distinguish `archived` from `missing`, fail closed on archive overlap/unknown coverage, and never reconstruct archived rows merely because they are absent online; or
-2. a stronger maintenance retirement guard that makes the wrapper unavailable for post-archive use unless an explicitly restored research/maintenance database is selected.
+Focused CI run `34986652314` passed: compile PASS, **5/5 tests PASS**, and static ordering proved the source-role guard executes before `audit()`.
 
-Classification: `STANDALONE_MAINTENANCE / NO_ACTIVE_CALLER / WRITE_CAPABLE / ARCHIVE-AWARE-OR-GUARDED-RETIREMENT REQUIRED`.
+Draft classification: `GUARDED_RETIREMENT_IMPLEMENTED / CI_PASS / NOT_MERGED / NO_REPAIR_EXECUTED`.
 
-### 2. `.github/workflows/bao-value-calibration-oos-readonly.yml`
+### Bao manual online-history workflow
 
-Current `main` still has a manual `workflow_dispatch` / owner issue-comment report path that loads Production PostgreSQL and runs `backtest_prob_calibration_pg.py` for the fixed 2026-07-01..2026-08-15 range. The consumer itself has exact archive-equivalence proof, but this workflow wiring still points at online PostgreSQL historical odds.
+Current `main` `.github/workflows/bao-value-calibration-oos-readonly.yml` still exposes `workflow_dispatch` and owner issue-comment execution that loads Production historical PostgreSQL odds. The underlying `backtest_prob_calibration_pg.py` consumer already has exact archive-output equivalence evidence.
 
-Classification: `MANUAL_RESEARCH WORKFLOW / CONSUMER PROVEN / WIRING MIGRATION OR RETIREMENT REQUIRED`.
+Draft #363 now retires only the **manual Production-online-history workflow wiring**:
 
-Before old online odds are removed, rewire this workflow to a verified permanent archive/read-through source or explicitly retire/disable the manual historical workflow. Do not change its report semantics, thresholds, model coefficients, or purchase/LINE behavior as part of storage migration.
+- removes `workflow_dispatch` and `issue_comment` triggers;
+- removes Railway token/database URL resolution and the Production historical report job;
+- retains PR validation of the historical analysis source and archive-adapter modules;
+- retains `backtest_prob_calibration_pg.py` itself for reproducibility;
+- future historical reruns after archival must use the verified archive/read-through path or an explicitly restored research DB.
+
+Draft classification: `ANALYSIS_SOURCE_RETAINED / ONLINE_HISTORY_MANUAL_WORKFLOW_RETIRED_IN_DRAFT / NOT_MERGED / NO_PRODUCTION_DB_ACCESS_ADDED`.
 
 ## Fresh Production retention reference
 
-A new read-only PR #363 run (`34983004242`) measured Railway PostgreSQL at 2026-09-15 23:38 JST with `default_transaction_read_only=on`. It reconfirmed, rather than assumed, the current planning reference:
+A read-only PR #363 run (`34983004242`) measured Railway PostgreSQL at 2026-09-15 23:38 JST with `default_transaction_read_only=on` and reconfirmed:
 
 - `v2_odds_trifecta`: 7,981,493 rows; logical payload 830,075,423 bytes; relation 1,844,002,816 bytes;
 - 30-day reference: hot 545,940 rows / 56,777,757 logical bytes; cold 7,435,553 rows / 773,297,666 logical bytes;
@@ -122,7 +129,7 @@ The following are still mandatory before any historical online-row removal:
 
 1. choose and approve a permanent recoverable archive destination;
 2. prove upload, immutable manifest/hash, readback, restore, and credential boundaries;
-3. close the two residual consumer blockers above by archive migration or guarded retirement proof;
+3. ensure the guarded historical-repair state and retired Bao online-history wiring are actually present in the approved cutover code state; Draft-only evidence is insufficient;
 4. rerun a fresh default-branch + Railway dependency scan and require zero unclassified old-history consumers;
 5. freeze exact inventory/digests for the proposed move/remove scope;
 6. prove recovery from archive plus the retained online working set;
@@ -146,4 +153,4 @@ not:
 
 ## Current decision
 
-`CANDIDATE_FILTER_ARCHIVE_EQUIVALENCE_PROVEN / MOTOR2_BASE_FEATURE_ARCHIVE_EQUIVALENCE_PROVEN / LOW_MID_GRID_ONLINE_CONSUMER_RETIRED / MOTOR2_DIAGNOSTIC_ONLINE_CONSUMERS_RETIRED / LIVE_CURRENT_DAY_PATHS_KEEP_ONLINE / MONTH_GAP_REPAIR_ARCHIVE_AWARE_OR_GUARDED_RETIREMENT / BAO_WORKFLOW_REWIRE_OR_RETIRE / TWO_RESIDUAL_CONSUMER_BLOCKERS / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / HOBBY_FRESH_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
+`ARCHIVE_EQUIVALENCE_BROADLY_PROVEN / LOW_MID_GRID_ONLINE_CONSUMER_RETIRED / MOTOR2_DIAGNOSTIC_ONLINE_CONSUMERS_RETIRED / GAP_REPAIR_GUARD_DRAFT_CI_PASS / BAO_ONLINE_HISTORY_WORKFLOW_RETIRED_IN_DRAFT / CURRENT_MAIN_STILL_PRECUTOVER / PERMANENT_ARCHIVE_NOT_CREATED / DELETE_BLOCKED / FRESH_LOGICAL_RESTORE_PROOF_PENDING / PURCHASE_FALSE`
