@@ -103,18 +103,35 @@ jobs:
           else:
               raise AssertionError('missing evidence must fail closed')
 
-          spec = ExportSpec(
+          weather_spec = ExportSpec(
               table='v2_realtime_weather_snapshots',
               start_date=date(2026, 7, 1),
               end_date=date(2026, 7, 31),
               label='historical',
               output_dir=Path('/tmp/archive-smoke'),
           )
-          spec.validate(today=date(2026, 9, 15))
-          sql, params = _select_sql(spec)
-          assert 'v2_realtime_weather_snapshots' in sql
-          assert 'snapshot_label = %s' in sql
-          assert params[-1] == 'historical'
+          weather_spec.validate(today=date(2026, 9, 15))
+          weather_sql, weather_params = _select_sql(weather_spec)
+          assert 'v2_realtime_weather_snapshots' in weather_sql
+          assert 'race_date >= %s' in weather_sql
+          assert 'race_date <= %s' in weather_sql
+          assert 'snapshot_label = %s' in weather_sql
+          assert weather_params == [date(2026, 7, 1), date(2026, 7, 31), 'historical']
+
+          odds_spec = ExportSpec(
+              table='v2_odds_trifecta',
+              start_date=date(2026, 7, 1),
+              end_date=date(2026, 7, 31),
+              label=None,
+              output_dir=Path('/tmp/archive-smoke'),
+          )
+          odds_spec.validate(today=date(2026, 9, 15))
+          odds_sql, odds_params = _select_sql(odds_spec)
+          assert 'v2_odds_trifecta' in odds_sql
+          assert 'race_id >= %s' in odds_sql
+          assert 'race_id < %s' in odds_sql
+          assert 'race_date' not in odds_sql
+          assert odds_params == ['20260701', '20260801']
 
           try:
               ExportSpec(
