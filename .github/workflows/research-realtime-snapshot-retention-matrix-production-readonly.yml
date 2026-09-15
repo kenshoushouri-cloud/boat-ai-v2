@@ -1,0 +1,82 @@
+name: Research realtime snapshot retention matrix production read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research_realtime_snapshot_retention_matrix_pg.py'
+      - '.github/workflows/research-realtime-snapshot-retention-matrix-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=240000 -c timezone=UTC
+      RETENTION_AS_OF_DATE: '2026-09-15'
+      RETENTION_DAYS: '30,60'
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install read-only dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q 'psycopg[binary]'
+          npm install -g @railway/cli >/dev/null 2>&1
+      - name: Resolve Production public database URL without publishing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway variable list \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-recovery \
+            --environment production \
+            --json > railway-vars.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=None
+          if isinstance(data,dict):
+              value=data.get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'),dict):
+                  value=data['variables'].get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'),list):
+                  for item in data['variables']:
+                      if isinstance(item,dict) and item.get('name')=='DATABASE_PUBLIC_URL':
+                          value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL unavailable')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+      - name: Run non-odds realtime retention matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile research_realtime_snapshot_retention_matrix_pg.py
+          python -u research_realtime_snapshot_retention_matrix_pg.py > snapshot-retention.txt
+          grep -E '^(REALTIME_SNAPSHOT_RETENTION_MATRIX=|SNAPSHOT_TABLE |SNAPSHOT_TOTAL |SNAPSHOT_WINDOW |REALTIME_SNAPSHOT_RETENTION_NOTE=|REALTIME_SNAPSHOT_RETENTION_MATRIX_RESULT=)' snapshot-retention.txt > snapshot-retention-sanitized.txt
+          grep -q '^REALTIME_SNAPSHOT_RETENTION_MATRIX_RESULT=PASS_READ_ONLY$' snapshot-retention-sanitized.txt
+          cat snapshot-retention-sanitized.txt
+          {
+            echo '## Non-odds realtime snapshot retention matrix — Production read-only'
+            echo
+            echo '```text'
+            cat snapshot-retention-sanitized.txt
+            echo '```'
+            echo
+            echo 'Logical tuple payload only. This is not an approved retention cutoff and does not estimate physical DELETE reclaim.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json snapshot-retention.txt snapshot-retention-sanitized.txt
