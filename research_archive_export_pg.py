@@ -25,36 +25,42 @@ MIN_AGE_DAYS_DEFAULT = 14
 
 TABLES: dict[str, dict[str, Any]] = {
     "v2_odds_trifecta": {
-        "date_column": "race_date",
+        "filter_mode": "race_id_prefix",
         "key_fields": ("race_id", "ticket"),
         "label_column": None,
     },
     "v2_realtime_odds_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label", "ticket"),
         "label_column": "snapshot_label",
     },
     "v2_realtime_weather_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label"),
         "label_column": "snapshot_label",
     },
     "v2_realtime_exhibition_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label", "lane"),
         "label_column": "snapshot_label",
     },
     "v2_realtime_entry_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label", "lane"),
         "label_column": "snapshot_label",
     },
     "v2_realtime_race_condition_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label"),
         "label_column": "snapshot_label",
     },
     "v2_realtime_racer_condition_snapshots": {
+        "filter_mode": "race_date",
         "date_column": "race_date",
         "key_fields": ("race_id", "snapshot_label", "lane"),
         "label_column": "snapshot_label",
@@ -212,12 +218,25 @@ def _source_identity(conn: Any) -> dict[str, str]:
     return {"database": str(db_name), "server_version_num": str(version_num)}
 
 
+def _race_id_prefix(value: date) -> str:
+    return value.strftime("%Y%m%d")
+
+
 def _select_sql(spec: ExportSpec) -> tuple[str, list[Any]]:
     cfg = spec.config
-    date_col = cfg["date_column"]
     key_fields = cfg["key_fields"]
-    where = [f"{date_col} >= %s", f"{date_col} <= %s"]
-    params: list[Any] = [spec.start_date, spec.end_date]
+    params: list[Any]
+    if cfg["filter_mode"] == "race_id_prefix":
+        start_key = _race_id_prefix(spec.start_date)
+        end_key = _race_id_prefix(spec.end_date + timedelta(days=1))
+        where = ["race_id >= %s", "race_id < %s"]
+        params = [start_key, end_key]
+    elif cfg["filter_mode"] == "race_date":
+        date_col = cfg["date_column"]
+        where = [f"{date_col} >= %s", f"{date_col} <= %s"]
+        params = [spec.start_date, spec.end_date]
+    else:
+        raise ValueError(f"unsupported filter mode: {cfg['filter_mode']}")
     if spec.label:
         where.append(f"{cfg['label_column']} = %s")
         params.append(spec.label)
