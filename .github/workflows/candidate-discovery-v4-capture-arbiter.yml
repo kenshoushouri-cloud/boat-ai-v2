@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - 'research/candidate_discovery_v4_capture_arbiter.py'
+      - 'research/candidate_discovery_v4_contract.py'
       - 'tests/test_candidate_discovery_v4_capture_arbiter.py'
+      - 'tests/test_candidate_discovery_v4_capture_policy_parity.py'
       - '.github/workflows/candidate-discovery-v4-capture-arbiter.yml'
       - 'docs/V4_CAPTURE_RESILIENCE_20260915.md'
 
@@ -24,7 +26,7 @@ jobs:
           python-version: '3.12'
       - name: Compile and run focused arbiter tests
         run: |
-          python -m py_compile research/candidate_discovery_v4_capture_arbiter.py tests/test_candidate_discovery_v4_capture_arbiter.py
+          python -m py_compile research/candidate_discovery_v4_capture_arbiter.py tests/test_candidate_discovery_v4_capture_arbiter.py tests/test_candidate_discovery_v4_capture_policy_parity.py
           python - <<'PY'
           import importlib.util
           from pathlib import Path
@@ -45,6 +47,7 @@ jobs:
               print(f'PASS {name}')
           print(f'CAPTURE_ARBITER_TESTS={len(tests)} PASS')
           PY
+          python tests/test_candidate_discovery_v4_capture_policy_parity.py
       - name: Enforce pure/offline isolation
         run: |
           python - <<'PY'
