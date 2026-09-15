@@ -1,0 +1,37 @@
+name: Research historical gap repair archive guard
+
+on:
+  pull_request:
+    paths:
+      - 'run_historical_month_gap_repair_pg.py'
+      - 'tests/test_historical_gap_repair_archive_guard.py'
+      - '.github/workflows/research-historical-gap-repair-archive-guard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated test dependencies
+        run: python -m pip install --disable-pip-version-check -q pytest 'psycopg[binary]'
+      - name: Compile guarded maintenance wrapper
+        run: python -m py_compile run_historical_month_gap_repair_pg.py
+      - name: Run archive guard tests
+        run: python -m pytest -q tests/test_historical_gap_repair_archive_guard.py
+      - name: Assert fail-closed guard is before historical audit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('run_historical_month_gap_repair_pg.py').read_text(encoding='utf-8')
+          main=src.split('def main():',1)[1]
+          assert main.index('require_safe_source_role()') < main.index('before = audit(')
+          assert "SOURCE_ROLE = os.getenv('HISTORICAL_GAP_REPAIR_SOURCE_ROLE', 'disabled')" in src
+          assert "ARCHIVE_ACTIVE = os.getenv('HISTORICAL_ARCHIVE_ACTIVE', '0')" in src
+          print('HISTORICAL_GAP_REPAIR_ARCHIVE_GUARD_STATIC=PASS')
+          PY

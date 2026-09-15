@@ -1,0 +1,129 @@
+name: Research archive export pilot production read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research_archive_export_pg.py'
+      - 'research_archive_readthrough.py'
+      - 'research_backtest_ready_archive.py'
+      - '.github/workflows/research-archive-export-pilot-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  july-base-odds-export-readback:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=180000 -c temp_file_limit=131072 -c timezone=UTC
+      ARCHIVE_TABLE: v2_odds_trifecta
+      ARCHIVE_START_DATE: '2026-07-01'
+      ARCHIVE_END_DATE: '2026-07-31'
+      ARCHIVE_MIN_AGE_DAYS: '30'
+      ARCHIVE_MAX_DAYS: '31'
+      ARCHIVE_OUTPUT_DIR: /tmp/boat-archive-pilot
+      CHECK_START_DATE: '2026-07-01'
+      CHECK_END_DATE: '2026-07-31'
+      ARCHIVE_READY_COMPARE_ONLINE: '1'
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install read-only pilot dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q psycopg[binary]
+          npm install -g @railway/cli >/dev/null 2>&1
+
+      - name: Resolve Production public database URL without publishing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway variable list \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-recovery \
+            --environment production \
+            --json > railway-vars.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), dict):
+                  value = data['variables'].get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), list):
+                  for item in data['variables']:
+                      if isinstance(item, dict) and item.get('name') == 'DATABASE_PUBLIC_URL':
+                          value = item.get('value')
+                          break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL unavailable')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+
+      - name: Export July base odds to ephemeral runner storage and verify readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$ARCHIVE_OUTPUT_DIR"
+          mkdir -p "$ARCHIVE_OUTPUT_DIR"
+          python -u research_archive_export_pg.py > archive-export.log
+          grep -E '^(RESEARCH_ARCHIVE_EXPORT=|table=|rows=|payload_sha256=|archive_sha256=)' archive-export.log > archive-export-sanitized.txt
+          grep -q '^RESEARCH_ARCHIVE_EXPORT=PASS_READ_ONLY$' archive-export-sanitized.txt
+          manifest="$(find "$ARCHIVE_OUTPUT_DIR" -maxdepth 1 -type f -name '*.manifest.json' -print -quit)"
+          test -n "$manifest"
+          export ARCHIVE_MANIFEST="$manifest"
+          python -u research_backtest_ready_archive.py > archive-ready.log
+          grep -E '^(ARCHIVE_READY_COMPARE=|ARCHIVE_READY_TOTAL |ARCHIVE_READY_MONTH |ARCHIVE_READY_SOURCE=|ARCHIVE_READY_RESULT=)' archive-ready.log > archive-ready-sanitized.txt
+          grep -q '^ARCHIVE_READY_COMPARE=PASS ' archive-ready-sanitized.txt
+          grep -q '^ARCHIVE_READY_RESULT=PASS_READ_ONLY$' archive-ready-sanitized.txt
+          python - "$manifest" <<'PY'
+          import json, sys
+          from pathlib import Path
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert manifest['table'] == 'v2_odds_trifecta'
+          assert manifest['start_date'] == '2026-07-01'
+          assert manifest['end_date'] == '2026-07-31'
+          assert manifest['source_mode'] == 'postgresql_read_only'
+          assert manifest['source_rows_deleted'] is False
+          assert manifest['readback_verified'] is True
+          assert manifest['logical_key_duplicate_count'] == 0
+          assert manifest['row_count'] > 500000
+          print('ARCHIVE_PILOT_MANIFEST=PASS')
+          print(f"ARCHIVE_PILOT_ROWS={manifest['row_count']}")
+          print(f"ARCHIVE_PILOT_FILE_BYTES={manifest['archive_file_bytes']}")
+          print(f"ARCHIVE_PILOT_PAYLOAD_SHA256={manifest['canonical_payload_sha256']}")
+          print(f"ARCHIVE_PILOT_FILE_SHA256={manifest['archive_file_sha256']}")
+          PY
+          {
+            echo '## July base-odds archive pilot — Production read-only'
+            echo
+            echo '```text'
+            cat archive-export-sanitized.txt
+            cat archive-ready-sanitized.txt
+            echo '```'
+            echo
+            echo 'The archive existed only in ephemeral runner storage. No artifact upload, source-row deletion, DB mutation, retention change, or Production config change was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove all local Production-derived pilot files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/boat-archive-pilot
+          rm -f railway-vars.json archive-export.log archive-export-sanitized.txt archive-ready.log archive-ready-sanitized.txt
