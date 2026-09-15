@@ -159,6 +159,27 @@ def main() -> None:
         flush=True,
     )
 
+    # Use a split inside the archive month so both time buckets are exercised.
+    os.environ["BACKTEST_SPLIT_DATE"] = "2026-07-16"
+    split_output, split_sha = _compare_module("backtest_n02_time_split_pg", archive_rows)
+    split_bets = re.search(r"^N02 ALL: bets=(\d+)", split_output, re.MULTILINE)
+    print(
+        "N02_TIME_SPLIT_ARCHIVE_COMPARE=PASS "
+        f"bets={split_bets.group(1) if split_bets else 'unknown'} stdout_sha256={split_sha}",
+        flush=True,
+    )
+
+    diag_output, diag_sha = _compare_module("backtest_n01_n02_diagnostics_pg", archive_rows)
+    n01_bets = re.search(r"^N01: bets=(\d+)", diag_output, re.MULTILINE)
+    n02_bets = re.search(r"^N02: bets=(\d+)", diag_output, re.MULTILINE)
+    print(
+        "N01_N02_DIAGNOSTICS_ARCHIVE_COMPARE=PASS "
+        f"n01_bets={n01_bets.group(1) if n01_bets else 'unknown'} "
+        f"n02_bets={n02_bets.group(1) if n02_bets else 'unknown'} "
+        f"stdout_sha256={diag_sha}",
+        flush=True,
+    )
+
     # V24 Motor2 historical uses its own environment variable names, but the
     # requested evidence window must remain exactly the same archive partition.
     os.environ["MOTOR2_BT_START_DATE"] = start.isoformat()
@@ -175,7 +196,7 @@ def main() -> None:
     )
 
     # Keep the existing workflow gate name stable; reaching this line means all
-    # four unchanged historical consumers matched exactly.
+    # six unchanged historical consumers matched exactly.
     print("PROB_CAL_ARCHIVE_RESULT=PASS_READ_ONLY", flush=True)
 
 
