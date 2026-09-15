@@ -72,9 +72,9 @@ Use a second scheduler that is operationally independent of the primary GitHub s
 2. a pre-registered exact-time orchestration task that dispatches the existing GitHub `workflow_dispatch` only when the primary run is missing;
 3. a second GitHub schedule only as a weaker fallback because it shares the same scheduler failure domain.
 
-The fallback should check at approximately **08:25 JST**, leaving substantial headroom before the observed 09:36 earliest deadline on the incident date. This time is an operational resilience checkpoint, not a model threshold.
+The preregistered fallback checkpoint is **08:25 JST exactly**. Scheduler delivery may itself be late, but the intended checkpoint must not be moved later based on same-day observations. The actual run remains valid only if all original timing guards pass. The 08:25 checkpoint leaves substantial headroom before the observed 09:36 earliest deadline on the incident date; it is an operational resilience checkpoint, not a model threshold.
 
-It may capture only when all original prospective guards can still pass. If timing is no longer safely pre-deadline, it must fail closed and mark that date unavailable.
+At the fallback checkpoint, the fallback should no-op when a valid primary artifact for the same target date is already independently observable. Otherwise it may attempt capture only while all original prospective guards can still pass. If timing is no longer safely pre-deadline, it must fail closed and mark that date unavailable.
 
 No fallback may use results, payouts, post-race data, or a reconstructed candidate set.
 
@@ -82,13 +82,16 @@ No fallback may use results, payouts, post-race data, or a reconstructed candida
 
 For any future date with more than one valid pre-result capture, define the official V4 Forward artifact prospectively as:
 
-1. valid safety contract required;
-2. earliest `generated_at_jst` after 08:15 JST;
-3. tie-break by lower GitHub/Railway run identifier where needed.
+1. every candidate artifact must independently satisfy the full safety contract;
+2. choose the unique artifact with the earliest `generated_at_jst` after 08:15 JST;
+3. if multiple artifacts have the same earliest `generated_at_jst` and the same canonical payload SHA-256, treat them as duplicate copies of the same evidence and retain one deterministic metadata record for audit;
+4. if multiple artifacts have the same earliest `generated_at_jst` but different canonical payload SHA-256 values, do **not** choose by GitHub/Railway run ID or channel identity; classify the date `UNAVAILABLE / AMBIGUOUS_DUPLICATE_CAPTURE` and preserve both artifacts as diagnostic evidence only.
+
+GitHub and Railway run identifiers are provider-local identifiers and must not be compared numerically to decide evidence precedence.
 
 Any later valid capture is diagnostic-only and must not be mixed into formal Forward scoring.
 
-If the primary succeeds, fallback should no-op where technically possible. If duplicate execution still occurs, the earliest-valid rule removes ambiguity without changing predictions after outcomes.
+If the primary succeeds, fallback should no-op where technically possible. If duplicate execution still occurs, the earliest-valid rule removes ordinary ambiguity without changing predictions after outcomes, while payload disagreement at the same earliest timestamp remains fail-closed.
 
 ## Monitoring requirement
 
@@ -97,17 +100,18 @@ A daily read-only audit should record:
 - target date;
 - primary run present/missing/late;
 - primary scheduled-vs-start delay;
+- fallback checkpoint and actual start time;
 - fallback invoked/not invoked;
 - capture channel;
-- run ID / head SHA;
+- provider-local run ID / head SHA;
 - generated_at_jst;
 - earliest relevant deadline;
 - 6-race / 12-ticket completeness;
 - artifact ID/name;
-- SHA-256;
+- canonical payload SHA-256 and archive/file SHA-256 where applicable;
 - `prospective_evidence_eligible`;
 - `purchase_action`;
-- final classification: `FORMAL_AVAILABLE` or `UNAVAILABLE`.
+- final classification: `FORMAL_AVAILABLE` or a specific `UNAVAILABLE / ...` reason.
 
 A missing or late-rejected day is acceptable evidence. A reconstructed day is not.
 
@@ -116,12 +120,13 @@ A missing or late-rejected day is acceptable evidence. A reconstructed day is no
 Before any fallback scheduler is activated:
 
 - choose exactly one independent fallback mechanism;
-- review its permission boundary;
+- freeze its 08:25 JST checkpoint and permission boundary before the first date it can affect;
 - prove it cannot write Production DB or send LINE/purchase actions;
 - add contract tests for primary/fallback artifact equivalence under identical source inputs;
+- add tests for duplicate-artifact selection and fail-closed payload disagreement;
 - preregister the official-artifact rule on `main` before the next date it is used;
 - obtain any explicit Railway Production approval if a Railway Cron/service is selected.
 
 Current decision:
 
-`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
+`2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
