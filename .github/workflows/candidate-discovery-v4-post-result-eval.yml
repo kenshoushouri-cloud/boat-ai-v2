@@ -6,7 +6,7 @@ on:
       - "research/candidate_discovery_v4_post_result_eval.py"
       - "tests/test_candidate_discovery_v4_post_result_eval.py"
       - ".github/workflows/candidate-discovery-v4-post-result-eval.yml"
-      - "docs/V4_POST_RESULT_EVALUATION_CONTRACT_20260920.md"
+      - "docs/V4_POST_RESULT_EVALUATION_CONTRACT_20260920.md"\n      - "docs/V4_FORMAL_RESULT_REVIEW_20260920.md"\n      - "research/evidence/v4_formal_*.json"
   workflow_dispatch:
 
 jobs:
