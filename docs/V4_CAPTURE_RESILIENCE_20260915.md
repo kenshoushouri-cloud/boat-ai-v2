@@ -196,6 +196,71 @@ A daily read-only audit should record:
 
 A missing, bootstrap-failed, or late-rejected day is acceptable evidence. A reconstructed day is not.
 
+## Selected fallback execution path — Draft-only decision frozen 2026-09-20
+
+The independent fallback mechanism is now narrowed to one implementation for
+future review:
+
+**Railway Cron at 08:25 JST -> GitHub `workflow_dispatch` -> existing guarded
+V4 prospective-freeze workflow.**
+
+This selection is Draft-only and does not activate any Railway service, Cron,
+secret or Production behavior.
+
+Why this path is preferred over a direct Railway V4 capture:
+
+- Railway supplies an independent scheduler for the failure mode actually
+  observed: delayed GitHub `schedule` event creation.
+- The fallback Railway process does not need Boat Production DB credentials.
+- The fallback does not need a second durable artifact store: the existing
+  GitHub workflow keeps the current pre-deadline checks, immutable artifact
+  upload, full-file SHA and canonical-core SHA.
+- Candidate generation is not duplicated in a second provider-specific runner;
+  both channels execute the same existing guarded workflow and code.
+- Railway-side permission can be constrained to GitHub workflow metadata read
+  plus one workflow-dispatch capability. It has no LINE/purchase/DB write
+  purpose.
+
+Draft adapter added:
+
+- `research/candidate_discovery_v4_fallback_dispatcher.py`
+- `tests/test_candidate_discovery_v4_fallback_dispatcher.py`
+- `.github/workflows/candidate-discovery-v4-fallback-dispatcher.yml`
+
+Dispatcher contract:
+
+1. before 08:25 JST: no GitHub call and no dispatch;
+2. at/after 08:25, if an observable same-date scheduled primary has completed
+   successfully **and** its expected immutable prospective artifact exists:
+   no-op;
+3. a successful primary run without the expected artifact does not suppress the
+   fallback;
+4. a failed primary does not suppress the fallback;
+5. an existing same-date `workflow_dispatch` at/after 08:25 suppresses any
+   second fallback attempt, even if that first fallback later failed; this
+   prevents same-day repeated rescue attempts;
+6. if primary observability is temporarily unavailable, the adapter may make
+   the single preregistered fallback dispatch attempt; the downstream guarded
+   freeze remains the only evidence-validity authority;
+7. dispatch uses `ref=main` and the current JST date as the required
+   `target_date` input;
+8. non-204 dispatch response fails closed;
+9. the adapter has no PostgreSQL/Railway API/LINE/purchase path.
+
+The adapter itself does **not** determine formal evidence. The existing
+prospective wrapper must still complete before the earliest frozen-feed
+deadline, and the existing arbiter remains final authority if duplicate valid
+captures occur.
+
+Future Production activation would require a new dedicated Railway Cron with
+UTC schedule `25 23 * * *` (08:25 JST), plus narrowly scoped GitHub
+credentials. Creating that service/Cron/secret remains an explicit Production
+approval boundary and is **not** performed by this Draft.
+
+This selection closes only the "choose exactly one independent fallback
+mechanism" design gate. It does not close operational timing, real
+cross-provider dispatch, credential, equivalence, or Production-approval gates.
+
 ## Adoption gate
 
 Before any fallback scheduler is activated:
