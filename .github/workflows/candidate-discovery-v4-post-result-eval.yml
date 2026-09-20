@@ -6,7 +6,9 @@ on:
       - "research/candidate_discovery_v4_post_result_eval.py"
       - "tests/test_candidate_discovery_v4_post_result_eval.py"
       - ".github/workflows/candidate-discovery-v4-post-result-eval.yml"
-      - "docs/V4_POST_RESULT_EVALUATION_CONTRACT_20260920.md"\n      - "docs/V4_FORMAL_RESULT_REVIEW_20260920.md"\n      - "research/evidence/v4_formal_*.json"
+      - "docs/V4_POST_RESULT_EVALUATION_CONTRACT_20260920.md"
+      - "docs/V4_FORMAL_RESULT_REVIEW_20260920.md"
+      - "research/evidence/v4_formal_*.json"
   workflow_dispatch:
 
 jobs:
@@ -27,34 +29,38 @@ jobs:
         run: pytest -q tests/test_candidate_discovery_v4_post_result_eval.py
       - name: Verify formal evidence fixtures
         run: |
-          printf '%s  %s\n' '839850a1e1499f523005b1ce7e0bfb40c1ec898c74ec75245bf49daea3f228fe' 'research/evidence/v4_formal_outcomes_20260918.json' | sha256sum -c -
-          printf '%s  %s\n' 'd39a127741ec52736ee51a34c8fa5395f1c1bf37574f8a1f3c7670ac6d59b636' 'research/evidence/v4_formal_eval_20260918.json' | sha256sum -c -
-          printf '%s  %s\n' '5f0a7deebb5ab86ae5b08e00d355a26340701314f5d6f4f8fb1db07c5adaaf3b' 'research/evidence/v4_formal_outcomes_20260919.json' | sha256sum -c -
-          printf '%s  %s\n' 'c2d3696d40db398878182f0e6f5b9c46227f27d827279d2b2767e329e99bc069' 'research/evidence/v4_formal_eval_20260919.json' | sha256sum -c -
+          echo '839850a1e1499f523005b1ce7e0bfb40c1ec898c74ec75245bf49daea3f228fe  research/evidence/v4_formal_outcomes_20260918.json' | sha256sum -c -
+          echo 'd39a127741ec52736ee51a34c8fa5395f1c1bf37574f8a1f3c7670ac6d59b636  research/evidence/v4_formal_eval_20260918.json' | sha256sum -c -
+          echo '5f0a7deebb5ab86ae5b08e00d355a26340701314f5d6f4f8fb1db07c5adaaf3b  research/evidence/v4_formal_outcomes_20260919.json' | sha256sum -c -
+          echo 'c2d3696d40db398878182f0e6f5b9c46227f27d827279d2b2767e329e99bc069  research/evidence/v4_formal_eval_20260919.json' | sha256sum -c -
           python - <<'PY'
           import json
           from pathlib import Path
+
           rows = [
               json.loads(Path("research/evidence/v4_formal_eval_20260918.json").read_text()),
               json.loads(Path("research/evidence/v4_formal_eval_20260919.json").read_text()),
           ]
-          s = [row["summary"] for row in rows]
-          assert sum(x["core_races"] for x in s) == 12
-          assert sum(x["core_tickets"] for x in s) == 24
-          assert sum(x["exact_hit_races"] for x in s) == 4
-          assert sum(x["head_hit_races"] for x in s) == 7
-          assert sum(x["first_second_prefix_hit_races"] for x in s) == 5
-          assert sum(x["third_only_miss_races"] for x in s) == 1
-          assert sum(x["investment_yen"] for x in s) == 2400
-          assert sum(x["gross_return_yen"] for x in s) == 3320
-          assert sum(x["profit_yen"] for x in s) == 920
-          assert round(sum(x["gross_return_yen"] for x in s) / sum(x["investment_yen"] for x in s) * 100, 3) == 138.333
+          summaries = [row["summary"] for row in rows]
+          assert sum(x["core_races"] for x in summaries) == 12
+          assert sum(x["core_tickets"] for x in summaries) == 24
+          assert sum(x["exact_hit_races"] for x in summaries) == 4
+          assert sum(x["head_hit_races"] for x in summaries) == 7
+          assert sum(x["first_second_prefix_hit_races"] for x in summaries) == 5
+          assert sum(x["third_only_miss_races"] for x in summaries) == 1
+          investment = sum(x["investment_yen"] for x in summaries)
+          gross_return = sum(x["gross_return_yen"] for x in summaries)
+          assert investment == 2400
+          assert gross_return == 3320
+          assert sum(x["profit_yen"] for x in summaries) == 920
+          assert round(gross_return / investment * 100, 3) == 138.333
           print("V4_FORMAL_EVIDENCE_FIXTURES=PASS")
           PY
       - name: Enforce offline isolation
         run: |
           python - <<'PY'
           from pathlib import Path
+
           p = Path("research/candidate_discovery_v4_post_result_eval.py")
           text = p.read_text(encoding="utf-8").lower()
           forbidden = [
