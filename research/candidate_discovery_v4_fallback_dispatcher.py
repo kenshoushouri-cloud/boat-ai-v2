@@ -21,7 +21,7 @@ from urllib import error, parse, request
 
 JST = timezone(timedelta(hours=9))
 CHECKPOINT = time(8, 25)
-WORKFLOW_PATH = ".github/workflows/candidate-discovery-v4-prospective-freeze.yml"
+WORKFLOW_ID = "candidate-discovery-v4-prospective-freeze.yml"
 PRIMARY_EVENT = "schedule"
 FALLBACK_EVENT = "workflow_dispatch"
 
@@ -132,7 +132,7 @@ def decide_dispatch(
             reason="before_0825_checkpoint",
         )
 
-    workflow_ref = parse.quote(WORKFLOW_PATH, safe="")
+    workflow_ref = parse.quote(WORKFLOW_ID, safe="")
     runs_endpoint = (
         f"/repos/{repo}/actions/workflows/{workflow_ref}/runs"
         "?branch=main&per_page=30"
@@ -212,7 +212,7 @@ def execute_dispatch(
     if not decision.should_dispatch:
         return decision
 
-    workflow_ref = parse.quote(WORKFLOW_PATH, safe="")
+    workflow_ref = parse.quote(WORKFLOW_ID, safe="")
     endpoint = f"/repos/{repo}/actions/workflows/{workflow_ref}/dispatches"
     result = transport(
         "POST",
