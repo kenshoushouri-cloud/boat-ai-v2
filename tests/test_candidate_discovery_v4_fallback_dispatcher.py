@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from research.candidate_discovery_v4_fallback_dispatcher import (
     FallbackDispatchError,
     HttpResult,
     decide_dispatch,
     execute_dispatch,
+    WORKFLOW_ID,
 )
 
 JST = timezone(timedelta(hours=9))
@@ -158,6 +160,26 @@ def test_primary_observability_failure_attempts_single_fallback():
     assert result.action == "DISPATCH_FALLBACK"
     assert result.reason == "primary_observability_unavailable_attempt_fallback"
     assert sum(call[0] == "POST" for call in tx.calls) == 1
+
+
+def test_dispatch_http_200_success_is_accepted():
+    tx = FakeTransport(dispatch_status=200)
+    result = execute_dispatch(repo=REPO, observed_at_jst=observed(), transport=tx)
+    assert result.action == "DISPATCH_FALLBACK"
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
+
+
+def test_dispatch_contract_matches_guarded_workflow():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / WORKFLOW_ID).read_text(
+        encoding="utf-8"
+    )
+    assert "workflow_dispatch:" in workflow
+    assert "target_date:" in workflow
+    assert "required: true" in workflow
+    assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
+    assert "DISPATCH_TARGET_DATE: ${{ inputs.target_date }}" in workflow
+    assert "candidate-discovery-v4-prospective-freeze-${{ github.run_id }}" in workflow
 
 
 def test_dispatch_http_failure_fails_closed():
