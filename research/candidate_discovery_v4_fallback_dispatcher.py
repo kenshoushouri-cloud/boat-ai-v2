@@ -222,7 +222,10 @@ def execute_dispatch(
             "inputs": {"target_date": decision.target_date.isoformat()},
         },
     )
-    if result.status != 204:
+    # GitHub Cloud has used both 204 No Content and 200-with-run-details
+    # success responses for workflow dispatch. Treat only those explicit
+    # success statuses as valid and fail closed on everything else.
+    if result.status not in (200, 204):
         raise FallbackDispatchError(
             f"workflow dispatch failed with HTTP status {result.status}"
         )
