@@ -1,0 +1,42 @@
+name: Candidate Discovery V4 Post-Result Evaluator
+
+on:
+  pull_request:
+    paths:
+      - "research/candidate_discovery_v4_post_result_eval.py"
+      - "tests/test_candidate_discovery_v4_post_result_eval.py"
+      - ".github/workflows/candidate-discovery-v4-post-result-eval.yml"
+      - "docs/V4_POST_RESULT_EVALUATION_CONTRACT_20260920.md"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest only
+        run: python -m pip install pytest
+      - name: Run focused post-result evaluator tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_candidate_discovery_v4_post_result_eval.py
+      - name: Enforce offline isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("research/candidate_discovery_v4_post_result_eval.py")
+          text = p.read_text(encoding="utf-8").lower()
+          forbidden = [
+              "psycopg", "requests", "database_url", "railway",
+              "insert into", "delete from", "vacuum", "line_notify"
+          ]
+          found = [item for item in forbidden if item in text]
+          if found:
+              raise SystemExit(f"forbidden Production/network surface: {found}")
+          print("V4_POST_RESULT_EVAL_ISOLATION=PASS")
+          PY
