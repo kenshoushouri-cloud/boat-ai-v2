@@ -244,7 +244,7 @@ Dispatcher contract:
    freeze remains the only evidence-validity authority;
 7. dispatch uses `ref=main` and the current JST date as the required
    `target_date` input;
-8. non-204 dispatch response fails closed;
+8. workflow-dispatch success may be HTTP 200 or 204; every other status fails closed;
 9. the adapter has no PostgreSQL/Railway API/LINE/purchase path.
 
 The adapter itself does **not** determine formal evidence. The existing
@@ -254,8 +254,18 @@ captures occur.
 
 Future Production activation would require a new dedicated Railway Cron with
 UTC schedule `25 23 * * *` (08:25 JST), plus narrowly scoped GitHub
-credentials. Creating that service/Cron/secret remains an explicit Production
-approval boundary and is **not** performed by this Draft.
+credentials. The fine-grained GitHub credential should be repository-scoped
+and limited to Actions read/write: run/artifact observation requires Actions
+read and workflow dispatch requires Actions write. No Contents write permission
+is required by this adapter. Creating that service/Cron/secret remains an
+explicit Production approval boundary and is **not** performed by this Draft.
+
+The dispatcher/workflow integration is CI-bound: the Draft test asserts that
+`WORKFLOW_ID` names the existing guarded workflow, that
+`workflow_dispatch.target_date` remains required, that the freeze job accepts
+both scheduled and dispatch events, and that the expected immutable artifact
+name remains tied to `github.run_id`. This prevents silent drift between the
+independent scheduler adapter and the formal capture workflow.
 
 This selection closes only the "choose exactly one independent fallback
 mechanism" design gate. It does not close operational timing, real
