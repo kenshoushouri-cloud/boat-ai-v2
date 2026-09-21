@@ -1,0 +1,60 @@
+name: Candidate Discovery V4 pre-freeze availability guard
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_availability_guard.py'
+      - 'tests/test_candidate_discovery_v4_availability_guard.py'
+      - 'docs/V4_PRE_FREEZE_AVAILABILITY_GUARD_CONTRACT_20260921.md'
+      - '.github/workflows/candidate-discovery-v4-availability-guard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run focused tests
+        run: |
+          python -m py_compile research/candidate_discovery_v4_availability_guard.py tests/test_candidate_discovery_v4_availability_guard.py
+          python -m unittest tests.test_candidate_discovery_v4_availability_guard
+      - name: Enforce pure offline isolation and non-constructive role
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('research/candidate_discovery_v4_availability_guard.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          imported = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+
+          allowed = {'__future__', 'datetime', 'typing'}
+          assert not (imported - allowed), sorted(imported - allowed)
+
+          low = text.lower()
+          for forbidden in (
+              'psycopg', 'database_url', 'requests', 'urllib', 'railway',
+              'line_notify', 'insert into', 'update v2_', 'delete from',
+              'vacuum', 'subprocess', 'os.environ',
+          ):
+              assert forbidden not in low, forbidden
+
+          assert '"replacement_candidates_generated": false' in low
+          assert '"ranking_changed": false' in low
+          assert '"purchase_action": false' in low
+          print('V4_AVAILABILITY_GUARD_ISOLATION=PASS')
+          PY
