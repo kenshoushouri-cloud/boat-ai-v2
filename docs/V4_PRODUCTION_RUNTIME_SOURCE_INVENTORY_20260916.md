@@ -1,5 +1,35 @@
 # V4 Production runtime source inventory — 2026-09-16
 
+## Fresh override — 2026-09-21 12:42 JST
+
+Fresh Railway Production configuration audit against project `boat-v2-postgres` / Production reconfirmed these candidate-shadow execution surfaces:
+
+| service | current source | start command | schedule | current relevance |
+|---|---|---|---|---|
+| `cron-window-morning` | `boat-ai-v2@main` | `python -u run_window_pipeline_pg.py` | `15 23 * * *` UTC | active PRE writer invocation |
+| `cron-window-day` | `boat-ai-v2@main` | `python -u run_window_pipeline_pg.py` | `35 0 * * *` UTC | active PRE writer invocation |
+| `cron-window-night` | `boat-ai-v2@main` | `python -u run_window_pipeline_pg.py` | `35 5 * * *` UTC | active PRE writer invocation |
+| `cron-nightly-results` | `boat-ai-v2@main` | `python -u run_nightly_results_pg.py` | `30 14 * * *` UTC | evaluator/report consumer path |
+| `test-beforeinfo-extra` | `boat-ai-v2@main` | `python -u collect_candidate_filter_shadow_pg.py` | none | repository-triggerable direct writer |
+
+All five returned `staged=null` in the fresh config reads. No secret values were read; only variable names were inspected.
+
+Natural runtime evidence on 2026-09-21 additionally proves the configured PRE writer path is live:
+- morning deployment `6dbbc230-806d-4345-8914-b7710c89cab0`: collector invoked, `candidate_rows=0 / saved_rows=0`;
+- day deployment `fd1bf599-0d0b-4883-a147-a264b1f1b741`: collector invoked, `candidate_rows=7 / saved_rows=7`;
+- formal V4 run `35549611949` subsequently consumed `legacy_shadow_rows=7`.
+
+Current main at this override is `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+
+Therefore the runtime-source gate remains:
+`RAILWAY_WRITER_SURFACES_PRESENT / SAME_DAY_RUNTIME_WRITE_CONFIRMED / CURRENT_MAIN_V4_READER_CONFIRMED / ZERO_CONSUMER_NOT_REACHED / NO_PRODUCTION_MUTATION / NO_DELETE`
+
+Machine-readable snapshot:
+`research/evidence/candidate_shadow_zero_consumer_gate_20260921.json`
+
+The older inventory below remains historical context and is superseded where current SHA/config/runtime facts differ.
+
+
 Status: `READ_ONLY_RAILWAY_CONFIG_AUDIT / NO_RAILWAY_MUTATION / ZERO_CONSUMER_GATE_STILL_CLOSED`
 
 This document freezes a fresh Railway Production service/source audit for Draft PR #363. It exists because a repository-only scan of `main` is not sufficient to prove zero consumers: Railway Production can point at another branch or contain inline/manual service commands that do not exist in the default branch.
