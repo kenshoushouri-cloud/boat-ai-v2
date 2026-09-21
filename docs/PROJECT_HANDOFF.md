@@ -1,5 +1,70 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 12:52 JST
+
+This section supersedes the 11:06 JST override below where they differ. Re-fetch GitHub/Railway before acting.
+
+### New V4 race-universe finding
+
+The 2026-09-21 formal artifact remains immutable and capture-contract-valid:
+- run `35549611949`
+- generated `2026-09-21T10:03:12.277823+09:00`
+- core `6R / 12T`
+- `purchase_action=false`
+
+However, frozen core race `20260921_02_08` (Toda 8R) was already on a venue officially marked cancelled/postponed **before** the formal freeze. BOAT RACE official today's-race page showed Toda `中止順延` at its 08:25 JST update.
+
+Current main generator `.github/scripts/candidate_discovery_v4_main_feed_pg.py`:
+- loads target-date rows from `v2_races`;
+- requires complete six-lane entries and a deadline;
+- has no pre-result cancelled/postponed race/venue availability filter;
+- does not have a compatible pre-result status field in `v2_races`.
+
+Therefore Sep21 classification is refined to:
+`CAPTURE_CONTRACT_VALID / PRE_FREEZE_OFFICIAL_CANCELLATION_OBSERVABLE / RACE_UNIVERSE_AVAILABILITY_GAP / POST_RESULT_UNEVALUABLE / NO_REGENERATION / NO_RETUNE`
+
+Evidence is Draft-only in PR #366:
+- `research/evidence/v4_pre_freeze_race_availability_gap_20260921.json`
+- `research/evidence/v4_formal_eval_blocker_20260921.json`
+- updated post-result evaluation contract
+
+Do not implement a Production availability/candidate-universe exclusion without explicit approval. Future work may preregister a timing-safe official same-day race/venue availability source, but Production candidate logic remains unchanged now.
+
+### Storage gate hardening
+
+PR #363 fresh 2026-09-21 evidence:
+- morning natural Production window invoked candidate-shadow collector: `candidate_rows=0 / saved_rows=0`;
+- day natural Production window invoked collector: `candidate_rows=7 / saved_rows=7`;
+- formal V4 run then read `legacy_shadow_rows=7` and added 5 legacy races / 7 tickets;
+- morning/day/night Railway configs still use `run_window_pipeline_pg.py` with candidate-shadow surfaces;
+- nightly still uses `run_nightly_results_pg.py` with candidate-shadow evaluator/report surfaces;
+- no-Cron `test-beforeinfo-extra` still directly runs the collector.
+
+The pure runtime inventory contract now blocks zero-consumer on **reader or writer** capabilities, including the Railway nightly reader and GitHub V4 reader. Machine-readable evidence:
+`research/evidence/candidate_shadow_zero_consumer_gate_20260921.json`
+
+Current gate:
+`ZERO_CONSUMER_NOT_REACHED / SAME_DAY_WRITER_TO_READER_PROVEN / ACTIVE_WRITER_SURFACES / ACTIVE_READER_SURFACES / NO_DELETE / NO_MIGRATION / NO_VACUUM`
+
+Fresh PostgreSQL disk observation:
+- current ~`4.593 GB`
+- last 24h observed range ~`4.561 -> 4.593 GB`
+- last 7d observed range ~`4.136 -> 4.591 GB`
+
+This reinforces that current-footprint direct Hobby migration is not approved. Fresh retained-set restore + measured growth/headroom remain required; do not use these observations to justify capacity-driven deletion.
+
+### Next natural checks
+
+1. 2026-09-21 19:30 JST: re-confirm Toda final official status and keep Sep21 evaluation blocked unless all six exact same-date outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: verify natural 08:25 fallback Cron behavior.
+3. Continue candidate-shadow zero-consumer evidence. The night and nightly windows are future natural evidence, not a reason for manual execution.
+4. Keep Production/model/threshold/candidate logic unchanged without explicit approval.
+
+### Safety unchanged
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 11:06 JST
 
 This section supersedes the 10:40 JST override below where they differ. Re-fetch GitHub/Railway before acting.
