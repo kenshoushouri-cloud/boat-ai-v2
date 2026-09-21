@@ -72,6 +72,7 @@ def test_valid_manifest_allows_only_non_production_rehearsal():
     assert result["production_migration_authorized"] is False
     assert result["purchase_action"] is False
     assert result["bounded_retention_table_count"] == 1
+    assert len(result["manifest_identity_sha256"]) == 64
 
 
 @pytest.mark.parametrize(
@@ -157,7 +158,7 @@ def test_manifest_is_pure_and_has_no_production_io_surface():
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
 
-    assert imported <= {"__future__", "hashlib", "re", "typing"}
+    assert imported <= {"__future__", "hashlib", "json", "re", "typing"}
 
     low = source.lower()
     for forbidden in (
