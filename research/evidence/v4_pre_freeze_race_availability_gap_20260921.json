@@ -1,0 +1,59 @@
+{
+  "contract": "candidate_discovery_v4_pre_freeze_race_availability_gap_v1",
+  "target_date": "2026-09-21",
+  "classification": "PRE_FREEZE_OFFICIAL_CANCELLATION_OBSERVABLE_BUT_RACE_REMAINED_IN_V4_UNIVERSE",
+  "official_observation": {
+    "source": "BOAT RACE official today's race page",
+    "url": "https://www.boatrace.jp/owpc/pc/race/index",
+    "page_update_time_jst": "08:25",
+    "venue_id": "02",
+    "venue_name": "Toda",
+    "status": "cancelled_postponed"
+  },
+  "formal_freeze": {
+    "workflow_run_id": 35549611949,
+    "head_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c",
+    "generated_at_jst": "2026-09-21T10:03:12.277823+09:00",
+    "artifact_id": 10617384166,
+    "full_artifact_sha256": "1af00a1a7cc1742c4e93a5f816e4aaf90fb181ac45be9ee4d88ad09c4d5f6175",
+    "canonical_core_sha256": "d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf"
+  },
+  "affected_core_race": {
+    "race_id": "20260921_02_08",
+    "venue_id": "02",
+    "race_no": 8,
+    "deadline_at_jst": "2026-09-21 14:16:00+09:00",
+    "predicted_tickets": ["1-2-6", "1-6-2"]
+  },
+  "timing": {
+    "official_status_was_observable_before_freeze": true,
+    "official_page_update_preceded_freeze_by_more_than_90_minutes": true,
+    "result_or_payout_information_used": false
+  },
+  "current_main_static_root_cause": {
+    "generator_path": ".github/scripts/candidate_discovery_v4_main_feed_pg.py",
+    "generator_blob_sha": "e66604afdf56c15ef3ad146260172e056eb22890",
+    "race_universe_query": "v2_races rows are loaded by target race_date",
+    "structural_filters_present": [
+      "complete six-lane entries",
+      "non-null deadline"
+    ],
+    "pre_result_cancelled_or_postponed_status_filter_present": false,
+    "v2_races_has_current_compatibility_status_column": false,
+    "result_status_source_is_not_appropriate_for_pre_result_filtering": true
+  },
+  "interpretation": {
+    "prospective_capture_contract_was_structurally_satisfied": true,
+    "post_result_formal_evaluation_available": false,
+    "reason": "a frozen core race was already officially cancelled/postponed before freeze but the current race universe had no pre-result availability exclusion",
+    "do_not_reconstruct_candidates_after_results": true,
+    "do_not_shrink_denominator": true,
+    "do_not_retune": true,
+    "purchase_action": false
+  },
+  "future_change_boundary": {
+    "research_needed": "preregister a timing-safe official same-day race/venue availability source and fail-closed exclusion contract",
+    "production_candidate_logic_change_requires_explicit_approval": true,
+    "implemented_here": false
+  }
+}
