@@ -1,5 +1,97 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 13:21 JST
+
+This section supersedes the 13:05 JST override below where they differ. Re-fetch GitHub/Railway before acting.
+
+### Fresh Source of Truth re-fetch
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- Railway Production environment: staged changes `none`
+- V4 fallback service: `candidate-discovery-v4-fallback-dispatcher`
+  - Cron `25 23 * * *` UTC = 08:25 JST
+  - latest deployment `7c0b590e-a121-42d2-9f88-543848af386f`: SUCCESS
+  - no volume
+- No Production behavior/config/model/DB/purchase mutation was made in this work.
+
+### PR #367 — pre-freeze availability guard preregistration
+
+Current head:
+`3afde0ef65a0601c684b334800ada0332b7ee57f`
+
+State:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- research-only / offline / no Production wiring
+
+The 13:05 invariants remain authoritative: exact 6 core races, exact identity/rank/order checks, source-content SHA-256 provenance, race/venue evidence scope, venue-unavailable may BLOCK, venue-active cannot by itself PASS a race, no replacement/rerank/result read, `purchase_action=false`.
+
+### PR #366 — strict post-result reproducibility hardening
+
+Current head:
+`95d7af3efd79ead86bfdf4f708ba3065b283d6f9`
+
+State:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- base branch current main
+- no Production I/O
+
+New strict evaluator guarantees:
+- CLI requires expected immutable artifact JSON SHA-256 and verifies raw bytes before parsing;
+- malformed/mismatched artifact SHA fails closed;
+- outcomes must match the exact six frozen formal-core race IDs;
+- extra outcome rows are rejected instead of ignored;
+- missing/duplicate/malformed outcomes fail closed;
+- explicit non-final status such as cancelled/postponed fails closed;
+- legacy rows remain excluded from formal metrics.
+
+Retained formal Actions artifacts were re-downloaded read-only and verified before replay:
+- 2026-09-18 artifact `10527500527`, JSON SHA `b195b214d8761f4efdf0c37345434ac1e96bff93815c9ecd1b00f9c87aec1a3a`
+- 2026-09-19 artifact `10574052434`, JSON SHA `f2a558d0631ac830f3ffb96440b801a17fa91c98639cae8ca186585c30e46bc2`
+
+Strict replay reproduced the committed formal metrics exactly:
+- Sep18: investment 1,200 / return 1,100 / profit -100 / ROI 91.667%
+- Sep19: investment 1,200 / return 2,220 / profit +1,020 / ROI 185.000%
+- combined: 2 days / 12 races / 24 tickets / investment 2,400 / return 3,320 / profit +920 / ROI 138.333%
+
+Evidence:
+`research/evidence/v4_formal_repro_check_20260921.json`
+
+This strengthens evidence identity only. Sep21 remains unscored:
+`CAPTURE_CONTRACT_VALID / RACE_UNIVERSE_AVAILABILITY_GAP / POST_RESULT_UNEVALUABLE / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+The 13:05 provenance caveat also remains: the historical 08:25 official-page observation was not preserved as immutable raw bytes, so URL-only replay is not cryptographic proof of that exact historical page state.
+
+### PR #363 — Storage
+
+Fresh GitHub refetch currently reports head:
+`c3a87df234b06f220ab7128d129dbc32f0354e84`
+
+This supersedes the SHA written in the 13:05 override for current-state purposes.
+
+State:
+- Draft / mergeable
+- 21 listed workflows SUCCESS
+- 1 read-only probability-calibration archive-consumer workflow in progress at this audit
+- zero-consumer gate remains NOT reached
+- same-day writer -> V4 reader proof remains active
+- no DELETE / migration / VACUUM
+
+Do not interpret an in-progress read-only CI job as a Storage gate change.
+
+### Next natural checks
+
+1. 2026-09-21 19:30 JST: re-confirm final Sep21 official status; do not score Sep21 unless all exact six same-date finalized outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: verify the natural 08:25 fallback Cron.
+3. Let normal night/nightly Production schedules provide natural candidate-shadow evidence; do not force-run Production jobs for audit.
+4. Keep PR #367 research-only until any Production-effect availability/candidate-universe change receives explicit approval.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 13:05 JST
 
 This section supersedes the 12:59 JST override below where they differ. Re-fetch GitHub/Railway before acting.
