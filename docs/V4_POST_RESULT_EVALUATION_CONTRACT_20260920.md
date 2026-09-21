@@ -67,6 +67,23 @@ Do not:
 
 This is a fail-closed evaluation-availability rule, not a model/threshold change.
 
+## 2026-09-21 pre-freeze race-availability finding
+
+A later audit of **pre-freeze observable information** found that the BOAT RACE official today's-race page was already updated at 08:25 JST showing Toda as cancelled/postponed, while the immutable V4 artifact was generated at 10:03:12 JST.
+
+Therefore the Sep21 blocker is not merely a cancellation learned after freeze. It is also a race-universe quality gap:
+
+- official same-day venue cancellation was observable before the formal freeze;
+- current-main V4 loaded all target-date rows from `v2_races`;
+- current-main V4 required complete six-lane entries and a deadline, but did not apply a pre-result cancelled/postponed availability filter;
+- `v2_races` does not currently provide a compatible pre-result race-status field for this purpose;
+- result/payout data was not used to identify this gap.
+
+Machine-readable evidence:
+`research/evidence/v4_pre_freeze_race_availability_gap_20260921.json`
+
+This finding does **not** authorize an immediate Production candidate-logic change. A future timing-safe official race/venue availability source and exclusion contract must be preregistered and separately approved before any Production behavior change.
+
 ## 2026-09-21 observed blocker
 
 The immutable 2026-09-21 formal artifact includes core race `20260921_02_08` (Toda 8R, frozen deadline 14:16 JST). BOAT RACE official same-day pages later marked Toda as cancelled/postponed for 2026-09-21. Therefore the current six-outcome contract cannot produce a formal 2026-09-21 evaluation unless an authoritative same-date final result/payout for that exact race exists; a later postponed race must not be substituted.
