@@ -38,14 +38,14 @@ Required fields:
 - timezone-aware `observed_at`
 - timezone-aware `source_updated_at`
 - BOAT RACE official `source_url`
-- one unique status row for every venue represented by the selected formal core
+- one unique status row for every selected formal core race, including its expected venue ID
 
 Allowed normalized statuses in this first preregistration:
 
 - `active`
 - `cancelled_postponed`
 
-Anything else is fail-closed. A missing core venue is also fail-closed.
+Anything else is fail-closed. A missing core race, duplicate race, or race/venue mismatch is also fail-closed. Race-level granularity is required so one cancelled race can be represented without falsely cancelling or activating another core race at the same venue.
 
 The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing, immutable storage/hash, and Production wiring remain separate review boundaries.
 
@@ -65,7 +65,7 @@ This asymmetry is intentional:
 
 ## Non-constructive rule
 
-If a selected core venue is `cancelled_postponed`:
+If a selected core race is `cancelled_postponed`:
 
 `BLOCK_PRE_FREEZE_UNAVAILABLE_CORE`
 
