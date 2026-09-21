@@ -12,7 +12,7 @@ This parser preregistration narrows v1 deliberately:
 - it does not emit `active`;
 - page existence, a deadline, a race card, or lack of a cancellation marker is never converted into positive availability evidence.
 
-Positive race-level availability remains a separate unresolved acquisition/parser requirement before the guard can legitimately PASS all six races in Production.
+Positive race-level availability remains separate from this block-only parser. A dedicated `venue_race_index` active parser is now preregistered in `docs/V4_OFFICIAL_ACTIVE_AVAILABILITY_PARSER_CONTRACT_20260921.md`, but real preserved active/cancelled raw fixtures remain required before the guard can legitimately PASS all six races in Production.
 
 ## Input contract
 
@@ -78,7 +78,7 @@ v1 cannot emit:
 
 That is deliberate. A positive PASS has a higher burden because a venue/day page that appears active does not prove every individual selected race is active.
 
-Before Production use, a separate race-level positive evidence parser must be specified against preserved official fixtures and reviewed independently.
+Before Production use, the separately preregistered race-level positive parser must be validated against preserved real official active and cancelled/postponed fixtures and reviewed independently.
 
 ## Safety
 
