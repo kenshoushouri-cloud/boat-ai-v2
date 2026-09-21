@@ -1,5 +1,75 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 13:05 JST
+
+This section supersedes the 12:59 JST override below where they differ. Re-fetch GitHub/Railway before acting.
+
+### PR #367 hardening completed
+
+Draft PR #367 `Research: preregister V4 pre-freeze availability guard` remains research-only / no Production wiring.
+
+Current head:
+`3afde0ef65a0601c684b334800ada0332b7ee57f`
+
+Current state:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- branch is based directly on current main `8867b77569d836b6c02a075fa6444550b1a46a6c`
+
+New fail-closed invariants:
+- exactly six formal core races;
+- daily ranks exactly 1..6;
+- exact core orders 1 and 2 on every core race;
+- race ID target date / venue / race-number identity must match;
+- official snapshot carries lowercase 64-hex `source_content_sha256`;
+- each availability row carries evidence scope `race` or `venue`;
+- venue-level `cancelled_postponed` may block a selected race;
+- venue-level `active` is insufficient to PASS an individual race;
+- unknown/missing/late/mismatched status or scope fails closed;
+- no candidate replacement, no reranking, no result/payout read, `purchase_action=false`.
+
+### Mutable official-source provenance limitation
+
+The BOAT RACE same-day race-list URL is mutable during the day. The historical 08:25 displayed update time for Sep21 Toda cancellation was observed and recorded before the 10:03 formal freeze, but the exact 08:25 raw response bytes were not preserved with a content digest.
+
+Therefore:
+- current post-result fact remains: Toda was cancelled/postponed;
+- the pre-freeze 08:25 observation remains useful historical evidence;
+- that exact historical page state is not cryptographically reproducible from URL alone.
+
+PR #366 now records this evidence-strength limitation. Any future Production-effect availability guard must preserve the exact observed official payload (or equivalent immutable raw representation) plus deterministic SHA-256 before parsed status can qualify as evidence.
+
+PR #366 current head:
+`714e96271a50b785fd2b4caeb6f0c27a4f413eed`
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- Sep21 remains unscored and post-result unevaluable under the six-race contract.
+
+### Storage
+
+PR #363 current head:
+`562e4ac577a3ca9ba7e5e2c5367fd8e10deb3082`
+- Draft / mergeable
+- zero-consumer gate remains NOT reached
+- same-day writer -> V4 reader evidence remains active
+- no DELETE / migration / VACUUM
+- at 13:05 JST one archive-consumer read-only workflow was rerunning; do not treat temporary in-progress status as a gate change.
+
+### Source of Truth / safety
+
+- Boat main remains `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+- Railway Production behavior unchanged.
+- fallback service unchanged.
+- no Production DB/Railway/model/threshold/candidate/purchase mutation was made.
+- `PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING`
+
+### Next natural checks
+
+1. 2026-09-21 19:30 JST: re-confirm final official Sep21 status; do not score Sep21 unless all exact six same-date outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: verify natural 08:25 fallback Cron behavior.
+3. Continue candidate-shadow zero-consumer evidence from natural windows only; do not force-run Production jobs.
+
+
 ## LATEST OVERRIDE — 2026-09-21 12:59 JST
 
 This section supersedes the 11:06 JST override below where they differ. Re-fetch GitHub/Railway before acting.
