@@ -73,7 +73,7 @@ A restore without production-equivalent indexes is not a Hobby-size proof.
 
 ### Headroom
 
-The Hobby limit is represented as exactly 5 GiB in the rehearsal manifest.
+Railway official documentation labels the Hobby volume limit as 5GB but does not define byte semantics in the referenced plan/volume pages. To avoid overstating capacity, this preregistration uses a conservative ceiling of exactly `5,000,000,000` bytes unless a future authoritative platform response provides an exact lower byte limit.
 
 Before rehearsal, freeze:
 
@@ -83,7 +83,7 @@ Before rehearsal, freeze:
 
 The reserve must cover at least the measured growth horizon. The post-restore acceptance decision remains a separate check:
 
-`OBSERVED_FRESH_RESTORE_SIZE + REQUIRED_RESERVE <= 5 GiB`
+`OBSERVED_FRESH_RESTORE_SIZE + REQUIRED_RESERVE <= 5,000,000,000 bytes`
 
 A PASS from this manifest gate means only that the **rehearsal prerequisites** are frozen. It does not mean Hobby fit is proven.
 
