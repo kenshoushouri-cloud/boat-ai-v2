@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Pure preregistered guard for pre-freeze official race availability.
 
-Research-only.  This module consumes already-captured data supplied by a caller.
+Research-only. This module consumes already-captured data supplied by a caller.
 It has no network, database, Railway, LINE, purchase, or Production mutation path.
 
 The guard is intentionally non-constructive: it may block a formal artifact when
@@ -87,7 +87,12 @@ def _formal_core(artifact: Any) -> list[dict[str, Any]]:
         if race_id in seen_races:
             raise V4AvailabilityGuardError(f"duplicate core race_id: {race_id}")
         seen_races.add(race_id)
-        if not isinstance(venue_id, str) or len(venue_id) != 2 or not venue_id.isdigit():
+        if (
+            not isinstance(venue_id, str)
+            or len(venue_id) != 2
+            or not venue_id.isdigit()
+            or not (1 <= int(venue_id) <= 24)
+        ):
             raise V4AvailabilityGuardError(f"invalid core venue_id: {venue_id!r}")
         if not isinstance(daily_rank, int) or isinstance(daily_rank, bool):
             raise V4AvailabilityGuardError(f"invalid core daily_rank: {daily_rank!r}")
@@ -122,11 +127,74 @@ def _formal_core(artifact: Any) -> list[dict[str, Any]]:
     return sorted(core, key=lambda row: row["daily_rank"])
 
 
-def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
-    """Evaluate a caller-supplied pre-freeze official availability snapshot.
+def _load_evidence_sources(snapshot: dict[str, Any], *, generated_at: datetime) -> dict[str, dict[str, Any]]:
+    raw_sources = snapshot.get("evidence_sources")
+    if not isinstance(raw_sources, list) or not raw_sources:
+        raise V4AvailabilityGuardError("snapshot evidence_sources must be a non-empty list")
 
-    This function never produces replacement candidates.  Any unavailable
-    selected core race blocks the artifact under the future guard contract.
+    sources: dict[str, dict[str, Any]] = {}
+    for raw in raw_sources:
+        if not isinstance(raw, dict):
+            raise V4AvailabilityGuardError("availability evidence source must be an object")
+        evidence_id = raw.get("evidence_id")
+        if not isinstance(evidence_id, str) or not evidence_id:
+            raise V4AvailabilityGuardError("availability evidence_id missing")
+        if evidence_id in sources:
+            raise V4AvailabilityGuardError(f"duplicate availability evidence_id: {evidence_id}")
+
+        observed_at = _aware_datetime(
+            raw.get("observed_at"),
+            field=f"evidence {evidence_id} observed_at",
+        )
+        if observed_at > generated_at:
+            raise V4AvailabilityGuardError(
+                f"availability evidence observed after artifact freeze: {evidence_id}"
+            )
+
+        source_updated_raw = raw.get("source_updated_at")
+        source_updated_at = None
+        if source_updated_raw is not None:
+            source_updated_at = _aware_datetime(
+                source_updated_raw,
+                field=f"evidence {evidence_id} source_updated_at",
+            )
+            if source_updated_at > observed_at:
+                raise V4AvailabilityGuardError(
+                    f"source update time is after evidence observation: {evidence_id}"
+                )
+
+        source_url = raw.get("source_url")
+        if not isinstance(source_url, str) or not source_url.startswith("https://www.boatrace.jp/"):
+            raise V4AvailabilityGuardError(
+                f"availability source must be BOAT RACE official: {evidence_id}"
+            )
+
+        source_content_sha256 = raw.get("source_content_sha256")
+        if (
+            not isinstance(source_content_sha256, str)
+            or len(source_content_sha256) != 64
+            or any(ch not in "0123456789abcdef" for ch in source_content_sha256)
+        ):
+            raise V4AvailabilityGuardError(
+                f"availability source_content_sha256 must be lowercase SHA-256 hex: {evidence_id}"
+            )
+
+        sources[evidence_id] = {
+            "evidence_id": evidence_id,
+            "observed_at": raw["observed_at"],
+            "source_updated_at": source_updated_raw,
+            "source_url": source_url,
+            "source_content_sha256": source_content_sha256,
+        }
+
+    return sources
+
+
+def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
+    """Evaluate caller-supplied pre-freeze official availability evidence.
+
+    This function never fetches evidence and never produces replacement
+    candidates. Any unavailable selected core race blocks the artifact.
     """
     core = _formal_core(artifact)
     provenance = artifact["freeze_provenance"]
@@ -154,29 +222,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     if snapshot.get("target_date") != target_date:
         raise V4AvailabilityGuardError("availability target_date mismatch")
 
-    observed_at = _aware_datetime(snapshot.get("observed_at"), field="snapshot observed_at")
-    source_updated_at = _aware_datetime(
-        snapshot.get("source_updated_at"),
-        field="snapshot source_updated_at",
-    )
-    if observed_at > generated_at:
-        raise V4AvailabilityGuardError("availability snapshot observed after artifact freeze")
-    if source_updated_at > observed_at:
-        raise V4AvailabilityGuardError("source update time is after snapshot observation")
-
-    source_url = snapshot.get("source_url")
-    if not isinstance(source_url, str) or not source_url.startswith("https://www.boatrace.jp/"):
-        raise V4AvailabilityGuardError("availability source must be BOAT RACE official")
-
-    source_content_sha256 = snapshot.get("source_content_sha256")
-    if (
-        not isinstance(source_content_sha256, str)
-        or len(source_content_sha256) != 64
-        or any(ch not in "0123456789abcdef" for ch in source_content_sha256)
-    ):
-        raise V4AvailabilityGuardError(
-            "availability source_content_sha256 must be lowercase SHA-256 hex"
-        )
+    evidence_sources = _load_evidence_sources(snapshot, generated_at=generated_at)
 
     races = snapshot.get("races")
     if not isinstance(races, list):
@@ -190,6 +236,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         venue_id = raw.get("venue_id")
         status = raw.get("status")
         scope = raw.get("scope")
+        evidence_id = raw.get("evidence_id")
         if not isinstance(race_id, str) or not race_id:
             raise V4AvailabilityGuardError(f"invalid availability race_id: {race_id!r}")
         if race_id in by_race:
@@ -200,11 +247,20 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             raise V4AvailabilityGuardError(f"unknown availability status: {status!r}")
         if scope not in ALLOWED_SCOPES:
             raise V4AvailabilityGuardError(f"unknown availability scope: {scope!r}")
+        if not isinstance(evidence_id, str) or evidence_id not in evidence_sources:
+            raise V4AvailabilityGuardError(
+                f"availability evidence_id missing or unknown for race: {race_id}"
+            )
         if status == ACTIVE and scope != RACE_SCOPE:
             raise V4AvailabilityGuardError(
                 f"venue-level active status is insufficient for core race: {race_id}"
             )
-        by_race[race_id] = {"venue_id": venue_id, "status": status, "scope": scope}
+        by_race[race_id] = {
+            "venue_id": venue_id,
+            "status": status,
+            "scope": scope,
+            "evidence_id": evidence_id,
+        }
 
     core_ids = {row["race_id"] for row in core}
     missing_races = sorted(core_ids - set(by_race))
@@ -220,6 +276,43 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 f"availability venue mismatch for core race: {row['race_id']}"
             )
 
+    # Venue-wide unavailability cannot coexist with an active selected race at
+    # that same venue in one snapshot.
+    for venue_id in {row["venue_id"] for row in core}:
+        selected = [by_race[row["race_id"]] for row in core if row["venue_id"] == venue_id]
+        if any(item["scope"] == VENUE_SCOPE and item["status"] == UNAVAILABLE for item in selected):
+            if any(item["status"] != UNAVAILABLE for item in selected):
+                raise V4AvailabilityGuardError(
+                    f"inconsistent venue-level unavailable evidence: {venue_id}"
+                )
+
+    # A race-scoped positive source must not be reused to assert another core
+    # race. Reuse is allowed only for venue-wide unavailable evidence at the
+    # same venue.
+    evidence_usage: dict[str, list[dict[str, str]]] = {}
+    for row in core:
+        observed = by_race[row["race_id"]]
+        evidence_usage.setdefault(observed["evidence_id"], []).append(
+            {
+                "race_id": row["race_id"],
+                "venue_id": row["venue_id"],
+                "status": observed["status"],
+                "scope": observed["scope"],
+            }
+        )
+    for evidence_id, used_by in evidence_usage.items():
+        if len(used_by) <= 1:
+            continue
+        same_venue = len({item["venue_id"] for item in used_by}) == 1
+        venue_unavailable_only = all(
+            item["scope"] == VENUE_SCOPE and item["status"] == UNAVAILABLE
+            for item in used_by
+        )
+        if not (same_venue and venue_unavailable_only):
+            raise V4AvailabilityGuardError(
+                f"evidence source reused across incompatible core races: {evidence_id}"
+            )
+
     blocked = [
         {
             "race_id": row["race_id"],
@@ -227,19 +320,32 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             "daily_rank": row["daily_rank"],
             "status": by_race[row["race_id"]]["status"],
             "scope": by_race[row["race_id"]]["scope"],
+            "evidence_id": by_race[row["race_id"]]["evidence_id"],
         }
         for row in core
         if by_race[row["race_id"]]["status"] != ACTIVE
     ]
 
+    core_evidence = []
+    for row in core:
+        observed = by_race[row["race_id"]]
+        source = evidence_sources[observed["evidence_id"]]
+        core_evidence.append(
+            {
+                "race_id": row["race_id"],
+                "venue_id": row["venue_id"],
+                "status": observed["status"],
+                "scope": observed["scope"],
+                **source,
+            }
+        )
+
     return {
         "contract": "candidate_discovery_v4_pre_freeze_availability_guard_v1",
         "target_date": target_date,
         "formal_core_races": len(core),
-        "snapshot_observed_at": snapshot["observed_at"],
-        "snapshot_source_updated_at": snapshot["source_updated_at"],
-        "source_url": source_url,
-        "source_content_sha256": source_content_sha256,
+        "evidence_source_count": len(evidence_sources),
+        "core_evidence": core_evidence,
         "eligible_under_guard": not blocked,
         "blocked_core_races": blocked,
         "replacement_candidates_generated": False,
