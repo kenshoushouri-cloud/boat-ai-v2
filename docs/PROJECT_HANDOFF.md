@@ -1,5 +1,61 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 13:30 JST
+
+This section supersedes the 13:21 JST override below where they differ.
+
+### PR #367 multi-source provenance hardening
+
+Current head:
+`14f4f4abfb5ffaa3fbb809aa97664cdb5a5cfd86`
+
+State:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- research-only / offline / no Production wiring
+
+Fresh official-surface review showed the earlier single-source snapshot shape was insufficient for a legitimate multi-venue PASS:
+- BOAT RACE same-day index is a venue/day overview;
+- race-specific surfaces are separate `hd/jcd/rno` resources;
+- one top-level URL/digest must not be reused as provenance for six race-scoped positive assertions across multiple venues.
+
+The preregistered snapshot is now multi-source:
+- non-empty `evidence_sources[]`;
+- each preserved official source has unique `evidence_id`, pre-freeze `observed_at`, official URL, raw-content SHA-256 and optional displayed `source_updated_at`;
+- each selected core race references one `evidence_id`;
+- PASS requires race-scoped `active` evidence for every selected core race;
+- race-scoped positive evidence cannot be reused for another selected core race;
+- venue-wide unavailable evidence may be shared only for selected races at the same venue;
+- venue-wide unavailable + active contradiction at the same venue fails closed;
+- venue ID is restricted to 01..24.
+
+Important limitation remains explicit:
+the pure guard validates supplied provenance structure but does not prove that normalized status/scope follows from raw bytes. A future acquisition/parser layer must bind preserved payload -> digest -> parsed status/scope. Mere page existence or a scheduled deadline is not sufficient race-level active evidence.
+
+No candidate replacement, no reranking, no result/payout read, `purchase_action=false`.
+
+### Other current state
+
+Unless superseded above, the 13:21 override remains current:
+- Boat main `8867b77569d836b6c02a075fa6444550b1a46a6c`;
+- PR #366 strict replay/evaluator head `95d7af3efd79ead86bfdf4f708ba3065b283d6f9`, 5/5 CI SUCCESS;
+- Sep18/Sep19 strict replay reproduced +920 JPY / ROI 138.333%;
+- Sep21 remains post-result unevaluable and unscored;
+- Storage zero-consumer gate remains not reached;
+- Railway Production behavior/config unchanged;
+- no Production DB/model/threshold/candidate/purchase mutation.
+
+### Next natural checks
+
+1. 2026-09-21 19:30 JST: final Sep21 official-state confirmation; no formal scoring unless all exact six same-date outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: natural 08:25 fallback Cron audit.
+3. Continue natural-only Storage evidence; do not force-run Production jobs.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 13:21 JST
 
 This section supersedes the 13:05 JST override below where they differ. Re-fetch GitHub/Railway before acting.
