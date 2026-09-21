@@ -19,6 +19,9 @@ SNAPSHOT_CONTRACT = "candidate_discovery_v4_official_availability_snapshot_v1"
 ACTIVE = "active"
 UNAVAILABLE = "cancelled_postponed"
 ALLOWED_STATUSES = {ACTIVE, UNAVAILABLE}
+RACE_SCOPE = "race"
+VENUE_SCOPE = "venue"
+ALLOWED_SCOPES = {RACE_SCOPE, VENUE_SCOPE}
 
 
 class V4AvailabilityGuardError(ValueError):
@@ -186,6 +189,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         race_id = raw.get("race_id")
         venue_id = raw.get("venue_id")
         status = raw.get("status")
+        scope = raw.get("scope")
         if not isinstance(race_id, str) or not race_id:
             raise V4AvailabilityGuardError(f"invalid availability race_id: {race_id!r}")
         if race_id in by_race:
@@ -194,7 +198,13 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             raise V4AvailabilityGuardError(f"invalid availability venue_id: {venue_id!r}")
         if status not in ALLOWED_STATUSES:
             raise V4AvailabilityGuardError(f"unknown availability status: {status!r}")
-        by_race[race_id] = {"venue_id": venue_id, "status": status}
+        if scope not in ALLOWED_SCOPES:
+            raise V4AvailabilityGuardError(f"unknown availability scope: {scope!r}")
+        if status == ACTIVE and scope != RACE_SCOPE:
+            raise V4AvailabilityGuardError(
+                f"venue-level active status is insufficient for core race: {race_id}"
+            )
+        by_race[race_id] = {"venue_id": venue_id, "status": status, "scope": scope}
 
     core_ids = {row["race_id"] for row in core}
     missing_races = sorted(core_ids - set(by_race))
@@ -216,6 +226,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             "venue_id": row["venue_id"],
             "daily_rank": row["daily_rank"],
             "status": by_race[row["race_id"]]["status"],
+            "scope": by_race[row["race_id"]]["scope"],
         }
         for row in core
         if by_race[row["race_id"]]["status"] != ACTIVE
