@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research/candidate_discovery_v4_fallback_dispatcher.py'
+      - 'research/candidate_discovery_v4_fallback_activation_manifest.json'
       - 'tests/test_candidate_discovery_v4_fallback_dispatcher.py'
       - '.github/workflows/candidate-discovery-v4-fallback-dispatcher.yml'
       - 'docs/V4_CAPTURE_RESILIENCE_20260915.md'
