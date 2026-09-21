@@ -13,6 +13,7 @@ CONTRACT = "v4_fresh_restore_rehearsal_manifest_v1"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_RETENTION_MODES = {"keep_all", "bounded"}
+CONSERVATIVE_HOBBY_LIMIT_BYTES = 5_000_000_000
 
 
 class FreshRestoreRehearsalManifestError(ValueError):
@@ -152,8 +153,10 @@ def evaluate_manifest(data: Any) -> dict[str, Any]:
     ):
         if not isinstance(value, int) or isinstance(value, bool):
             raise FreshRestoreRehearsalManifestError(f"{name} must be an integer")
-    if limit != 5 * 1024**3:
-        raise FreshRestoreRehearsalManifestError("Hobby volume_limit_bytes must equal 5 GiB")
+    if limit != CONSERVATIVE_HOBBY_LIMIT_BYTES:
+        raise FreshRestoreRehearsalManifestError(
+            "Hobby volume_limit_bytes must use conservative 5,000,000,000-byte cap"
+        )
     if reserve <= 0:
         raise FreshRestoreRehearsalManifestError("required_reserve_bytes must be positive")
     if daily_growth < 0:
