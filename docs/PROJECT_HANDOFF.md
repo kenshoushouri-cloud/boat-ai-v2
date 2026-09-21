@@ -1,5 +1,50 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 11:06 JST
+
+This section supersedes the 10:40 JST override below where they differ. Re-fetch GitHub/Railway before acting.
+
+### Re-audit confirmed
+
+- Boat `main` remains `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+- PR #364 remains merged.
+- Railway Production fallback `candidate-discovery-v4-fallback-dispatcher` remains active on `main`, Cron `25 23 * * *` UTC (=08:25 JST), restart `NEVER`, latest deployment `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS, staged changes none.
+- Initial deployment log remains `NOOP_VALID_PRIMARY target_date=2026-09-21 primary_run_id=35549611949`; no workflow_dispatch run was created.
+- PR #363 Storage remains Draft/mergeable. Fresh 2026-09-21 read-only evidence: natural `cron-window-day` wrote 7 candidate-shadow rows (S03=7), and formal V4 later read `legacy_shadow_rows=7`; `ZERO_CONSUMER_NOT_REACHED` remains in force.
+- PR #366 remains Draft/mergeable and now contains a frozen 2026-09-21 post-result evaluation manifest plus explicit cancellation fail-closed evidence/policy.
+
+### 2026-09-21 post-result evaluation blocker
+
+The immutable formal V4 artifact remains valid pre-result:
+- run `35549611949`
+- formal core 6 races / 12 tickets
+- full SHA `1af00a1a7cc1742c4e93a5f816e4aaf90fb181ac45be9ee4d88ad09c4d5f6175`
+- canonical core SHA `d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf`
+
+However, one frozen core race is `20260921_02_08` (Toda 8R, frozen deadline 14:16 JST). BOAT RACE official same-day pages later marked Toda as cancelled/postponed on 2026-09-21.
+
+Current evaluation classification:
+`FORMAL_AVAILABLE / POST_RESULT_UNEVALUABLE_CORE_RACE_CANCELLED / NO_DENOMINATOR_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+Do not score only the remaining five races. Do not invent a zero-yen payout/loss. Do not substitute the postponed race's later-date result back onto 2026-09-21. Under the frozen PR #366 contract, a missing exact same-date finalized outcome/payout blocks the full-day formal evaluation.
+
+### Immediate next work
+
+1. Keep the 2026-09-21 artifact immutable and unscored unless all six exact same-date final outcomes/payouts exist from authoritative sources.
+2. Observe the next natural 08:25 JST Railway fallback Cron; valid primary => NOOP, otherwise exactly one workflow_dispatch attempt; duplicate dispatch prohibited.
+3. Continue Storage zero-consumer evidence only; no delete/migration/VACUUM.
+4. Keep model/coefficients/thresholds unchanged; no retuning from the small formal corpus.
+
+### Safety unchanged
+
+- fail closed
+- `purchase_action=false`
+- no result-after candidate reconstruction
+- no Production DB destructive action without explicit approval
+- do not expose secret values
+- historical / BASELINE / formal V4 / Production evidence remain separate
+
+
 ## LATEST OVERRIDE — 2026-09-21 10:40 JST
 
 This section supersedes older state/SHA/fallback descriptions below. On resume, re-fetch GitHub/Railway before acting.
