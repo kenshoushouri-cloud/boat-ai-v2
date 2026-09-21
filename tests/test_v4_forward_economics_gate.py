@@ -102,10 +102,40 @@ def test_profit_must_reconcile_exactly():
         evaluate_economics(bad)
 
 
+def test_exact_six_race_formal_day_is_required():
+    bad = evidence()
+    bad["formal_days"][0]["core_races"] = 5
+    bad["formal_days"][0]["core_tickets"] = 10
+    bad["formal_days"][0]["investment_yen"] = 1000
+    with pytest.raises(V4ForwardEconomicsError, match="exactly 6 core races"):
+        evaluate_economics(bad)
+
+
 def test_two_ticket_formal_core_shape_is_required():
     bad = evidence()
     bad["formal_days"][0]["core_tickets"] = 11
     with pytest.raises(V4ForwardEconomicsError, match="two tickets per race"):
+        evaluate_economics(bad)
+
+
+def test_investment_is_fixed_to_100_yen_per_core_ticket():
+    bad = evidence()
+    bad["formal_days"][0]["investment_yen"] = 1300
+    bad["formal_days"][0]["profit_yen"] = -200
+    with pytest.raises(V4ForwardEconomicsError, match="100 JPY"):
+        evaluate_economics(bad)
+
+
+def test_hit_metric_hierarchy_must_reconcile():
+    bad = evidence()
+    bad["formal_days"][0]["exact_hit_races"] = 3
+    bad["formal_days"][0]["first_second_prefix_hit_races"] = 2
+    with pytest.raises(V4ForwardEconomicsError, match="exact <= prefix <= head"):
+        evaluate_economics(bad)
+
+    bad = evidence()
+    bad["formal_days"][1]["third_only_miss_races"] = 2
+    with pytest.raises(V4ForwardEconomicsError, match="third-only misses"):
         evaluate_economics(bad)
 
 
