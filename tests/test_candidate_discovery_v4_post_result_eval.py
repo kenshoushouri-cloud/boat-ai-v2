@@ -125,6 +125,27 @@ def test_duplicate_or_malformed_outcomes_fail_closed() -> None:
         evaluate(artifact(), bad)
 
 
+def test_cancelled_core_race_cannot_be_scored_as_zero_or_later_date() -> None:
+    cancelled = outcomes()
+    cancelled["races"][-1] = {
+        "race_id": "20260918_06_01",
+        "status": "cancelled",
+        "trifecta": None,
+        "trifecta_payout_yen": 0,
+    }
+    with pytest.raises(V4PostResultEvaluationError, match="malformed trifecta ticket"):
+        evaluate(artifact(), cancelled)
+
+    postponed = outcomes()
+    postponed["races"][-1] = {
+        "race_id": "20260919_06_01",
+        "trifecta": "3-4-1",
+        "trifecta_payout_yen": 1200,
+    }
+    with pytest.raises(V4PostResultEvaluationError, match="missing outcome"):
+        evaluate(artifact(), postponed)
+
+
 def test_core_shape_and_purchase_safety_are_frozen() -> None:
     bad = artifact()
     bad["purchase_action"] = True
