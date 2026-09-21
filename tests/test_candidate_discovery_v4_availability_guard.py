@@ -50,6 +50,7 @@ def snapshot():
         "observed_at": "2026-09-21T09:55:00+09:00",
         "source_updated_at": "2026-09-21T08:25:00+09:00",
         "source_url": "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
+        "source_content_sha256": "a" * 64,
         "races": [
             {
                 "race_id": row["race_id"],
@@ -159,6 +160,22 @@ class AvailabilityGuardTests(unittest.TestCase):
         status = snapshot()
         status["source_updated_at"] = "2026-09-21T09:56:00+09:00"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "source update time"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_missing_or_malformed_source_digest_fails_closed(self):
+        status = snapshot()
+        del status["source_content_sha256"]
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "source_content_sha256"):
+            evaluate_availability_guard(artifact(), status)
+
+        status = snapshot()
+        status["source_content_sha256"] = "A" * 64
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "lowercase SHA-256 hex"):
+            evaluate_availability_guard(artifact(), status)
+
+        status = snapshot()
+        status["source_content_sha256"] = "abc"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "lowercase SHA-256 hex"):
             evaluate_availability_guard(artifact(), status)
 
     def test_non_official_source_is_rejected(self):
