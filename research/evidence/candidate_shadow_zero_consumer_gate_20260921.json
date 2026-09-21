@@ -100,7 +100,17 @@
     "no_delete": true,
     "no_migration": true,
     "no_vacuum": true,
-    "purchase_action": false
+    "purchase_action": false,
+    "github_v4_reader_present": true
   },
-  "classification": "ZERO_CONSUMER_NOT_REACHED"
+  "classification": "ZERO_CONSUMER_NOT_REACHED",
+  "github_action_entrypoints": [
+    {
+      "workflow": ".github/workflows/candidate-discovery-v4-prospective-freeze.yml",
+      "source_branch": "main",
+      "runtime_entrypoint": "research/candidate_discovery_v4_prospective_freeze_pg.py -> .github/scripts/candidate_discovery_v4_main_feed_pg.py",
+      "candidate_shadow_reader": true,
+      "role": "same-day S01-S05 legacy carryover reader"
+    }
+  ]
 }
