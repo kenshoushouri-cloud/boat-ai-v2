@@ -46,14 +46,18 @@ The evaluator reports:
 
 A positive observed net value is descriptive evidence only.
 
-## Milestones
+## Milestone separation
 
-Race-count milestones are frozen as:
+This economics gate does **not** redefine the project's existing 30/50/100 prospective case milestones.
 
-- <30 formal races: `PRE_30_INSUFFICIENT_SAMPLE`
-- 30–49: `MILESTONE_30_DESCRIPTIVE_ONLY`
-- 50–99: `MILESTONE_50_REVIEW`
-- >=100: `MILESTONE_100_REVIEW`
+Those milestones currently belong to separately preregistered evidence tracks such as Stage2 supported cases and Primary-vs-Challenger prospective cases. Formal post-result race count must not be silently substituted for those case definitions.
+
+Therefore this evaluator reports the formal settled race corpus and its economics, but returns:
+
+- `project_milestones_redefined=false`
+- `milestone_context_required_separately=true`
+
+Any future 30/50/100 review must bring its own preregistered case-definition evidence alongside this economics summary.
 
 No milestone automatically authorizes:
 
@@ -87,9 +91,7 @@ The currently evaluated formal V4 corpus remains:
 - combined: 12 races / 24 tickets / +920 JPY / ROI 138.333%
 - maximum cumulative drawdown across these two daily points: 100 JPY
 
-This is still:
-
-`PRE_30_INSUFFICIENT_SAMPLE`
+The current corpus is still small descriptive formal evidence. It must not be relabeled as 12 Stage2 supported cases or 12 Primary-vs-Challenger milestone cases unless the relevant preregistered case contract independently says so.
 
 The current positive result is encouraging descriptive evidence, but it is not enough by itself to justify or reject any subscription/infra plan.
 
