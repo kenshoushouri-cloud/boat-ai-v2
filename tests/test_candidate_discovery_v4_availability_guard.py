@@ -44,53 +44,88 @@ def artifact():
 
 
 def snapshot():
+    evidence_sources = []
+    races = []
+    for idx, row in enumerate(artifact()["feed"], 1):
+        race_id = row["race_id"]
+        venue_id = row["venue_id"]
+        race_no = int(race_id.split("_")[2])
+        evidence_id = f"race-{race_id}"
+        evidence_sources.append(
+            {
+                "evidence_id": evidence_id,
+                "observed_at": "2026-09-21T09:55:00+09:00",
+                "source_updated_at": None,
+                "source_url": (
+                    "https://www.boatrace.jp/owpc/pc/race/racelist"
+                    f"?hd=20260921&jcd={venue_id}&rno={race_no}"
+                ),
+                "source_content_sha256": f"{idx:064x}",
+            }
+        )
+        races.append(
+            {
+                "race_id": race_id,
+                "venue_id": venue_id,
+                "status": "active",
+                "scope": "race",
+                "evidence_id": evidence_id,
+            }
+        )
     return {
         "contract": "candidate_discovery_v4_official_availability_snapshot_v1",
         "target_date": "2026-09-21",
-        "observed_at": "2026-09-21T09:55:00+09:00",
-        "source_updated_at": "2026-09-21T08:25:00+09:00",
-        "source_url": "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
-        "source_content_sha256": "a" * 64,
-        "races": [
-            {
-                "race_id": row["race_id"],
-                "venue_id": row["venue_id"],
-                "status": "active",
-                "scope": "race",
-            }
-            for row in artifact()["feed"]
-        ],
+        "evidence_sources": evidence_sources,
+        "races": races,
     }
 
 
+def add_venue_unavailable_evidence(status, venue_id, evidence_id=None):
+    evidence_id = evidence_id or f"venue-{venue_id}-cancel"
+    status["evidence_sources"].append(
+        {
+            "evidence_id": evidence_id,
+            "observed_at": "2026-09-21T09:00:00+09:00",
+            "source_updated_at": "2026-09-21T08:25:00+09:00",
+            "source_url": "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
+            "source_content_sha256": "f" * 64,
+        }
+    )
+    return evidence_id
+
+
 class AvailabilityGuardTests(unittest.TestCase):
-    def test_all_active_core_passes_without_reranking(self):
+    def test_all_active_core_passes_with_distinct_race_evidence(self):
         result = evaluate_availability_guard(artifact(), snapshot())
         self.assertTrue(result["eligible_under_guard"])
         self.assertEqual(result["decision"], "PASS_ACTIVE_CORE")
         self.assertEqual(result["blocked_core_races"], [])
+        self.assertEqual(result["evidence_source_count"], 6)
+        self.assertEqual(len(result["core_evidence"]), 6)
         self.assertFalse(result["replacement_candidates_generated"])
         self.assertFalse(result["ranking_changed"])
         self.assertFalse(result["purchase_action"])
 
     def test_pre_freeze_cancelled_selected_venue_blocks_without_replacement(self):
         status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "02")
         cancelled = next(row for row in status["races"] if row["venue_id"] == "02")
         cancelled["status"] = "cancelled_postponed"
+        cancelled["scope"] = "venue"
+        cancelled["evidence_id"] = evidence_id
         result = evaluate_availability_guard(artifact(), status)
         self.assertFalse(result["eligible_under_guard"])
         self.assertEqual(result["decision"], "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE")
         self.assertEqual(len(result["blocked_core_races"]), 1)
         self.assertEqual(result["blocked_core_races"][0]["venue_id"], "02")
         self.assertEqual(result["blocked_core_races"][0]["race_id"], "20260921_02_08")
+        self.assertEqual(result["blocked_core_races"][0]["evidence_id"], evidence_id)
         self.assertFalse(result["replacement_candidates_generated"])
         self.assertFalse(result["ranking_changed"])
 
     def test_malformed_formal_core_orders_fail_closed(self):
         bad = artifact()
-        bad["feed"][0]["tickets"] = [
-            {"core_order": 1, "ticket": "1-2-3"},
-        ]
+        bad["feed"][0]["tickets"] = [{"core_order": 1, "ticket": "1-2-3"}]
         with self.assertRaisesRegex(V4AvailabilityGuardError, "exact orders 1 and 2"):
             evaluate_availability_guard(bad, snapshot())
 
@@ -100,7 +135,7 @@ class AvailabilityGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(V4AvailabilityGuardError, "daily_rank must be exactly 1..6"):
             evaluate_availability_guard(bad, snapshot())
 
-    def test_formal_core_race_identity_must_match_date_and_venue(self):
+    def test_formal_core_race_identity_must_match_date_venue_and_valid_venue_range(self):
         bad = artifact()
         bad["feed"][0]["race_id"] = "20260920_10_05"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "target_date mismatch"):
@@ -116,11 +151,19 @@ class AvailabilityGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(V4AvailabilityGuardError, "malformed core race_id"):
             evaluate_availability_guard(bad, snapshot())
 
+        bad = artifact()
+        bad["feed"][0]["race_id"] = "20260921_99_05"
+        bad["feed"][0]["venue_id"] = "99"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "invalid core venue_id"):
+            evaluate_availability_guard(bad, snapshot())
+
     def test_venue_level_unavailable_can_block_but_venue_active_cannot_pass(self):
         status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "02")
         row = next(item for item in status["races"] if item["race_id"] == "20260921_02_08")
         row["status"] = "cancelled_postponed"
         row["scope"] = "venue"
+        row["evidence_id"] = evidence_id
         result = evaluate_availability_guard(artifact(), status)
         self.assertFalse(result["eligible_under_guard"])
         self.assertEqual(result["blocked_core_races"][0]["scope"], "venue")
@@ -139,13 +182,13 @@ class AvailabilityGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(V4AvailabilityGuardError, "unknown availability scope"):
             evaluate_availability_guard(artifact(), status)
 
-    def test_snapshot_observed_after_freeze_is_rejected(self):
+    def test_evidence_observed_after_freeze_is_rejected(self):
         status = snapshot()
-        status["observed_at"] = "2026-09-21T10:04:00+09:00"
+        status["evidence_sources"][0]["observed_at"] = "2026-09-21T10:04:00+09:00"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "observed after artifact freeze"):
             evaluate_availability_guard(artifact(), status)
 
-    def test_missing_core_venue_fails_closed(self):
+    def test_missing_core_race_fails_closed(self):
         status = snapshot()
         removed = status["races"][0]["race_id"]
         status["races"] = [row for row in status["races"] if row["race_id"] != removed]
@@ -180,32 +223,78 @@ class AvailabilityGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(V4AvailabilityGuardError, "venue mismatch"):
             evaluate_availability_guard(artifact(), status)
 
-    def test_source_update_after_observation_fails_closed(self):
+    def test_optional_source_update_after_observation_fails_closed(self):
         status = snapshot()
-        status["source_updated_at"] = "2026-09-21T09:56:00+09:00"
+        status["evidence_sources"][0]["source_updated_at"] = "2026-09-21T09:56:00+09:00"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "source update time"):
             evaluate_availability_guard(artifact(), status)
 
     def test_missing_or_malformed_source_digest_fails_closed(self):
         status = snapshot()
-        del status["source_content_sha256"]
+        del status["evidence_sources"][0]["source_content_sha256"]
         with self.assertRaisesRegex(V4AvailabilityGuardError, "source_content_sha256"):
             evaluate_availability_guard(artifact(), status)
 
         status = snapshot()
-        status["source_content_sha256"] = "A" * 64
+        status["evidence_sources"][0]["source_content_sha256"] = "A" * 64
         with self.assertRaisesRegex(V4AvailabilityGuardError, "lowercase SHA-256 hex"):
             evaluate_availability_guard(artifact(), status)
 
         status = snapshot()
-        status["source_content_sha256"] = "abc"
+        status["evidence_sources"][0]["source_content_sha256"] = "abc"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "lowercase SHA-256 hex"):
             evaluate_availability_guard(artifact(), status)
 
     def test_non_official_source_is_rejected(self):
         status = snapshot()
-        status["source_url"] = "https://example.com/status"
+        status["evidence_sources"][0]["source_url"] = "https://example.com/status"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "BOAT RACE official"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_missing_or_unknown_evidence_reference_fails_closed(self):
+        status = snapshot()
+        status["races"][0]["evidence_id"] = "missing"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "evidence_id missing or unknown"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_duplicate_evidence_id_fails_closed(self):
+        status = snapshot()
+        status["evidence_sources"].append(deepcopy(status["evidence_sources"][0]))
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "duplicate availability evidence_id"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_race_active_evidence_cannot_be_reused_for_another_core_race(self):
+        status = snapshot()
+        status["races"][1]["evidence_id"] = status["races"][0]["evidence_id"]
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "evidence source reused across incompatible core races",
+        ):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_venue_wide_unavailable_evidence_may_be_shared_with_same_venue(self):
+        status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "09")
+        venue09 = [row for row in status["races"] if row["venue_id"] == "09"]
+        for row in venue09:
+            row["status"] = "cancelled_postponed"
+            row["scope"] = "venue"
+            row["evidence_id"] = evidence_id
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(len(result["blocked_core_races"]), 2)
+
+    def test_venue_wide_unavailable_cannot_coexist_with_active_core_at_same_venue(self):
+        status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "09")
+        venue09 = [row for row in status["races"] if row["venue_id"] == "09"]
+        venue09[0]["status"] = "cancelled_postponed"
+        venue09[0]["scope"] = "venue"
+        venue09[0]["evidence_id"] = evidence_id
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "inconsistent venue-level unavailable evidence",
+        ):
             evaluate_availability_guard(artifact(), status)
 
     def test_purchase_enabled_artifact_is_rejected(self):
