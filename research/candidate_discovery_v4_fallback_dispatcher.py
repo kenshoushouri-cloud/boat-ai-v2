@@ -270,6 +270,11 @@ def _github_transport(*, token: str) -> Transport:
 
 
 def main() -> int:
+    enabled = os.environ.get("V4_FALLBACK_ENABLED", "0").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        print("V4_FALLBACK_DISPATCH action=DISABLED reason=activation_gate_off")
+        return 0
+
     repo = os.environ.get("V4_FALLBACK_GITHUB_REPOSITORY", "")
     token = os.environ.get("V4_FALLBACK_GITHUB_TOKEN", "")
     if not repo or "/" not in repo:
