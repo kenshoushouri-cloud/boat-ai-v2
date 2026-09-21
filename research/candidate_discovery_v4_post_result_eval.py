@@ -38,8 +38,11 @@ def _load_outcomes(data: Any) -> dict[str, Outcome]:
         if not isinstance(raw, dict):
             raise V4PostResultEvaluationError("outcome row must be an object")
         race_id = raw.get("race_id")
+        status = raw.get("status")
         trifecta = raw.get("trifecta")
         payout = raw.get("trifecta_payout_yen")
+        if status is not None and status != "final":
+            raise V4PostResultEvaluationError(f"non-final outcome status: {status!r}")
         if not isinstance(race_id, str) or not re.fullmatch(r"\d{8}_\d{2}_\d{2}", race_id):
             raise V4PostResultEvaluationError(f"malformed race_id: {race_id!r}")
         _ticket_lanes(trifecta)
