@@ -1,0 +1,73 @@
+name: Candidate Discovery V4 Capture Arbiter
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_capture_arbiter.py'
+      - 'research/candidate_discovery_v4_contract.py'
+      - 'tests/test_candidate_discovery_v4_capture_arbiter.py'
+      - 'tests/test_candidate_discovery_v4_capture_policy_parity.py'
+      - '.github/workflows/candidate-discovery-v4-capture-arbiter.yml'
+      - 'docs/V4_CAPTURE_RESILIENCE_20260915.md'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run focused arbiter tests
+        run: |
+          python -m py_compile research/candidate_discovery_v4_capture_arbiter.py tests/test_candidate_discovery_v4_capture_arbiter.py tests/test_candidate_discovery_v4_capture_policy_parity.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tests/test_candidate_discovery_v4_capture_arbiter.py')
+          spec = importlib.util.spec_from_file_location('capture_arbiter_tests', path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(module)
+          tests = [
+              (name, getattr(module, name))
+              for name in sorted(dir(module))
+              if name.startswith('test_') and callable(getattr(module, name))
+          ]
+          assert tests, 'no tests discovered'
+          for name, fn in tests:
+              fn()
+              print(f'PASS {name}')
+          print(f'CAPTURE_ARBITER_TESTS={len(tests)} PASS')
+          PY
+          PYTHONPATH=. python tests/test_candidate_discovery_v4_capture_policy_parity.py
+      - name: Enforce pure/offline isolation
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('research/candidate_discovery_v4_capture_arbiter.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          imported = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+          allowed = {'__future__', 'dataclasses', 'datetime', 'hashlib', 'json', 'typing'}
+          forbidden = imported - allowed
+          assert not forbidden, sorted(forbidden)
+          lower = text.lower()
+          for token in ('database_url', 'railway_token', 'github_token', 'os.environ'):
+              assert token not in lower, token
+          print('CAPTURE_ARBITER_ISOLATION=PASS')
+          PY

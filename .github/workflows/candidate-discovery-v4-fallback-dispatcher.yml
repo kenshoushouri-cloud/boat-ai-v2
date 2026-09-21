@@ -1,0 +1,84 @@
+name: Candidate Discovery V4 Fallback Dispatcher
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_fallback_dispatcher.py'
+      - 'research/candidate_discovery_v4_fallback_activation_manifest.json'
+      - 'tests/test_candidate_discovery_v4_fallback_dispatcher.py'
+      - '.github/workflows/candidate-discovery-v4-fallback-dispatcher.yml'
+      - 'docs/V4_CAPTURE_RESILIENCE_20260915.md'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run dispatcher tests
+        run: |
+          python -m py_compile research/candidate_discovery_v4_fallback_dispatcher.py tests/test_candidate_discovery_v4_fallback_dispatcher.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tests/test_candidate_discovery_v4_fallback_dispatcher.py')
+          spec = importlib.util.spec_from_file_location('fallback_dispatcher_tests', path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(module)
+          tests = [
+              (name, getattr(module, name))
+              for name in sorted(dir(module))
+              if name.startswith('test_') and callable(getattr(module, name))
+          ]
+          assert tests
+          for name, fn in tests:
+              fn()
+              print(f'PASS {name}')
+          print(f'FALLBACK_DISPATCHER_TESTS={len(tests)} PASS')
+          PY
+      - name: Enforce dispatcher permission boundary
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('research/candidate_discovery_v4_fallback_dispatcher.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          imported = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+          allowed = {
+              '__future__', 'dataclasses', 'datetime', 'json',
+              'os', 'typing', 'urllib'
+          }
+          assert not (imported - allowed), sorted(imported - allowed)
+          lower = text.lower()
+          for token in (
+              'psycopg',
+              'database_url',
+              'railway_token',
+              'line_notify',
+              'insert into',
+              'update v2_',
+              'delete from',
+              'vacuum',
+          ):
+              assert token not in lower, token
+          assert 'v4_fallback_github_repository' in lower
+          assert 'v4_fallback_github_token' in lower
+          print('FALLBACK_DISPATCHER_PERMISSION_BOUNDARY=PASS')
+          PY
