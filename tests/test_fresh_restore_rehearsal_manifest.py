@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from copy import deepcopy
+import hashlib
 
 import pytest
 
@@ -31,7 +31,9 @@ def manifest():
                     "table": "v2_odds_trifecta",
                     "mode": "bounded",
                     "boundary": "race_date >= frozen_cutoff",
-                    "boundary_sha256": "2" * 64,
+                    "boundary_sha256": hashlib.sha256(
+                        b"race_date >= frozen_cutoff"
+                    ).hexdigest(),
                 },
             ],
             "protected_evidence_tables": ["v2_races", "v2_result_entries"],
@@ -113,6 +115,13 @@ def test_bounded_retention_requires_frozen_boundary_digest():
         evaluate_manifest(bad)
 
 
+def test_bounded_retention_boundary_digest_binds_exact_text():
+    bad = manifest()
+    bad["online_retention"]["tables"][2]["boundary"] = "race_date >= changed_cutoff"
+    with pytest.raises(FreshRestoreRehearsalManifestError, match="boundary_sha256 mismatch"):
+        evaluate_manifest(bad)
+
+
 def test_protected_evidence_table_must_remain_in_retained_manifest():
     bad = manifest()
     bad["online_retention"]["protected_evidence_tables"].append("v4_formal_evidence")
@@ -148,7 +157,7 @@ def test_manifest_is_pure_and_has_no_production_io_surface():
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
 
-    assert imported <= {"__future__", "re", "typing"}
+    assert imported <= {"__future__", "hashlib", "re", "typing"}
 
     low = source.lower()
     for forbidden in (
