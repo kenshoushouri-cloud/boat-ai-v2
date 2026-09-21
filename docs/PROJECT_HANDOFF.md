@@ -1,5 +1,39 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 14:14 JST
+
+This section supersedes the 13:30 JST override below where they differ.
+
+### Cost / plan-change decision policy
+
+The October plan-change dates are **Go/No-Go checkpoints, not forced downgrade dates**.
+
+Current target schedule:
+- 2026-10-01 through 2026-10-02: read-only Railway usage / storage / dependency audit.
+- 2026-10-03 billing boundary: consider Railway Pro -> Hobby only if data preservation, zero/known-consumer boundaries, fresh retained-set restore, measured growth and safe volume headroom all pass.
+- by 2026-10-14: reconsider ChatGPT Plus -> Go.
+
+Decision rule:
+- do not downgrade merely to meet a monthly-cost target;
+- if prospective system performance supports sustainable positive net return after infrastructure/AI costs, retaining the more capable plan is acceptable;
+- evaluate system economics using prospective ROI, payout distribution, drawdown/variance, eligible race volume and recurring operating cost, not hit rate alone;
+- small-sample Sep18/Sep19 profit is not sufficient evidence by itself; formal milestones remain the basis for stronger conclusions;
+- keep ChatGPT Plus when the additional development/review capability materially improves code quality, safety, research velocity or defect detection enough to justify its cost;
+- Railway Pro -> Hobby remains blocked until the fresh <=5GB retained-set restore plus frozen headroom policy is proven; never delete required evidence just to force Hobby fit;
+- never loosen prediction thresholds, stakes, candidate counts or safety gates to recover subscription/infrastructure costs.
+
+If a checkpoint is not ready, **continue the current plan temporarily and move the decision date** rather than performing an unsafe migration or capability downgrade.
+
+Any Railway Production plan/service/volume/config migration remains an explicit-approval action. ChatGPT subscription changes remain a user account decision and are not automatic.
+
+### Fresh current-state note
+
+- Boat main remains `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+- PR #366 remains Draft/mergeable at `95d7af3efd79ead86bfdf4f708ba3065b283d6f9`.
+- PR #367 remains Draft/mergeable at `14f4f4abfb5ffaa3fbb809aa97664cdb5a5cfd86`.
+- Storage PR #363 has advanced to `65219db0b6ae1b4d181fe8d9cdeb1187a69b898b` and currently reports `mergeable=false`; re-audit the branch before editing or relying on older Storage-head status.
+- Production safety remains `PURCHASE_FALSE / NO_RETUNE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`.
+
 ## LATEST OVERRIDE — 2026-09-21 13:30 JST
 
 This section supersedes the 13:21 JST override below where they differ.
