@@ -10,6 +10,17 @@ This document preregisters a future **eligibility guard**, not a replacement sel
 
 The guard may invalidate a not-yet-finalized formal artifact when one of its already-selected six core races is officially unavailable before that artifact's actual freeze. It must never remove the race and then re-rank or generate a replacement candidate using the later observation.
 
+Before availability is considered, the pure guard also re-validates the structural identity of the formal core instead of trusting only a caller-provided eligibility flag:
+
+- exactly six core race rows;
+- exact daily ranks 1 through 6;
+- exactly core orders 1 and 2 on each core race;
+- race ID date equals artifact target date;
+- race ID venue equals the row venue ID;
+- race number is a two-digit value from 01 through 12.
+
+Any mismatch fails closed. These checks do not select, remove, replace, or rerank a candidate.
+
 No Production behavior is changed by this Draft.
 
 ## Evidence boundary
@@ -46,6 +57,8 @@ Allowed normalized statuses in this first preregistration:
 - `cancelled_postponed`
 
 Anything else is fail-closed. A missing core race, duplicate race, or race/venue mismatch is also fail-closed. Race-level granularity is required so one cancelled race can be represented without falsely cancelling or activating another core race at the same venue.
+
+The snapshot may contain additional non-core race rows, but all six exact frozen core race IDs must be present and must match their expected venue IDs. Extra rows do not enter the decision and cannot create a replacement candidate.
 
 The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing, immutable storage/hash, and Production wiring remain separate review boundaries.
 
