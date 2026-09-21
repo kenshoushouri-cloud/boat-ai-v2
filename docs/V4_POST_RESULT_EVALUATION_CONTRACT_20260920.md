@@ -11,6 +11,8 @@ The evaluator consumes only:
 1. one immutable `candidate_discovery_v4_main_feed_v1` JSON artifact that already passed the prospective pre-deadline guard; and
 2. a caller-supplied finalized outcomes JSON.
 
+CLI evaluation also requires the expected SHA-256 of the immutable artifact JSON. The file digest is verified before JSON parsing/evaluation so a locally altered copy cannot silently enter formal metrics.
+
 It does not query Production, Railway, BOAT RACE websites, LINE, or purchase systems.
 
 ## Formal metrics
@@ -50,10 +52,12 @@ Evaluation refuses:
 - anything other than core orders 1 and 2 for each core race;
 - duplicate core tickets;
 - malformed/duplicate/missing outcomes;
+- any outcome race outside the exact six-race formal core;
 - any explicit non-final outcome status such as cancelled/postponed/abandoned;
-- malformed trifecta lane order or invalid payout values.
+- malformed trifecta lane order or invalid payout values;
+- malformed or mismatched immutable-artifact SHA-256 in CLI evaluation.
 
-A missing final outcome blocks the full-day evaluation rather than silently shrinking the denominator.
+A missing final outcome blocks the full-day evaluation rather than silently shrinking the denominator. Extra outcome rows are also rejected rather than silently ignored, so formal scoring consumes an exact six-race outcome set matching the frozen formal core.
 
 ### Cancellation / postponement edge case
 
@@ -96,6 +100,28 @@ Official source paths used for the cancellation classification:
 - `https://www.boatrace.jp/owpc/pc/race/index?hd=20260921`
 - `https://www.boatrace.jp/owpc/pc/race/pay`
 - `https://www.boatrace.jp/owpc/pc/race/racelist?hd=20260921&jcd=02&rno=5`
+
+## Artifact integrity boundary
+
+The immutable artifact digest is part of the evaluation input, not a comment-only convention.
+
+For CLI use:
+
+- `--artifact-sha256` is required;
+- it must be exactly 64 lowercase hexadecimal characters;
+- SHA-256 is calculated from the raw artifact JSON bytes before parsing;
+- a mismatch aborts evaluation;
+- the digest must come from the frozen prospective artifact evidence/manifest, not from a regenerated post-result file.
+
+For 2026-09-21, the re-verified immutable JSON SHA-256 is:
+
+`1af00a1a7cc1742c4e93a5f816e4aaf90fb181ac45be9ee4d88ad09c4d5f6175`
+
+The separately frozen canonical core SHA remains:
+
+`d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf`
+
+These checks protect evidence identity only; they do not make the cancelled 2026-09-21 formal day evaluable.
 
 ## Leakage boundary
 
