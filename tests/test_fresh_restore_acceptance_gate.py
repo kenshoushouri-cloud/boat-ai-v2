@@ -16,7 +16,7 @@ def evidence():
         "observed_target_filesystem_bytes": 3 * 1024**3 + 200 * 1024**2,
         "headroom_policy": {
             "frozen": True,
-            "volume_limit_bytes": 5 * 1024**3,
+            "volume_limit_bytes": 5_000_000_000,
             "required_reserve_bytes": 1024**3,
             "measured_daily_growth_bytes": 32 * 1024**2,
             "growth_horizon_days": 14,
