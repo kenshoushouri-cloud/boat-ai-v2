@@ -1,0 +1,85 @@
+{
+  "contract": "railway_hobby_readiness_gate_v1",
+  "checked_on": "2026-09-21",
+  "target_decision_date": "2026-10-03",
+  "code_source_of_truth": {
+    "repository": "kenshoushouri-cloud/boat-ai-v2",
+    "main_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c"
+  },
+  "storage_research_pr": {
+    "pr_number": 363,
+    "head_sha": "c3a87df234b06f220ab7128d129dbc32f0354e84",
+    "draft": true,
+    "mergeable": true,
+    "read_only_ci": {
+      "listed_workflows": 22,
+      "success": 22,
+      "in_progress": 0,
+      "failed": 0
+    }
+  },
+  "railway_production": {
+    "project_id": "268a5b17-0712-440a-884d-27f7fa887a2d",
+    "environment_id": "5ffb02f6-5ec8-4268-9bda-8e30431ff625",
+    "service": "postgres-recovery",
+    "service_id": "aa4b9c32-f2bf-42c8-89b9-f5aac8d70fb3",
+    "volume": {
+      "name": "postgres-volume",
+      "size_mb": 20000,
+      "mount_path": "/var/lib/postgresql/data"
+    },
+    "disk_usage_7d_gb": {
+      "current": 4.595154944,
+      "average": 4.470966004490996,
+      "min": 4.139550934552381,
+      "max": 4.595154944,
+      "samples": 169
+    },
+    "staged_changes": false
+  },
+  "railway_platform_contract_checked_20260921": {
+    "hobby_default_volume_limit_gb": 5,
+    "volume_downsize_supported": false,
+    "official_reference": "https://docs.railway.com/volumes/reference",
+    "interpretation": "CURRENT_20GB_VOLUME_CANNOT_BE_SHRUNK_TO_HOBBY_LIMIT_IN_PLACE"
+  },
+  "gates": {
+    "current_filesystem_below_5gb": true,
+    "current_filesystem_is_sufficient_hobby_proof": false,
+    "candidate_shadow_zero_consumer": false,
+    "permanent_archive_created_and_verified": false,
+    "independent_second_recovery_layer_proven": false,
+    "final_online_retention_boundary_frozen": false,
+    "fresh_retained_set_restore_completed": false,
+    "fresh_restore_schema_and_index_equivalence_proven": false,
+    "fresh_restore_observed_size_recorded": false,
+    "required_hobby_headroom_policy_frozen": false,
+    "measured_growth_within_frozen_headroom": false,
+    "production_migration_approval_obtained": false
+  },
+  "blocking_evidence": [
+    "v2_candidate_filter_shadow still has active Production writer and reader surfaces",
+    "2026-09-21 natural day window wrote 7 candidate-shadow rows and formal V4 read 7 rows",
+    "permanent archive/recovery contract is designed but permanent archive has not been created",
+    "fresh retained-set restore is the required capacity proof and has not yet been completed",
+    "Hobby fit cannot be inferred from the current 4.595 GB filesystem reading alone"
+  ],
+  "critical_path": [
+    "reach zero-consumer for data/services proposed for retirement without weakening V4 evidence",
+    "freeze archive target plus independently recoverable second protection layer",
+    "freeze candidate online-retained set and final retention boundary",
+    "perform non-Production fresh logical restore with production-equivalent schema and indexes",
+    "measure restored database/filesystem size and measured growth",
+    "freeze required operating headroom and prove restored size plus headroom fits Hobby limit",
+    "re-run Railway Production service/dependency inventory immediately before decision",
+    "request explicit approval for exact Production migration/plan changes"
+  ],
+  "decision": {
+    "hobby_ready_now": false,
+    "october_3_role": "GO_NO_GO_CHECKPOINT_NOT_FORCED_CUTOVER",
+    "schedule_classification": "AT_RISK_BUT_RECOVERABLE",
+    "no_capacity_driven_delete": true,
+    "no_threshold_or_candidate_change_for_cost": true,
+    "purchase_action": false
+  }
+}
