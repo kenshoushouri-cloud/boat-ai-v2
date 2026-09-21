@@ -5,6 +5,7 @@ from research.production_runtime_source_contract import audit_runtime_inventory
 REQUIRED = (
     "cron-final-check",
     "cron-opponent-pressure-v2-live",
+    "cron-nightly-results",
     "test-beforeinfo-extra",
     "storage-maintenance-once",
     "storage-index-drop-once",
@@ -28,6 +29,14 @@ def current_like_snapshot():
             "start_command": "python -u .github/scripts/opponent_pressure_shadow_v2_compact.py",
             "cron_schedule": "0 22 * * *",
             "capabilities": ["v4_input_writer"],
+        },
+        {
+            "name": "cron-nightly-results",
+            "source_repo": "kenshoushouri-cloud/boat-ai-v2",
+            "source_branch": "main",
+            "start_command": "python -u run_nightly_results_pg.py",
+            "cron_schedule": "30 14 * * *",
+            "capabilities": ["candidate_shadow_reader"],
         },
         {
             "name": "test-beforeinfo-extra",
@@ -56,6 +65,7 @@ def test_current_like_snapshot_blocks_and_surfaces_non_main_branch():
     assert report.candidate_shadow_zero_consumer_gate == "BLOCK"
     assert report.non_main_repo_sources == ("cron-opponent-pressure-v2-live",)
     assert report.candidate_shadow_writer_surfaces == ("test-beforeinfo-extra",)
+    assert report.candidate_shadow_reader_surfaces == ("cron-nightly-results",)
     assert report.destructive_inline_surfaces == ("storage-maintenance-once",)
     assert report.unresolved_services == ("storage-index-drop-once",)
     assert "test-beforeinfo-extra" in report.no_cron_executable_surfaces
@@ -113,6 +123,24 @@ def test_safe_hypothetical_inventory_can_pass_structural_gate():
     assert report.runtime_inventory_gate == "PASS"
     assert report.candidate_shadow_zero_consumer_gate == "PASS"
     assert report.no_cron_executable_surfaces == ("manual-safe",)
+
+
+def test_reader_only_inventory_blocks_candidate_shadow_zero_consumer() -> None:
+    rows = [
+        {
+            "name": "reader-only",
+            "source_repo": "kenshoushouri-cloud/boat-ai-v2",
+            "source_branch": "main",
+            "start_command": "python -u report_candidate_filter_shadow_performance_pg.py",
+            "cron_schedule": "0 0 * * *",
+            "capabilities": ["candidate_shadow_reader"],
+        }
+    ]
+    report = audit_runtime_inventory(rows, required_services=("reader-only",))
+    assert report.runtime_inventory_gate == "PASS"
+    assert report.candidate_shadow_zero_consumer_gate == "BLOCK"
+    assert report.candidate_shadow_writer_surfaces == ()
+    assert report.candidate_shadow_reader_surfaces == ("reader-only",)
 
 
 def test_non_main_branch_is_accounted_not_automatically_blocked():
