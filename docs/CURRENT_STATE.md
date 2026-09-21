@@ -1,5 +1,87 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 13:21 JST
+
+This section supersedes the 13:05 JST override below where they differ.
+
+### GitHub / Railway current state
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- Railway Production staged changes: none
+- fallback service deployment `7c0b590e-a121-42d2-9f88-543848af386f`: SUCCESS
+- fallback Cron: `25 23 * * *` UTC = 08:25 JST
+- no Production DB/Railway/model/threshold/candidate/purchase mutation made
+
+### PR #367
+
+Head:
+`3afde0ef65a0601c684b334800ada0332b7ee57f`
+
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- research-only pre-freeze availability guard
+- exact 6-race identity and evidence-scope checks
+- immutable source-content SHA-256 required by the offline guard contract
+- no candidate replacement/rerank/result read
+- no Production wiring
+
+### PR #366
+
+Head:
+`95d7af3efd79ead86bfdf4f708ba3065b283d6f9`
+
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- pure/offline post-result evaluator
+
+Strict evaluator additions:
+- CLI artifact SHA-256 required and verified before JSON parsing;
+- exact six-core outcome set required;
+- unexpected extra outcome rows rejected;
+- missing/duplicate/malformed outcomes rejected;
+- explicit non-final statuses rejected;
+- cancellation/postponement cannot be converted into a synthetic loss or later-date substitution.
+
+Read-only strict replay from retained immutable artifacts:
+- Sep18 artifact `10527500527`, SHA `b195b214d8761f4efdf0c37345434ac1e96bff93815c9ecd1b00f9c87aec1a3a`
+- Sep19 artifact `10574052434`, SHA `f2a558d0631ac830f3ffb96440b801a17fa91c98639cae8ca186585c30e46bc2`
+
+Reproduced formal metrics exactly:
+`2 days / 12R / 24T / investment 2400 / return 3320 / profit +920 / ROI 138.333%`
+
+Evidence:
+`research/evidence/v4_formal_repro_check_20260921.json`
+
+Sep21 remains:
+`CAPTURE_CONTRACT_VALID / RACE_UNIVERSE_AVAILABILITY_GAP / POST_RESULT_UNEVALUABLE / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+The earlier official-page observation remains evidence-strength-limited because the exact 08:25 raw payload was not preserved with a digest.
+
+### PR #363 Storage
+
+Fresh current head:
+`c3a87df234b06f220ab7128d129dbc32f0354e84`
+
+- Draft / mergeable
+- 21 listed workflows SUCCESS
+- 1 read-only probability-calibration archive-consumer workflow in progress at this check
+- gate remains:
+  `ZERO_CONSUMER_NOT_REACHED / ACTIVE_WRITERS / ACTIVE_READERS / SAME_DAY_WRITE_TO_READ_PROVEN / NO_DELETE / NO_MIGRATION / NO_VACUUM`
+
+The head SHA above supersedes the 13:05 override's PR #363 SHA for current-state purposes.
+
+### Next
+
+1. 19:30 JST: re-confirm Sep21 final official status; no formal scoring unless all exact six same-date outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: audit natural 08:25 fallback Cron.
+3. Continue natural-only Storage evidence; do not manually force Production jobs.
+4. No Production-effect use of PR #367 without explicit approval.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 13:05 JST
 
 This section supersedes the 12:59 JST override below where they differ.
