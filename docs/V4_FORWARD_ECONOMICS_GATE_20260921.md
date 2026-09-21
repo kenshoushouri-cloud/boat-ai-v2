@@ -27,7 +27,9 @@ For each formal day:
 - ordered first+second prefix-hit races;
 - third-only misses.
 
-The formal shape remains two frozen core tickets per race.
+The formal evaluated-day shape is fixed to exactly six core races, exactly two frozen core tickets per race, and exactly 100 JPY per frozen ticket. The evaluator rejects a smaller denominator, extra/missing tickets, or a different stake rather than letting cost pressure alter the formal corpus.
+
+Hit metrics must also reconcile structurally: exact hits <= first+second prefix hits <= head hits, and third-only misses cannot exceed the non-exact prefix-hit count.
 
 The caller also supplies **operating cost allocated to the same evaluation period in JPY**. The module performs no FX lookup and no monthly extrapolation.
 
