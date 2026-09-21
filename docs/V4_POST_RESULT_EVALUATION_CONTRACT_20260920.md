@@ -50,6 +50,7 @@ Evaluation refuses:
 - anything other than core orders 1 and 2 for each core race;
 - duplicate core tickets;
 - malformed/duplicate/missing outcomes;
+- any explicit non-final outcome status such as cancelled/postponed/abandoned;
 - malformed trifecta lane order or invalid payout values.
 
 A missing final outcome blocks the full-day evaluation rather than silently shrinking the denominator.
