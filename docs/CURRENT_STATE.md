@@ -1,5 +1,114 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 14:58 JST
+
+This section supersedes the 14:26 JST override below where they differ.
+
+### Fresh Source of Truth / Production state
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- Railway Production staged changes: none
+- V4 fallback latest deployment: `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS
+- PostgreSQL `postgres-recovery`: existing 20GB volume unchanged
+- fresh read-only 7d disk metric: current ~`4.599 GB` (observed max ~`4.599 GB`)
+- no Production DB/Railway/model/threshold/candidate/purchase mutation was made
+
+October plan changes remain **Go/No-Go checkpoints, not forced downgrade dates**. Positive system economics may justify retaining higher-capability Railway/ChatGPT plans; cost pressure must not change thresholds, stake, candidate count, evidence retention or safety.
+
+### PR #363 — fresh restore readiness contract hardened
+
+Current head:
+`4cccdc5b41241f6ffa139be629172cf5a03d7500`
+
+State:
+- Draft / mergeable
+- dedicated `Research fresh restore rehearsal manifest contract`: SUCCESS
+- at this checkpoint, all listed exact-head workflows are SUCCESS except one read-only probability-calibration archive-consumer workflow still in progress
+- no restore was executed
+
+New fail-closed invariants:
+- Hobby capacity ceiling is the conservative decimal `5,000,000,000` bytes; do not substitute 5 GiB
+- bounded retention boundary SHA-256 is recomputed from the exact UTF-8 boundary string
+- prerequisite manifest gets a canonical SHA-256 fingerprint
+- post-rehearsal acceptance requires the exact original preregistered manifest
+- volume limit / reserve / measured growth / growth horizon must match that preregistration exactly
+- post-hoc headroom-policy changes fail closed
+- a PASS still does not authorize Production migration
+
+Current real gate remains:
+`REHEARSAL_PREREQUISITES_NOT_READY / HOBBY_READY_NOW_FALSE / OCT03_GO_NO_GO_NOT_FORCED_CUTOVER / NO_CAPACITY_DRIVEN_DELETE`
+
+### PR #367 — negative + positive official availability parser preregistration
+
+Current head:
+`fd86320d848474463d943c7d84b6d419a3838cfa`
+
+State:
+- Draft / mergeable
+- **6/6 CI SUCCESS**
+- research-only / no Production wiring
+
+Hardening now includes:
+- availability snapshot race rows must equal the exact six formal core race IDs; unexpected non-core rows fail closed
+- block parser canonicalizes official URL shape and prevents multi-venue excerpt ambiguity
+- negative evidence remains raw-bytes + SHA-256 bound
+- separate positive race-level parser is preregistered against official venue `raceindex?hd=YYYYMMDD&jcd=XX`
+- positive parser requires selected race row + exact frozen deadline + explicit `投票`, observed strictly before deadline
+- `発売終了`, `中止`, or `順延` blocks positive parsing
+- page/card/deadline existence alone never becomes `active`
+
+Important limitation:
+the positive parser currently has synthetic contract fixtures only. **Real preserved official active and cancelled/postponed raw fixtures with SHA-256 are required before any Production wiring.**
+
+No replacement, no rerank, no result/payout read, `purchase_action=false`.
+
+### PR #368 — V4 Forward economics gate hardened
+
+Current head:
+`2e47342912e545f8341e8678c10e940e94bcd2f3`
+
+State:
+- Draft / mergeable
+- **5/5 CI SUCCESS**
+- descriptive-only / pure offline
+
+Economics input now requires:
+- each evaluated formal day exactly `6R / 12T / 100 JPY per frozen ticket`
+- hit hierarchy `exact <= first+second prefix <= head`
+- third-only misses cannot exceed non-exact prefix hits
+- period operating cost components must reconcile to the supplied total
+- complete cost basis requires named components + allocation notes
+- incomplete cost basis returns `observed_net_positive=null` and `net_after_cost_decision_grade=false`
+
+The project 30/50/100 prospective **case** milestones are not redefined as formal race counts.
+
+Current formal result remains descriptive small-sample evidence only:
+- Sep18: -100 JPY
+- Sep19: +1,020 JPY
+- combined: +920 JPY / ROI 138.333%
+- no plan-retention/downgrade conclusion from this two-day corpus alone
+
+### PR #366 / Sep21 formal status
+
+PR #366 remains Draft/mergeable at:
+`95d7af3efd79ead86bfdf4f708ba3065b283d6f9`
+with its prior 5/5 CI SUCCESS.
+
+Sep21 remains:
+`CAPTURE_CONTRACT_VALID / POST_RESULT_UNEVALUABLE / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+### Next natural / safe work
+
+1. Let the remaining PR #363 read-only probability-calibration CI finish naturally.
+2. 2026-09-21 19:30 JST: final Sep21 official-state confirmation; do not score unless all exact six same-date finalized outcomes+payouts exist.
+3. 2026-09-22 08:40 JST: audit the natural 08:25 fallback Cron.
+4. For PR #367 positive evidence, capture/review real official raw fixtures only in a future timing-clean pre-deadline observation; do not reconstruct after results.
+5. Continue Storage zero-consumer evidence naturally; do not force Production jobs or delete data for capacity.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_CAPACITY_DRIVEN_DELETE / NO_FORCED_PLAN_DOWNGRADE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-21 14:26 JST
 
 This section supersedes the 14:15 JST override below where they differ.
