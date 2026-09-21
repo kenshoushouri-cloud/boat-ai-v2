@@ -31,7 +31,11 @@ The formal evaluated-day shape is fixed to exactly six core races, exactly two f
 
 Hit metrics must also reconcile structurally: exact hits <= first+second prefix hits <= head hits, and third-only misses cannot exceed the non-exact prefix-hit count.
 
-The caller also supplies **operating cost allocated to the same evaluation period in JPY**. The module performs no FX lookup and no monthly extrapolation.
+The caller also supplies **operating cost allocated to the same evaluation period in JPY**. Cost input includes an explicit component list, allocation notes, and an `operating_cost_complete` flag. Component amounts must reconcile exactly to the period total.
+
+If the cost set is incomplete, the evaluator may still show the arithmetic net amount for context but returns `observed_net_positive=null` and `net_after_cost_decision_grade=false`. A positive/negative net observation becomes decision-grade only when the caller explicitly marks the period cost complete and provides reconciled components.
+
+The module performs no FX lookup and no monthly extrapolation.
 
 ## Metrics
 
