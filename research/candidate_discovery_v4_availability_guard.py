@@ -128,39 +128,50 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     if not isinstance(source_url, str) or not source_url.startswith("https://www.boatrace.jp/"):
         raise V4AvailabilityGuardError("availability source must be BOAT RACE official")
 
-    venues = snapshot.get("venues")
-    if not isinstance(venues, list):
-        raise V4AvailabilityGuardError("snapshot venues must be a list")
+    races = snapshot.get("races")
+    if not isinstance(races, list):
+        raise V4AvailabilityGuardError("snapshot races must be a list")
 
-    by_venue: dict[str, str] = {}
-    for raw in venues:
+    by_race: dict[str, dict[str, str]] = {}
+    for raw in races:
         if not isinstance(raw, dict):
-            raise V4AvailabilityGuardError("availability venue row must be an object")
+            raise V4AvailabilityGuardError("availability race row must be an object")
+        race_id = raw.get("race_id")
         venue_id = raw.get("venue_id")
         status = raw.get("status")
+        if not isinstance(race_id, str) or not race_id:
+            raise V4AvailabilityGuardError(f"invalid availability race_id: {race_id!r}")
+        if race_id in by_race:
+            raise V4AvailabilityGuardError(f"duplicate availability race_id: {race_id}")
         if not isinstance(venue_id, str) or len(venue_id) != 2 or not venue_id.isdigit():
             raise V4AvailabilityGuardError(f"invalid availability venue_id: {venue_id!r}")
-        if venue_id in by_venue:
-            raise V4AvailabilityGuardError(f"duplicate availability venue_id: {venue_id}")
         if status not in ALLOWED_STATUSES:
             raise V4AvailabilityGuardError(f"unknown availability status: {status!r}")
-        by_venue[venue_id] = status
+        by_race[race_id] = {"venue_id": venue_id, "status": status}
 
-    missing_venues = sorted({row["venue_id"] for row in core} - set(by_venue))
-    if missing_venues:
+    core_ids = {row["race_id"] for row in core}
+    missing_races = sorted(core_ids - set(by_race))
+    if missing_races:
         raise V4AvailabilityGuardError(
-            "availability snapshot missing core venue(s): " + ",".join(missing_venues)
+            "availability snapshot missing core race(s): " + ",".join(missing_races)
         )
+
+    for row in core:
+        observed = by_race[row["race_id"]]
+        if observed["venue_id"] != row["venue_id"]:
+            raise V4AvailabilityGuardError(
+                f"availability venue mismatch for core race: {row['race_id']}"
+            )
 
     blocked = [
         {
             "race_id": row["race_id"],
             "venue_id": row["venue_id"],
             "daily_rank": row["daily_rank"],
-            "status": by_venue[row["venue_id"]],
+            "status": by_race[row["race_id"]]["status"],
         }
         for row in core
-        if by_venue[row["venue_id"]] != ACTIVE
+        if by_race[row["race_id"]]["status"] != ACTIVE
     ]
 
     return {
