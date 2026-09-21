@@ -1,5 +1,32 @@
 # V4 candidate-shadow retirement gate — 2026-09-16
 
+## Fresh override — 2026-09-21 12:42 JST
+
+Current code Source of Truth is now `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+
+A fresh Railway Production config + natural-run audit reconfirmed that `v2_candidate_filter_shadow` is not retireable:
+
+- `cron-window-morning`, `cron-window-day`, and `cron-window-night` all still source `boat-ai-v2@main`, start `python -u run_window_pipeline_pg.py`, expose candidate-shadow variable names, and have no staged config changes;
+- `cron-nightly-results` still starts `python -u run_nightly_results_pg.py` and retains candidate-shadow evaluator/report variable names;
+- no-Cron `test-beforeinfo-extra` still starts `python -u collect_candidate_filter_shadow_pg.py` directly and remains a repository-triggerable writer surface;
+- current main still invokes the PRE collector, nightly evaluator, and V4 same-day S01-S05 legacy reader.
+
+Natural 2026-09-21 runtime evidence:
+- morning Production window: candidate-shadow enabled; collector invoked; `candidate_rows=0 / saved_rows=0`;
+- day Production window: candidate-shadow enabled; collector invoked; `candidate_rows=7 / saved_rows=7`;
+- formal V4 run `35549611949`: `legacy_shadow_rows=7`, `legacy_added_races=5`, `legacy_added_tickets=7`.
+
+This gives same-day writer -> reader proof on current Production. The newly activated V4 fallback dispatcher has separately been audited and has no PostgreSQL/candidate-shadow dependency, so it neither creates nor clears this blocker.
+
+Machine-readable snapshot:
+`research/evidence/candidate_shadow_zero_consumer_gate_20260921.json`
+
+Current classification:
+`ZERO_CONSUMER_NOT_REACHED / ACTIVE_WRITER_INVOCATION / SAME_DAY_7_ROW_WRITE / CURRENT_MAIN_V4_7_ROW_READ / NIGHTLY_EVALUATOR_PATH_PRESENT / TEST_BEFOREINFO_EXTRA_WRITER_SURFACE / NO_DELETE / NO_MIGRATION / NO_VACUUM / PURCHASE_FALSE`
+
+The older 2026-09-16 sections below remain useful as historical rationale, but any SHA/runtime statement there is superseded by this override.
+
+
 Status: `RESEARCH_ONLY / CURRENT_MAIN_DEPENDENCY_PRESENT / ZERO_CONSUMER_BLOCKED / NO_PRODUCTION_MUTATION`
 
 This document freezes the current dependency and retirement ordering for `v2_candidate_filter_shadow` before any archive/delete decision. It does not disable a writer, change a Railway service, alter the V4 candidate contract, delete data, or authorize Production migration. `purchase_action=false` remains mandatory.
