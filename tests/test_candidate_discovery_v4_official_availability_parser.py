@@ -124,6 +124,16 @@ def test_venue_day_marker_must_identify_expected_venue():
         parse_unavailability_evidence(bad)
 
 
+def test_venue_day_excerpt_must_be_isolated_to_one_venue():
+    bad = venue_input()
+    excerpt = "<div>戸田</div><div>江戸川</div><span>中止順延</span>"
+    raw = "<html><body>" + excerpt + "</body></html>"
+    bad["raw_content_base64"], bad["source_content_sha256"] = _encode(raw)
+    bad["evidence_excerpt_utf8"] = excerpt
+    with pytest.raises(V4OfficialAvailabilityParserError, match="not isolated"):
+        parse_unavailability_evidence(bad)
+
+
 def test_positive_or_ambiguous_text_never_becomes_active():
     bad = venue_input()
     excerpt = "<div>戸田</div><span>開催中</span>"
@@ -141,6 +151,24 @@ def test_race_page_identity_must_match_race_id():
         "?hd=20260921&jcd=02&rno=7"
     )
     with pytest.raises(V4OfficialAvailabilityParserError, match="race number mismatch"):
+        parse_unavailability_evidence(bad)
+
+
+def test_official_but_noncanonical_url_fails_closed():
+    bad = race_input()
+    bad["source_url"] = (
+        "https://www.boatrace.jp/owpc/pc/race/racelist-extra"
+        "?hd=20260921&jcd=02&rno=8"
+    )
+    with pytest.raises(V4OfficialAvailabilityParserError, match="canonical official URL"):
+        parse_unavailability_evidence(bad)
+
+    bad = venue_input()
+    bad["source_url"] = (
+        "https://www.boatrace.jp/owpc/pc/race/index"
+        "?hd=20260921&unexpected=1"
+    )
+    with pytest.raises(V4OfficialAvailabilityParserError, match="canonical official URL"):
         parse_unavailability_evidence(bad)
 
 
