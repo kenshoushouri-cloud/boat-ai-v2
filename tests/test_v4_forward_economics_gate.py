@@ -16,6 +16,8 @@ def evidence():
             "start_date": "2026-09-18",
             "end_date": "2026-09-19",
             "operating_cost_yen": 0,
+            "operating_cost_complete": False,
+            "cost_components": [],
         },
         "policy_guards": {
             "purchase_action": False,
@@ -67,15 +69,48 @@ def test_current_formal_corpus_reconciles_but_remains_pre30():
     assert result["milestone_context_required_separately"] is True
     assert result["automatic_plan_change_allowed"] is False
     assert result["human_review_required"] is True
+    assert summary["observed_net_positive"] is None
+    assert summary["net_after_cost_decision_grade"] is False
 
 
 def test_period_operating_cost_is_reported_without_extrapolation():
     data = evidence()
     data["period"]["operating_cost_yen"] = 1000
+    data["period"]["operating_cost_complete"] = True
+    data["period"]["cost_components"] = [
+        {
+            "name": "allocated_recurring_costs",
+            "amount_yen": 1000,
+            "allocation_note": "test fixture same-period allocation",
+        }
+    ]
     result = evaluate_economics(data)
     assert result["summary"]["net_after_period_operating_cost_yen"] == -80
     assert result["summary"]["observed_net_positive"] is False
+    assert result["summary"]["net_after_cost_decision_grade"] is True
     assert result["project_milestones_redefined"] is False
+
+
+def test_cost_components_must_reconcile_before_net_is_decision_grade():
+    data = evidence()
+    data["period"]["operating_cost_yen"] = 1000
+    data["period"]["operating_cost_complete"] = True
+    data["period"]["cost_components"] = [
+        {
+            "name": "railway",
+            "amount_yen": 900,
+            "allocation_note": "same-period allocation",
+        }
+    ]
+    with pytest.raises(V4ForwardEconomicsError, match="does not reconcile"):
+        evaluate_economics(data)
+
+
+def test_complete_cost_requires_explicit_component_provenance():
+    data = evidence()
+    data["period"]["operating_cost_complete"] = True
+    with pytest.raises(V4ForwardEconomicsError, match="at least one cost component"):
+        evaluate_economics(data)
 
 
 @pytest.mark.parametrize(
