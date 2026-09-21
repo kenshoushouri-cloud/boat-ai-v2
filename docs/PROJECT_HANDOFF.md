@@ -1,8 +1,24 @@
 # boat-ai-v2 Project Handoff
 
-## LATEST OVERRIDE — 2026-09-21 12:52 JST
+## LATEST OVERRIDE — 2026-09-21 12:59 JST
 
 This section supersedes the 11:06 JST override below where they differ. Re-fetch GitHub/Railway before acting.
+
+### New Draft PR #367 — pre-freeze availability guard preregistration
+
+Draft PR #367 was created from current main:
+- title: `Research: preregister V4 pre-freeze availability guard`
+- branch: `research/v4-pre-freeze-availability-guard-20260921`
+- Production wiring: none
+- DB/network/Railway/LINE/purchase path: none
+- guard role: eligibility BLOCK only; no candidate removal-and-replacement, no reranking
+- granularity: each of the exact six frozen core races is independently classified, so a single-race cancellation at an otherwise active venue can be represented safely
+- missing/duplicate/unknown/late/mismatched availability evidence fails closed
+- snapshot observed after artifact freeze is rejected
+- Sep21 regression fixture anchors the affected core race `20260921_02_08`
+
+This PR is research-only and must remain separate from any future Production candidate/capture eligibility change. Explicit approval is required before Production wiring/merge that changes behavior.
+
 
 ### New V4 race-universe finding
 
