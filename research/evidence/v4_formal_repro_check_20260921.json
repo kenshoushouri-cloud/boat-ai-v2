@@ -1,0 +1,70 @@
+{
+  "contract": "candidate_discovery_v4_formal_repro_check_v1",
+  "checked_on": "2026-09-21",
+  "method": "READ_ONLY_REPLAY_FROM_DOWNLOADED_IMMUTABLE_ACTIONS_ARTIFACTS",
+  "strict_rules": {
+    "artifact_sha256_verified_before_parse": true,
+    "exact_six_core_races_required": true,
+    "exact_two_core_tickets_per_race_required": true,
+    "unexpected_outcome_rows_rejected": true,
+    "missing_outcome_rejected": true,
+    "explicit_non_final_status_rejected": true,
+    "legacy_excluded": true,
+    "purchase_action_required_false": true,
+    "retuning": false
+  },
+  "days": [
+    {
+      "target_date": "2026-09-18",
+      "artifact_id": 10527500527,
+      "artifact_json_sha256": "b195b214d8761f4efdf0c37345434ac1e96bff93815c9ecd1b00f9c87aec1a3a",
+      "artifact_internal_sha256_file_matches": true,
+      "outcomes_fixture_sha256": "839850a1e1499f523005b1ce7e0bfb40c1ec898c74ec75245bf49daea3f228fe",
+      "summary": {
+        "core_races": 6,
+        "core_tickets": 12,
+        "exact_hit_races": 2,
+        "head_hit_races": 4,
+        "first_second_prefix_hit_races": 2,
+        "third_only_miss_races": 0,
+        "investment_yen": 1200,
+        "gross_return_yen": 1100,
+        "profit_yen": -100,
+        "roi_percent": 91.667
+      }
+    },
+    {
+      "target_date": "2026-09-19",
+      "artifact_id": 10574052434,
+      "artifact_json_sha256": "f2a558d0631ac830f3ffb96440b801a17fa91c98639cae8ca186585c30e46bc2",
+      "artifact_internal_sha256_file_matches": true,
+      "outcomes_fixture_sha256": "5f0a7deebb5ab86ae5b08e00d355a26340701314f5d6f4f8fb1db07c5adaaf3b",
+      "summary": {
+        "core_races": 6,
+        "core_tickets": 12,
+        "exact_hit_races": 2,
+        "head_hit_races": 3,
+        "first_second_prefix_hit_races": 3,
+        "third_only_miss_races": 1,
+        "investment_yen": 1200,
+        "gross_return_yen": 2220,
+        "profit_yen": 1020,
+        "roi_percent": 185.0
+      }
+    }
+  ],
+  "combined": {
+    "formal_days": 2,
+    "core_races": 12,
+    "core_tickets": 24,
+    "exact_hit_races": 4,
+    "head_hit_races": 7,
+    "first_second_prefix_hit_races": 5,
+    "third_only_miss_races": 1,
+    "investment_yen": 2400,
+    "gross_return_yen": 3320,
+    "profit_yen": 920,
+    "roi_percent": 138.333
+  },
+  "classification": "REPRODUCED_EXACTLY / DESCRIPTIVE_ONLY / NO_RETUNING / PURCHASE_FALSE"
+}
