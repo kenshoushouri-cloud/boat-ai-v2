@@ -21,6 +21,8 @@ This gives same-day writer -> reader proof on current Production. The newly acti
 Machine-readable snapshot:
 `research/evidence/candidate_shadow_zero_consumer_gate_20260921.json`
 
+The pure runtime inventory contract now treats both `candidate_shadow_writer` and `candidate_shadow_reader` capabilities as zero-consumer blockers. Its current-like fixture includes the Railway nightly reader and the GitHub V4 prospective-freeze reader, preventing a false PASS after writers disappear while readers still remain.
+
 Current classification:
 `ZERO_CONSUMER_NOT_REACHED / ACTIVE_WRITER_INVOCATION / SAME_DAY_7_ROW_WRITE / CURRENT_MAIN_V4_7_ROW_READ / NIGHTLY_EVALUATOR_PATH_PRESENT / TEST_BEFOREINFO_EXTRA_WRITER_SURFACE / NO_DELETE / NO_MIGRATION / NO_VACUUM / PURCHASE_FALSE`
 
