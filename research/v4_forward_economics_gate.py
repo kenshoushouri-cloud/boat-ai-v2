@@ -11,6 +11,9 @@ from datetime import date
 from typing import Any
 
 CONTRACT = "v4_forward_economics_evidence_v1"
+FORMAL_CORE_RACES_PER_DAY = 6
+FORMAL_TICKETS_PER_RACE = 2
+FORMAL_TICKET_STAKE_YEN = 100
 
 
 class V4ForwardEconomicsError(ValueError):
@@ -92,9 +95,18 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
         if not isinstance(profit, int) or isinstance(profit, bool):
             raise V4ForwardEconomicsError(f"{day_text} profit_yen must be an integer")
 
-        if tickets != races * 2:
+        if races != FORMAL_CORE_RACES_PER_DAY:
+            raise V4ForwardEconomicsError(
+                f"{day_text} formal evaluated day must contain exactly 6 core races"
+            )
+        if tickets != races * FORMAL_TICKETS_PER_RACE:
             raise V4ForwardEconomicsError(
                 f"{day_text} formal core must contain exactly two tickets per race"
+            )
+        expected_investment = tickets * FORMAL_TICKET_STAKE_YEN
+        if investment != expected_investment:
+            raise V4ForwardEconomicsError(
+                f"{day_text} investment must equal 100 JPY per frozen core ticket"
             )
         if profit != gross_return - investment:
             raise V4ForwardEconomicsError(f"{day_text} profit does not reconcile")
@@ -110,6 +122,19 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
             if value > races:
                 raise V4ForwardEconomicsError(f"{day_text} {field} exceeds core_races")
             metrics[field] = value
+
+        exact_hits = metrics["exact_hit_races"]
+        prefix_hits = metrics["first_second_prefix_hit_races"]
+        head_hits = metrics["head_hit_races"]
+        third_only = metrics["third_only_miss_races"]
+        if not (exact_hits <= prefix_hits <= head_hits):
+            raise V4ForwardEconomicsError(
+                f"{day_text} hit hierarchy must satisfy exact <= prefix <= head"
+            )
+        if third_only > prefix_hits - exact_hits:
+            raise V4ForwardEconomicsError(
+                f"{day_text} third-only misses exceed non-exact prefix hits"
+            )
 
         normalized.append(
             {
