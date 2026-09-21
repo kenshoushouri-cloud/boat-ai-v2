@@ -43,12 +43,13 @@ def snapshot():
         "observed_at": "2026-09-21T09:55:00+09:00",
         "source_updated_at": "2026-09-21T08:25:00+09:00",
         "source_url": "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
-        "venues": [
-            {"venue_id": "02", "status": "active"},
-            {"venue_id": "09", "status": "active"},
-            {"venue_id": "10", "status": "active"},
-            {"venue_id": "12", "status": "active"},
-            {"venue_id": "17", "status": "active"},
+        "races": [
+            {
+                "race_id": row["race_id"],
+                "venue_id": row["venue_id"],
+                "status": "active",
+            }
+            for row in artifact()["feed"]
         ],
     }
 
@@ -65,7 +66,8 @@ class AvailabilityGuardTests(unittest.TestCase):
 
     def test_pre_freeze_cancelled_selected_venue_blocks_without_replacement(self):
         status = snapshot()
-        status["venues"][0]["status"] = "cancelled_postponed"
+        cancelled = next(row for row in status["races"] if row["venue_id"] == "02")
+        cancelled["status"] = "cancelled_postponed"
         result = evaluate_availability_guard(artifact(), status)
         self.assertFalse(result["eligible_under_guard"])
         self.assertEqual(result["decision"], "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE")
@@ -82,20 +84,37 @@ class AvailabilityGuardTests(unittest.TestCase):
 
     def test_missing_core_venue_fails_closed(self):
         status = snapshot()
-        status["venues"] = [row for row in status["venues"] if row["venue_id"] != "02"]
-        with self.assertRaisesRegex(V4AvailabilityGuardError, "missing core venue"):
+        removed = status["races"][0]["race_id"]
+        status["races"] = [row for row in status["races"] if row["race_id"] != removed]
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "missing core race"):
             evaluate_availability_guard(artifact(), status)
 
     def test_unknown_status_fails_closed(self):
         status = snapshot()
-        status["venues"][0]["status"] = "unknown"
+        status["races"][0]["status"] = "unknown"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "unknown availability status"):
             evaluate_availability_guard(artifact(), status)
 
-    def test_duplicate_venue_fails_closed(self):
+    def test_duplicate_race_fails_closed(self):
         status = snapshot()
-        status["venues"].append(deepcopy(status["venues"][0]))
-        with self.assertRaisesRegex(V4AvailabilityGuardError, "duplicate availability venue_id"):
+        status["races"].append(deepcopy(status["races"][0]))
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "duplicate availability race_id"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_race_level_status_can_differ_within_same_venue(self):
+        status = snapshot()
+        venue09 = [row for row in status["races"] if row["venue_id"] == "09"]
+        self.assertEqual(len(venue09), 2)
+        venue09[0]["status"] = "cancelled_postponed"
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(len(result["blocked_core_races"]), 1)
+        self.assertEqual(result["blocked_core_races"][0]["race_id"], venue09[0]["race_id"])
+
+    def test_race_venue_mismatch_fails_closed(self):
+        status = snapshot()
+        status["races"][0]["venue_id"] = "24"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "venue mismatch"):
             evaluate_availability_guard(artifact(), status)
 
     def test_source_update_after_observation_fails_closed(self):
