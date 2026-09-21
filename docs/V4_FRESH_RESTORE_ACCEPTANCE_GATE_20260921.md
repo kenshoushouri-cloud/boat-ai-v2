@@ -26,6 +26,8 @@ The physical target measurement is mandatory and may not be replaced by tuple pa
 
 ## Frozen headroom policy
 
+The acceptance evaluator must also receive the exact original preregistered rehearsal manifest. That manifest is revalidated, fingerprinted with canonical SHA-256, and the post-rehearsal headroom fields must match it exactly. A post-hoc change to reserve, measured-growth input, horizon, or volume ceiling fails closed.
+
 The same frozen headroom policy must provide:
 
 - conservative Hobby volume ceiling `5,000,000,000` bytes;
@@ -66,7 +68,7 @@ Even:
 
 does **not** authorize Railway Pro -> Hobby.
 
-Production plan/service/volume migration remains a separate explicit-approval action, followed by a fresh Production dependency/config recheck.
+Production plan/service/volume migration remains a separate explicit-approval action, followed by a fresh Production dependency/config recheck. A PASS records the preregistered manifest SHA-256 and source main SHA for audit provenance.
 
 ## Current state
 
