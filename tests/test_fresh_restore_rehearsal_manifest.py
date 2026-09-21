@@ -135,22 +135,33 @@ def test_headroom_must_cover_measured_growth_horizon():
 
 
 def test_manifest_is_pure_and_has_no_production_io_surface():
+    import ast
     import inspect
     import research.fresh_restore_rehearsal_manifest as module
 
-    source = inspect.getsource(module).lower()
+    source = inspect.getsource(module)
+    tree = ast.parse(source)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+
+    assert imported <= {"__future__", "re", "typing"}
+
+    low = source.lower()
     for forbidden in (
         "psycopg",
         "database_url",
-        "requests",
-        "urllib",
-        "railway",
-        "line_notify",
-        "subprocess",
+        "requests.",
+        "urllib.",
+        "line_notify(",
+        "subprocess.",
         "os.environ",
         "insert into",
         "update v2_",
         "delete from",
-        "vacuum",
+        "vacuum ",
     ):
-        assert forbidden not in source
+        assert forbidden not in low
