@@ -1,0 +1,106 @@
+{
+  "contract": "candidate_shadow_zero_consumer_gate_v1",
+  "checked_at_jst": "2026-09-21 12:42+09:00",
+  "code_source_of_truth": {
+    "repository": "kenshoushouri-cloud/boat-ai-v2",
+    "main_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c"
+  },
+  "production_data_source_of_truth": {
+    "railway_project_id": "268a5b17-0712-440a-884d-27f7fa887a2d",
+    "environment_id": "5ffb02f6-5ec8-4268-9bda-8e30431ff625"
+  },
+  "railway_entrypoints": [
+    {
+      "service": "cron-window-morning",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "15 23 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-window-day",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "35 0 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-window-night",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "35 5 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-nightly-results",
+      "source_branch": "main",
+      "start_command": "python -u run_nightly_results_pg.py",
+      "cron_utc": "30 14 * * *",
+      "candidate_shadow_evaluator_report_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "test-beforeinfo-extra",
+      "source_branch": "main",
+      "start_command": "python -u collect_candidate_filter_shadow_pg.py",
+      "cron_utc": null,
+      "repository_trigger_surface_present": true,
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    }
+  ],
+  "current_main_dependencies": {
+    "pre_writer_invocation": "run_pre_window_pg.py -> collect_candidate_filter_shadow_pg.py",
+    "nightly_evaluator": "run_nightly_results_pg.py -> evaluate_candidate_filter_shadow_results_pg.py",
+    "v4_same_day_reader": ".github/scripts/candidate_discovery_v4_main_feed_pg.py -> v2_candidate_filter_shadow S01-S05 legacy carryover",
+    "additional_readers_present": true
+  },
+  "natural_run_evidence_20260921": {
+    "morning": {
+      "deployment_id": "6dbbc230-806d-4345-8914-b7710c89cab0",
+      "target_date": "2026-09-21",
+      "window_name": "morning",
+      "candidate_shadow_enabled": true,
+      "collector_invoked": true,
+      "candidate_rows": 0,
+      "saved_rows": 0
+    },
+    "day": {
+      "deployment_id": "fd1bf599-0d0b-4883-a147-a264b1f1b741",
+      "target_date": "2026-09-21",
+      "window_name": "day",
+      "candidate_shadow_enabled": true,
+      "collector_invoked": true,
+      "candidate_rows": 7,
+      "saved_rows": 7
+    },
+    "formal_v4_reader": {
+      "workflow_run_id": 35549611949,
+      "legacy_shadow_rows": 7,
+      "legacy_added_races": 5,
+      "legacy_added_tickets": 7
+    },
+    "night_window_status_at_check": "NOT_YET_DUE",
+    "nightly_results_status_at_check": "NOT_YET_DUE"
+  },
+  "fallback_dispatcher_dependency_audit": {
+    "service": "candidate-discovery-v4-fallback-dispatcher",
+    "database_dependency_present": false,
+    "candidate_shadow_dependency_present": false
+  },
+  "gate": {
+    "zero_consumer": false,
+    "active_writer_invocation_present": true,
+    "same_day_writer_produced_rows": true,
+    "current_main_v4_reader_consumed_rows": true,
+    "nightly_evaluator_path_present": true,
+    "no_delete": true,
+    "no_migration": true,
+    "no_vacuum": true,
+    "purchase_action": false
+  },
+  "classification": "ZERO_CONSUMER_NOT_REACHED"
+}
