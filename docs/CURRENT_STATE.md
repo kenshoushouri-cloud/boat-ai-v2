@@ -1,5 +1,75 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 13:05 JST
+
+This section supersedes the 12:59 JST override below where they differ.
+
+### GitHub Source of Truth
+
+- `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- no new main merge
+- Production behavior unchanged
+
+### PR #367 — pre-freeze availability guard
+
+Current head:
+`3afde0ef65a0601c684b334800ada0332b7ee57f`
+
+State:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- research-only / pure offline / no Production wiring
+
+Guard now fails closed unless the formal core identity is exact:
+- 6 core races
+- ranks 1..6
+- core orders 1/2 per race
+- target date / venue / race-number identity consistent
+
+Official snapshot provenance now requires:
+- BOAT RACE official URL
+- timezone-aware observation/update timestamps
+- lowercase SHA-256 content digest
+- row evidence scope: `race` or `venue`
+
+Scope rule:
+- venue-level unavailable => may BLOCK selected race
+- venue-level active => cannot PASS individual race
+- PASS requires race-scoped active evidence for every selected core race
+
+No replacement/rerank/recovery behavior exists.
+
+### PR #366 — Sep21 evaluation / evidence strength
+
+Current head:
+`714e96271a50b785fd2b4caeb6f0c27a4f413eed`
+
+State:
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- formal evaluated corpus remains Sep18 + Sep19 only
+
+Sep21 remains:
+`CAPTURE_CONTRACT_VALID / POST_RESULT_UNEVALUABLE / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+Additional provenance caveat:
+the 08:25 pre-freeze official-page observation was recorded, but no immutable raw 08:25 payload hash exists. Because the official page is mutable, URL-only replay is insufficient. Future Production-effect availability evidence requires preserved raw observation + deterministic SHA-256.
+
+### Storage
+
+PR #363 head:
+`562e4ac577a3ca9ba7e5e2c5367fd8e10deb3082`
+
+Gate:
+`ZERO_CONSUMER_NOT_REACHED / ACTIVE_WRITERS / ACTIVE_READERS / SAME_DAY_WRITE_TO_READ_PROVEN / NO_DELETE / NO_MIGRATION / NO_VACUUM`
+
+At 13:05 JST one read-only archive-consumer workflow was in progress on the same head; no gate change.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 12:59 JST
 
 This section supersedes the 11:06 JST override below where they differ.
