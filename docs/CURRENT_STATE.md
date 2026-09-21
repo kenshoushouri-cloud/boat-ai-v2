@@ -1,5 +1,62 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 11:06 JST
+
+This section supersedes the 10:40 JST override below where they differ.
+
+### Fresh read-only re-audit
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- PR #364: merged.
+- Railway fallback service:
+  - `candidate-discovery-v4-fallback-dispatcher`
+  - source `kenshoushouri-cloud/boat-ai-v2@main`
+  - Cron `25 23 * * *` UTC = 08:25 JST
+  - restart `NEVER`
+  - latest deployment `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS
+  - staged changes none
+  - initial real start: `NOOP_VALID_PRIMARY target_date=2026-09-21 primary_run_id=35549611949`
+  - no workflow_dispatch run created
+- PostgreSQL `postgres-recovery`: 20GB volume; fresh 24h metrics remain healthy enough for read-only operation. No cleanup/VACUUM/migration authorized.
+- Storage: 2026-09-21 natural day writer produced `candidate_rows=7 / saved_rows=7` (S03=7), and formal V4 read `legacy_shadow_rows=7`. Therefore `ZERO_CONSUMER_NOT_REACHED` remains true.
+
+### 2026-09-21 formal V4 status refinement
+
+Pre-result artifact validity is unchanged:
+`FORMAL_AVAILABLE / NATURAL_SCHEDULE_DELAYED_BUT_PREDEADLINE_VALID / CORE_6R_12T / ARTIFACT_PRESENT / PURCHASE_FALSE`
+
+But post-result evaluation is now blocked by a cancellation edge case.
+
+Frozen core includes:
+- `20260921_02_08` = venue 02 / Toda 8R
+- frozen deadline 14:16 JST
+- frozen tickets `1-2-6`, `1-6-2`
+
+BOAT RACE official same-day pages later marked Toda as cancelled/postponed for 2026-09-21. PR #366 contract requires all six exact finalized same-date outcomes/payouts and already fails closed on a missing outcome.
+
+Therefore:
+`FORMAL_AVAILABLE / POST_RESULT_UNEVALUABLE_CORE_RACE_CANCELLED / EVALUATED_CORPUS_STAYS_2_DAYS_12R_24T`
+
+Forbidden:
+- shrinking the formal denominator from 6R to 5R;
+- treating the cancelled race as a synthetic loss or zero-yen payout;
+- using the later postponed-date result as if it were the frozen 2026-09-21 race;
+- regenerating a replacement candidate after cancellation;
+- retuning model/coefficients/thresholds.
+
+PR #366 now contains:
+- `research/evidence/v4_formal_eval_pending_manifest_20260921.json`
+- `research/evidence/v4_formal_eval_blocker_20260921.json`
+- explicit cancellation/postponement fail-closed policy in the post-result evaluation contract.
+
+### Next
+
+1. Next natural Railway fallback Cron at 08:25 JST is the highest-priority operational check.
+2. 2026-09-21 formal metrics stay unchanged unless the exact six same-date outcomes/payouts become authoritatively available.
+3. Continue Storage read-only zero-consumer evidence only.
+4. No Production/model/threshold/purchase change.
+
+
 ## LATEST OVERRIDE — 2026-09-21 10:40 JST
 
 This section supersedes older state/SHA/fallback descriptions below. On resume, re-fetch GitHub/Railway before acting.
