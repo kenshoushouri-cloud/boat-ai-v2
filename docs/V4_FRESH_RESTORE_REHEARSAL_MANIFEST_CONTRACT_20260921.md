@@ -47,7 +47,7 @@ Modes:
 - `keep_all`
 - `bounded`
 
-A bounded table requires a human-readable frozen boundary plus a SHA-256 identity for that boundary specification.
+A bounded table requires a human-readable frozen boundary plus a SHA-256 computed over the exact UTF-8 boundary string. The gate recomputes that digest and rejects any mismatch, so the retained-set boundary cannot be edited without changing its identity.
 
 Protected evidence tables must be explicitly listed and must remain present in the retained-set manifest. Capacity pressure is not a reason to silently exclude Forward/provenance/result evidence.
 
