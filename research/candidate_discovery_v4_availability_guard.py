@@ -21,7 +21,8 @@ UNAVAILABLE = "cancelled_postponed"
 ALLOWED_STATUSES = {ACTIVE, UNAVAILABLE}
 RACE_SCOPE = "race"
 VENUE_SCOPE = "venue"
-ALLOWED_SCOPES = {RACE_SCOPE, VENUE_SCOPE}
+VENUE_RANGE_SCOPE = "venue_race_range"
+ALLOWED_SCOPES = {RACE_SCOPE, VENUE_SCOPE, VENUE_RANGE_SCOPE}
 
 
 class V4AvailabilityGuardError(ValueError):
@@ -236,6 +237,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         venue_id = raw.get("venue_id")
         status = raw.get("status")
         scope = raw.get("scope")
+        cancel_from_race_no = raw.get("cancel_from_race_no")
         evidence_id = raw.get("evidence_id")
         if not isinstance(race_id, str) or not race_id:
             raise V4AvailabilityGuardError(f"invalid availability race_id: {race_id!r}")
@@ -253,13 +255,36 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             )
         if status == ACTIVE and scope != RACE_SCOPE:
             raise V4AvailabilityGuardError(
-                f"venue-level active status is insufficient for core race: {race_id}"
+                f"non-race active status is insufficient for core race: {race_id}"
+            )
+        if scope == VENUE_RANGE_SCOPE:
+            if status != UNAVAILABLE:
+                raise V4AvailabilityGuardError(
+                    f"venue-range evidence must be unavailable: {race_id}"
+                )
+            if (
+                not isinstance(cancel_from_race_no, int)
+                or isinstance(cancel_from_race_no, bool)
+                or not (1 <= cancel_from_race_no <= 12)
+            ):
+                raise V4AvailabilityGuardError(
+                    f"invalid cancel_from_race_no for venue-range evidence: {race_id}"
+                )
+            race_no = int(race_id.split("_")[2])
+            if race_no < cancel_from_race_no:
+                raise V4AvailabilityGuardError(
+                    f"venue-range unavailable evidence does not cover core race: {race_id}"
+                )
+        elif cancel_from_race_no is not None:
+            raise V4AvailabilityGuardError(
+                f"cancel_from_race_no only valid for venue-range evidence: {race_id}"
             )
         by_race[race_id] = {
             "venue_id": venue_id,
             "status": status,
             "scope": scope,
             "evidence_id": evidence_id,
+            "cancel_from_race_no": cancel_from_race_no,
         }
 
     core_ids = {row["race_id"] for row in core}
@@ -298,6 +323,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 "venue_id": row["venue_id"],
                 "status": observed["status"],
                 "scope": observed["scope"],
+                "cancel_from_race_no": observed.get("cancel_from_race_no"),
             }
         )
     for evidence_id, used_by in evidence_usage.items():
@@ -308,7 +334,18 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             item["scope"] == VENUE_SCOPE and item["status"] == UNAVAILABLE
             for item in used_by
         )
-        if not (same_venue and venue_unavailable_only):
+        venue_range_unavailable_only = all(
+            item["scope"] == VENUE_RANGE_SCOPE and item["status"] == UNAVAILABLE
+            for item in used_by
+        )
+        same_range = len({item.get("cancel_from_race_no") for item in used_by}) == 1
+        if not (
+            same_venue
+            and (
+                venue_unavailable_only
+                or (venue_range_unavailable_only and same_range)
+            )
+        ):
             raise V4AvailabilityGuardError(
                 f"evidence source reused across incompatible core races: {evidence_id}"
             )
@@ -320,6 +357,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             "daily_rank": row["daily_rank"],
             "status": by_race[row["race_id"]]["status"],
             "scope": by_race[row["race_id"]]["scope"],
+            "cancel_from_race_no": by_race[row["race_id"]].get("cancel_from_race_no"),
             "evidence_id": by_race[row["race_id"]]["evidence_id"],
         }
         for row in core
