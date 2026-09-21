@@ -1,5 +1,114 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 10:40 JST
+
+This section supersedes older state/SHA/fallback descriptions below. On resume, re-fetch GitHub/Railway before acting.
+
+### Critical current state
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- PR #364 V4 capture resilience: **MERGED** into main.
+- Production fallback service is now active:
+  - service: `candidate-discovery-v4-fallback-dispatcher`
+  - service ID: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
+  - source: `kenshoushouri-cloud/boat-ai-v2@main`
+  - start: `python -u research/candidate_discovery_v4_fallback_dispatcher.py`
+  - Cron: `25 23 * * *` UTC = **08:25 JST**
+  - restart policy: `NEVER`
+  - volume/domain: none
+  - required service variables exist: `V4_FALLBACK_GITHUB_REPOSITORY`, `V4_FALLBACK_GITHUB_TOKEN`
+  - never record or expose the token value
+  - deployment `7c0b590e-a121-42d2-9f88-543848af386f`: SUCCESS
+- Railway Production staged changes: **none** after activation.
+- Fallback contract: valid primary artifact => NOOP; otherwise at most one same-date `workflow_dispatch`; existing prospective wrapper remains final validity authority; no result-after rescue/backfill.
+- First real service start (triggered by initial deployment, not scheduled Cron) safely returned:
+  `NOOP_VALID_PRIMARY target_date=2026-09-21 primary_run_id=35549611949`
+  and created **no workflow_dispatch run**.
+
+### 2026-09-21 formal V4
+
+Natural scheduled primary eventually appeared:
+- run `35549611949`, event=`schedule`
+- created/started **10:02:54 JST**
+- wrapper start **10:03:09.941 JST**
+- completion **10:03:12.278 JST**
+- source cutoff 08:15 JST
+- scheduled/evaluable **156/156**
+- formal core **6 races / 12 tickets**
+- full feed **11 races / 19 tickets**
+- legacy shadow rows=7; legacy added 5 races / 7 tickets
+- earliest core deadline **10:18 JST**
+- earliest feed deadline **10:18 JST**
+- result/payout reads=0; DB write=0; LINE=0; BUY=0; PROD_CHANGE=0
+- `prospective_evidence_eligible=true`
+- `purchase_action=false`
+- `promotion_allowed=0`
+- result: `PASS_PRE_RESULT_FREEZE`
+- JSON/full artifact SHA-256:
+  `1af00a1a7cc1742c4e93a5f816e4aaf90fb181ac45be9ee4d88ad09c4d5f6175`
+- canonical formal-core SHA-256:
+  `d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf`
+- artifact ID `10617384166`
+- artifact ZIP digest:
+  `sha256:b40c34f99c42685ebbee330c90eeab0f45a829cfc18513d2517d9fc9da9da666`
+
+Formal classification:
+`FORMAL_AVAILABLE / NATURAL_SCHEDULE_DELAYED_BUT_PREDEADLINE_VALID / CORE_6R_12T / ARTIFACT_PRESENT / PURCHASE_FALSE`
+
+Do not score 2026-09-21 until exact finalized outcomes/payouts are available. Do not reconstruct missing rows after results.
+
+### Formal V4 performance/evaluator
+
+PR #366 remains open Draft/mergeable at head
+`902287846d1749a3202029539ede40bbe888b811`.
+
+Already evaluated formal dates:
+- 2026-09-18: investment 1,200 / return 1,100 / profit -100 / ROI 91.667%
+- 2026-09-19: investment 1,200 / return 2,220 / profit +1,020 / ROI 185.0%
+- combined evaluated corpus: **2 days / 12 races / 24 tickets**
+- exact hits 4/12 = 33.33%
+- head hits 7/12 = 58.33%
+- ordered first+second prefix hits 5/12 = 41.67%
+- third-only misses 1/12 = 8.33%
+- investment 2,400 / return 3,320 / profit **+920**
+- ROI **138.333%**
+- no retuning; milestones remain 30/50/100.
+
+With 2026-09-21, formal **available** corpus is now 3 days / 18 core races / 36 core tickets, but the **evaluated** corpus remains 2 days / 12 races / 24 tickets until today's results finalize.
+
+### Other open tracks
+
+- PR #363 Storage: open Draft/mergeable, head `362d57d10bd53e9893aef04611f1d1308316b68c`.
+  `ZERO_CONSUMER_NOT_REACHED`; active writer/readers remain; no delete/migration/VACUUM.
+- PR #362 Trio: open Draft/mergeable, head `b19be407123e8ed8984c49773b7fa1f745f90c5e`; keep separate from trifecta.
+- Local horse PR #365: open Draft/mergeable, head `b48e3df1cac7ac3f5959980034a0160f57663b6f`;
+  `TECHNICALLY_PROMISING / RIGHTS_BLOCKED / NO_DATA_INGEST_YET`.
+- TOTO PR #163: open Draft/mergeable, head `6b9a7b74df73e984a5888e9ad4ee36b4bb754c7a`.
+  2026-09-21 09:00 natural Cron: Round1656 `too-early`, Forward A/B 0/0, purchase=false, normal SKIP.
+  Existing TOTO Railway staged patch `0a9f5f5f-e41d-42a9-beae-ead87d7a02f2` must not be accepted/deployed without separate approval.
+
+### Immediate next work
+
+1. Observe the next natural **08:25 JST Railway fallback Cron**. Expected behavior:
+   - valid primary artifact already visible => `NOOP_VALID_PRIMARY`;
+   - otherwise exactly one workflow dispatch attempt.
+2. Verify no duplicate dispatch and that the fallback service exits cleanly.
+3. When 2026-09-21 results are finalized, verify exact outcomes/payouts from authoritative sources, then run PR #366 offline evaluator and append evidence; no retune from the small sample.
+4. Continue read-only Storage zero-consumer evidence; do not delete shared/historical data.
+5. Keep TOTO PR #163 Draft until a natural eligible delivery-window run provides evidence or separate deploy approval is given.
+
+### Safety
+
+- fail closed
+- purchase remains false
+- no manual same-day V4 rescue after missed timing
+- no result-after Forward reconstruction
+- do not loosen model/odds thresholds for volume/cost/profit
+- no Production DB destructive action without explicit approval
+- do not expose GitHub/Railway secret values
+- historical / BASELINE / formal V4 / Production evidence remain separate
+
+
 更新日時: 2026-09-15 23:24 JST
 
 再開時はGitHub main / open PR / Railway Productionを必ず再取得し、この文書のSHA・件数を固定値とみなさないでください。
