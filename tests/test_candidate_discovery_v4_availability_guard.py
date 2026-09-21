@@ -252,6 +252,35 @@ class AvailabilityGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(V4AvailabilityGuardError, "missing core race"):
             evaluate_availability_guard(artifact(), status)
 
+    def test_unexpected_non_core_race_fails_closed(self):
+        status = snapshot()
+        status["evidence_sources"].append(
+            {
+                "evidence_id": "extra-race",
+                "observed_at": "2026-09-21T09:55:00+09:00",
+                "source_updated_at": None,
+                "source_url": (
+                    "https://www.boatrace.jp/owpc/pc/race/racelist"
+                    "?hd=20260921&jcd=01&rno=1"
+                ),
+                "source_content_sha256": "e" * 64,
+            }
+        )
+        status["races"].append(
+            {
+                "race_id": "20260921_01_01",
+                "venue_id": "01",
+                "status": "active",
+                "scope": "race",
+                "evidence_id": "extra-race",
+            }
+        )
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "unexpected non-core race",
+        ):
+            evaluate_availability_guard(artifact(), status)
+
     def test_unknown_status_fails_closed(self):
         status = snapshot()
         status["races"][0]["status"] = "unknown"
