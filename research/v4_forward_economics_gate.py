@@ -151,16 +151,6 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
         peak = max(peak, cumulative)
         max_drawdown = max(max_drawdown, peak - cumulative)
 
-    races = totals["core_races"]
-    if races < 30:
-        milestone = "PRE_30_INSUFFICIENT_SAMPLE"
-    elif races < 50:
-        milestone = "MILESTONE_30_DESCRIPTIVE_ONLY"
-    elif races < 100:
-        milestone = "MILESTONE_50_REVIEW"
-    else:
-        milestone = "MILESTONE_100_REVIEW"
-
     net_after_cost = totals["profit_yen"] - operating_cost
 
     return {
@@ -178,8 +168,8 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
             "net_after_period_operating_cost_yen": net_after_cost,
             "observed_net_positive": net_after_cost > 0,
         },
-        "milestone": milestone,
-        "minimum_races_for_first_review": 30,
+        "project_milestones_redefined": False,
+        "milestone_context_required_separately": True,
         "automatic_plan_change_allowed": False,
         "human_review_required": True,
         "descriptive_only": True,
