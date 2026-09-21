@@ -34,6 +34,13 @@ VENUE_NAMES = {
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RACE_ID_RE = re.compile(r"^(\d{8})_(\d{2})_(\d{2})$")
+VENUE_INDEX_URL_RE = re.compile(
+    r"^https://www\.boatrace\.jp/owpc/pc/race/index\?hd=(\d{8})$"
+)
+RACE_PAGE_URL_RE = re.compile(
+    r"^https://www\.boatrace\.jp/owpc/pc/race/racelist"
+    r"\?hd=(\d{8})&jcd=(\d{2})&rno=(\d{1,2})$"
+)
 
 
 class V4OfficialAvailabilityParserError(ValueError):
@@ -104,19 +111,27 @@ def parse_unavailability_evidence(data: Any) -> dict[str, Any]:
     if not isinstance(source_url, str) or not source_url.startswith("https://www.boatrace.jp/"):
         raise V4OfficialAvailabilityParserError("source_url must be BOAT RACE official")
 
-    if f"hd={target_compact}" not in source_url:
-        raise V4OfficialAvailabilityParserError("source_url target date mismatch")
-
     if source_kind == VENUE_INDEX:
-        if "/owpc/pc/race/index" not in source_url:
-            raise V4OfficialAvailabilityParserError("venue_day_index source_url mismatch")
+        source_match = VENUE_INDEX_URL_RE.fullmatch(source_url)
+        if source_match is None:
+            raise V4OfficialAvailabilityParserError(
+                "venue_day_index source_url must use canonical official URL"
+            )
+        if source_match.group(1) != target_compact:
+            raise V4OfficialAvailabilityParserError("source_url target date mismatch")
         scope = VENUE_SCOPE
     else:
-        if "/owpc/pc/race/racelist" not in source_url:
-            raise V4OfficialAvailabilityParserError("race_page source_url mismatch")
-        if f"jcd={venue_id}" not in source_url:
+        source_match = RACE_PAGE_URL_RE.fullmatch(source_url)
+        if source_match is None:
+            raise V4OfficialAvailabilityParserError(
+                "race_page source_url must use canonical official URL"
+            )
+        url_date, url_venue, url_race_no = source_match.groups()
+        if url_date != target_compact:
+            raise V4OfficialAvailabilityParserError("source_url target date mismatch")
+        if url_venue != venue_id:
             raise V4OfficialAvailabilityParserError("race_page venue mismatch")
-        if f"rno={int(race_no)}" not in source_url and f"rno={race_no}" not in source_url:
+        if int(url_race_no) != int(race_no):
             raise V4OfficialAvailabilityParserError("race_page race number mismatch")
         scope = RACE_SCOPE
 
@@ -151,6 +166,16 @@ def parse_unavailability_evidence(data: Any) -> dict[str, Any]:
         if venue_name not in compact_excerpt:
             raise V4OfficialAvailabilityParserError(
                 "venue-day excerpt does not identify expected venue"
+            )
+        other_venues = sorted(
+            name
+            for other_id, name in VENUE_NAMES.items()
+            if other_id != venue_id and name in compact_excerpt
+        )
+        if other_venues:
+            raise V4OfficialAvailabilityParserError(
+                "venue-day excerpt is not isolated to expected venue: "
+                + ",".join(other_venues)
             )
         range_match = re.search(r"(1[0-2]|[1-9])R以降中止", compact_excerpt)
         if range_match is not None:
