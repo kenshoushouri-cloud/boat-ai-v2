@@ -162,6 +162,36 @@ def test_primary_observability_failure_attempts_single_fallback():
     assert sum(call[0] == "POST" for call in tx.calls) == 1
 
 
+def test_activation_manifest_is_minimal_and_permission_scoped():
+    root = Path(__file__).resolve().parents[1]
+    import json
+
+    manifest = json.loads(
+        (root / "research" / "candidate_discovery_v4_fallback_activation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["contract"] == "candidate_discovery_v4_fallback_activation_v1"
+    assert manifest["source_repository"] == "kenshoushouri-cloud/boat-ai-v2"
+    assert manifest["source_branch"] == "main"
+    assert manifest["cron_utc"] == "25 23 * * *"
+    assert manifest["cron_jst"] == "08:25"
+    assert manifest["start_command"] == "python -u research/candidate_discovery_v4_fallback_dispatcher.py"
+    assert manifest["required_environment_names"] == [
+        "V4_FALLBACK_GITHUB_REPOSITORY",
+        "V4_FALLBACK_GITHUB_TOKEN",
+    ]
+    assert manifest["volume_mounts"] == []
+    assert manifest["dispatch_workflow_id"] == WORKFLOW_ID
+    assert manifest["dispatch_ref"] == "main"
+    assert manifest["dispatch_input_name"] == "target_date"
+    assert manifest["production_activation_requires_explicit_approval"] is True
+
+    required_upper = " ".join(manifest["required_environment_names"]).upper()
+    for forbidden in manifest["forbidden_environment_name_fragments"]:
+        assert forbidden.upper() not in required_upper
+
+
 def test_dispatch_http_200_success_is_accepted():
     tx = FakeTransport(dispatch_status=200)
     result = execute_dispatch(repo=REPO, observed_at_jst=observed(), transport=tx)
