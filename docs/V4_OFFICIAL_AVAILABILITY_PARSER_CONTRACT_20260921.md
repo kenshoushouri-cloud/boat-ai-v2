@@ -25,7 +25,7 @@ Required identity:
 - exact selected `race_id`;
 - timezone-aware observation time;
 - optional source-displayed update time;
-- BOAT RACE official URL;
+- canonical BOAT RACE official URL exactly matching the preregistered surface shape; unsupported extra path/query forms fail closed;
 - exact preserved raw official payload encoded as base64;
 - expected SHA-256 of those exact raw bytes;
 - UTF-8 evidence excerpt that must occur exactly once in the preserved raw payload;
@@ -41,7 +41,7 @@ Expected official surface shape:
 
 `https://www.boatrace.jp/owpc/pc/race/index?hd=YYYYMMDD`
 
-The exact bound excerpt must identify the expected official venue name and contain either:
+The exact bound excerpt must identify the expected official venue name, must not also contain another official venue name, and must contain either:
 
 - a supported whole-venue unavailable marker: `中止順延` or `開催中止`; or
 - a supported partial range marker matching `N R以降中止` for N=1..12.
