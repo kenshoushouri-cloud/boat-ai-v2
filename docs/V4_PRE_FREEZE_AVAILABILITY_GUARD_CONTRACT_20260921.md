@@ -50,6 +50,7 @@ Top-level required fields:
 - `target_date`
 - non-empty `evidence_sources` list
 - one unique status row for every selected formal core race
+- the race-row set must equal the exact six selected formal core race IDs; unexpected non-core rows fail closed rather than being ignored
 
 Each `evidence_sources[]` entry requires:
 
@@ -69,7 +70,7 @@ Each `races[]` row requires:
 - `race_id`
 - `venue_id`
 - normalized `status`
-- evidence `scope`: `race` or `venue`
+- evidence `scope`: `race`, `venue`, or `venue_race_range`
 - `evidence_id` referencing a validated immutable source entry
 
 Allowed normalized statuses in this first preregistration:
