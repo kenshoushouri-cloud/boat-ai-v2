@@ -54,6 +54,27 @@ Evaluation refuses:
 
 A missing final outcome blocks the full-day evaluation rather than silently shrinking the denominator.
 
+### Cancellation / postponement edge case
+
+A formal core race that is cancelled, postponed, abandoned, or otherwise has no finalized same-date trifecta result/payout is **not** converted into a loss, a zero-yen payout, or a smaller denominator. The formal day remains pre-result-artifact-valid but post-result-unevaluable under this contract.
+
+Do not:
+- synthesize an outcome or payout for the cancelled race;
+- score only the remaining five races;
+- move a postponed race's later-date result back onto the frozen original date;
+- regenerate a replacement candidate after the cancellation becomes known.
+
+This is a fail-closed evaluation-availability rule, not a model/threshold change.
+
+## 2026-09-21 observed blocker
+
+The immutable 2026-09-21 formal artifact includes core race `20260921_02_08` (Toda 8R, frozen deadline 14:16 JST). BOAT RACE official same-day pages later marked Toda as cancelled/postponed for 2026-09-21. Therefore the current six-outcome contract cannot produce a formal 2026-09-21 evaluation unless an authoritative same-date final result/payout for that exact race exists; a later postponed race must not be substituted.
+
+Official source paths used for the cancellation classification:
+- `https://www.boatrace.jp/owpc/pc/race/index?hd=20260921`
+- `https://www.boatrace.jp/owpc/pc/race/pay`
+- `https://www.boatrace.jp/owpc/pc/race/racelist?hd=20260921&jcd=02&rno=5`
+
 ## Leakage boundary
 
 This evaluator is intentionally post-result. Outcome/payout data may be supplied only after the immutable prospective artifact already exists. Results never flow back into candidate generation, artifact eligibility, rank ordering, or same-day reconstruction.
@@ -68,7 +89,9 @@ As of the 2026-09-20 review:
 - 2026-09-19: formal prospective artifact available;
 - 2026-09-15/16/17/20: unavailable and must not be scored as formal prospective days.
 
-Therefore the current formal evaluable V4 corpus is two days, twelve core race selections, twenty-four frozen tickets.
+Therefore the current formal evaluated V4 corpus remains two days, twelve core race selections, twenty-four frozen tickets.
+
+2026-09-21 adds a third **formal available artifact** (six core races / twelve tickets), but it must not be added to evaluated metrics while the Toda cancellation leaves one frozen core race without a same-date finalized result/payout.
 
 ## Safety
 
