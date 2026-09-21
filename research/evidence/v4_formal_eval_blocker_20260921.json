@@ -1,0 +1,36 @@
+{
+  "contract": "candidate_discovery_v4_post_result_eval_blocker_v1",
+  "target_date": "2026-09-21",
+  "formal_artifact": {
+    "workflow_run_id": 35549611949,
+    "artifact_id": 10617384166,
+    "head_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c",
+    "full_artifact_sha256": "1af00a1a7cc1742c4e93a5f816e4aaf90fb181ac45be9ee4d88ad09c4d5f6175",
+    "canonical_core_sha256": "d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf"
+  },
+  "blocked_core_race": {
+    "race_id": "20260921_02_08",
+    "venue_id": "02",
+    "race_no": 8,
+    "frozen_deadline_at": "2026-09-21 14:16:00+09:00",
+    "frozen_tickets": ["1-2-6", "1-6-2"]
+  },
+  "official_observation": {
+    "classification": "VENUE_DAY_CANCELLED_OR_POSTPONED",
+    "sources": [
+      "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
+      "https://www.boatrace.jp/owpc/pc/race/pay",
+      "https://www.boatrace.jp/owpc/pc/race/racelist?hd=20260921&jcd=02&rno=5"
+    ]
+  },
+  "evaluation_decision": {
+    "status": "FORMAL_AVAILABLE_BUT_POST_RESULT_UNEVALUABLE",
+    "reason": "ONE_FROZEN_CORE_RACE_HAS_NO_SAME_DATE_FINAL_RESULT_PAYOUT",
+    "score_remaining_five_races": false,
+    "synthetic_zero_payout": false,
+    "use_later_postponed_result": false,
+    "regenerate_replacement_candidate": false,
+    "retune_model_or_threshold": false,
+    "purchase_action": false
+  }
+}
