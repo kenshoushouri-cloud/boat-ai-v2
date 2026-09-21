@@ -10,11 +10,18 @@ from research.candidate_discovery_v4_availability_guard import (
 
 def artifact():
     feed = []
-    venues = ["10", "17", "02", "09", "12", "09"]
-    for rank, venue in enumerate(venues, 1):
+    core = [
+        ("20260921_10_05", "10"),
+        ("20260921_17_07", "17"),
+        ("20260921_02_08", "02"),
+        ("20260921_09_07", "09"),
+        ("20260921_12_07", "12"),
+        ("20260921_09_08", "09"),
+    ]
+    for rank, (race_id, venue) in enumerate(core, 1):
         feed.append(
             {
-                "race_id": f"20260921_{venue}_{rank:02d}",
+                "race_id": race_id,
                 "venue_id": venue,
                 "daily_rank": rank,
                 "tickets": [
@@ -73,6 +80,7 @@ class AvailabilityGuardTests(unittest.TestCase):
         self.assertEqual(result["decision"], "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE")
         self.assertEqual(len(result["blocked_core_races"]), 1)
         self.assertEqual(result["blocked_core_races"][0]["venue_id"], "02")
+        self.assertEqual(result["blocked_core_races"][0]["race_id"], "20260921_02_08")
         self.assertFalse(result["replacement_candidates_generated"])
         self.assertFalse(result["ranking_changed"])
 
