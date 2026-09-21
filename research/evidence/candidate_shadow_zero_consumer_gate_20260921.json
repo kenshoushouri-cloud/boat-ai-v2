@@ -112,5 +112,25 @@
       "candidate_shadow_reader": true,
       "role": "same-day S01-S05 legacy carryover reader"
     }
+  ],
+  "required_before_zero_consumer_pass": [
+    "approved prospective removal/replacement of V4 same-day S01-S05 legacy carryover",
+    "current main no longer directly or indirectly reads v2_candidate_filter_shadow for live V4 generation",
+    "Production PRE writer invocation retired/disabled under explicit approval",
+    "test-beforeinfo-extra direct writer surface retired/isolated under explicit approval",
+    "nightly evaluator/report candidate-shadow readers retired or archive-adapted",
+    "remaining report/manual/research readers retired or archive-adapted where reproducibility requires them",
+    "fresh Railway Production source/branch/start-command inventory has no candidate-shadow reader or writer capability",
+    "fresh current-main and workflow scan has no candidate-shadow reader or writer capability",
+    "no ambiguous or unresolved execution surface",
+    "archive/recovery/fresh-restore/headroom gates independently pass before any destructive step",
+    "explicit approval obtained before Production DELETE/migration/VACUUM"
+  ],
+  "non_pass_evidence_examples": [
+    "a single window producing candidate_rows=0",
+    "a service having no Cron schedule",
+    "a Draft-only removal not landed on current main",
+    "the fallback dispatcher having no DB dependency",
+    "formal V4 core being structurally independent while legacy carryover reader still exists"
   ]
 }
