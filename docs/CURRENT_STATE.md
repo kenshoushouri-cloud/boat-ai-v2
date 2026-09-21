@@ -1,5 +1,57 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 13:30 JST
+
+This section supersedes the 13:21 JST override below where they differ.
+
+### PR #367 — multi-source availability evidence
+
+Head:
+`14f4f4abfb5ffaa3fbb809aa97664cdb5a5cfd86`
+
+- Draft / mergeable
+- 5/5 CI SUCCESS
+- research-only / offline / no Production wiring
+
+The availability snapshot no longer assumes one official URL/digest can substantiate all six selected races.
+
+Current preregistered evidence contract:
+- non-empty `evidence_sources[]`;
+- each source has unique `evidence_id`, pre-freeze `observed_at`, BOAT RACE official URL, raw-content SHA-256, optional source-displayed update time;
+- each selected core race references an `evidence_id`;
+- race-level `active` is required for PASS;
+- venue-level `active` cannot PASS;
+- venue-level `cancelled_postponed` may BLOCK;
+- race-positive evidence cannot be reused for a different selected core race;
+- venue-wide unavailable evidence can be shared only within the same venue;
+- contradictory venue-wide unavailable + active state fails closed;
+- venue ID must be 01..24.
+
+The pure guard does not itself parse BOAT RACE raw bytes. Any future Production acquisition/parser must prove preserved payload -> SHA-256 -> normalized status/scope. Page existence or scheduled deadline alone is not race-level active evidence.
+
+### Unchanged from 13:21
+
+- Boat main: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- PR #366: `95d7af3efd79ead86bfdf4f708ba3065b283d6f9`, Draft/mergeable, 5/5 CI SUCCESS
+- strict Sep18/Sep19 replay: 2 days / 12R / 24T / profit +920 / ROI 138.333%
+- Sep21: unscored / post-result unevaluable
+- Storage: `ZERO_CONSUMER_NOT_REACHED`
+- Railway Production staged changes: none
+- fallback deployment remains SUCCESS
+- no Production mutation
+
+### Next
+
+1. 19:30 JST Sep21 final-state confirmation.
+2. 2026-09-22 08:40 JST fallback Cron audit.
+3. Natural-only candidate-shadow evidence; no forced Production runs.
+4. No Production-effect PR #367 wiring without explicit approval.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 13:21 JST
 
 This section supersedes the 13:05 JST override below where they differ.
