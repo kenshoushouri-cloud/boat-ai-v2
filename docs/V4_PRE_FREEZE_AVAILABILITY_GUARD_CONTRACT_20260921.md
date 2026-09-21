@@ -49,6 +49,7 @@ Required fields:
 - timezone-aware `observed_at`
 - timezone-aware `source_updated_at`
 - BOAT RACE official `source_url`
+- lowercase 64-hex `source_content_sha256` for the exact raw official content observed
 - one unique status row for every selected formal core race, including its expected venue ID
 
 Allowed normalized statuses in this first preregistration:
@@ -60,7 +61,9 @@ Anything else is fail-closed. A missing core race, duplicate race, or race/venue
 
 The snapshot may contain additional non-core race rows, but all six exact frozen core race IDs must be present and must match their expected venue IDs. Extra rows do not enter the decision and cannot create a replacement candidate.
 
-The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing, immutable storage/hash, and Production wiring remain separate review boundaries.
+The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing and Production wiring remain separate review boundaries.
+
+The official race-list URL is mutable during the day: its displayed update time can advance while retaining the same URL. Therefore the URL and parsed timestamp alone are not sufficient provenance. A future acquisition layer must preserve the exact observed official payload (or equivalent immutable raw representation), compute `source_content_sha256` over that preserved content, and carry that digest into this snapshot contract. The pure guard validates and propagates the digest but does not claim to verify raw bytes it was not given.
 
 ## Timing rule
 
@@ -119,7 +122,7 @@ This Draft does **not** authorize wiring the guard into the formal V4 workflow.
 Before any Production-effect use:
 
 1. specify and test a timing-safe official BOAT RACE acquisition/parser path;
-2. preserve raw official observation/provenance and deterministic hash;
+2. preserve the exact raw official observation/provenance and deterministic SHA-256, and prove the snapshot digest was computed from that preserved payload;
 3. define behavior for official source outage, ambiguous text, partial venue coverage and status changes;
 4. prove the guard cannot change candidate ranking or create replacement candidates;
 5. decide where the immutable availability snapshot is attached to the formal capture;
