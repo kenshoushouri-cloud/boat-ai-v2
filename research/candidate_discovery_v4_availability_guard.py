@@ -10,7 +10,7 @@ freeze, but it never removes/re-ranks/replaces candidates.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 
@@ -70,8 +70,15 @@ def _formal_core(artifact: Any) -> list[dict[str, Any]]:
         if not core_tickets:
             continue
 
+        core_orders = sorted(ticket["core_order"] for ticket in core_tickets)
+        if core_orders != [1, 2]:
+            raise V4AvailabilityGuardError(
+                f"core race must contain exact orders 1 and 2: {row.get('race_id')!r}"
+            )
+
         race_id = row.get("race_id")
         venue_id = row.get("venue_id")
+        daily_rank = row.get("daily_rank")
         if not isinstance(race_id, str) or not race_id:
             raise V4AvailabilityGuardError("core race_id missing")
         if race_id in seen_races:
@@ -79,18 +86,35 @@ def _formal_core(artifact: Any) -> list[dict[str, Any]]:
         seen_races.add(race_id)
         if not isinstance(venue_id, str) or len(venue_id) != 2 or not venue_id.isdigit():
             raise V4AvailabilityGuardError(f"invalid core venue_id: {venue_id!r}")
+        if not isinstance(daily_rank, int) or isinstance(daily_rank, bool):
+            raise V4AvailabilityGuardError(f"invalid core daily_rank: {daily_rank!r}")
+
+        parts = race_id.split("_")
+        if (
+            len(parts) != 3
+            or len(parts[0]) != 8
+            or not all(part.isdigit() for part in parts)
+        ):
+            raise V4AvailabilityGuardError(f"malformed core race_id: {race_id!r}")
+        if parts[1] != venue_id:
+            raise V4AvailabilityGuardError(
+                f"core race_id venue mismatch: {race_id} vs {venue_id}"
+            )
 
         core.append(
             {
                 "race_id": race_id,
                 "venue_id": venue_id,
-                "daily_rank": row.get("daily_rank"),
+                "daily_rank": daily_rank,
             }
         )
 
     if len(core) != 6:
         raise V4AvailabilityGuardError(f"formal core must contain exactly 6 races: {len(core)}")
-    return sorted(core, key=lambda row: row.get("daily_rank") or 999)
+    ranks = sorted(row["daily_rank"] for row in core)
+    if ranks != [1, 2, 3, 4, 5, 6]:
+        raise V4AvailabilityGuardError(f"formal core daily_rank must be exactly 1..6: {ranks}")
+    return sorted(core, key=lambda row: row["daily_rank"])
 
 
 def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
@@ -104,6 +128,17 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     target_date = provenance.get("target_date")
     if not isinstance(target_date, str) or not target_date:
         raise V4AvailabilityGuardError("artifact target_date missing")
+    try:
+        target_day = date.fromisoformat(target_date)
+    except ValueError as exc:
+        raise V4AvailabilityGuardError("artifact target_date is not valid ISO date") from exc
+
+    expected_race_prefix = target_day.strftime("%Y%m%d") + "_"
+    for row in core:
+        if not row["race_id"].startswith(expected_race_prefix):
+            raise V4AvailabilityGuardError(
+                f"core race_id target_date mismatch: {row['race_id']}"
+            )
 
     generated_at = _aware_datetime(artifact.get("generated_at"), field="artifact generated_at")
 
