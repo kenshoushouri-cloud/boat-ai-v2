@@ -60,6 +60,50 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
         period.get("operating_cost_yen"),
         field="operating_cost_yen",
     )
+    cost_complete = period.get("operating_cost_complete")
+    if not isinstance(cost_complete, bool):
+        raise V4ForwardEconomicsError("operating_cost_complete must be boolean")
+    cost_components = period.get("cost_components")
+    if not isinstance(cost_components, list):
+        raise V4ForwardEconomicsError("cost_components must be a list")
+
+    normalized_costs = []
+    seen_cost_names: set[str] = set()
+    component_total = 0
+    for component in cost_components:
+        if not isinstance(component, dict):
+            raise V4ForwardEconomicsError("cost component must be an object")
+        name = component.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise V4ForwardEconomicsError("cost component name missing")
+        if name in seen_cost_names:
+            raise V4ForwardEconomicsError(f"duplicate cost component: {name}")
+        seen_cost_names.add(name)
+        amount = _nonnegative_int(
+            component.get("amount_yen"),
+            field=f"cost component {name} amount_yen",
+        )
+        allocation_note = component.get("allocation_note")
+        if not isinstance(allocation_note, str) or not allocation_note.strip():
+            raise V4ForwardEconomicsError(
+                f"cost component {name} allocation_note missing"
+            )
+        component_total += amount
+        normalized_costs.append(
+            {
+                "name": name,
+                "amount_yen": amount,
+                "allocation_note": allocation_note,
+            }
+        )
+    if component_total != operating_cost:
+        raise V4ForwardEconomicsError(
+            "cost component total does not reconcile to operating_cost_yen"
+        )
+    if cost_complete and not normalized_costs:
+        raise V4ForwardEconomicsError(
+            "complete operating cost requires at least one cost component"
+        )
 
     days = data.get("formal_days")
     if not isinstance(days, list) or not days:
@@ -184,6 +228,8 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
             "start_date": period["start_date"],
             "end_date": period["end_date"],
             "operating_cost_yen": operating_cost,
+            "operating_cost_complete": cost_complete,
+            "cost_components": normalized_costs,
         },
         "formal_days": normalized,
         "summary": {
@@ -191,7 +237,8 @@ def evaluate_economics(data: Any) -> dict[str, Any]:
             "roi_percent": round(roi, 3),
             "max_cumulative_drawdown_yen": max_drawdown,
             "net_after_period_operating_cost_yen": net_after_cost,
-            "observed_net_positive": net_after_cost > 0,
+            "observed_net_positive": (net_after_cost > 0) if cost_complete else None,
+            "net_after_cost_decision_grade": cost_complete,
         },
         "project_milestones_redefined": False,
         "milestone_context_required_separately": True,
