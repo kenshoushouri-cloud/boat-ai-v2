@@ -34,11 +34,13 @@ class Surface:
     name: str
     source_repo: str = ""
     source_branch: str = ""
+    source_revision: str = ""
     source_image: str = ""
     start_command: str = ""
     cron_schedule: str = ""
     replicas: int = 0
     capabilities: tuple[str, ...] = ()
+    capability_classified: bool = False
     observed_effects: tuple[str, ...] = ()
 
     @property
@@ -58,11 +60,23 @@ class Surface:
         return self.is_executable_surface and not self.cron_schedule.strip()
 
     @property
+    def has_valid_source_revision(self) -> bool:
+        revision = self.source_revision.strip()
+        return (
+            len(revision) == 40
+            and all(ch in "0123456789abcdef" for ch in revision)
+        )
+
+    @property
     def is_resolved(self) -> bool:
         if not self.name.strip():
             return False
         if self.source_kind == "repo":
-            return bool(self.source_branch.strip() and self.start_command.strip())
+            return bool(
+                self.source_branch.strip()
+                and self.has_valid_source_revision
+                and self.start_command.strip()
+            )
         if self.source_kind == "image":
             # Image-backed services with an empty start command are intentionally
             # unresolved: an auditor must not infer harmlessness from the name.
@@ -94,6 +108,8 @@ class InventoryReport:
     destructive_inline_surfaces: tuple[str, ...]
     candidate_shadow_writer_surfaces: tuple[str, ...]
     candidate_shadow_reader_surfaces: tuple[str, ...]
+    unclassified_capability_surfaces: tuple[str, ...]
+    unpinned_repo_surfaces: tuple[str, ...]
     runtime_inventory_gate: str
     candidate_shadow_zero_consumer_gate: str
 
@@ -124,11 +140,13 @@ def surface_from_mapping(row: Mapping[str, Any]) -> Surface:
         name=str(row.get("name") or ""),
         source_repo=str(row.get("source_repo") or ""),
         source_branch=str(row.get("source_branch") or ""),
+        source_revision=str(row.get("source_revision") or ""),
         source_image=str(row.get("source_image") or ""),
         start_command=str(row.get("start_command") or ""),
         cron_schedule=str(row.get("cron_schedule") or ""),
         replicas=replicas,
         capabilities=_tuple_of_strings(row.get("capabilities")),
+        capability_classified=row.get("capability_classified") is True,
         observed_effects=_tuple_of_strings(row.get("observed_effects")),
     )
 
@@ -142,10 +160,12 @@ def audit_runtime_inventory(
 
     Fail-closed rules:
     - every required service must appear exactly once;
-    - repo-backed services require an explicit branch and start command;
+    - repo-backed services require an explicit branch, immutable 40-hex revision, and start command;
     - image-backed services require an explicit start command;
     - a destructive inline command blocks the runtime-inventory gate;
     - any candidate-shadow writer or reader blocks candidate-shadow zero-consumer proof;
+    - any executable surface without an explicit completed capability classification
+      also blocks candidate-shadow zero-consumer proof;
     - non-main branches are surfaced explicitly, not treated as an error by
       themselves, because they must be scanned as part of the final proof.
     """
@@ -168,9 +188,24 @@ def audit_runtime_inventory(
     destructive = sorted(item.name for item in normalized if item.has_destructive_inline_command)
     candidate_writers = sorted(item.name for item in normalized if item.writes_candidate_shadow)
     candidate_readers = sorted(item.name for item in normalized if item.reads_candidate_shadow)
+    unclassified = sorted(
+        item.name or "<unnamed>"
+        for item in normalized
+        if item.is_executable_surface and not item.capability_classified
+    )
+    unpinned_repo = sorted(
+        item.name or "<unnamed>"
+        for item in normalized
+        if item.source_kind == "repo" and not item.has_valid_source_revision
+    )
 
     runtime_blockers = bool(missing or duplicates or unresolved or destructive)
-    candidate_blockers = bool(runtime_blockers or candidate_writers or candidate_readers)
+    candidate_blockers = bool(
+        runtime_blockers
+        or candidate_writers
+        or candidate_readers
+        or unclassified
+    )
 
     return InventoryReport(
         observed_services=tuple(sorted(name for name in names if name)),
@@ -182,6 +217,8 @@ def audit_runtime_inventory(
         destructive_inline_surfaces=tuple(destructive),
         candidate_shadow_writer_surfaces=tuple(candidate_writers),
         candidate_shadow_reader_surfaces=tuple(candidate_readers),
+        unclassified_capability_surfaces=tuple(unclassified),
+        unpinned_repo_surfaces=tuple(unpinned_repo),
         runtime_inventory_gate="BLOCK" if runtime_blockers else "PASS",
         candidate_shadow_zero_consumer_gate="BLOCK" if candidate_blockers else "PASS",
     )
