@@ -84,6 +84,36 @@ class AvailabilityGuardTests(unittest.TestCase):
         self.assertFalse(result["replacement_candidates_generated"])
         self.assertFalse(result["ranking_changed"])
 
+    def test_malformed_formal_core_orders_fail_closed(self):
+        bad = artifact()
+        bad["feed"][0]["tickets"] = [
+            {"core_order": 1, "ticket": "1-2-3"},
+        ]
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "exact orders 1 and 2"):
+            evaluate_availability_guard(bad, snapshot())
+
+    def test_formal_core_daily_rank_must_be_exactly_one_to_six(self):
+        bad = artifact()
+        bad["feed"][5]["daily_rank"] = 5
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "daily_rank must be exactly 1..6"):
+            evaluate_availability_guard(bad, snapshot())
+
+    def test_formal_core_race_identity_must_match_date_and_venue(self):
+        bad = artifact()
+        bad["feed"][0]["race_id"] = "20260920_10_05"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "target_date mismatch"):
+            evaluate_availability_guard(bad, snapshot())
+
+        bad = artifact()
+        bad["feed"][0]["race_id"] = "20260921_11_05"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "race_id venue mismatch"):
+            evaluate_availability_guard(bad, snapshot())
+
+        bad = artifact()
+        bad["feed"][0]["race_id"] = "20260921_10_13"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "malformed core race_id"):
+            evaluate_availability_guard(bad, snapshot())
+
     def test_snapshot_observed_after_freeze_is_rejected(self):
         status = snapshot()
         status["observed_at"] = "2026-09-21T10:04:00+09:00"
