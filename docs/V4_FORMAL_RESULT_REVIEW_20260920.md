@@ -48,6 +48,31 @@ Final outcomes were collected only after the immutable artifacts existed. Exact 
 - `research/evidence/v4_formal_eval_20260919.json`
   - SHA-256: `c2d3696d40db398878182f0e6f5b9c46227f27d827279d2b2767e329e99bc069`
 
+## 2026-09-21 strict artifact replay check
+
+Both retained formal Actions artifacts were re-downloaded read-only and verified against their recorded immutable JSON SHA-256 values before replay:
+
+- 2026-09-18 artifact `10527500527`: JSON SHA `b195b214d8761f4efdf0c37345434ac1e96bff93815c9ecd1b00f9c87aec1a3a`
+- 2026-09-19 artifact `10574052434`: JSON SHA `f2a558d0631ac830f3ffb96440b801a17fa91c98639cae8ca186585c30e46bc2`
+
+The stricter evaluator contract was applied with:
+- exact six formal core races;
+- exact two core tickets per race;
+- exact outcome-set matching;
+- missing/extra/non-final outcomes rejected;
+- legacy excluded;
+- `purchase_action=false`;
+- artifact SHA verified before evaluation.
+
+The replay exactly reproduced the committed metrics:
+- 2026-09-18: `-100 JPY / ROI 91.667%`
+- 2026-09-19: `+1,020 JPY / ROI 185.000%`
+- combined: `+920 JPY / ROI 138.333%`
+
+Evidence: `research/evidence/v4_formal_repro_check_20260921.json`.
+
+This strengthens reproducibility only. It does not enlarge the formal corpus, change any threshold/model coefficient, or make the cancelled 2026-09-21 formal day evaluable.
+
 ## Daily formal V4 results
 
 | Date | Core races | Tickets | Exact-hit races | Head hit | 1st+2nd prefix hit | Third-only miss | Investment | Return | Profit | ROI |
