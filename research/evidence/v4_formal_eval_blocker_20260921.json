@@ -13,7 +13,10 @@
     "venue_id": "02",
     "race_no": 8,
     "frozen_deadline_at": "2026-09-21 14:16:00+09:00",
-    "frozen_tickets": ["1-2-6", "1-6-2"]
+    "frozen_tickets": [
+      "1-2-6",
+      "1-6-2"
+    ]
   },
   "official_observation": {
     "classification": "VENUE_DAY_CANCELLED_OR_POSTPONED",
@@ -21,7 +24,11 @@
       "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
       "https://www.boatrace.jp/owpc/pc/race/pay",
       "https://www.boatrace.jp/owpc/pc/race/racelist?hd=20260921&jcd=02&rno=5"
-    ]
+    ],
+    "page_update_time_jst": "08:25",
+    "observable_before_formal_freeze": true,
+    "formal_freeze_generated_at_jst": "2026-09-21T10:03:12.277823+09:00",
+    "pre_freeze_availability_gap_evidence": "research/evidence/v4_pre_freeze_race_availability_gap_20260921.json"
   },
   "evaluation_decision": {
     "status": "FORMAL_AVAILABLE_BUT_POST_RESULT_UNEVALUABLE",
@@ -31,6 +38,7 @@
     "use_later_postponed_result": false,
     "regenerate_replacement_candidate": false,
     "retune_model_or_threshold": false,
-    "purchase_action": false
+    "purchase_action": false,
+    "additional_classification": "PRE_FREEZE_OFFICIAL_CANCELLATION_OBSERVABLE_BUT_RACE_REMAINED_IN_V4_UNIVERSE"
   }
 }
