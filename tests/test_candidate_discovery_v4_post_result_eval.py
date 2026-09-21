@@ -130,10 +130,10 @@ def test_cancelled_core_race_cannot_be_scored_as_zero_or_later_date() -> None:
     cancelled["races"][-1] = {
         "race_id": "20260918_06_01",
         "status": "cancelled",
-        "trifecta": None,
-        "trifecta_payout_yen": 0,
+        "trifecta": "3-4-1",
+        "trifecta_payout_yen": 1200,
     }
-    with pytest.raises(V4PostResultEvaluationError, match="malformed trifecta ticket"):
+    with pytest.raises(V4PostResultEvaluationError, match="non-final outcome status"):
         evaluate(artifact(), cancelled)
 
     postponed = outcomes()
