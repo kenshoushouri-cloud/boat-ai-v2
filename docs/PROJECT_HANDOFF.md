@@ -1,5 +1,103 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-21 14:26 JST
+
+This section supersedes the 14:15 JST override below where they differ.
+
+### New safe research work completed
+
+#### PR #363 — fresh restore rehearsal prerequisite gate
+
+Current latest branch head at this checkpoint:
+`e9c9ecaf880742802494ee1daa9d7625b3502595`
+
+Added a pure/offline fail-closed manifest contract before any retained-set copy can be considered decision-grade.
+
+Required before a non-Production rehearsal can PASS:
+- exact source main SHA;
+- Production source read-only and destructive operations false;
+- target non-Production + ephemeral;
+- frozen per-table retained-set policy;
+- protected evidence tables explicitly retained;
+- verified primary archive and independent second recovery layer;
+- manifest SHA for excluded cold partitions;
+- frozen schema/migration-script/index/constraint/extension identity;
+- frozen 5 GiB headroom policy with reserve covering measured growth horizon;
+- Production migration authorization explicitly false.
+
+Current real state remains:
+`REHEARSAL_PREREQUISITES_NOT_READY / HOBBY_READY_NOW_FALSE / OCT03_GO_NO_GO_NOT_FORCED_CUTOVER`
+
+The first focused CI failure was test-only: the isolation test matched the word `Railway` in a docstring. The test was corrected to inspect imports/API surfaces rather than comments. Re-fetch the latest exact-head CI before acting.
+
+#### PR #367 — preserved-raw official availability parser
+
+Current head:
+`03dcc9df578730e1feae403b64df5f92df649503`
+
+State:
+- Draft / mergeable
+- **6/6 CI SUCCESS**
+- research-only / no Production wiring
+
+Added a BLOCK-only pure parser:
+- exact official raw payload is preserved as base64;
+- parser recomputes SHA-256 before parsing;
+- human-readable evidence excerpt must occur exactly once in those preserved bytes;
+- venue/day evidence supports whole-venue unavailable markers such as `中止順延` / `開催中止`;
+- race-page evidence supports `レース中止`;
+- URL date/venue/race identity is checked;
+- parser never emits `active`;
+- page existence, deadline presence, or lack of cancellation text never becomes positive evidence.
+
+Positive race-level active evidence remains unresolved and requires a separate preregistered parser/acquisition contract before Production use.
+
+#### New Draft PR #368 — V4 Forward economics summary
+
+Branch:
+`research/v4-forward-economics-gate-20260921`
+
+Current head:
+`11f8f63f2b91c7a806b70395b569a11dfcf2c5aa`
+
+Purpose:
+- summarize formal wagering profit, ROI, cumulative drawdown and period-matched operating cost;
+- never auto-change Railway/ChatGPT plans;
+- reject evidence where cost pressure changed threshold, stake, candidate count, result-after policy or purchase safety;
+- remain pure/offline with no DB/network/Railway/LINE/purchase path.
+
+Important evidence-separation correction:
+the project 30/50/100 milestones are not silently redefined as formal post-result race counts. They belong to separately preregistered case definitions such as Stage2 supported cases and Primary-vs-Challenger prospective cases. PR #368 reports economics only and requires milestone context separately.
+
+Current formal economics remain descriptive:
+- Sep18: -100 JPY / ROI 91.667%
+- Sep19: +1,020 JPY / ROI 185.000%
+- combined: +920 JPY / ROI 138.333%
+- two-day cumulative max drawdown: 100 JPY
+
+Classification:
+`SMALL_DESCRIPTIVE_FORMAL_CORPUS / PROJECT_MILESTONES_NOT_REDEFINED / HUMAN_REVIEW_REQUIRED / NO_AUTO_PLAN_CHANGE / NO_RETUNE / PURCHASE_FALSE`
+
+### Source of Truth / Production safety
+
+- Boat main remains `8867b77569d836b6c02a075fa6444550b1a46a6c`.
+- PR #366 remains Draft/mergeable at `95d7af3efd79ead86bfdf4f708ba3065b283d6f9`.
+- Railway Production staged changes remain none.
+- fallback latest deployment remains `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS.
+- no Production DB/Railway/model/threshold/candidate/purchase mutation was made.
+
+### Next natural / safe work
+
+1. Finish exact-head CI verification for PR #363 and PR #368.
+2. 2026-09-21 19:30 JST: final Sep21 official-state confirmation; do not score Sep21 unless all exact six same-date outcomes+payouts exist.
+3. 2026-09-22 08:40 JST: natural 08:25 fallback Cron audit.
+4. Continue Storage evidence naturally; do not force-run Production jobs.
+5. Do not implement positive availability PASS or Production wiring until separately preregistered and explicitly approved where Production behavior changes.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_EVIDENCE_MIXING / NO_CAPACITY_DRIVEN_DELETE / NO_FORCED_PLAN_DOWNGRADE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-21 14:15 JST
 
 This section supersedes the 14:14 JST override below where they differ.
