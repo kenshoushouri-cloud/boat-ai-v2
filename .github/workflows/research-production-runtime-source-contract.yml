@@ -7,6 +7,7 @@ on:
       - 'tests/test_production_runtime_source_contract.py'
       - '.github/workflows/research-production-runtime-source-contract.yml'
       - 'docs/V4_PRODUCTION_RUNTIME_SOURCE_INVENTORY_20260916.md'
+      - 'research/evidence/candidate_shadow_zero_consumer_gate_20260921.json'
 
 permissions:
   contents: read
