@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 CONTRACT = "v4_fresh_restore_acceptance_evidence_v1"
-HOBBY_LIMIT_BYTES = 5 * 1024**3
+HOBBY_LIMIT_BYTES = 5_000_000_000
 
 
 class FreshRestoreAcceptanceError(ValueError):
@@ -66,7 +66,9 @@ def evaluate_acceptance(data: Any) -> dict[str, Any]:
         field="growth_horizon_days",
     )
     if limit != HOBBY_LIMIT_BYTES:
-        raise FreshRestoreAcceptanceError("Hobby volume limit must equal 5 GiB")
+        raise FreshRestoreAcceptanceError(
+            "Hobby volume limit must use conservative 5,000,000,000-byte cap"
+        )
     if reserve <= 0 or horizon <= 0:
         raise FreshRestoreAcceptanceError("reserve and growth horizon must be positive")
     growth_horizon_bytes = daily_growth * horizon
