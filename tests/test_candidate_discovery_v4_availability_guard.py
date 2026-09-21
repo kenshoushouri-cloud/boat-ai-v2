@@ -56,6 +56,7 @@ def snapshot():
                 "race_id": row["race_id"],
                 "venue_id": row["venue_id"],
                 "status": "active",
+                "scope": "race",
             }
             for row in artifact()["feed"]
         ],
@@ -114,6 +115,29 @@ class AvailabilityGuardTests(unittest.TestCase):
         bad["feed"][0]["race_id"] = "20260921_10_13"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "malformed core race_id"):
             evaluate_availability_guard(bad, snapshot())
+
+    def test_venue_level_unavailable_can_block_but_venue_active_cannot_pass(self):
+        status = snapshot()
+        row = next(item for item in status["races"] if item["race_id"] == "20260921_02_08")
+        row["status"] = "cancelled_postponed"
+        row["scope"] = "venue"
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(result["blocked_core_races"][0]["scope"], "venue")
+
+        status = snapshot()
+        status["races"][0]["scope"] = "venue"
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "venue-level active status is insufficient",
+        ):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_unknown_availability_scope_fails_closed(self):
+        status = snapshot()
+        status["races"][0]["scope"] = "inferred"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "unknown availability scope"):
+            evaluate_availability_guard(artifact(), status)
 
     def test_snapshot_observed_after_freeze_is_rejected(self):
         status = snapshot()
