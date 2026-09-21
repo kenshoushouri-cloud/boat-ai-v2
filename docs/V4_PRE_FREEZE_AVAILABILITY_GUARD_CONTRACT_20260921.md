@@ -43,15 +43,34 @@ Caller-supplied snapshot contract:
 
 `candidate_discovery_v4_official_availability_snapshot_v1`
 
-Required fields:
+The snapshot is intentionally **multi-source**. The official same-day index can provide venue/day unavailability, while race-level pages are separate `hd/jcd/rno` resources. A single top-level URL/digest must not be treated as provenance for six race-scoped positive assertions across multiple venues.
+
+Top-level required fields:
 
 - `target_date`
-- timezone-aware `observed_at`
-- timezone-aware `source_updated_at`
-- BOAT RACE official `source_url`
-- lowercase 64-hex `source_content_sha256` for the exact raw official content observed
-- one unique status row for every selected formal core race, including its expected venue ID
-- per-row evidence `scope`: `race` or `venue`
+- non-empty `evidence_sources` list
+- one unique status row for every selected formal core race
+
+Each `evidence_sources[]` entry requires:
+
+- unique `evidence_id`;
+- timezone-aware `observed_at`;
+- optional timezone-aware `source_updated_at` when the official surface exposes a source update timestamp;
+- BOAT RACE official `source_url`;
+- lowercase 64-hex `source_content_sha256` over the exact raw official content observed.
+
+Examples of official surfaces with different evidence roles:
+
+- venue/day overview: `https://www.boatrace.jp/owpc/pc/race/index?hd=YYYYMMDD`
+- race-specific page: `https://www.boatrace.jp/owpc/pc/race/racelist?hd=YYYYMMDD&jcd=XX&rno=N`
+
+Each `races[]` row requires:
+
+- `race_id`
+- `venue_id`
+- normalized `status`
+- evidence `scope`: `race` or `venue`
+- `evidence_id` referencing a validated immutable source entry
 
 Allowed normalized statuses in this first preregistration:
 
@@ -60,24 +79,26 @@ Allowed normalized statuses in this first preregistration:
 
 Allowed evidence scopes:
 
-- `race`: the official evidence directly classifies that exact race;
-- `venue`: the official evidence classifies the whole venue/day and is being applied to that race.
+- `race`: the referenced preserved official evidence directly classifies that exact race;
+- `venue`: the referenced preserved official evidence classifies the whole venue/day and is applied to that selected race.
 
-Scope is safety-relevant. Venue-level `cancelled_postponed` is sufficient to block a selected race because the whole venue/day is unavailable. Venue-level `active` is **not** sufficient to pass an individual core race: an otherwise active venue may still have a race-specific interruption, and the guard must not infer race-level availability from a broader positive status. A PASS therefore requires race-scoped `active` evidence for every selected core race.
+Scope is safety-relevant. Venue-level `cancelled_postponed` is sufficient to block a selected race because the whole venue/day is unavailable. Venue-level `active` is **not** sufficient to pass an individual core race. A PASS therefore requires race-scoped `active` evidence for every selected core race.
 
-Anything else is fail-closed. A missing core race, duplicate race, unknown scope, or race/venue mismatch is also fail-closed. Race-level granularity is required so one cancelled race can be represented without falsely cancelling or activating another core race at the same venue.
+A race-scoped positive evidence source may not be reused to assert another selected core race. Venue-wide unavailable evidence may be reused only across selected races at the same venue. If one selected race carries venue-wide unavailable evidence while another selected race at the same venue is marked active, the snapshot is internally inconsistent and fails closed.
+
+Anything else is fail-closed. Missing core race, duplicate race, duplicate/unknown evidence ID, unknown scope/status, race/venue mismatch, malformed digest, non-official source, incompatible evidence reuse, or inconsistent venue-wide evidence all fail closed.
 
 The snapshot may contain additional non-core race rows, but all six exact frozen core race IDs must be present and must match their expected venue IDs. Extra rows do not enter the decision and cannot create a replacement candidate.
 
-The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing and Production wiring remain separate review boundaries.
+The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing and Production wiring remain separate review boundaries. The acquisition layer is responsible for demonstrating that the preserved raw source actually supports the declared normalized status and scope.
 
-The official race-list URL is mutable during the day: its displayed update time can advance while retaining the same URL. Therefore the URL and parsed timestamp alone are not sufficient provenance. A future acquisition layer must preserve the exact observed official payload (or equivalent immutable raw representation), compute `source_content_sha256` over that preserved content, and carry that digest into this snapshot contract. The pure guard validates and propagates the digest but does not claim to verify raw bytes it was not given.
+The official pages are mutable during the day. URL + parsed text/timestamp alone is insufficient provenance. A future acquisition layer must preserve the exact observed official payload (or equivalent immutable raw representation), compute `source_content_sha256` for each evidence source, and carry those source records into this snapshot contract.
 
 ## Timing rule
 
-The availability snapshot must have been observed no later than the artifact's actual `generated_at`.
+Every referenced evidence source must have been observed no later than the artifact's actual `generated_at`.
 
-The official source update time must be no later than the observation time.
+When an official surface exposes `source_updated_at`, that timestamp must be no later than the corresponding evidence `observed_at`. A page without an explicit source-update timestamp may omit `source_updated_at`; the preserved raw bytes plus pre-freeze observation time remain mandatory.
 
 This availability observation has a different safety role from Course/Opponent feature cutoffs: it is not a predictive feature and must never improve ranking. It may only block an artifact whose already-selected core includes a race officially unavailable before freeze.
 
@@ -130,7 +151,7 @@ This Draft does **not** authorize wiring the guard into the formal V4 workflow.
 Before any Production-effect use:
 
 1. specify and test a timing-safe official BOAT RACE acquisition/parser path;
-2. preserve the exact raw official observation/provenance and deterministic SHA-256, and prove the snapshot digest was computed from that preserved payload;
+2. preserve every exact raw official observation/provenance item and deterministic SHA-256, and prove each evidence-source digest was computed from its preserved payload;
 3. define behavior for official source outage, ambiguous text, partial venue coverage, venue-vs-race evidence scope and status changes;
 4. prove the guard cannot change candidate ranking or create replacement candidates;
 5. decide where the immutable availability snapshot is attached to the formal capture;
