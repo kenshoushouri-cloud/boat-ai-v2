@@ -7,6 +7,7 @@ on:
       - 'tests/test_candidate_discovery_v4_prospective_freeze.py'
       - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
       - 'research/candidate_discovery_v4_contract.py'
+      - 'research/candidate_discovery_v4_capture_arbiter.py'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
   schedule:
     # 08:16 JST every day. This is one minute after the fixed 08:15 source
@@ -42,7 +43,7 @@ jobs:
           python-version: '3.12'
       - name: Validate prospective freeze wrapper safety
         run: |
-          python -m py_compile research/candidate_discovery_v4_prospective_freeze_pg.py
+          python -m py_compile research/candidate_discovery_v4_prospective_freeze_pg.py research/candidate_discovery_v4_capture_arbiter.py
           python tests/test_candidate_discovery_v4_prospective_freeze.py
           python - <<'PY'
           from pathlib import Path
@@ -63,6 +64,8 @@ jobs:
           assert "cron: '16 23 * * *'" in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
           assert 'TZ=Asia/Tokyo date +%F' in workflow
+          assert 'canonical_core_payload_sha256' in workflow
+          assert 'candidate-discovery-v4-prospective-freeze.json.core.sha256' in workflow
           PY
 
   freeze:
@@ -130,6 +133,8 @@ jobs:
           python - <<'PY'
           import hashlib, json
           from pathlib import Path
+          from research.candidate_discovery_v4_capture_arbiter import canonical_core_payload_sha256
+
           p=Path('candidate-discovery-v4-prospective-freeze.json')
           data=json.loads(p.read_text(encoding='utf-8'))
           assert data['contract']=='candidate_discovery_v4_main_feed_v1'
@@ -138,9 +143,14 @@ jobs:
           assert data['freeze_provenance']['all_frozen_rows_pre_deadline'] is True
           assert data['freeze_provenance']['prospective_evidence_eligible'] is True
           assert data['purchase_action'] is False
-          digest=hashlib.sha256(p.read_bytes()).hexdigest()
-          Path(str(p)+'.sha256').write_text(f'{digest}  {p.name}\n', encoding='utf-8')
-          print('CANDIDATE_V4_PROSPECTIVE_ARTIFACT_SHA256='+digest)
+
+          artifact_digest=hashlib.sha256(p.read_bytes()).hexdigest()
+          Path(str(p)+'.sha256').write_text(f'{artifact_digest}  {p.name}\n', encoding='utf-8')
+          print('CANDIDATE_V4_PROSPECTIVE_ARTIFACT_SHA256='+artifact_digest)
+
+          core_digest=canonical_core_payload_sha256(data)
+          Path(str(p)+'.core.sha256').write_text(f'{core_digest}  {p.name}\n', encoding='utf-8')
+          print('CANDIDATE_V4_PROSPECTIVE_CANONICAL_CORE_SHA256='+core_digest)
           PY
       - name: Upload immutable prospective freeze
         uses: actions/upload-artifact@v4
@@ -149,6 +159,7 @@ jobs:
           path: |
             candidate-discovery-v4-prospective-freeze.json
             candidate-discovery-v4-prospective-freeze.json.sha256
+            candidate-discovery-v4-prospective-freeze.json.core.sha256
             candidate-discovery-v4-prospective-freeze.txt
           retention-days: 90
           if-no-files-found: error
