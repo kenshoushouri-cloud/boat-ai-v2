@@ -6,7 +6,7 @@ Status: `RESEARCH_ONLY / PURE_OFFLINE / NO_PRODUCTION_MIGRATION / HOBBY_CAPACITY
 
 The prerequisite manifest gate controls when a decision-grade non-Production restore rehearsal may start.
 
-This second gate defines what must be true **after** that restore finishes before the result can count as evidence that a Hobby 5 GiB volume is technically large enough.
+This second gate defines what must be true **after** that restore finishes before the result can count as evidence that a Hobby 5 GB volume is technically large enough.
 
 A restore merely reporting `pg_database_size() < 5GB` is insufficient.
 
@@ -28,7 +28,7 @@ The physical target measurement is mandatory and may not be replaced by tuple pa
 
 The same frozen headroom policy must provide:
 
-- 5 GiB volume limit;
+- conservative Hobby volume ceiling `5,000,000,000` bytes;
 - required reserve bytes;
 - measured daily growth bytes;
 - growth horizon days.
@@ -37,7 +37,7 @@ The reserve must cover at least the measured growth horizon.
 
 Capacity condition:
 
-`OBSERVED_TARGET_FILESYSTEM_BYTES + REQUIRED_RESERVE_BYTES <= 5 GiB`
+`OBSERVED_TARGET_FILESYSTEM_BYTES + REQUIRED_RESERVE_BYTES <= 5,000,000,000 bytes`
 
 If this fails, the decision is:
 
