@@ -86,6 +86,8 @@ Allowed evidence scopes:
 
 Scope is safety-relevant. Venue-level `cancelled_postponed` is sufficient to block a selected race because the whole venue/day is unavailable. Venue-level `active` is **not** sufficient to pass an individual core race. A PASS therefore requires race-scoped `active` evidence for every selected core race.
 
+A race-scoped positive parser is now separately preregistered against the official venue `raceindex` surface. It requires an isolated selected-race row with the frozen deadline and an explicit `投票` action, while rejecting `発売終了`, `中止`, and `順延`. Its current tests are synthetic contract fixtures; real preserved official active/cancelled raw fixtures are still required before Production wiring.
+
 A race-scoped positive evidence source may not be reused to assert another selected core race. Venue-wide unavailable evidence may be reused only across selected races at the same venue. Venue-range unavailable evidence may be reused only across selected races at the same venue that are all covered by the same `cancel_from_race_no`. A selected race before that boundary cannot be blocked by the range evidence. If one selected race carries whole-venue unavailable evidence while another selected race at the same venue is marked active, the snapshot is internally inconsistent and fails closed.
 
 Anything else is fail-closed. Missing core race, duplicate race, duplicate/unknown evidence ID, unknown scope/status, race/venue mismatch, malformed digest, non-official source, incompatible evidence reuse, or inconsistent venue-wide evidence all fail closed.
