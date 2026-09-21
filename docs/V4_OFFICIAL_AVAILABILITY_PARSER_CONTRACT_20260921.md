@@ -41,12 +41,14 @@ Expected official surface shape:
 
 `https://www.boatrace.jp/owpc/pc/race/index?hd=YYYYMMDD`
 
-The exact bound excerpt must identify the expected official venue name and contain a supported whole-venue unavailable marker:
+The exact bound excerpt must identify the expected official venue name and contain either:
 
-- `中止順延`
-- `開催中止`
+- a supported whole-venue unavailable marker: `中止順延` or `開催中止`; or
+- a supported partial range marker matching `N R以降中止` for N=1..12.
 
-Output scope: `venue`.
+Whole-venue output scope: `venue`.
+
+Partial-range output scope: `venue_race_range` with `cancel_from_race_no=N`. A selected race before N is rejected rather than over-blocked.
 
 ### Race page
 
@@ -66,7 +68,7 @@ Output scope: `race`.
 
 The parser does not trust a free-standing parsed string. The human-readable evidence excerpt must occur **exactly once** inside the exact preserved UTF-8 raw payload whose SHA-256 is checked.
 
-This is still a preregistered parser contract, not a claim that every possible BOAT RACE HTML layout is covered. Unknown/changed layout fails closed.
+This is still a preregistered parser contract, not a claim that every possible BOAT RACE HTML layout or status vocabulary is covered. Official examples also include other status text such as plain `中止`; unsupported forms remain fail-closed until preserved fixtures and semantics are separately reviewed.
 
 ## Intentional limitation
 
