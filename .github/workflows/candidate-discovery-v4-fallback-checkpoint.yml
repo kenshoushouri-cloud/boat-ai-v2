@@ -1,0 +1,78 @@
+name: Candidate Discovery V4 Fallback Checkpoint
+
+on:
+  pull_request:
+    paths:
+      - 'research/candidate_discovery_v4_capture_arbiter.py'
+      - 'research/candidate_discovery_v4_fallback_checkpoint.py'
+      - 'tests/test_candidate_discovery_v4_fallback_checkpoint.py'
+      - '.github/workflows/candidate-discovery-v4-fallback-checkpoint.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run checkpoint tests
+        run: |
+          python -m py_compile research/candidate_discovery_v4_capture_arbiter.py research/candidate_discovery_v4_fallback_checkpoint.py tests/test_candidate_discovery_v4_fallback_checkpoint.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tests/test_candidate_discovery_v4_fallback_checkpoint.py')
+          spec = importlib.util.spec_from_file_location('fallback_checkpoint_tests', path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(module)
+          tests = [
+              (name, getattr(module, name))
+              for name in sorted(dir(module))
+              if name.startswith('test_') and callable(getattr(module, name))
+          ]
+          assert tests, 'no tests discovered'
+          for name, fn in tests:
+              fn()
+              print(f'PASS {name}')
+          print(f'FALLBACK_CHECKPOINT_TESTS={len(tests)} PASS')
+          PY
+      - name: Enforce pure offline isolation
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('research/candidate_discovery_v4_fallback_checkpoint.py')
+          text = path.read_text(encoding='utf-8')
+          tree = ast.parse(text)
+          imported = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imported.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imported.add(node.module.split('.')[0])
+          allowed = {'__future__', 'dataclasses', 'datetime', 'typing', 'research'}
+          forbidden = imported - allowed
+          assert not forbidden, sorted(forbidden)
+          lower = text.lower()
+          for token in (
+              'database_url',
+              'railway_token',
+              'github_token',
+              'os.environ',
+              'requests.',
+              'psycopg',
+              'subprocess',
+          ):
+              assert token not in lower, token
+          print('FALLBACK_CHECKPOINT_ISOLATION=PASS')
+          PY

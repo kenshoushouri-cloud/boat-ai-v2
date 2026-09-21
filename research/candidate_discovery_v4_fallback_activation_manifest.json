@@ -1,0 +1,29 @@
+{
+  "contract": "candidate_discovery_v4_fallback_activation_v1",
+  "service_name": "candidate-discovery-v4-fallback-dispatcher",
+  "source_repository": "kenshoushouri-cloud/boat-ai-v2",
+  "source_branch": "main",
+  "cron_utc": "25 23 * * *",
+  "cron_jst": "08:25",
+  "start_command": "python -u research/candidate_discovery_v4_fallback_dispatcher.py",
+  "required_environment_names": [
+    "V4_FALLBACK_GITHUB_REPOSITORY",
+    "V4_FALLBACK_GITHUB_TOKEN"
+  ],
+  "forbidden_environment_name_fragments": [
+    "DATABASE",
+    "PGHOST",
+    "PGPORT",
+    "PGUSER",
+    "PGPASSWORD",
+    "RAILWAY_TOKEN",
+    "LINE",
+    "BUY",
+    "PURCHASE"
+  ],
+  "volume_mounts": [],
+  "dispatch_workflow_id": "candidate-discovery-v4-prospective-freeze.yml",
+  "dispatch_ref": "main",
+  "dispatch_input_name": "target_date",
+  "production_activation_requires_explicit_approval": true
+}
