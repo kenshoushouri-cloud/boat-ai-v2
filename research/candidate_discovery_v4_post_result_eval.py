@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 TICKET_RE = re.compile(r"^[1-6]-[1-6]-[1-6]$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class V4PostResultEvaluationError(ValueError):
@@ -19,6 +21,17 @@ class Outcome:
     race_id: str
     trifecta: str
     trifecta_payout_yen: int
+
+
+def _verify_file_sha256(path: Path, expected_sha256: str) -> str:
+    if not isinstance(expected_sha256, str) or SHA256_RE.fullmatch(expected_sha256) is None:
+        raise V4PostResultEvaluationError("artifact sha256 must be 64 lowercase hex characters")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        raise V4PostResultEvaluationError(
+            f"artifact sha256 mismatch: expected={expected_sha256} actual={actual}"
+        )
+    return actual
 
 
 def _ticket_lanes(ticket: str) -> tuple[int, int, int]:
@@ -141,6 +154,12 @@ def evaluate(artifact: Any, outcomes_data: Any, *, stake_per_ticket_yen: int = 1
             "third_only_miss": third_only,
         })
 
+    unexpected_outcomes = sorted(set(outcomes) - seen_races)
+    if unexpected_outcomes:
+        raise V4PostResultEvaluationError(
+            f"unexpected outcomes outside formal core: {unexpected_outcomes}"
+        )
+
     investment = total_tickets * stake_per_ticket_yen
     profit = gross_return - investment
     roi = (gross_return / investment * 100.0) if investment else 0.0
@@ -170,11 +189,14 @@ def evaluate(artifact: Any, outcomes_data: Any, *, stake_per_ticket_yen: int = 1
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate one immutable formal V4 prospective artifact after results are final.")
     parser.add_argument("--artifact", required=True)
+    parser.add_argument("--artifact-sha256", required=True)
     parser.add_argument("--outcomes", required=True)
     parser.add_argument("--output")
     args = parser.parse_args()
 
-    artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
+    artifact_path = Path(args.artifact)
+    _verify_file_sha256(artifact_path, args.artifact_sha256)
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
     outcomes = json.loads(Path(args.outcomes).read_text(encoding="utf-8"))
     result = evaluate(artifact, outcomes)
     text = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
