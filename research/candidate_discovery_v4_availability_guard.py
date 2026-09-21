@@ -229,7 +229,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     if not isinstance(races, list):
         raise V4AvailabilityGuardError("snapshot races must be a list")
 
-    by_race: dict[str, dict[str, str]] = {}
+    by_race: dict[str, dict[str, Any]] = {}
     for raw in races:
         if not isinstance(raw, dict):
             raise V4AvailabilityGuardError("availability race row must be an object")
@@ -314,7 +314,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     # A race-scoped positive source must not be reused to assert another core
     # race. Reuse is allowed only for venue-wide unavailable evidence at the
     # same venue.
-    evidence_usage: dict[str, list[dict[str, str]]] = {}
+    evidence_usage: dict[str, list[dict[str, Any]]] = {}
     for row in core:
         observed = by_race[row["race_id"]]
         evidence_usage.setdefault(observed["evidence_id"], []).append(
@@ -374,6 +374,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 "venue_id": row["venue_id"],
                 "status": observed["status"],
                 "scope": observed["scope"],
+                "cancel_from_race_no": observed.get("cancel_from_race_no"),
                 **source,
             }
         )
