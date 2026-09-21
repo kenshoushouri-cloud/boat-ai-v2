@@ -1,5 +1,38 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 14:15 JST
+
+This section supersedes the 14:14 JST override below where they differ.
+
+### Railway / ChatGPT plan checkpoints
+
+The plan-change policy from 14:14 JST remains in force: October dates are Go/No-Go checkpoints, not forced downgrade dates. If prospective system economics support keeping higher-capability plans, cost reduction is not prioritized over system quality, safety, evidence preservation or development capability.
+
+Fresh Railway official documentation recheck on 2026-09-21 confirms:
+- Hobby volume limit: 5 GB;
+- Production's current PostgreSQL volume is still 20 GB;
+- volume down-sizing is not supported;
+- therefore Pro -> Hobby still requires a fresh compatible retained-set migration/restore rather than shrinking the existing volume in place.
+
+The 10/03 Railway checkpoint remains conditional on fresh-restore size/headroom, dependency/consumer gates, archive/recovery safety and explicit Production approval.
+
+The 10/14 ChatGPT Plus -> Go checkpoint is also conditional. Retain Plus when its additional development/review capability is materially worth the cost; do not downgrade solely to meet an arbitrary monthly-cost target.
+
+### Storage PR #363 correction
+
+A transient GitHub mergeability read briefly returned `mergeable=false`. A fresh recheck now reports:
+- head `65219db0b6ae1b4d181fe8d9cdeb1187a69b898b`;
+- Draft;
+- `mergeable=true`;
+- base current main `8867b77569d836b6c02a075fa6444550b1a46a6c`;
+- compare status `ahead`, behind=0.
+
+Several read-only archive/storage workflows are still in progress on this head; completed critical syntax/isolation/runtime-contract workflows are passing. Do not interpret the transient mergeability result as a persistent conflict.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_CAPACITY_DRIVEN_DELETE / NO_FORCED_PLAN_DOWNGRADE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-21 14:14 JST
 
 This section supersedes the 13:30 JST override below where they differ.
