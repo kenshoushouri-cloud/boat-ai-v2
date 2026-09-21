@@ -82,6 +82,10 @@ Therefore the Sep21 blocker is not merely a cancellation learned after freeze. I
 Machine-readable evidence:
 `research/evidence/v4_pre_freeze_race_availability_gap_20260921.json`
 
+Evidence-strength limitation: the 08:25 displayed update time was observed on the official same-day race-list page, but the exact raw 08:25 response was not preserved with a content digest. Because that official URL is mutable during the day, the pre-freeze timing observation is useful historical evidence but is not cryptographically reproducible from the URL alone. This limitation does not change the current post-result fact that Toda was cancelled/postponed; it does constrain how strongly the historical 08:25 page state can be replayed.
+
+Any future Production-effect availability guard must preserve the exact official observation (or equivalent immutable raw representation) and a deterministic SHA-256 before parsed availability status can be treated as eligible evidence.
+
 This finding does **not** authorize an immediate Production candidate-logic change. A future timing-safe official race/venue availability source and exclusion contract must be preregistered and separately approved before any Production behavior change.
 
 ## 2026-09-21 observed blocker
