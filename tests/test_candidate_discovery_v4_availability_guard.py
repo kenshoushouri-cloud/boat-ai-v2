@@ -1,0 +1,121 @@
+# -*- coding: utf-8 -*-
+import unittest
+from copy import deepcopy
+
+from research.candidate_discovery_v4_availability_guard import (
+    V4AvailabilityGuardError,
+    evaluate_availability_guard,
+)
+
+
+def artifact():
+    feed = []
+    venues = ["10", "17", "02", "09", "12", "09"]
+    for rank, venue in enumerate(venues, 1):
+        feed.append(
+            {
+                "race_id": f"20260921_{venue}_{rank:02d}",
+                "venue_id": venue,
+                "daily_rank": rank,
+                "tickets": [
+                    {"core_order": 1, "ticket": "1-2-3"},
+                    {"core_order": 2, "ticket": "1-3-2"},
+                ],
+            }
+        )
+    return {
+        "contract": "candidate_discovery_v4_main_feed_v1",
+        "generated_at": "2026-09-21T10:03:12+09:00",
+        "prospective_evidence_eligible": True,
+        "purchase_action": False,
+        "freeze_provenance": {
+            "target_date": "2026-09-21",
+            "all_frozen_rows_pre_deadline": True,
+        },
+        "feed": feed,
+    }
+
+
+def snapshot():
+    return {
+        "contract": "candidate_discovery_v4_official_availability_snapshot_v1",
+        "target_date": "2026-09-21",
+        "observed_at": "2026-09-21T09:55:00+09:00",
+        "source_updated_at": "2026-09-21T08:25:00+09:00",
+        "source_url": "https://www.boatrace.jp/owpc/pc/race/index?hd=20260921",
+        "venues": [
+            {"venue_id": "02", "status": "active"},
+            {"venue_id": "09", "status": "active"},
+            {"venue_id": "10", "status": "active"},
+            {"venue_id": "12", "status": "active"},
+            {"venue_id": "17", "status": "active"},
+        ],
+    }
+
+
+class AvailabilityGuardTests(unittest.TestCase):
+    def test_all_active_core_passes_without_reranking(self):
+        result = evaluate_availability_guard(artifact(), snapshot())
+        self.assertTrue(result["eligible_under_guard"])
+        self.assertEqual(result["decision"], "PASS_ACTIVE_CORE")
+        self.assertEqual(result["blocked_core_races"], [])
+        self.assertFalse(result["replacement_candidates_generated"])
+        self.assertFalse(result["ranking_changed"])
+        self.assertFalse(result["purchase_action"])
+
+    def test_pre_freeze_cancelled_selected_venue_blocks_without_replacement(self):
+        status = snapshot()
+        status["venues"][0]["status"] = "cancelled_postponed"
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(result["decision"], "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE")
+        self.assertEqual(len(result["blocked_core_races"]), 1)
+        self.assertEqual(result["blocked_core_races"][0]["venue_id"], "02")
+        self.assertFalse(result["replacement_candidates_generated"])
+        self.assertFalse(result["ranking_changed"])
+
+    def test_snapshot_observed_after_freeze_is_rejected(self):
+        status = snapshot()
+        status["observed_at"] = "2026-09-21T10:04:00+09:00"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "observed after artifact freeze"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_missing_core_venue_fails_closed(self):
+        status = snapshot()
+        status["venues"] = [row for row in status["venues"] if row["venue_id"] != "02"]
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "missing core venue"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_unknown_status_fails_closed(self):
+        status = snapshot()
+        status["venues"][0]["status"] = "unknown"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "unknown availability status"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_duplicate_venue_fails_closed(self):
+        status = snapshot()
+        status["venues"].append(deepcopy(status["venues"][0]))
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "duplicate availability venue_id"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_source_update_after_observation_fails_closed(self):
+        status = snapshot()
+        status["source_updated_at"] = "2026-09-21T09:56:00+09:00"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "source update time"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_non_official_source_is_rejected(self):
+        status = snapshot()
+        status["source_url"] = "https://example.com/status"
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "BOAT RACE official"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_purchase_enabled_artifact_is_rejected(self):
+        bad = artifact()
+        bad["purchase_action"] = True
+        with self.assertRaisesRegex(V4AvailabilityGuardError, "purchase_action"):
+            evaluate_availability_guard(bad, snapshot())
+
+
+if __name__ == "__main__":
+    unittest.main()
