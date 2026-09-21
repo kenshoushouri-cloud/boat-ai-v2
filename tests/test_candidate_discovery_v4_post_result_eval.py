@@ -4,6 +4,7 @@ import pytest
 
 from research.candidate_discovery_v4_post_result_eval import (
     V4PostResultEvaluationError,
+    _verify_file_sha256,
     evaluate,
 )
 
@@ -123,6 +124,30 @@ def test_duplicate_or_malformed_outcomes_fail_closed() -> None:
     bad["races"][0]["trifecta"] = "1-1-2"
     with pytest.raises(V4PostResultEvaluationError, match="duplicate lane"):
         evaluate(artifact(), bad)
+
+
+def test_unexpected_outcome_outside_formal_core_fails_closed() -> None:
+    bad = outcomes()
+    bad["races"].append({
+        "race_id": "20260918_20_01",
+        "trifecta": "1-2-3",
+        "trifecta_payout_yen": 999,
+    })
+    with pytest.raises(V4PostResultEvaluationError, match="unexpected outcomes outside formal core"):
+        evaluate(artifact(), bad)
+
+
+def test_artifact_sha256_is_verified_before_cli_evaluation(tmp_path) -> None:
+    path = tmp_path / "artifact.json"
+    path.write_bytes(b"abc")
+    expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    assert _verify_file_sha256(path, expected) == expected
+
+    with pytest.raises(V4PostResultEvaluationError, match="sha256 mismatch"):
+        _verify_file_sha256(path, "0" * 64)
+
+    with pytest.raises(V4PostResultEvaluationError, match="64 lowercase hex"):
+        _verify_file_sha256(path, "ABC")
 
 
 def test_cancelled_core_race_cannot_be_scored_as_zero_or_later_date() -> None:
