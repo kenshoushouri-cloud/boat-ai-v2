@@ -293,6 +293,12 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         raise V4AvailabilityGuardError(
             "availability snapshot missing core race(s): " + ",".join(missing_races)
         )
+    unexpected_races = sorted(set(by_race) - core_ids)
+    if unexpected_races:
+        raise V4AvailabilityGuardError(
+            "availability snapshot contains unexpected non-core race(s): "
+            + ",".join(unexpected_races)
+        )
 
     for row in core:
         observed = by_race[row["race_id"]]
