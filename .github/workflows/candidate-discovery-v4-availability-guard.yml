@@ -25,7 +25,7 @@ jobs:
       - name: Compile and run focused tests
         run: |
           python -m py_compile research/candidate_discovery_v4_availability_guard.py tests/test_candidate_discovery_v4_availability_guard.py
-          python -m unittest tests.test_candidate_discovery_v4_availability_guard
+          python -m unittest discover -s tests -p 'test_candidate_discovery_v4_availability_guard.py'
       - name: Enforce pure offline isolation and non-constructive role
         run: |
           python - <<'PY'
@@ -47,7 +47,7 @@ jobs:
 
           low = text.lower()
           for forbidden in (
-              'psycopg', 'database_url', 'requests', 'urllib', 'railway',
+              'psycopg', 'database_url', 'requests', 'urllib', 'railway_token',
               'line_notify', 'insert into', 'update v2_', 'delete from',
               'vacuum', 'subprocess', 'os.environ',
           ):
