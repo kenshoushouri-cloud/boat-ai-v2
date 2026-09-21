@@ -16,6 +16,7 @@ from typing import Any
 
 CONTRACT = "candidate_discovery_v4_official_unavailability_parse_input_v1"
 VENUE_SCOPE = "venue"
+VENUE_RANGE_SCOPE = "venue_race_range"
 RACE_SCOPE = "race"
 UNAVAILABLE = "cancelled_postponed"
 VENUE_INDEX = "venue_day_index"
@@ -145,16 +146,27 @@ def parse_unavailability_evidence(data: Any) -> dict[str, Any]:
     compact_excerpt = re.sub(r"\s+", "", excerpt)
     venue_name = VENUE_NAMES[venue_id]
 
+    cancel_from_race_no = None
     if source_kind == VENUE_INDEX:
         if venue_name not in compact_excerpt:
             raise V4OfficialAvailabilityParserError(
                 "venue-day excerpt does not identify expected venue"
             )
-        if "中止順延" not in compact_excerpt and "開催中止" not in compact_excerpt:
+        range_match = re.search(r"(1[0-2]|[1-9])R以降中止", compact_excerpt)
+        if range_match is not None:
+            cancel_from_race_no = int(range_match.group(1))
+            if int(race_no) < cancel_from_race_no:
+                raise V4OfficialAvailabilityParserError(
+                    "venue race-range unavailable marker does not cover selected race"
+                )
+            scope = VENUE_RANGE_SCOPE
+            marker = range_match.group(0)
+        elif "中止順延" in compact_excerpt or "開催中止" in compact_excerpt:
+            marker = "中止順延" if "中止順延" in compact_excerpt else "開催中止"
+        else:
             raise V4OfficialAvailabilityParserError(
-                "no supported venue-wide unavailable marker"
+                "no supported venue unavailable marker"
             )
-        marker = "中止順延" if "中止順延" in compact_excerpt else "開催中止"
     else:
         if "レース中止" not in compact_excerpt:
             raise V4OfficialAvailabilityParserError(
@@ -173,6 +185,7 @@ def parse_unavailability_evidence(data: Any) -> dict[str, Any]:
         "venue_id": venue_id,
         "status": UNAVAILABLE,
         "scope": scope,
+        "cancel_from_race_no": cancel_from_race_no,
         "evidence_id": evidence_id,
         "source_kind": source_kind,
         "observed_at": data["observed_at"],
