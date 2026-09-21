@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from research.fresh_restore_rehearsal_manifest import (
+    FreshRestoreRehearsalManifestError,
+    evaluate_manifest,
+)
+
 CONTRACT = "v4_fresh_restore_acceptance_evidence_v1"
 HOBBY_LIMIT_BYTES = 5_000_000_000
 
@@ -22,7 +27,14 @@ def _nonnegative_int(value: Any, *, field: str) -> int:
     return value
 
 
-def evaluate_acceptance(data: Any) -> dict[str, Any]:
+def evaluate_acceptance(data: Any, rehearsal_manifest: Any) -> dict[str, Any]:
+    try:
+        manifest_result = evaluate_manifest(rehearsal_manifest)
+    except FreshRestoreRehearsalManifestError as exc:
+        raise FreshRestoreAcceptanceError(
+            f"invalid preregistered rehearsal manifest: {exc}"
+        ) from exc
+
     if not isinstance(data, dict):
         raise FreshRestoreAcceptanceError("evidence must be an object")
     if data.get("contract") != CONTRACT:
@@ -52,6 +64,24 @@ def evaluate_acceptance(data: Any) -> dict[str, Any]:
     headroom = data.get("headroom_policy")
     if not isinstance(headroom, dict) or headroom.get("frozen") is not True:
         raise FreshRestoreAcceptanceError("headroom policy must be frozen")
+    manifest_headroom = rehearsal_manifest["headroom_policy"]
+    policy_fields = (
+        "frozen",
+        "volume_limit_bytes",
+        "required_reserve_bytes",
+        "measured_daily_growth_bytes",
+        "growth_horizon_days",
+    )
+    mismatched_policy_fields = [
+        field
+        for field in policy_fields
+        if headroom.get(field) != manifest_headroom.get(field)
+    ]
+    if mismatched_policy_fields:
+        raise FreshRestoreAcceptanceError(
+            "headroom policy differs from preregistered rehearsal manifest: "
+            + ",".join(mismatched_policy_fields)
+        )
     limit = _nonnegative_int(headroom.get("volume_limit_bytes"), field="volume_limit_bytes")
     reserve = _nonnegative_int(
         headroom.get("required_reserve_bytes"),
@@ -105,6 +135,8 @@ def evaluate_acceptance(data: Any) -> dict[str, Any]:
 
     return {
         "contract": "v4_fresh_restore_acceptance_result_v1",
+        "rehearsal_manifest_sha256": manifest_result["manifest_identity_sha256"],
+        "source_main_sha": manifest_result["source_main_sha"],
         "observed_database_bytes": observed_db,
         "observed_target_filesystem_bytes": observed_fs,
         "required_reserve_bytes": reserve,
