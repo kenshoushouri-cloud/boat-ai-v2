@@ -1,5 +1,90 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-21 12:52 JST
+
+This section supersedes the 11:06 JST override below where they differ.
+
+### Boat / Production Source of Truth
+
+- GitHub `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- Railway Production: project `boat-v2-postgres`
+- fallback service remains active on `main`, Cron `25 23 * * *` UTC = 08:25 JST, latest deployment `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS, no staged Production changes
+- initial fallback start remained `NOOP_VALID_PRIMARY target_date=2026-09-21 primary_run_id=35549611949`
+
+### 2026-09-21 formal V4 classification refinement
+
+The immutable artifact remains capture-contract-valid:
+- run `35549611949`
+- generated `2026-09-21T10:03:12.277823+09:00`
+- `6R / 12T`
+- result/payout read 0
+- DB/LINE/BUY/Production change 0
+- `purchase_action=false`
+
+Frozen core includes `20260921_02_08` (Toda 8R). BOAT RACE official today's-race page was already updated at 08:25 JST showing Toda cancelled/postponed, before the 10:03 formal freeze.
+
+Current-main V4 generator loads target-date `v2_races`, requires complete six-lane entries and a deadline, but has no pre-result cancelled/postponed race/venue availability filter. `v2_races` has no current compatibility field suitable for this pre-result status check.
+
+Current classification:
+`CAPTURE_CONTRACT_VALID / PRE_FREEZE_OFFICIAL_CANCELLATION_OBSERVABLE / RACE_UNIVERSE_AVAILABILITY_GAP / POST_RESULT_UNEVALUABLE / NO_REGENERATION / NO_RETUNE`
+
+Formal evaluated corpus therefore remains only Sep18 + Sep19:
+`2 days / 12 races / 24 tickets / investment 2400 JPY / return 3320 JPY / profit +920 JPY / ROI 138.333%`
+
+Do not:
+- shrink Sep21 from 6R to 5R;
+- create a synthetic zero-yen loss/payout;
+- substitute a later postponed-date result;
+- regenerate a replacement candidate using knowledge of cancellation/results;
+- implement a Production availability filter without explicit approval.
+
+PR #366 contains Draft-only evidence:
+- `research/evidence/v4_pre_freeze_race_availability_gap_20260921.json`
+- `research/evidence/v4_formal_eval_blocker_20260921.json`
+- cancellation/non-final fail-closed tests and contract docs.
+
+### Candidate-shadow / Storage gate
+
+Fresh Production evidence on 2026-09-21:
+- morning PRE collector invoked: `candidate_rows=0 / saved_rows=0`;
+- day PRE collector invoked: `candidate_rows=7 / saved_rows=7`;
+- formal V4 subsequently read `legacy_shadow_rows=7`, adding 5 legacy races / 7 legacy tickets.
+
+Railway Production still contains:
+- morning/day/night `run_window_pipeline_pg.py` candidate-shadow writer surfaces;
+- nightly `run_nightly_results_pg.py` candidate-shadow evaluator/report reader surface;
+- no-Cron `test-beforeinfo-extra` direct collector writer surface.
+
+Current-main GitHub V4 prospective-freeze path is also a candidate-shadow reader.
+
+PR #363 pure runtime-source contract now blocks candidate-shadow zero-consumer on either **writer or reader** capabilities. A zero-row window, a no-Cron service, a Draft-only removal, or the fallback dispatcher's lack of DB dependency is not sufficient for PASS.
+
+Machine evidence:
+`research/evidence/candidate_shadow_zero_consumer_gate_20260921.json`
+
+Current gate:
+`ZERO_CONSUMER_NOT_REACHED / SAME_DAY_WRITER_TO_READER_PROVEN / ACTIVE_WRITER_SURFACES / ACTIVE_READER_SURFACES / NO_DELETE / NO_MIGRATION / NO_VACUUM`
+
+### PostgreSQL capacity observation
+
+Fresh read-only Railway metrics:
+- current disk ~`4.593 GB`;
+- 24h observed range ~`4.561 -> 4.593 GB`;
+- 7d observed range ~`4.136 -> 4.591 GB`.
+
+These are observations, not a linear growth forecast. They do not authorize deletion. Direct current-footprint Hobby migration is not approved; a proven fresh retained-set restore plus measured growth/headroom remains required.
+
+### Next natural evidence
+
+1. 2026-09-21 19:30 JST: re-confirm Toda final official state; keep Sep21 evaluation blocked unless all six exact same-date final outcomes+payouts exist.
+2. 2026-09-22 08:40 JST: audit the natural 08:25 fallback Cron execution.
+3. Allow normal night/nightly Production schedules to provide natural candidate-shadow evidence; do not manually trigger them for audit.
+4. Keep Production model/coefficient/threshold/candidate logic unchanged without explicit approval.
+
+Safety:
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
+
 ## LATEST OVERRIDE — 2026-09-21 11:06 JST
 
 This section supersedes the 10:40 JST override below where they differ.
