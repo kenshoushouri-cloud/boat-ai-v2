@@ -6,6 +6,7 @@ network, Railway, filesystem mutation, archive upload, or Production path.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any
 
@@ -90,7 +91,17 @@ def evaluate_manifest(data: Any) -> dict[str, Any]:
                 raise FreshRestoreRehearsalManifestError(
                     f"bounded retention boundary missing: {table}"
                 )
-            _sha256(row.get("boundary_sha256"), field=f"{table} boundary_sha256")
+            boundary_sha256 = _sha256(
+                row.get("boundary_sha256"),
+                field=f"{table} boundary_sha256",
+            )
+            computed_boundary_sha256 = hashlib.sha256(
+                boundary.encode("utf-8")
+            ).hexdigest()
+            if boundary_sha256 != computed_boundary_sha256:
+                raise FreshRestoreRehearsalManifestError(
+                    f"{table} boundary_sha256 mismatch"
+                )
 
     protected = retention.get("protected_evidence_tables")
     if not isinstance(protected, list) or not protected:
