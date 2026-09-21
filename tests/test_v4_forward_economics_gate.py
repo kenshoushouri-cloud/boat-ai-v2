@@ -63,7 +63,8 @@ def test_current_formal_corpus_reconciles_but_remains_pre30():
     assert summary["profit_yen"] == 920
     assert summary["roi_percent"] == 138.333
     assert summary["max_cumulative_drawdown_yen"] == 100
-    assert result["milestone"] == "PRE_30_INSUFFICIENT_SAMPLE"
+    assert result["project_milestones_redefined"] is False
+    assert result["milestone_context_required_separately"] is True
     assert result["automatic_plan_change_allowed"] is False
     assert result["human_review_required"] is True
 
@@ -74,7 +75,7 @@ def test_period_operating_cost_is_reported_without_extrapolation():
     result = evaluate_economics(data)
     assert result["summary"]["net_after_period_operating_cost_yen"] == -80
     assert result["summary"]["observed_net_positive"] is False
-    assert result["milestone"] == "PRE_30_INSUFFICIENT_SAMPLE"
+    assert result["project_milestones_redefined"] is False
 
 
 @pytest.mark.parametrize(
@@ -108,26 +109,13 @@ def test_two_ticket_formal_core_shape_is_required():
         evaluate_economics(bad)
 
 
-def test_milestones_are_race_count_based_and_never_auto_change_plan():
+def test_economics_gate_does_not_redefine_project_case_milestones():
     data = evidence()
-    row = deepcopy(data["formal_days"][1])
-    row["date"] = "2026-09-20"
-    row["core_races"] = 18
-    row["core_tickets"] = 36
-    row["investment_yen"] = 3600
-    row["gross_return_yen"] = 3600
-    row["profit_yen"] = 0
-    row["exact_hit_races"] = 0
-    row["head_hit_races"] = 0
-    row["first_second_prefix_hit_races"] = 0
-    row["third_only_miss_races"] = 0
-    data["period"]["end_date"] = "2026-09-20"
-    data["formal_days"].append(row)
     result = evaluate_economics(data)
-    assert result["summary"]["core_races"] == 30
-    assert result["milestone"] == "MILESTONE_30_DESCRIPTIVE_ONLY"
+    assert result["summary"]["core_races"] == 12
+    assert result["project_milestones_redefined"] is False
+    assert result["milestone_context_required_separately"] is True
     assert result["automatic_plan_change_allowed"] is False
-
 
 def test_module_is_pure_and_has_no_production_or_purchase_surface():
     import inspect
