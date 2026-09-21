@@ -66,6 +66,26 @@ def test_venue_day_unavailable_parses_as_block_only_evidence():
     assert result["purchase_action"] is False
 
 
+def test_partial_venue_range_parses_only_when_selected_race_is_covered():
+    data = venue_input()
+    data["race_id"] = "20260921_02_12"
+    excerpt = "<div>戸田</div><span>11R以降中止</span>"
+    raw = "<html><body>" + excerpt + "</body></html>"
+    data["raw_content_base64"], data["source_content_sha256"] = _encode(raw)
+    data["evidence_excerpt_utf8"] = excerpt
+    result = parse_unavailability_evidence(data)
+    assert result["scope"] == "venue_race_range"
+    assert result["cancel_from_race_no"] == 11
+    assert result["matched_unavailable_marker"] == "11R以降中止"
+
+    bad = venue_input()
+    bad["race_id"] = "20260921_02_08"
+    bad["raw_content_base64"], bad["source_content_sha256"] = _encode(raw)
+    bad["evidence_excerpt_utf8"] = excerpt
+    with pytest.raises(V4OfficialAvailabilityParserError, match="does not cover selected race"):
+        parse_unavailability_evidence(bad)
+
+
 def test_race_page_cancelled_parses_as_race_scope():
     result = parse_unavailability_evidence(race_input())
     assert result["status"] == "cancelled_postponed"
