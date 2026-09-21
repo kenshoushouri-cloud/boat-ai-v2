@@ -93,7 +93,9 @@ def _formal_core(artifact: Any) -> list[dict[str, Any]]:
         if (
             len(parts) != 3
             or len(parts[0]) != 8
+            or len(parts[2]) != 2
             or not all(part.isdigit() for part in parts)
+            or not (1 <= int(parts[2]) <= 12)
         ):
             raise V4AvailabilityGuardError(f"malformed core race_id: {race_id!r}")
         if parts[1] != venue_id:
