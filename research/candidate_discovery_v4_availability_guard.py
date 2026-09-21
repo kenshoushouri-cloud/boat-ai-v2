@@ -165,6 +165,16 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
     if not isinstance(source_url, str) or not source_url.startswith("https://www.boatrace.jp/"):
         raise V4AvailabilityGuardError("availability source must be BOAT RACE official")
 
+    source_content_sha256 = snapshot.get("source_content_sha256")
+    if (
+        not isinstance(source_content_sha256, str)
+        or len(source_content_sha256) != 64
+        or any(ch not in "0123456789abcdef" for ch in source_content_sha256)
+    ):
+        raise V4AvailabilityGuardError(
+            "availability source_content_sha256 must be lowercase SHA-256 hex"
+        )
+
     races = snapshot.get("races")
     if not isinstance(races, list):
         raise V4AvailabilityGuardError("snapshot races must be a list")
@@ -218,6 +228,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         "snapshot_observed_at": snapshot["observed_at"],
         "snapshot_source_updated_at": snapshot["source_updated_at"],
         "source_url": source_url,
+        "source_content_sha256": source_content_sha256,
         "eligible_under_guard": not blocked,
         "blocked_core_races": blocked,
         "replacement_candidates_generated": False,
