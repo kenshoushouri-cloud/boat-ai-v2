@@ -8,7 +8,10 @@
     "page_update_time_jst": "08:25",
     "venue_id": "02",
     "venue_name": "Toda",
-    "status": "cancelled_postponed"
+    "status": "cancelled_postponed",
+    "provenance_strength": "OBSERVED_OFFICIAL_MUTABLE_PAGE_WITHOUT_PRESERVED_RAW_PAYLOAD_HASH",
+    "raw_payload_sha256_preserved": false,
+    "limitation": "The official same-day race-list page is mutable. The 08:25 displayed update time was observed and recorded, but the exact 08:25 raw response bytes were not preserved with a digest, so this historical page state is not cryptographically reproducible from the URL alone."
   },
   "formal_freeze": {
     "workflow_run_id": 35549611949,
@@ -23,7 +26,10 @@
     "venue_id": "02",
     "race_no": 8,
     "deadline_at_jst": "2026-09-21 14:16:00+09:00",
-    "predicted_tickets": ["1-2-6", "1-6-2"]
+    "predicted_tickets": [
+      "1-2-6",
+      "1-6-2"
+    ]
   },
   "timing": {
     "official_status_was_observable_before_freeze": true,
@@ -54,6 +60,7 @@
   "future_change_boundary": {
     "research_needed": "preregister a timing-safe official same-day race/venue availability source and fail-closed exclusion contract",
     "production_candidate_logic_change_requires_explicit_approval": true,
-    "implemented_here": false
+    "implemented_here": false,
+    "raw_snapshot_requirement": "Any future Production-effect availability guard must preserve the exact observed official payload (or an equivalent immutable raw representation) and its SHA-256 before parsed status can be eligible evidence."
   }
 }
