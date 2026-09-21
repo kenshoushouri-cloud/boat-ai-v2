@@ -172,9 +172,66 @@ class AvailabilityGuardTests(unittest.TestCase):
         status["races"][0]["scope"] = "venue"
         with self.assertRaisesRegex(
             V4AvailabilityGuardError,
-            "venue-level active status is insufficient",
+            "non-race active status is insufficient",
         ):
             evaluate_availability_guard(artifact(), status)
+
+    def test_partial_venue_race_range_blocks_only_covered_core_race(self):
+        status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "09", "venue-09-from-8")
+        venue09 = [row for row in status["races"] if row["venue_id"] == "09"]
+        r7 = next(row for row in venue09 if row["race_id"].endswith("_07"))
+        r8 = next(row for row in venue09 if row["race_id"].endswith("_08"))
+        r8["status"] = "cancelled_postponed"
+        r8["scope"] = "venue_race_range"
+        r8["cancel_from_race_no"] = 8
+        r8["evidence_id"] = evidence_id
+
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(len(result["blocked_core_races"]), 1)
+        self.assertEqual(result["blocked_core_races"][0]["race_id"], "20260921_09_08")
+        self.assertEqual(result["blocked_core_races"][0]["scope"], "venue_race_range")
+        self.assertEqual(result["blocked_core_races"][0]["cancel_from_race_no"], 8)
+        self.assertEqual(r7["status"], "active")
+
+    def test_partial_venue_range_cannot_block_race_before_range(self):
+        status = snapshot()
+        evidence_id = add_venue_unavailable_evidence(status, "09", "venue-09-from-8")
+        r7 = next(row for row in status["races"] if row["race_id"] == "20260921_09_07")
+        r7["status"] = "cancelled_postponed"
+        r7["scope"] = "venue_race_range"
+        r7["cancel_from_race_no"] = 8
+        r7["evidence_id"] = evidence_id
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "does not cover core race",
+        ):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_partial_venue_range_evidence_may_be_shared_for_covered_same_venue_races(self):
+        status = snapshot()
+        # Use a synthetic same-venue pair at R8/R9 so one official range source can
+        # legitimately cover both selected races.
+        art = artifact()
+        art["feed"][3]["race_id"] = "20260921_09_09"
+        art["feed"][3]["venue_id"] = "09"
+        status = snapshot()
+        status["races"][3]["race_id"] = "20260921_09_09"
+        status["races"][3]["venue_id"] = "09"
+        status["evidence_sources"][3]["source_url"] = (
+            "https://www.boatrace.jp/owpc/pc/race/racelist?hd=20260921&jcd=09&rno=9"
+        )
+        evidence_id = add_venue_unavailable_evidence(status, "09", "venue-09-from-8")
+        for row in status["races"]:
+            if row["venue_id"] == "09":
+                row["status"] = "cancelled_postponed"
+                row["scope"] = "venue_race_range"
+                row["cancel_from_race_no"] = 8
+                row["evidence_id"] = evidence_id
+        result = evaluate_availability_guard(art, status)
+        self.assertFalse(result["eligible_under_guard"])
+        self.assertEqual(len(result["blocked_core_races"]), 2)
 
     def test_unknown_availability_scope_fails_closed(self):
         status = snapshot()
