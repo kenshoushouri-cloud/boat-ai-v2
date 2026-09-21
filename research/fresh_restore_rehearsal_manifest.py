@@ -7,6 +7,7 @@ network, Railway, filesystem mutation, archive upload, or Production path.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 
@@ -191,8 +192,18 @@ def evaluate_manifest(data: Any) -> dict[str, Any]:
             "manifest must not authorize Production migration"
         )
 
+    manifest_identity_sha256 = hashlib.sha256(
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
     return {
         "contract": "v4_fresh_restore_rehearsal_gate_v1",
+        "manifest_identity_sha256": manifest_identity_sha256,
         "source_main_sha": main_sha,
         "retention_table_count": len(tables),
         "bounded_retention_table_count": bounded_count,
