@@ -6,6 +6,7 @@ REQUIRED = (
     "cron-final-check",
     "cron-opponent-pressure-v2-live",
     "cron-nightly-results",
+    "candidate-discovery-v4-prospective-freeze",
     "test-beforeinfo-extra",
     "storage-maintenance-once",
     "storage-index-drop-once",
@@ -39,6 +40,14 @@ def current_like_snapshot():
             "capabilities": ["candidate_shadow_reader"],
         },
         {
+            "name": "candidate-discovery-v4-prospective-freeze",
+            "source_repo": "kenshoushouri-cloud/boat-ai-v2",
+            "source_branch": "main",
+            "start_command": "python -u research/candidate_discovery_v4_prospective_freeze_pg.py",
+            "cron_schedule": "16 23 * * *",
+            "capabilities": ["candidate_shadow_reader"],
+        },
+        {
             "name": "test-beforeinfo-extra",
             "source_repo": "kenshoushouri-cloud/boat-ai-v2",
             "source_branch": "main",
@@ -65,7 +74,10 @@ def test_current_like_snapshot_blocks_and_surfaces_non_main_branch():
     assert report.candidate_shadow_zero_consumer_gate == "BLOCK"
     assert report.non_main_repo_sources == ("cron-opponent-pressure-v2-live",)
     assert report.candidate_shadow_writer_surfaces == ("test-beforeinfo-extra",)
-    assert report.candidate_shadow_reader_surfaces == ("cron-nightly-results",)
+    assert report.candidate_shadow_reader_surfaces == (
+        "candidate-discovery-v4-prospective-freeze",
+        "cron-nightly-results",
+    )
     assert report.destructive_inline_surfaces == ("storage-maintenance-once",)
     assert report.unresolved_services == ("storage-index-drop-once",)
     assert "test-beforeinfo-extra" in report.no_cron_executable_surfaces
