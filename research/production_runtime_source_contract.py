@@ -25,7 +25,8 @@ DESTRUCTIVE_INLINE_MARKERS = (
     "vacuum full",
 )
 
-CANDIDATE_SHADOW_CAPABILITY = "candidate_shadow_writer"
+CANDIDATE_SHADOW_WRITER_CAPABILITY = "candidate_shadow_writer"
+CANDIDATE_SHADOW_READER_CAPABILITY = "candidate_shadow_reader"
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,11 @@ class Surface:
 
     @property
     def writes_candidate_shadow(self) -> bool:
-        return CANDIDATE_SHADOW_CAPABILITY in self.capabilities
+        return CANDIDATE_SHADOW_WRITER_CAPABILITY in self.capabilities
+
+    @property
+    def reads_candidate_shadow(self) -> bool:
+        return CANDIDATE_SHADOW_READER_CAPABILITY in self.capabilities
 
 
 @dataclass(frozen=True)
@@ -88,6 +93,7 @@ class InventoryReport:
     no_cron_executable_surfaces: tuple[str, ...]
     destructive_inline_surfaces: tuple[str, ...]
     candidate_shadow_writer_surfaces: tuple[str, ...]
+    candidate_shadow_reader_surfaces: tuple[str, ...]
     runtime_inventory_gate: str
     candidate_shadow_zero_consumer_gate: str
 
@@ -139,7 +145,7 @@ def audit_runtime_inventory(
     - repo-backed services require an explicit branch and start command;
     - image-backed services require an explicit start command;
     - a destructive inline command blocks the runtime-inventory gate;
-    - a candidate-shadow writer blocks candidate-shadow zero-consumer proof;
+    - any candidate-shadow writer or reader blocks candidate-shadow zero-consumer proof;
     - non-main branches are surfaced explicitly, not treated as an error by
       themselves, because they must be scanned as part of the final proof.
     """
@@ -161,9 +167,10 @@ def audit_runtime_inventory(
     no_cron = sorted(item.name for item in normalized if item.is_no_cron_executable_surface)
     destructive = sorted(item.name for item in normalized if item.has_destructive_inline_command)
     candidate_writers = sorted(item.name for item in normalized if item.writes_candidate_shadow)
+    candidate_readers = sorted(item.name for item in normalized if item.reads_candidate_shadow)
 
     runtime_blockers = bool(missing or duplicates or unresolved or destructive)
-    candidate_blockers = bool(runtime_blockers or candidate_writers)
+    candidate_blockers = bool(runtime_blockers or candidate_writers or candidate_readers)
 
     return InventoryReport(
         observed_services=tuple(sorted(name for name in names if name)),
@@ -174,6 +181,7 @@ def audit_runtime_inventory(
         no_cron_executable_surfaces=tuple(no_cron),
         destructive_inline_surfaces=tuple(destructive),
         candidate_shadow_writer_surfaces=tuple(candidate_writers),
+        candidate_shadow_reader_surfaces=tuple(candidate_readers),
         runtime_inventory_gate="BLOCK" if runtime_blockers else "PASS",
         candidate_shadow_zero_consumer_gate="BLOCK" if candidate_blockers else "PASS",
     )
