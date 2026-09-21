@@ -289,3 +289,27 @@ Before any fallback scheduler is activated:
 Current decision:
 
 `2026-09-15_UNAVAILABLE_LATE_GITHUB_SCHEDULE / FAIL_CLOSED_WORKED / FUTURE_CAPTURE_RESILIENCE_PREREGISTERED / FALLBACK_CHECKPOINT_0825_FIXED_BUT_NOT_UNIVERSALLY_SAFE / TIMING_FEASIBILITY_GATE_ADDED / CAPTURE_BOOTSTRAP_FAILURE_FAIL_CLOSED / CANONICAL_FORMAL_CORE_HASH_DEFINED / CAPTURE_ARBITER_11_OF_11_PASS / DRAFT_FUTURE_WORKFLOW_DUAL_HASH_SUCCESS / LEGACY_AUXILIARY_EXCLUDED_FROM_FORMAL_CORE_EQUIVALENCE / CROSS_PROVIDER_RUN_ID_TIEBREAK_REJECTED / AMBIGUOUS_DUPLICATE_FAIL_CLOSED / NO_BACKFILL / NO_FALLBACK_ACTIVATED_YET / PURCHASE_FALSE`
+
+
+### Draft-only Railway activation manifest
+
+A machine-checkable proposed activation manifest is frozen at
+`research/candidate_discovery_v4_fallback_activation_manifest.json`.
+
+It is configuration intent only; it does not create or modify Railway resources.
+The manifest fixes the proposed Production shape before any approval:
+
+- source repository/branch: `kenshoushouri-cloud/boat-ai-v2@main`;
+- dedicated service name: `candidate-discovery-v4-fallback-dispatcher`;
+- Railway Cron: `25 23 * * *` UTC = 08:25 JST;
+- start command: `python -u research/candidate_discovery_v4_fallback_dispatcher.py`;
+- only two required application environment names:
+  `V4_FALLBACK_GITHUB_REPOSITORY` and `V4_FALLBACK_GITHUB_TOKEN`;
+- no volume mount;
+- no PostgreSQL/Railway/LINE/purchase credential is part of the proposed service contract;
+- dispatch remains `main` + required `target_date` into the existing guarded V4 workflow;
+- Production activation remains explicitly approval-gated.
+
+Focused tests fail closed if this manifest drifts from the dispatcher/workflow
+contract. This closes configuration-shape preregistration only, not live
+cross-provider timing, credentials provisioning, or Production activation.
