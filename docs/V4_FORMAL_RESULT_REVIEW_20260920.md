@@ -108,3 +108,34 @@ Tier A appearing stronger and Tier C having no exact hits are observations only.
 `FORMAL_V4_CORPUS=2_DAYS_12_RACES_24_TICKETS / PROFIT_YEN=+920 / ROI=138.333% / EXACT_RACES=4_OF_12 / THIRD_ONLY_MISS=1_OF_12 / DESCRIPTIVE_ONLY / NO_RETUNING / NO_PROMOTION / PURCHASE_FALSE`
 
 No Production model/coefficient/threshold/candidate logic, Railway configuration, DB state, LINE behavior, Forward persistence, or purchase behavior is changed by this review.
+
+
+## 2026-09-22 fallback arbitration and post-result blocker
+
+Natural fallback evidence for 2026-09-22 is now available.
+
+Capture channels:
+
+- Railway fallback dispatched the guarded GitHub workflow at 08:26 JST because no valid primary artifact was observable at the 08:25 checkpoint.
+- fallback run `35667553345` completed at 08:26 JST with formal `6R / 12T`, artifact `10670080150`, JSON SHA `3e59a58c3704baeb991a102c58a4a92ff56670e1b1e7039cd5df42c6e68dd7d9`, canonical core SHA `1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9`, `purchase_action=false`.
+- the delayed scheduled primary later appeared at 10:35 JST as run `35676316305`; it was also predeadline-valid and produced the same canonical core SHA, while auxiliary legacy rows differed.
+- under the preregistered arbiter, the unique earliest valid capture is the formal artifact; the later scheduled capture is diagnostic only. The day is therefore not double-counted.
+
+Post-result evaluation is nevertheless blocked:
+
+- the frozen formal core contains `20260922_09_05` (津 5R);
+- the current BOAT RACE official 2026-09-22 state marks 津 as cancelled;
+- no exact same-date finalized trifecta result/payout exists for that frozen core race.
+
+Therefore 2026-09-22 is classified:
+
+`FORMAL_AVAILABLE / POST_RESULT_UNEVALUABLE_CORE_RACE_CANCELLED / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+Important timing limitation: the current official cancellation state is post-result evidence. This review does not claim that the exact pre-freeze cancellation time is cryptographically proven, because no immutable pre-freeze raw official payload for this event is recorded here.
+
+Machine-readable evidence:
+
+`research/evidence/v4_formal_eval_blocker_20260922.json`
+
+The formally evaluated corpus therefore remains Sep18 + Sep19 only:
+`2 days / 12 races / 24 tickets / profit +920 JPY / ROI 138.333%`.
