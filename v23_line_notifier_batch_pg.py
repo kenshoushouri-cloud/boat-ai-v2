@@ -33,6 +33,11 @@ except Exception:  # pragma: no cover
     Jsonb = lambda x: json.dumps(x, ensure_ascii=False)  # type: ignore
 
 from db_pg import execute, fetch_all, fetch_one
+from line_buy_notification_layout import (
+    group_notification_decisions,
+    point_label,
+    select_notification_decisions,
+)
 
 JST = timezone(timedelta(hours=9))
 
@@ -227,6 +232,27 @@ def _usage_guard() -> Optional[str]:
     return None
 
 
+def _already_notified_tickets_for_date() -> Dict[str, Set[str]]:
+    rows = fetch_all(
+        """
+        select race_id, ticket
+        from v2_realtime_decisions
+        where race_date = %s
+          and recommendation = 'buy'
+          and coalesce(was_notified, false) = true
+        order by race_id asc, decision_at asc nulls last, final_score desc nulls last;
+        """,
+        (TARGET_DATE,),
+    )
+    out: Dict[str, Set[str]] = {}
+    for row in rows:
+        race_id = str(row.get("race_id") or "")
+        ticket = str(row.get("ticket") or "")
+        if race_id and ticket:
+            out.setdefault(race_id, set()).add(ticket)
+    return out
+
+
 def _already_sent_keys_for_date() -> Set[str]:
     """
     final BUY通知の重複だけを防ぐ。
@@ -298,22 +324,30 @@ def fetch_buy_decisions() -> List[Dict[str, Any]]:
         )
 
     sent_keys = _already_sent_keys_for_date()
+    notified_tickets = _already_notified_tickets_for_date()
     if DRY_RUN:
-        print("DRY_RUNのため重複通知チェックはスキップします。", flush=True)
+        print("DRY_RUNのため送信済みLINE履歴の重複除外は空集合として扱います。", flush=True)
+        sent_keys = set()
+        notified_tickets = {}
 
-    filtered: List[Dict[str, Any]] = []
-    skipped_dup = 0
-    for r in rows:
-        key = f"{r.get('race_id')}|{r.get('ticket')}"
-        if key in sent_keys:
-            skipped_dup += 1
-            continue
-        filtered.append(r)
-        if len(filtered) >= MAX_SEND:
-            break
-    if skipped_dup:
-        print(f"final_buy_dedup_skipped={skipped_dup}", flush=True)
-    return filtered
+    selected, metrics = select_notification_decisions(
+        rows,
+        sent_keys=sent_keys,
+        notified_tickets_by_race=notified_tickets,
+        max_send=MAX_SEND,
+        max_points_per_race=2,
+    )
+    print(
+        "LINE two-point selection: "
+        f"selected={len(selected)} "
+        f"sent_key_skipped={metrics['sent_key_skipped']} "
+        f"already_notified_skipped={metrics['already_notified_skipped']} "
+        f"duplicate_pending_skipped={metrics['duplicate_pending_skipped']} "
+        f"extra_point_skipped={metrics['extra_point_skipped']} "
+        f"invalid_row_skipped={metrics['invalid_row_skipped']}",
+        flush=True,
+    )
+    return selected
 
 
 def _reasons_text(v: Any) -> str:
@@ -346,7 +380,7 @@ def build_message(d: Dict[str, Any]) -> str:
     lines = [
         "【競艇AI テストBUY通知・購入しない】" if TEST_MODE else "【競艇AI BUY通知】",
         f"{TARGET_DATE} {_venue_display(venue_id)} {race_no}R",
-        f"買い目: {ticket}",
+        f"{point_label(d.get('_line_point_order'))}: {ticket}",
         f"オッズ: {odds:.1f}倍 / 想定回収: {expected}円",
         f"モード: {mode_label}",
         f"rank: prob={prob_rank} market={market_rank}",
@@ -363,26 +397,45 @@ def build_message(d: Dict[str, Any]) -> str:
 
 
 def build_batch_message(decisions: List[Dict[str, Any]]) -> str:
+    groups = group_notification_decisions(decisions)
+    visible_groups = groups[:MAX_ITEMS_PER_MESSAGE]
     lines = [
         "【競艇AI テストBUY通知まとめ・購入しない】" if TEST_MODE else "【競艇AI BUY通知まとめ】",
         f"{TARGET_DATE} / {DECISION_LABEL} / {SELECTOR_MODE}",
-        f"対象: {len(decisions)}件",
+        f"対象: {len(groups)}レース / {len(decisions)}点",
         "",
     ]
-    for idx, d in enumerate(decisions[:MAX_ITEMS_PER_MESSAGE], start=1):
+    for idx, group in enumerate(visible_groups, start=1):
+        d = group[0]
         raw = d.get("raw") or {}
         candidate = raw.get("candidate") if isinstance(raw, dict) else {}
         race_title = candidate.get("race_title") if isinstance(candidate, dict) else ""
         venue_id = str(d.get("venue_id", "")).zfill(2)
         race_no = _safe_int(d.get("race_no"), 0)
-        ticket = d.get("ticket", "")
-        odds = _safe_float(d.get("odds"), 0.0)
         mode_label = d.get("mode_label") or d.get("mode_name") or ""
-        rt_score = _safe_float(d.get("realtime_score"), 0.0)
         pos = _reasons_text(d.get("positive_reasons"))
         neg = _reasons_text(d.get("negative_reasons"))
-        lines.append(f"{idx}. {_venue_display(venue_id)} {race_no}R {ticket} / {odds:.1f}倍")
-        lines.append(f"   {mode_label} / score={rt_score:g}")
+
+        lines.append(f"{idx}. {_venue_display(venue_id)} {race_no}R")
+        orders_present = set()
+        for point in group:
+            order = _safe_int(point.get("_line_point_order"), 1)
+            orders_present.add(order)
+            label = point_label(order)
+            ticket = point.get("ticket", "")
+            odds = _safe_float(point.get("odds"), 0.0)
+            rt_score = _safe_float(point.get("realtime_score"), 0.0)
+            lines.append(
+                f"   {label}: {ticket} / {odds:.1f}倍 / score={rt_score:g}"
+            )
+
+        if 1 in orders_present and 2 not in orders_present:
+            lines.append("   押さえ: BUY条件該当なし")
+        elif 2 in orders_present and 1 not in orders_present:
+            lines.append("   本線: 送信済み")
+
+        if mode_label:
+            lines.append(f"   mode: {mode_label}")
         if pos:
             lines.append(f"   + {pos}")
         if neg:
@@ -390,8 +443,9 @@ def build_batch_message(decisions: List[Dict[str, Any]]) -> str:
         if race_title:
             lines.append(f"   {race_title[:40]}")
         lines.append("")
-    if len(decisions) > MAX_ITEMS_PER_MESSAGE:
-        lines.append(f"他 {len(decisions) - MAX_ITEMS_PER_MESSAGE}件あり")
+    if len(groups) > MAX_ITEMS_PER_MESSAGE:
+        lines.append(f"他 {len(groups) - MAX_ITEMS_PER_MESSAGE}レースあり")
+    lines.append("※本線/押さえは既存BUY判定のみ。BUY条件未満の買い目は追加しません")
     lines.append("※1回の通知にまとめて送信")
     if TEST_MODE:
         lines.append("※テスト期間中：購入しない")
@@ -477,7 +531,7 @@ def mark_decision_notified(decision_id: str, notification_id: Optional[str]) -> 
 def main() -> None:
     _require_settings()
     _ensure_schema()
-    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-08-08 venue-name-target-scope-v2", flush=True)
+    print("✅ v23_line_notifier_batch_pg.py VERSION 2026-09-23 two-point-main-cover-v1", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} DECISION_LABEL={DECISION_LABEL} SELECTOR_MODE={SELECTOR_MODE} "
         f"DRY_RUN={DRY_RUN} MAX_SEND={MAX_SEND} BATCH_NOTIFY={BATCH_NOTIFY} "
