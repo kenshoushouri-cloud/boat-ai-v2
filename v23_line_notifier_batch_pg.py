@@ -572,16 +572,36 @@ def main() -> None:
     dry_run_records = 0
 
     if BATCH_NOTIFY:
+        groups = group_notification_decisions(decisions)
+        visible_groups = groups[:MAX_ITEMS_PER_MESSAGE]
+        visible_decisions = [
+            decision
+            for group in visible_groups
+            for decision in group
+        ]
+        hidden_groups = max(0, len(groups) - len(visible_groups))
         msg = build_batch_message(decisions)
         print("\n--- batch message ---", flush=True)
         print(msg, flush=True)
+        print(
+            f"batch_visible_races={len(visible_groups)} "
+            f"batch_visible_points={len(visible_decisions)} "
+            f"batch_deferred_races={hidden_groups}",
+            flush=True,
+        )
         try:
             resp = send_line_message(msg)
             ok = 200 <= int(resp.get("status_code", 0)) < 300
             status = "dry_run" if DRY_RUN else ("sent" if ok else "failed")
-            nid = insert_notification(decisions[0], msg, status, resp, batch=True)
+            nid = insert_notification(
+                visible_decisions[0],
+                msg,
+                status,
+                resp,
+                batch=True,
+            )
             if ok and not DRY_RUN:
-                for d in decisions:
+                for d in visible_decisions:
                     mark_decision_notified(str(d.get("id")), nid)
                 sent_api_calls = 1
             elif ok and DRY_RUN:
@@ -592,7 +612,14 @@ def main() -> None:
         except Exception as e:
             failed = 1
             try:
-                insert_notification(decisions[0], msg, "failed", {"status_code": 0, "body": ""}, error=repr(e), batch=True)
+                insert_notification(
+                    visible_decisions[0],
+                    msg,
+                    "failed",
+                    {"status_code": 0, "body": ""},
+                    error=repr(e),
+                    batch=True,
+                )
             except Exception:
                 pass
             print(f"ERROR: {repr(e)}", flush=True)
