@@ -6,6 +6,7 @@ import pytest
 from research.candidate_discovery_v4_pre_freeze_availability_capture import (
     V4PreFreezeAvailabilityCaptureError,
     build_capture_plan,
+    build_capture_request_from_universe,
     capture_sources,
 )
 
@@ -17,6 +18,8 @@ def request():
         "contract": "candidate_discovery_v4_pre_freeze_availability_capture_request_v1",
         "target_date": "2026-09-23",
         "venue_ids": ["09", "02", "17"],
+        "scheduled_race_count": 36,
+        "race_universe_sha256": "a" * 64,
         "hard_stop_at_jst": "2026-09-23T09:40:00+09:00",
         "hard_stop_basis": "earliest_scheduled_race_deadline",
     }
@@ -38,10 +41,62 @@ def fake_fetcher(url):
     return (f"<html>{url}</html>".encode("utf-8"), url)
 
 
+def test_request_is_derived_from_full_race_universe_identity():
+    rows = [
+        {
+            "race_id": "20260923_02_01",
+            "venue_id": "02",
+            "race_no": 1,
+            "deadline_at": "2026-09-23T10:40:00+09:00",
+        },
+        {
+            "race_id": "20260923_09_01",
+            "venue_id": "09",
+            "race_no": 1,
+            "deadline_at": "2026-09-23T09:40:00+09:00",
+        },
+        {
+            "race_id": "20260923_17_01",
+            "venue_id": "17",
+            "race_no": 1,
+            "deadline_at": "2026-09-23T11:40:00+09:00",
+        },
+    ]
+    built = build_capture_request_from_universe(
+        rows,
+        target_date="2026-09-23",
+    )
+    assert built["venue_ids"] == ["02", "09", "17"]
+    assert built["scheduled_race_count"] == 3
+    assert built["hard_stop_at_jst"] == "2026-09-23T09:40:00+09:00"
+    assert len(built["race_universe_sha256"]) == 64
+
+    reversed_built = build_capture_request_from_universe(
+        list(reversed(rows)),
+        target_date="2026-09-23",
+    )
+    assert reversed_built["race_universe_sha256"] == built["race_universe_sha256"]
+
+
+def test_universe_builder_rejects_identity_mismatch():
+    rows = [
+        {
+            "race_id": "20260923_02_01",
+            "venue_id": "09",
+            "race_no": 1,
+            "deadline_at": "2026-09-23T09:40:00+09:00",
+        }
+    ]
+    with pytest.raises(V4PreFreezeAvailabilityCaptureError, match="venue mismatch"):
+        build_capture_request_from_universe(rows, target_date="2026-09-23")
+
+
 def test_plan_is_deterministic_and_only_contains_availability_surfaces():
     plan = build_capture_plan(request())
     assert plan["venue_ids"] == ["02", "09", "17"]
     assert len(plan["sources"]) == 4
+    assert plan["scheduled_race_count"] == 36
+    assert plan["race_universe_sha256"] == "a" * 64
     urls = [source["source_url"] for source in plan["sources"]]
     assert urls[0].endswith("/index?hd=20260923")
     assert urls[1].endswith("/raceindex?hd=20260923&jcd=02")
@@ -104,6 +159,8 @@ def test_capture_preserves_exact_bytes_sha_and_observation_times():
     assert manifest["all_sources_pre_hard_stop"] is True
     assert manifest["purchase_action"] is False
     assert manifest["production_mutation"] is False
+    assert manifest["scheduled_race_count"] == 36
+    assert manifest["race_universe_sha256"] == "a" * 64
 
 
 def test_capture_before_source_cutoff_fails_closed():
