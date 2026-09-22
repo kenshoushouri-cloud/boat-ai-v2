@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import hashlib
 import unittest
 from copy import deepcopy
 
@@ -70,6 +71,9 @@ def snapshot():
                 "status": "active",
                 "scope": "race",
                 "evidence_id": evidence_id,
+                "evidence_binding_sha256": hashlib.sha256(
+                    race_id.encode("utf-8")
+                ).hexdigest(),
             }
         )
     return {
@@ -347,6 +351,69 @@ class AvailabilityGuardTests(unittest.TestCase):
         status = snapshot()
         status["evidence_sources"].append(deepcopy(status["evidence_sources"][0]))
         with self.assertRaisesRegex(V4AvailabilityGuardError, "duplicate availability evidence_id"):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_active_race_requires_row_binding_digest(self):
+        status = snapshot()
+        del status["races"][0]["evidence_binding_sha256"]
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "evidence_binding_sha256 required",
+        ):
+            evaluate_availability_guard(artifact(), status)
+
+    def test_same_venue_pre_freeze_source_may_bind_distinct_active_rows(self):
+        status = snapshot()
+        venue09 = [
+            row for row in status["races"] if row["venue_id"] == "09"
+        ]
+        self.assertEqual(len(venue09), 2)
+        first_id = venue09[0]["evidence_id"]
+        second_id = venue09[1]["evidence_id"]
+        venue09[1]["evidence_id"] = first_id
+        status["evidence_sources"] = [
+            source
+            for source in status["evidence_sources"]
+            if source["evidence_id"] != second_id
+        ]
+        shared = next(
+            source
+            for source in status["evidence_sources"]
+            if source["evidence_id"] == first_id
+        )
+        shared["source_url"] = (
+            "https://www.boatrace.jp/owpc/pc/race/raceindex"
+            "?hd=20260921&jcd=09"
+        )
+        result = evaluate_availability_guard(artifact(), status)
+        self.assertTrue(result["eligible_under_guard"])
+        bound = [
+            item["evidence_binding_sha256"]
+            for item in result["core_evidence"]
+            if item["venue_id"] == "09"
+        ]
+        self.assertEqual(len(set(bound)), 2)
+
+    def test_same_venue_source_reuse_rejects_duplicate_row_binding(self):
+        status = snapshot()
+        venue09 = [
+            row for row in status["races"] if row["venue_id"] == "09"
+        ]
+        first_id = venue09[0]["evidence_id"]
+        second_id = venue09[1]["evidence_id"]
+        venue09[1]["evidence_id"] = first_id
+        venue09[1]["evidence_binding_sha256"] = venue09[0][
+            "evidence_binding_sha256"
+        ]
+        status["evidence_sources"] = [
+            source
+            for source in status["evidence_sources"]
+            if source["evidence_id"] != second_id
+        ]
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "evidence source reused across incompatible core races",
+        ):
             evaluate_availability_guard(artifact(), status)
 
     def test_race_active_evidence_cannot_be_reused_for_another_core_race(self):
