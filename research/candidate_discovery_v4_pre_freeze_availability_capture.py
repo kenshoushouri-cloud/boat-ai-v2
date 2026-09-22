@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -30,6 +31,8 @@ JST = timezone(timedelta(hours=9))
 SOURCE_CUTOFF = time(8, 15)
 MAX_SOURCE_BYTES = 5_000_000
 VENUE_IDS = {f"{idx:02d}" for idx in range(1, 25)}
+RACE_ID_RE = re.compile(r"^(\d{8})_(\d{2})_(\d{2})$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 HARD_STOP_BASIS = "earliest_scheduled_race_deadline"
 BASE = "https://www.boatrace.jp/owpc/pc/race"
 
@@ -80,6 +83,21 @@ def _parse_request(data: Any) -> dict[str, Any]:
     if len(set(venues)) != len(venues):
         raise V4PreFreezeAvailabilityCaptureError("venue_ids must be unique")
 
+    scheduled_race_count = data.get("scheduled_race_count")
+    if (
+        not isinstance(scheduled_race_count, int)
+        or isinstance(scheduled_race_count, bool)
+        or scheduled_race_count <= 0
+    ):
+        raise V4PreFreezeAvailabilityCaptureError(
+            "scheduled_race_count must be a positive integer"
+        )
+    universe_sha = data.get("race_universe_sha256")
+    if not isinstance(universe_sha, str) or SHA256_RE.fullmatch(universe_sha) is None:
+        raise V4PreFreezeAvailabilityCaptureError(
+            "race_universe_sha256 must be lowercase 64-hex"
+        )
+
     if data.get("hard_stop_basis") != HARD_STOP_BASIS:
         raise V4PreFreezeAvailabilityCaptureError(
             "hard_stop_basis must be earliest_scheduled_race_deadline"
@@ -101,6 +119,112 @@ def _parse_request(data: Any) -> dict[str, Any]:
         "venue_ids": sorted(venues),
         "source_cutoff_at_jst": cutoff,
         "hard_stop_at_jst": hard_stop,
+        "scheduled_race_count": scheduled_race_count,
+        "race_universe_sha256": universe_sha,
+    }
+
+
+def build_capture_request_from_universe(
+    rows: Any,
+    *,
+    target_date: str,
+) -> dict[str, Any]:
+    if not isinstance(rows, list) or not rows:
+        raise V4PreFreezeAvailabilityCaptureError(
+            "race universe must be a non-empty list"
+        )
+    try:
+        target_day = date.fromisoformat(target_date)
+    except Exception as exc:
+        raise V4PreFreezeAvailabilityCaptureError(
+            "target_date must be a valid ISO date"
+        ) from exc
+    compact = target_day.strftime("%Y%m%d")
+
+    normalized = []
+    seen_races: set[str] = set()
+    for raw in rows:
+        if not isinstance(raw, dict):
+            raise V4PreFreezeAvailabilityCaptureError(
+                "race universe row must be an object"
+            )
+        race_id = raw.get("race_id")
+        venue_id = raw.get("venue_id")
+        race_no = raw.get("race_no")
+        deadline_raw = raw.get("deadline_at")
+        if not isinstance(race_id, str):
+            raise V4PreFreezeAvailabilityCaptureError("race universe race_id missing")
+        match = RACE_ID_RE.fullmatch(race_id)
+        if match is None:
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"malformed race universe race_id: {race_id}"
+            )
+        race_date, race_venue, race_no_text = match.groups()
+        if race_date != compact:
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"race universe target_date mismatch: {race_id}"
+            )
+        if venue_id != race_venue or venue_id not in VENUE_IDS:
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"race universe venue mismatch: {race_id}"
+            )
+        if (
+            not isinstance(race_no, int)
+            or isinstance(race_no, bool)
+            or race_no != int(race_no_text)
+            or not (1 <= race_no <= 12)
+        ):
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"race universe race_no mismatch: {race_id}"
+            )
+        deadline = _aware_datetime(
+            deadline_raw,
+            field=f"race universe deadline_at {race_id}",
+        )
+        if deadline.date() != target_day:
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"race universe deadline date mismatch: {race_id}"
+            )
+        if race_id in seen_races:
+            raise V4PreFreezeAvailabilityCaptureError(
+                f"duplicate race universe race_id: {race_id}"
+            )
+        seen_races.add(race_id)
+        normalized.append(
+            {
+                "race_id": race_id,
+                "venue_id": venue_id,
+                "race_no": race_no,
+                "deadline_at_jst": deadline.isoformat(),
+            }
+        )
+
+    normalized.sort(key=lambda row: row["race_id"])
+    earliest = min(
+        datetime.fromisoformat(row["deadline_at_jst"]) for row in normalized
+    )
+    cutoff = datetime.combine(target_day, SOURCE_CUTOFF, tzinfo=JST)
+    if earliest <= cutoff:
+        raise V4PreFreezeAvailabilityCaptureError(
+            "earliest scheduled deadline must be after 08:15 source cutoff"
+        )
+    universe_sha = hashlib.sha256(
+        json.dumps(
+            normalized,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    return {
+        "contract": REQUEST_CONTRACT,
+        "target_date": target_day.isoformat(),
+        "venue_ids": sorted({row["venue_id"] for row in normalized}),
+        "scheduled_race_count": len(normalized),
+        "race_universe_sha256": universe_sha,
+        "hard_stop_at_jst": earliest.isoformat(),
+        "hard_stop_basis": HARD_STOP_BASIS,
     }
 
 
@@ -131,6 +255,8 @@ def build_capture_plan(data: Any) -> dict[str, Any]:
         "source_cutoff_at_jst": req["source_cutoff_at_jst"].isoformat(),
         "hard_stop_at_jst": req["hard_stop_at_jst"].isoformat(),
         "hard_stop_basis": HARD_STOP_BASIS,
+        "scheduled_race_count": req["scheduled_race_count"],
+        "race_universe_sha256": req["race_universe_sha256"],
         "sources": sources,
         "result_endpoint_reads": 0,
         "payout_endpoint_reads": 0,
@@ -233,6 +359,8 @@ def capture_sources(
         "source_cutoff_at_jst": plan["source_cutoff_at_jst"],
         "hard_stop_at_jst": plan["hard_stop_at_jst"],
         "hard_stop_basis": HARD_STOP_BASIS,
+        "scheduled_race_count": plan["scheduled_race_count"],
+        "race_universe_sha256": plan["race_universe_sha256"],
         "capture_started_at_jst": started.isoformat(),
         "capture_completed_at_jst": completed.isoformat(),
         "sources": entries,
