@@ -1,5 +1,115 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-22 22:36 JST
+
+This section supersedes the 2026-09-21 14:58 JST override below where they differ.
+
+### Fresh Source of Truth / CI / Railway
+
+- Boat `main`: `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- PR #363 Storage: `4cccdc5b41241f6ffa139be629172cf5a03d7500`, Draft / mergeable, all 23 listed workflows SUCCESS
+- PR #366 post-result evaluator/evidence: `20c835c5dabd847c96180acad6a3daf5ffd8fdf7`, Draft / mergeable, 5/5 CI SUCCESS
+- PR #367 availability guard/parsers: `fd86320d848474463d943c7d84b6d419a3838cfa`, Draft / mergeable, 6/6 CI SUCCESS
+- PR #368 economics gate: `2e47342912e545f8341e8678c10e940e94bcd2f3`, Draft / mergeable, 5/5 CI SUCCESS
+- Railway Production staged changes: none
+- fallback deployment remains `7c0b590e-a121-42d2-9f88-543848af386f` SUCCESS, Cron `25 23 * * *` UTC = 08:25 JST
+- PostgreSQL volume remains 20GB
+- fresh read-only 7d disk metric: current ~`4.645 GB`, observed max ~`4.657 GB`
+- no Production DB/Railway/model/threshold/candidate/purchase mutation was made
+
+### 2026-09-22 V4 fallback operational proof
+
+The natural Railway fallback checkpoint executed successfully.
+
+Railway log:
+- 08:26 JST: `DISPATCH_FALLBACK`
+- reason: `no_valid_primary_artifact_observable`
+- no second same-date fallback dispatch was observed
+
+Fallback GitHub run:
+- run `35667553345`
+- event `workflow_dispatch`
+- generated `2026-09-22T08:26:36.137106+09:00`
+- artifact `10670080150`
+- artifact ZIP SHA-256 `60ae93e3758679fc0109fd180bbd66a54978c0b483514a724bb5ace376c5a94c`
+- JSON SHA-256 `3e59a58c3704baeb991a102c58a4a92ff56670e1b1e7039cd5df42c6e68dd7d9`
+- canonical core SHA-256 `1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9`
+- formal core `6R / 12T`
+- legacy shadow rows `0`
+- earliest core deadline `12:10 JST`
+- `prospective_evidence_eligible=true`
+- `purchase_action=false`
+- `PASS_PRE_RESULT_FREEZE`
+
+The delayed GitHub scheduled primary later appeared:
+- run `35676316305`
+- event `schedule`
+- generated `2026-09-22T10:35:38.887230+09:00`
+- artifact `10673271438`
+- JSON SHA-256 `b2c54f521a1415fdb7190b8e340c39442b7baaafacbcc2278e4b925c836a4eb1`
+- canonical core SHA-256 is the **same** `1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9`
+- legacy shadow rows `9`
+
+Under the preregistered capture arbiter:
+- the unique earliest valid capture (08:26 fallback) is the formal artifact;
+- the 10:35 scheduled capture is a later diagnostic only;
+- the formal day is not double-counted;
+- full-file differences caused by auxiliary legacy state do not change formal-core identity.
+
+This is strong live evidence that the independent fallback mechanism works for the exact delayed-GitHub-schedule failure mode it was designed to cover.
+
+### 2026-09-22 post-result blocker
+
+Frozen fallback core races:
+- `20260922_01_06`
+- `20260922_17_04`
+- `20260922_09_05`
+- `20260922_02_08`
+- `20260922_02_11`
+- `20260922_03_07`
+
+BOAT RACE official current 2026-09-22 state marks venue 09 / 津 as cancelled. The frozen formal core contains `20260922_09_05` (津 5R).
+
+Therefore Sep22 cannot be scored under the frozen six-outcome contract:
+
+`FORMAL_AVAILABLE / POST_RESULT_UNEVALUABLE_CORE_RACE_CANCELLED / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE`
+
+Important evidence-strength boundary:
+- current cancellation state is authoritative post-result evidence;
+- no immutable pre-freeze raw official payload is recorded here proving the exact time the Sep22 津 cancellation became observable;
+- do not retroactively label pre-freeze observability without such preserved evidence.
+
+PR #366 now contains:
+`research/evidence/v4_formal_eval_blocker_20260922.json`
+
+The formally **evaluated** V4 corpus therefore remains:
+`Sep18 + Sep19 = 2d / 12R / 24T / +920 JPY / ROI 138.333%`
+
+Sep21 and Sep22 are formal-artifact-valid but post-result unevaluable because a frozen core race has no same-date final outcome.
+
+### Storage / plan-change state
+
+PR #363 is fully green at this checkpoint, but real Hobby readiness is still false:
+- zero-consumer/recovery/retained-set requirements are not all closed;
+- no decision-grade fresh retained-set restore has been executed;
+- current 20GB volume cannot be used as a direct Hobby-size proof;
+- disk growth reinforces the need for measured fresh-restore size + frozen headroom rather than capacity-driven deletion.
+
+October dates remain Go/No-Go checkpoints, not forced downgrade dates. Positive prospective system economics may justify retaining Railway Pro and/or ChatGPT Plus. Cost pressure must never alter thresholds, stake, candidate count, evidence retention or safety.
+
+### Next safe work
+
+1. Keep Sep21 and Sep22 out of formal settled metrics; no denominator shrink or synthetic loss.
+2. Preserve the Sep22 fallback-vs-primary equivalence evidence; no duplicate formal counting.
+3. On the next timing-clean future date, capture real predeadline official raw availability fixtures before results if available; do not reconstruct them afterward.
+4. Continue Storage/Hobby readiness with research-only fresh-restore preparation and natural zero-consumer evidence.
+5. Observe the next natural 08:25 JST fallback checkpoint without forcing Production jobs.
+6. No Production-effect PR merge, DB mutation, Railway config/plan change, model/threshold/candidate change or purchase action without explicit approval.
+
+### Safety
+
+`PURCHASE_FALSE / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_CAPACITY_DRIVEN_DELETE / NO_FORCED_PLAN_DOWNGRADE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-21 14:58 JST
 
 This section supersedes the 14:26 JST override below where they differ.
