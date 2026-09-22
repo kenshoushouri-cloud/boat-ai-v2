@@ -1,0 +1,57 @@
+name: LINE two-point notification contract
+
+on:
+  pull_request:
+    paths:
+      - 'line_buy_notification_layout.py'
+      - 'v23_line_notifier_batch_pg.py'
+      - 'tests/test_line_buy_notification_layout.py'
+      - '.github/workflows/line-two-point-notification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  notification-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest only
+        run: python -m pip install pytest
+      - name: Compile and test main-cover notification behavior
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile \
+            line_buy_notification_layout.py \
+            v23_line_notifier_batch_pg.py \
+            tests/test_line_buy_notification_layout.py
+          pytest -q tests/test_line_buy_notification_layout.py
+          python - <<'PY'
+          from pathlib import Path
+
+          notifier = Path('v23_line_notifier_batch_pg.py').read_text(encoding='utf-8')
+          helper = Path('line_buy_notification_layout.py').read_text(encoding='utf-8')
+
+          assert "recommendation = 'buy'" in notifier
+          assert 'select_notification_decisions' in notifier
+          assert '本線' in notifier
+          assert '押さえ' in notifier
+          assert 'BUY条件該当なし' in notifier
+          assert 'BUY条件未満の買い目は追加しません' in notifier
+          assert 'MAX_POINTS_PER_RACE = 2' in helper
+
+          # Notification layout must not introduce a new purchase/threshold surface.
+          low = helper.lower()
+          for forbidden in (
+              'requests', 'psycopg', 'database_url', 'line_channel_access_token',
+              'raw_ev >', 'odds_min', 'odds_max', 'stake_yen', 'purchase_action=true'
+          ):
+              assert forbidden not in low, forbidden
+          PY
