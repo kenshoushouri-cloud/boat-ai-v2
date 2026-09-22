@@ -223,6 +223,10 @@ def parse_active_evidence(data: Any) -> dict[str, Any]:
     if not isinstance(evidence_id, str) or not evidence_id:
         raise V4OfficialActiveAvailabilityParserError("evidence_id missing")
 
+    evidence_binding_sha256 = hashlib.sha256(
+        excerpt.encode("utf-8")
+    ).hexdigest()
+
     return {
         "contract": "candidate_discovery_v4_official_availability_evidence_v1",
         "target_date": target_date,
@@ -237,6 +241,7 @@ def parse_active_evidence(data: Any) -> dict[str, Any]:
         "source_updated_at": source_updated_raw,
         "source_url": source_url,
         "source_content_sha256": digest,
+        "evidence_binding_sha256": evidence_binding_sha256,
         "matched_active_marker": "投票",
         "real_raw_fixture_required_before_production": True,
         "purchase_action": False,
