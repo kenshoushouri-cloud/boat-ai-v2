@@ -87,7 +87,7 @@ jobs:
           assert 'TZ=Asia/Tokyo date +%F' in workflow
           assert 'canonical_core_payload_sha256' in workflow
           assert 'candidate-discovery-v4-prospective-freeze.json.core.sha256' in workflow
-          assert 'candidate-discovery-v4-availability-raw-${{ github.run_id }}' in workflow
+          assert 'candidate-discovery-v4-availability-raw-' in workflow
           assert 'continue-on-error: true' in workflow
           assert 'CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE' in workflow
           PY
