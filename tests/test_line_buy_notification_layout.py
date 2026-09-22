@@ -140,6 +140,44 @@ def test_batch_message_shows_main_and_cover(monkeypatch):
     assert "BUY条件未満の買い目は追加しません" in message
 
 
+def test_batch_send_marks_only_points_actually_visible(monkeypatch):
+    notifier = _load_notifier_for_format_test(monkeypatch)
+    monkeypatch.setattr(notifier, "BATCH_NOTIFY", True)
+    monkeypatch.setattr(notifier, "MAX_ITEMS_PER_MESSAGE", 1)
+    monkeypatch.setattr(notifier, "DRY_RUN", False)
+    monkeypatch.setattr(notifier, "_require_settings", lambda: None)
+    monkeypatch.setattr(notifier, "_ensure_schema", lambda: None)
+    monkeypatch.setattr(notifier, "_usage_guard", lambda: None)
+
+    decisions = [
+        {**row("20260923_02_08", "1-2-3", 10), "_line_point_order": 1},
+        {**row("20260923_02_08", "1-3-2", 9), "_line_point_order": 2},
+        {**row("20260923_17_04", "2-3-1", 8), "_line_point_order": 1},
+    ]
+    monkeypatch.setattr(notifier, "fetch_buy_decisions", lambda: decisions)
+    monkeypatch.setattr(
+        notifier,
+        "send_line_message",
+        lambda text: {"status_code": 200, "body": "ok", "dry_run": False},
+    )
+    monkeypatch.setattr(notifier, "insert_notification", lambda *args, **kwargs: "n1")
+    marked = []
+    monkeypatch.setattr(
+        notifier,
+        "mark_decision_notified",
+        lambda decision_id, notification_id: marked.append(
+            (decision_id, notification_id)
+        ),
+    )
+
+    notifier.main()
+
+    assert marked == [
+        ("20260923_02_08:1-2-3", "n1"),
+        ("20260923_02_08:1-3-2", "n1"),
+    ]
+
+
 def test_batch_message_does_not_invent_cover_when_only_one_buy(monkeypatch):
     notifier = _load_notifier_for_format_test(monkeypatch)
     decisions = [
