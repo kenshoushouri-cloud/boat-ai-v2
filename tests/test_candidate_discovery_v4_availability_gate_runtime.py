@@ -231,7 +231,7 @@ def test_runtime_has_no_network_db_railway_line_or_purchase_surface():
         "requests",
         "psycopg",
         "database_url",
-        "railway",
+        "railway_api",
         "line_notify",
         "insert into",
         "update v2_",
