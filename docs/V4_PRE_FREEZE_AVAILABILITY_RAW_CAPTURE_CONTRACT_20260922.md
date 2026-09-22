@@ -20,11 +20,17 @@ No after-result page is used to reconstruct this evidence.
 
 ## Capture universe
 
-The research capture request takes:
+The preferred research capture request is derived mechanically from the full same-day scheduled/evaluable race universe. The universe builder validates every `race_id / venue_id / race_no / deadline_at`, sorts the normalized rows, and computes a deterministic `race_universe_sha256`.
+
+The resulting request carries:
 
 - exact target date;
-- unique official venue IDs `01..24` from the already-known same-day scheduled/evaluable universe;
+- unique official venue IDs `01..24`;
+- exact scheduled-race count;
+- deterministic race-universe SHA-256;
 - a hard stop equal to the **earliest scheduled race deadline in that universe**.
+
+This prevents a future caller from silently choosing a later hard stop based only on the six selected core races.
 
 The capture plan is deterministic and contains only:
 
@@ -48,6 +54,8 @@ The capture fails closed unless:
 A later V4 freeze must still independently verify that each evidence `observed_at` is at or before the artifact freeze timestamp.
 
 ## Preserved evidence
+
+The raw manifest also repeats the scheduled-race count and race-universe SHA-256 so the preserved official sources remain tied to the exact pre-freeze universe identity.
 
 For every source the raw manifest records:
 
