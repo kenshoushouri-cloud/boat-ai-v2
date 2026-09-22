@@ -88,13 +88,17 @@ Scope is safety-relevant. Venue-level `cancelled_postponed` is sufficient to blo
 
 A race-scoped positive parser is now separately preregistered against the official venue `raceindex` surface. It requires an isolated selected-race row with the frozen deadline and an explicit `投票` action, while rejecting `発売終了`, `中止`, and `順延`. Its current tests are synthetic contract fixtures; real preserved official active/cancelled raw fixtures are still required before Production wiring.
 
-A race-scoped positive evidence source may not be reused to assert another selected core race. Venue-wide unavailable evidence may be reused only across selected races at the same venue. Venue-range unavailable evidence may be reused only across selected races at the same venue that are all covered by the same `cancel_from_race_no`. A selected race before that boundary cannot be blocked by the range evidence. If one selected race carries whole-venue unavailable evidence while another selected race at the same venue is marked active, the snapshot is internally inconsistent and fails closed.
+A pre-freeze venue `raceindex` source may support multiple selected active races at the **same venue** only when each race carries a valid, distinct `evidence_binding_sha256` produced from its exact isolated race-row excerpt. Reuse across venues, missing row bindings, or duplicate row bindings fail closed.
+
+Venue-wide unavailable evidence may be reused only across selected races at the same venue. Venue-range unavailable evidence may be reused only across selected races at the same venue that are all covered by the same `cancel_from_race_no`. A selected race before that boundary cannot be blocked by the range evidence. If one selected race carries whole-venue unavailable evidence while another selected race at the same venue is marked active, the snapshot is internally inconsistent and fails closed.
 
 Anything else is fail-closed. Missing core race, duplicate race, duplicate/unknown evidence ID, unknown scope/status, race/venue mismatch, malformed digest, non-official source, incompatible evidence reuse, or inconsistent venue-wide evidence all fail closed.
 
-The snapshot may contain additional non-core race rows, but all six exact frozen core race IDs must be present and must match their expected venue IDs. Extra rows do not enter the decision and cannot create a replacement candidate.
+The snapshot race-row set must equal the exact six frozen core race IDs. Additional non-core race rows fail closed rather than being silently ignored.
 
-The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing and Production wiring remain separate review boundaries. The acquisition layer is responsible for demonstrating that the preserved raw source actually supports the declared normalized status and scope.
+The pure module does not fetch or parse the BOAT RACE website. Acquisition/parsing and Production wiring remain separate review boundaries. The preregistered raw-capture contract is `docs/V4_PRE_FREEZE_AVAILABILITY_RAW_CAPTURE_CONTRACT_20260922.md`.
+
+Critically, raw availability acquisition must happen before the formal core freeze. Capturing the six selected races first and fetching availability afterward cannot satisfy this guard even when every race deadline is still in the future. The safe sequence is universe-level raw capture first, core freeze second, selected-row binding third.
 
 The official pages are mutable during the day. URL + parsed text/timestamp alone is insufficient provenance. A future acquisition layer must preserve the exact observed official payload (or equivalent immutable raw representation), compute `source_content_sha256` for each evidence source, and carry those source records into this snapshot contract.
 
@@ -154,7 +158,7 @@ This Draft does **not** authorize wiring the guard into the formal V4 workflow.
 
 Before any Production-effect use:
 
-1. specify and test a timing-safe official BOAT RACE acquisition/parser path;
+1. validate the preregistered timing-safe official BOAT RACE pre-freeze raw acquisition path against real preserved fixtures;
 2. preserve every exact raw official observation/provenance item and deterministic SHA-256, and prove each evidence-source digest was computed from its preserved payload;
 3. define behavior for official source outage, ambiguous text, partial venue coverage, venue-vs-race evidence scope and status changes;
 4. prove the guard cannot change candidate ranking or create replacement candidates;
