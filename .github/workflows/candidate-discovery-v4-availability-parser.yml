@@ -9,6 +9,9 @@ on:
       - 'research/candidate_discovery_v4_official_active_parser.py'
       - 'tests/test_candidate_discovery_v4_official_active_parser.py'
       - 'docs/V4_OFFICIAL_ACTIVE_AVAILABILITY_PARSER_CONTRACT_20260921.md'
+      - 'research/candidate_discovery_v4_pre_freeze_availability_capture.py'
+      - 'tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py'
+      - 'docs/V4_PRE_FREEZE_AVAILABILITY_RAW_CAPTURE_CONTRACT_20260922.md'
       - '.github/workflows/candidate-discovery-v4-availability-parser.yml'
 
 permissions:
@@ -35,7 +38,10 @@ jobs:
             research/candidate_discovery_v4_official_availability_parser.py \
             tests/test_candidate_discovery_v4_official_availability_parser.py \
             research/candidate_discovery_v4_official_active_parser.py \
-            tests/test_candidate_discovery_v4_official_active_parser.py
+            tests/test_candidate_discovery_v4_official_active_parser.py \
+            research/candidate_discovery_v4_pre_freeze_availability_capture.py \
+            tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py
           pytest -q \
             tests/test_candidate_discovery_v4_official_availability_parser.py \
-            tests/test_candidate_discovery_v4_official_active_parser.py
+            tests/test_candidate_discovery_v4_official_active_parser.py \
+            tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py
