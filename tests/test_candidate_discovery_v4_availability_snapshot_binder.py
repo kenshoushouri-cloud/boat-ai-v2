@@ -175,6 +175,43 @@ def test_generated_timestamp_must_match_freeze_completion():
         bind_availability_snapshot(bad_artifact, manifest, payloads)
 
 
+def test_partial_venue_range_blocks_only_covered_core_race():
+    manifest, payloads = raw_fixture()
+    day = (
+        "<html><table>"
+        "<tr><td>戸田</td><td>11R以降中止</td></tr>"
+        "</table></html>"
+    ).encode("utf-8")
+    payloads["day-index.html"] = day
+    day_source = next(
+        source
+        for source in manifest["sources"]
+        if source["source_id"] == "day-index"
+    )
+    day_source["source_content_sha256"] = hashlib.sha256(day).hexdigest()
+    day_source["raw_bytes"] = len(day)
+
+    snapshot = bind_availability_snapshot(artifact(), manifest, payloads)
+    toda = sorted(
+        [row for row in snapshot["races"] if row["venue_id"] == "02"],
+        key=lambda row: row["race_id"],
+    )
+    assert len(toda) == 2
+    r8 = next(row for row in toda if row["race_id"].endswith("_08"))
+    r11 = next(row for row in toda if row["race_id"].endswith("_11"))
+    assert r8["status"] == "active"
+    assert r8["scope"] == "race"
+    assert r11["status"] == "cancelled_postponed"
+    assert r11["scope"] == "venue_race_range"
+    assert r11["cancel_from_race_no"] == 11
+
+    result = evaluate_availability_guard(artifact(), snapshot)
+    assert result["decision"] == "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE"
+    assert [row["race_id"] for row in result["blocked_core_races"]] == [
+        "20260923_02_11"
+    ]
+
+
 def test_raw_capture_after_artifact_freeze_is_rejected():
     manifest, payloads = raw_fixture()
     manifest["capture_completed_at_jst"] = "2026-09-23T08:18:00+09:00"
