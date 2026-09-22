@@ -40,11 +40,12 @@ def artifact():
         )
     return {
         "contract": "candidate_discovery_v4_main_feed_v1",
-        "generated_at": "2026-09-23T08:17:00+09:00",
+        "generated_at_jst": "2026-09-23T08:17:00+09:00",
         "prospective_evidence_eligible": True,
         "purchase_action": False,
         "freeze_provenance": {
             "target_date": "2026-09-23",
+            "completed_at_jst": "2026-09-23T08:17:00+09:00",
             "all_frozen_rows_pre_deadline": True,
         },
         "feed": feed,
@@ -159,6 +160,19 @@ def test_pre_freeze_venue_cancel_raw_binds_blocking_snapshot():
     result = evaluate_availability_guard(artifact(), snapshot)
     assert result["decision"] == "BLOCK_PRE_FREEZE_UNAVAILABLE_CORE"
     assert len(result["blocked_core_races"]) == 2
+
+
+def test_generated_timestamp_must_match_freeze_completion():
+    bad_artifact = artifact()
+    bad_artifact["freeze_provenance"]["completed_at_jst"] = (
+        "2026-09-23T08:17:01+09:00"
+    )
+    manifest, payloads = raw_fixture()
+    with pytest.raises(
+        V4AvailabilitySnapshotBinderError,
+        match="must equal freeze completion",
+    ):
+        bind_availability_snapshot(bad_artifact, manifest, payloads)
 
 
 def test_raw_capture_after_artifact_freeze_is_rejected():
