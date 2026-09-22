@@ -1,5 +1,86 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-22 22:56 JST
+
+This section supersedes the 22:50 JST override below where they differ.
+
+### PR #367 — pre-freeze availability chain complete through pure binder
+
+Current head:
+`6addf17f400fb6fbc9f7a9417b3efb3b799c8926`
+
+State:
+- Draft / mergeable
+- **6/6 CI SUCCESS**
+- no current-main / Production wiring
+
+The research-only chain is now preregistered end-to-end up to the Production-effect boundary:
+
+`full same-day race universe -> pre-freeze official raw capture -> raw SHA verification -> venue/race row extraction -> normalized exact-six snapshot -> availability guard`
+
+New/strengthened components:
+- `candidate_discovery_v4_pre_freeze_availability_capture.py`
+  - request can be derived mechanically from full race-universe rows
+  - validates race/date/venue/race_no/deadline identity
+  - computes deterministic `race_universe_sha256`
+  - uses earliest scheduled deadline in the full universe as hard stop
+  - captures only official same-day index + per-venue `raceindex`
+  - preserves exact raw bytes, timestamps, byte counts and SHA-256
+  - result/payout endpoints are not part of the caller-configurable plan
+- active parser
+  - emits `evidence_binding_sha256` over the exact isolated race-row excerpt
+- guard
+  - same pre-freeze venue source may support multiple selected active races only at the same venue and only through distinct valid row bindings
+  - cross-venue reuse / missing binding / duplicate binding fail closed
+- `candidate_discovery_v4_availability_snapshot_binder.py`
+  - pure/offline raw->snapshot bridge
+  - recomputes raw SHA
+  - rejects capture/source observation after artifact freeze
+  - extracts isolated venue cancellation or exact race row
+  - delegates normalization to the preregistered parsers
+  - emits exactly six frozen core race rows
+  - no replacement/rerank path
+
+Synthetic-contract tests cover:
+- all-active exact-six PASS;
+- same-venue multi-core shared source with distinct bindings;
+- whole-venue cancellation BLOCK;
+- post-freeze raw rejection;
+- raw SHA mismatch;
+- missing venue source;
+- duplicate/ambiguous race row;
+- missing explicit `投票`.
+
+### Remaining availability blockers
+
+The main technical design gap is now closed, but **real evidence is still missing**.
+
+Before any Production-effect use:
+1. obtain a real timing-clean pre-freeze official raw capture on a future date;
+2. run those exact bytes through the raw-capture -> binder -> parser -> guard chain without hand-editing status/scope;
+3. review any real-HTML mismatch in Draft;
+4. obtain explicit approval before merging/wiring this acquisition/guard path into current main or changing formal candidate eligibility behavior.
+
+Do not capture after the core freeze and relabel it as pre-freeze evidence. Do not reconstruct from post-result pages.
+
+### Other current state
+
+Unless superseded above, the 22:36/22:50 overrides remain current:
+- main `8867b77569d836b6c02a075fa6444550b1a46a6c`;
+- #363 23/23 listed CI SUCCESS;
+- #366 5/5 SUCCESS;
+- #368 5/5 SUCCESS;
+- Sep22 fallback run `35667553345` remains the formal capture; delayed scheduled run `35676316305` is later diagnostic with identical canonical core SHA;
+- Sep21 and Sep22 remain post-result unevaluable because a frozen core race had no same-date final result;
+- settled V4 corpus remains `2d / 12R / 24T / +920 JPY / ROI 138.333%`;
+- Railway Production staged changes none;
+- PostgreSQL volume 20GB; latest read-only disk around 4.645GB;
+- no Production/model/threshold/candidate/purchase mutation.
+
+### Safety
+
+`PURCHASE_FALSE / PRE_FREEZE_EVIDENCE_ONLY / EXACT_RAW_SHA / EXACT_SIX / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_CAPACITY_DRIVEN_DELETE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-22 22:50 JST
 
 This section supersedes the 22:36 JST override below where they differ.
