@@ -29,13 +29,16 @@ Required:
 - exact preserved raw payload encoded as base64;
 - expected SHA-256 of those exact bytes;
 - one UTF-8 race-row excerpt that occurs exactly once in the preserved payload;
-- unique evidence ID.
+- unique evidence ID or a shared pre-freeze source ID when multiple selected races at the same venue are bound to distinct rows.
+
+The parser emits `evidence_binding_sha256`, computed from the exact UTF-8 race-row excerpt. This is the row-level identity used when one preserved venue `raceindex` payload supports multiple selected races.
 
 ## PASS conditions
 
 The parser emits `status=active / scope=race` only when all are true:
 
 - observation is on the target date in JST and strictly before the frozen deadline;
+- for formal guard use, the observation must additionally be at or before the V4 artifact freeze timestamp; the guard enforces this separately;
 - source URL date and venue match the selected race;
 - raw SHA-256 matches;
 - the bound excerpt identifies exactly the selected race and no other race row;
@@ -54,6 +57,8 @@ Positive evidence has a higher burden. A venue-level `発売中` marker alone is
 ## Remaining evidence gate
 
 The implementation tests use synthetic contract fixtures only.
+
+The raw source must be captured **before the V4 core is frozen**, not after the six selected races are known. The preregistered capture order is documented in `V4_PRE_FREEZE_AVAILABILITY_RAW_CAPTURE_CONTRACT_20260922.md`.
 
 Before any Production-effect guard can consume this parser output, preserve and review real official raw fixtures from:
 
