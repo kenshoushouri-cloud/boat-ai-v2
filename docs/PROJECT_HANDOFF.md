@@ -1,5 +1,82 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 01:10 JST
+
+This section supersedes the 00:58 JST override below where they differ.
+
+### V4 1–5 point marginal revenue comparison
+
+Draft PR #372:
+- title: `Research: compare V4 1-5 point marginal revenue`
+- head: `81adec1d80d9f1d5c2772af33d70a1e02f745229`
+- Draft / mergeable
+- **7/7 exact-head CI SUCCESS**
+- research-only; no Production merge performed
+
+Immutable current formal corpus:
+- Sep18 artifact ID `10527500527`, JSON SHA `b195b214d8761f4efdf0c37345434ac1e96bff93815c9ecd1b00f9c87aec1a3a`
+- Sep19 artifact ID `10574052434`, JSON SHA `f2a558d0631ac830f3ffb96440b801a17fa91c98639cae8ca186585c30e46bc2`
+- 2 days / 12 formal races / 100 JPY per ticket
+
+Exact evaluated strategies:
+- 1 point/race:
+  - investment 1,200 JPY
+  - gross return 1,190 JPY
+  - profit **-10 JPY**
+  - ROI **99.167%**
+  - exact hits 2/12 = 16.667%
+  - chronological max drawdown 500 JPY
+- 2 points/race:
+  - investment 2,400 JPY
+  - gross return 3,320 JPY
+  - profit **+920 JPY**
+  - ROI **138.333%**
+  - exact hits 4/12 = 33.333%
+  - chronological max drawdown 600 JPY
+
+Exact point-2 marginal contribution:
+- incremental investment 1,200 JPY
+- incremental gross return 2,130 JPY
+- incremental profit **+930 JPY**
+- marginal ROI **177.500%**
+- incremental exact hits 2/12
+
+Current immutable artifacts preserved only ticket ranks 1 and 2.
+
+Therefore:
+- 3 points: `NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS`
+- 4 points: `NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS`
+- 5 points: `NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS`
+
+No result-after regeneration/reconstruction of ranks 3–5 was performed.
+
+PR #372 preregisters an observation-only `research_ranked_tickets` top-five field from the same pre-result V4 distribution so future settled formal days can compare 1/2/3/4/5 points fairly.
+
+Important invariants:
+- formal `CORE_TICKETS=2` remains unchanged;
+- formal `tickets` remains exactly two;
+- `research_ranked_tickets[:2]` must equal the formal top two;
+- no race selection/rerank/model/coefficient/threshold/stake/purchase change;
+- rank 3–5 observation has no eligibility or LINE effect.
+
+Merge boundary:
+the evaluator/evidence is research-only, but merging the prospective top-five observation would change Production artifact schema. **Do not merge PR #372 without explicit user approval.**
+
+Current evidence suggests the second point is economically valuable in the tiny 12-race corpus, but this is not enough to declare two points permanently optimal. Continue review at the existing prospective 30/50/100-case milestones.
+
+### Other current state
+
+Unless superseded above, the 00:58 JST override remains current:
+- main `56cb4165c261c26d5fff460f3c0c1fed33983694`
+- LINE main/cover display merged and Railway auto-deploy SUCCESS
+- PR #370 availability activation remains gated on real timing-clean raw fixture
+- Railway Production staged changes none
+- no Production DB/model/threshold/stake/purchase mutation
+
+### Safety
+
+`PURCHASE_FALSE / FORMAL_CORE_TICKETS_2_UNCHANGED / NO_RESULT_AFTER_RECONSTRUCTION / NO_SYNTHETIC_RANKS / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 00:58 JST
 
 This section supersedes the 00:39 JST override below where they differ.
