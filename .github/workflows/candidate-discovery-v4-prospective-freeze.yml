@@ -8,6 +8,9 @@ on:
       - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
       - 'research/candidate_discovery_v4_contract.py'
       - 'research/candidate_discovery_v4_capture_arbiter.py'
+      - 'research/candidate_discovery_v4_pre_freeze_availability_capture.py'
+      - 'research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py'
+      - 'docs/V4_PRE_FREEZE_AVAILABILITY_SHADOW_ACTIVATION_20260922.md'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
   schedule:
     # 08:16 JST every day. This is one minute after the fixed 08:15 source
@@ -43,7 +46,11 @@ jobs:
           python-version: '3.12'
       - name: Validate prospective freeze wrapper safety
         run: |
-          python -m py_compile research/candidate_discovery_v4_prospective_freeze_pg.py research/candidate_discovery_v4_capture_arbiter.py
+          python -m py_compile \
+            research/candidate_discovery_v4_prospective_freeze_pg.py \
+            research/candidate_discovery_v4_capture_arbiter.py \
+            research/candidate_discovery_v4_pre_freeze_availability_capture.py \
+            research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py
           python tests/test_candidate_discovery_v4_prospective_freeze.py
           python - <<'PY'
           from pathlib import Path
@@ -54,6 +61,20 @@ jobs:
           assert 'earliest_feed_deadline' in text
           assert 'race universe incomplete' in text
           assert 'candidate_discovery_v4_main_feed_pg.py' in text
+
+          capture_pg=Path('research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in capture_pg
+          assert 'build_capture_request_from_universe' in capture_pg
+          assert 'capture_to_directory' in capture_pg
+          assert 'candidate_v4_availability_capture_result_read=0' in capture_pg
+          for forbidden in (
+              'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
+              'insert into ', 'update v2_', 'delete from ', 'alter table ',
+              'drop table ', 'truncate ', 'vacuum ', 'create table ',
+              'line_notify', 'purchase_action=true'
+          ):
+              assert forbidden not in capture_pg, forbidden
+
           for forbidden in (
               'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
               'delete from ', 'insert into ', 'update v2_', 'alter table ',
@@ -66,6 +87,9 @@ jobs:
           assert 'TZ=Asia/Tokyo date +%F' in workflow
           assert 'canonical_core_payload_sha256' in workflow
           assert 'candidate-discovery-v4-prospective-freeze.json.core.sha256' in workflow
+          assert 'candidate-discovery-v4-availability-raw-' in workflow
+          assert 'continue-on-error: true' in workflow
+          assert 'CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE' in workflow
           PY
 
   freeze:
@@ -120,6 +144,33 @@ jobs:
           with open(os.environ['GITHUB_ENV'],'a') as fh:
               fh.write(f'DATABASE_URL={value}\n')
           PY
+      - name: Capture pre-freeze official availability raw (shadow only)
+        id: availability_capture
+        continue-on-error: true
+        env:
+          CANDIDATE_V4_AVAILABILITY_OUTPUT_DIR: candidate-discovery-v4-availability-raw
+          CANDIDATE_V4_AVAILABILITY_REQUEST_OUTPUT: candidate-discovery-v4-availability-capture-request.json
+        run: |
+          python -u research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py | tee candidate-discovery-v4-availability-capture.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_CAPTURE_PURCHASE_ACTION=false$' candidate-discovery-v4-availability-capture.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE$' candidate-discovery-v4-availability-capture.txt
+      - name: Upload pre-freeze availability shadow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-v4-availability-raw-${{ github.run_id }}
+          path: |
+            candidate-discovery-v4-availability-raw/
+            candidate-discovery-v4-availability-capture-request.json
+            candidate-discovery-v4-availability-capture.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Record availability shadow outcome
+        if: always()
+        run: |
+          echo "CANDIDATE_V4_AVAILABILITY_SHADOW_STEP_OUTCOME=${{ steps.availability_capture.outcome }}"
+          echo "CANDIDATE_V4_AVAILABILITY_SHADOW_ELIGIBILITY_EFFECT=0"
+
       - name: Run timestamp-proven pre-result V4 freeze
         env:
           CANDIDATE_V4_RAW_OUTPUT: candidate-discovery-v4-main-feed.raw.json
