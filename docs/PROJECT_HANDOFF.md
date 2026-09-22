@@ -1,5 +1,96 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 00:39 JST
+
+This section supersedes the 2026-09-22 22:56 JST override below where they differ.
+
+### Production availability activation approval / current main
+
+The user explicitly approved proceeding with the V4 pre-freeze availability Production-effect wiring.
+
+Fresh Source of Truth:
+- current main: `79ee376282ba2da444b9f6d4aced8ed5b172e6b2`
+- Railway Production staged changes: none
+- no Railway Variables/Cron/service/volume change
+- no Production DB write
+- `purchase_action=false`
+
+Already merged:
+- PR #367 research availability capture/parser/binder/guard contracts
+  - merge commit `9a80b4a5838fc63ea87c4e86cc77f2f5b890d64e`
+- PR #369 shadow-only Production capture
+  - merge commit `79ee376282ba2da444b9f6d4aced8ed5b172e6b2`
+  - scheduled/fallback V4 workflow now captures timing-clean official availability raw before formal freeze
+  - raw capture still has no eligibility effect on current main
+  - normal formal V4 behavior remains unchanged until activation PR #370 is merged
+
+### PR #370 — Production availability guard activation candidate
+
+PR:
+`Production: enforce V4 pre-freeze availability guard`
+
+Current head:
+`2a6f6f819023562b9d94f2fa273ffbee0b27d181`
+
+State:
+- Draft
+- mergeable=true
+- **7/7 exact-head CI SUCCESS**
+- merge is user-approved **only after the first real timing-clean raw fixture validates the chain**
+
+Important hardening added during activation review:
+- real formal artifact timestamp is `generated_at_jst`; guard/binder now use it
+- when `freeze_provenance.completed_at_jst` exists, it must equal `generated_at_jst`
+- partial venue cancellation such as `11R以降中止` blocks only selected races at/after the boundary during raw binding; earlier selected races still require race-level active evidence
+- runtime verifies capture request/manifest identity, raw filenames, raw SHA-256, exact-six snapshot, no replacement, no rerank and no purchase
+
+Proposed Production behavior after #370 merge:
+1. capture official availability raw before freeze;
+2. generate the existing formal V4 core unchanged;
+3. bind exact frozen six races to preserved raw;
+4. evaluate availability guard;
+5. upload normal `candidate-discovery-v4-prospective-freeze-<run_id>` artifact **only on `PASS_ACTIVE_CORE`**;
+6. if capture/parser/guard fails or a selected race is pre-freeze unavailable, preserve a separate diagnostic guard artifact but do not publish the normal formal artifact;
+7. fallback runs execute the same guard and cannot bypass a block.
+
+No replacement candidate, no rerank, no denominator shrink, no result/payout read, no model/threshold/stake/candidate-count change.
+
+### Real fixture merge gate
+
+Synthetic CI is intentionally insufficient for merge.
+
+Required:
+- first real current-main timing-clean raw capture from #369;
+- matching formal artifact from the same run;
+- raw observation/capture proven before formal freeze;
+- exact raw replay through #370 binder/parser/guard without hand-editing status/scope;
+- supported real decision:
+  - `PASS_ACTIVE_CORE`, or
+  - correctly parsed `BLOCK_PRE_FREEZE_UNAVAILABLE_CORE`;
+- all exact-head #370 CI green.
+
+Any real HTML mismatch, ambiguity, missing raw or timestamp violation keeps #370 unmerged and must be fixed fail-closed in Draft.
+
+### Scheduled natural validation
+
+A one-time exact check is scheduled for **2026-09-23 08:45 JST** after:
+- GitHub natural primary schedule at 08:16 JST, and
+- independent Railway fallback checkpoint at 08:25 JST.
+
+The validation must:
+- re-fetch main / #370 / CI / Railway read-only state;
+- select the earliest timing-clean valid run under the existing capture arbiter;
+- verify raw + formal artifact identities/digests/timestamps;
+- replay exact real bytes through #370;
+- if and only if the real fixture validates and #370 exact-head CI is green, mark #370 ready and merge using the exact validated head SHA;
+- re-fetch main after merge and record evidence.
+
+User approval for this Production-effect merge has already been given in chat on 2026-09-23.
+
+### Safety
+
+`EXPLICIT_USER_APPROVAL / REAL_FIXTURE_BEFORE_MERGE / FAIL_CLOSED / EXACT_SIX / NO_REPLACEMENT / NO_RERANK / NO_RESULT_READ / NO_PAYOUT_READ / NO_DB_WRITE / NO_RAILWAY_CONFIG_CHANGE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-22 22:56 JST
 
 This section supersedes the 22:50 JST override below where they differ.
