@@ -63,6 +63,44 @@ def _visible(fragment: str) -> str:
     return re.sub(r"\s+", "", html.unescape(TAG_RE.sub(" ", fragment)))
 
 
+def _artifact_generated_at(
+    artifact: dict[str, Any],
+    provenance: dict[str, Any],
+) -> datetime:
+    canonical_raw = artifact.get("generated_at_jst")
+    legacy_raw = artifact.get("generated_at")
+    if canonical_raw is None and legacy_raw is None:
+        raise V4AvailabilitySnapshotBinderError(
+            "artifact generated_at_jst missing"
+        )
+
+    generated = _aware(
+        canonical_raw if canonical_raw is not None else legacy_raw,
+        field="artifact generated_at_jst",
+    )
+    if canonical_raw is not None and legacy_raw is not None:
+        legacy = _aware(
+            legacy_raw,
+            field="artifact generated_at",
+        )
+        if legacy != generated:
+            raise V4AvailabilitySnapshotBinderError(
+                "artifact generated timestamp fields disagree"
+            )
+
+    completed_raw = provenance.get("completed_at_jst")
+    if completed_raw is not None:
+        completed = _aware(
+            completed_raw,
+            field="freeze_provenance completed_at_jst",
+        )
+        if completed != generated:
+            raise V4AvailabilitySnapshotBinderError(
+                "artifact generated_at_jst must equal freeze completion"
+            )
+    return generated
+
+
 def _formal_core(artifact: Any) -> tuple[str, datetime, list[dict[str, Any]]]:
     if not isinstance(artifact, dict) or artifact.get("contract") != ARTIFACT_CONTRACT:
         raise V4AvailabilitySnapshotBinderError("unexpected artifact contract")
@@ -78,7 +116,7 @@ def _formal_core(artifact: Any) -> tuple[str, datetime, list[dict[str, Any]]]:
     target_date = provenance.get("target_date")
     if not isinstance(target_date, str):
         raise V4AvailabilitySnapshotBinderError("target_date missing")
-    generated_at = _aware(artifact.get("generated_at"), field="artifact generated_at")
+    generated_at = _artifact_generated_at(artifact, provenance)
 
     rows = []
     for row in artifact.get("feed", []):
