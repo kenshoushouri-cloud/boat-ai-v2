@@ -277,6 +277,9 @@ class AvailabilityGuardTests(unittest.TestCase):
                 "status": "active",
                 "scope": "race",
                 "evidence_id": "extra-race",
+                "evidence_binding_sha256": hashlib.sha256(
+                    b"20260921_01_01"
+                ).hexdigest(),
             }
         )
         with self.assertRaisesRegex(
