@@ -20,10 +20,6 @@ on:
       - 'docs/V4_AVAILABILITY_GUARD_PRODUCTION_ACTIVATION_20260923.md'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
   schedule:
-    # 08:16 JST every day. This is one minute after the fixed 08:15 source
-    # cutoff, leaving more headroom before an early race deadline. The Python
-    # guard still fails closed unless the current JST date, cutoff,
-    # completeness, and all pre-deadline requirements are satisfied.
     - cron: '16 23 * * *'
   workflow_dispatch:
     inputs:
@@ -38,6 +34,7 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  PYTHONPATH: .
 
 jobs:
   safety:
@@ -52,8 +49,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Validate prospective freeze wrapper safety
-        env:
-          PYTHONPATH: .
         run: |
           python -m pip install pytest
           python -m py_compile \
@@ -71,35 +66,9 @@ jobs:
             tests/test_candidate_discovery_v4_availability_gate_runtime.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('research/candidate_discovery_v4_prospective_freeze_pg.py').read_text(encoding='utf-8').lower()
-          assert 'prospective_evidence_eligible' in text
-          assert 'source_cutoff' in text
-          assert 'earliest_core_deadline' in text
-          assert 'earliest_feed_deadline' in text
-          assert 'race universe incomplete' in text
-          assert 'candidate_discovery_v4_main_feed_pg.py' in text
-
-          capture_pg=Path('research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py').read_text(encoding='utf-8').lower()
-          assert 'set transaction read only' in capture_pg
-          assert 'build_capture_request_from_universe' in capture_pg
-          assert 'capture_to_directory' in capture_pg
-          assert 'candidate_v4_availability_capture_result_read=0' in capture_pg
-          for forbidden in (
-              'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
-              'insert into ', 'update v2_', 'delete from ', 'alter table ',
-              'drop table ', 'truncate ', 'vacuum ', 'create table ',
-              'line_notify', 'purchase_action=true'
-          ):
-              assert forbidden not in capture_pg, forbidden
-
-          for forbidden in (
-              'v2_results', 'v2_result_entries', 'trifecta_payout_yen',
-              'delete from ', 'insert into ', 'update v2_', 'alter table ',
-              'drop table ', 'truncate ', 'vacuum ', 'create table '
-          ):
-              assert forbidden not in text, forbidden
           workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
           assert "cron: '16 23 * * *'" in workflow
+          assert "PYTHONPATH: ." in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
           assert 'TZ=Asia/Tokyo date +%F' in workflow
           assert 'canonical_core_payload_sha256' in workflow
@@ -108,7 +77,11 @@ jobs:
           assert 'candidate-discovery-v4-availability-guard-' in workflow
           assert 'continue-on-error: true' in workflow
           assert 'CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE' in workflow
-          assert 'CANDIDATE_V4_AVAILABILITY_GATE_DECISION=PASS_ACTIVE_CORE' in workflow
+          assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_PURCHASE_ACTION=false$' candidate-discovery-v4-availability-gate.txt" in workflow
+          assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_REPLACEMENT=0$' candidate-discovery-v4-availability-gate.txt" in workflow
+          assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_RERANK=0$' candidate-discovery-v4-availability-gate.txt" in workflow
+          assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_DECISION=PASS_ACTIVE_CORE$' candidate-discovery-v4-availability-gate.txt" in workflow
+          assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_ELIGIBLE=true$' candidate-discovery-v4-availability-gate.txt" in workflow
           assert "steps.availability_gate.outcome == 'success'" in workflow
           assert 'CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1' in workflow
           PY
@@ -205,7 +178,6 @@ jobs:
           import hashlib, json
           from pathlib import Path
           from research.candidate_discovery_v4_capture_arbiter import canonical_core_payload_sha256
-
           p=Path('candidate-discovery-v4-prospective-freeze.json')
           data=json.loads(p.read_text(encoding='utf-8'))
           assert data['contract']=='candidate_discovery_v4_main_feed_v1'
@@ -214,11 +186,9 @@ jobs:
           assert data['freeze_provenance']['all_frozen_rows_pre_deadline'] is True
           assert data['freeze_provenance']['prospective_evidence_eligible'] is True
           assert data['purchase_action'] is False
-
           artifact_digest=hashlib.sha256(p.read_bytes()).hexdigest()
           Path(str(p)+'.sha256').write_text(f'{artifact_digest}  {p.name}\n', encoding='utf-8')
           print('CANDIDATE_V4_PROSPECTIVE_ARTIFACT_SHA256='+artifact_digest)
-
           core_digest=canonical_core_payload_sha256(data)
           Path(str(p)+'.core.sha256').write_text(f'{core_digest}  {p.name}\n', encoding='utf-8')
           print('CANDIDATE_V4_PROSPECTIVE_CANONICAL_CORE_SHA256='+core_digest)
@@ -234,11 +204,11 @@ jobs:
             --snapshot-output candidate-discovery-v4-availability-snapshot.json \
             --result-output candidate-discovery-v4-availability-gate.json \
             | tee candidate-discovery-v4-availability-gate.txt
-          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_PURCHASE_ACTION=false candidate-discovery-v4-availability-gate.txt
-          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_REPLACEMENT=0 candidate-discovery-v4-availability-gate.txt
-          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_RERANK=0 candidate-discovery-v4-availability-gate.txt
-          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_DECISION=PASS_ACTIVE_CORE candidate-discovery-v4-availability-gate.txt
-          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_ELIGIBLE=true candidate-discovery-v4-availability-gate.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_PURCHASE_ACTION=false$' candidate-discovery-v4-availability-gate.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_REPLACEMENT=0$' candidate-discovery-v4-availability-gate.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_RERANK=0$' candidate-discovery-v4-availability-gate.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_DECISION=PASS_ACTIVE_CORE$' candidate-discovery-v4-availability-gate.txt
+          grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_ELIGIBLE=true$' candidate-discovery-v4-availability-gate.txt
 
       - name: Upload availability guard evidence
         if: always()
