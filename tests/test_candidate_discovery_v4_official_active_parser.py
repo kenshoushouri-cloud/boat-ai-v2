@@ -43,6 +43,9 @@ def test_explicit_predeadline_race_row_betting_action_parses_active():
     assert result["status"] == "active"
     assert result["scope"] == "race"
     assert result["matched_active_marker"] == "投票"
+    assert result["evidence_binding_sha256"] == hashlib.sha256(
+        active_input()["race_row_excerpt_utf8"].encode("utf-8")
+    ).hexdigest()
     assert result["real_raw_fixture_required_before_production"] is True
     assert result["purchase_action"] is False
 
