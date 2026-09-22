@@ -1,5 +1,81 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-22 22:50 JST
+
+This section supersedes the 22:36 JST override below where they differ.
+
+### PR #367 — pre-freeze availability acquisition order fixed
+
+Current head:
+`d494181207cc8f6f4a0bb0422f6758fd58ad6bfc`
+
+State:
+- Draft / mergeable
+- **6/6 CI SUCCESS**
+- no current-main / Production wiring
+
+Important timing-contract correction:
+
+The guard requires every availability evidence observation to be no later than the V4 artifact freeze timestamp. Therefore:
+
+`freeze six core races -> fetch official availability -> call it pre-freeze evidence`
+
+is invalid, even when the fetch is still before all selected race deadlines.
+
+The preregistered safe order is now:
+
+`08:15 source cutoff -> capture official availability raw for the same-day venue universe -> freeze V4 core -> bind selected core rows to preserved raw`
+
+New research-only files:
+- `research/candidate_discovery_v4_pre_freeze_availability_capture.py`
+- `tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py`
+- `docs/V4_PRE_FREEZE_AVAILABILITY_RAW_CAPTURE_CONTRACT_20260922.md`
+
+Capture contract:
+- target date + unique official venue IDs + earliest scheduled-universe deadline hard stop
+- one same-day official `race/index?hd=YYYYMMDD`
+- one official `race/raceindex?hd=YYYYMMDD&jcd=XX` per scheduled venue
+- no caller-configurable result/payout endpoint
+- capture starts at/after 08:15 JST
+- every source must complete before the preregistered earliest scheduled race deadline
+- exact raw bytes, observation time, byte count and SHA-256 are preserved
+- redirect, empty payload, oversized payload or timing overrun fail closed
+- `purchase_action=false`
+
+Same-venue multi-core handling:
+- active parser emits `evidence_binding_sha256` over the exact isolated race-row excerpt
+- one preserved pre-freeze venue source may support multiple selected active races at the same venue only with distinct valid row-binding SHAs
+- cross-venue reuse, missing row bindings or duplicate row bindings fail closed
+
+This closes the design-order gap only. **Real timing-clean official raw fixtures are still not captured by current main.** Any Production-effect merge/wiring of this capture layer remains explicit-approval gated.
+
+### Current stable state
+
+Unless superseded above, the 22:36 JST override remains current:
+- main `8867b77569d836b6c02a075fa6444550b1a46a6c`
+- #363 all 23 listed CI SUCCESS
+- #366 5/5 SUCCESS
+- #368 5/5 SUCCESS
+- Sep22 fallback formal capture remains valid; delayed primary is diagnostic only
+- Sep21/Sep22 remain excluded from settled formal metrics due cancelled frozen core races
+- formally evaluated corpus remains `2d / 12R / 24T / +920 JPY / ROI 138.333%`
+- Railway Production staged changes none
+- no Production/model/threshold/candidate/purchase mutation
+
+### Next safe boundary
+
+The next timing-clean raw availability fixture cannot be manufactured after freeze. To collect it automatically on a future date, the preregistered pre-freeze capture path must first be reviewed and any main/Production-effect workflow wiring explicitly approved.
+
+Until then:
+- do not use post-freeze or post-result pages as missing pre-freeze evidence;
+- keep natural fallback monitoring read-only;
+- keep Storage/Hobby work research-only;
+- no forced plan downgrade or capacity-driven deletion.
+
+### Safety
+
+`PURCHASE_FALSE / PRE_FREEZE_EVIDENCE_ONLY / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_CAPACITY_DRIVEN_DELETE / NO_PRODUCTION_MUTATION / NO_SECRET_OUTPUT`
+
 ## LATEST OVERRIDE — 2026-09-22 22:36 JST
 
 This section supersedes the 2026-09-21 14:58 JST override below where they differ.
