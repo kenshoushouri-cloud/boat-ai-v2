@@ -247,17 +247,27 @@ def _decode(raw: bytes, *, source_id: str) -> str:
         ) from exc
 
 
-def _venue_unavailable_excerpt(text: str, venue_id: str) -> str | None:
+def _venue_unavailable_excerpt(
+    text: str,
+    venue_id: str,
+    *,
+    race_no: int,
+) -> str | None:
     venue_name = VENUE_NAMES[venue_id]
     candidates = []
     for fragment in TR_RE.findall(text):
         visible = _visible(fragment)
         if venue_name not in visible:
             continue
-        if (
-            any(marker in visible for marker in VENUE_CANCEL_MARKERS)
-            or RANGE_CANCEL_RE.search(visible) is not None
-        ):
+
+        range_match = RANGE_CANCEL_RE.search(visible)
+        if range_match is not None:
+            if race_no < int(range_match.group(1)):
+                continue
+            candidates.append(fragment)
+            continue
+
+        if any(marker in visible for marker in VENUE_CANCEL_MARKERS):
             candidates.append(fragment)
     if not candidates:
         return None
@@ -315,7 +325,11 @@ def bind_availability_snapshot(
         race_id = row["race_id"]
         venue_id = row["venue_id"]
 
-        unavailable_excerpt = _venue_unavailable_excerpt(day_text, venue_id)
+        unavailable_excerpt = _venue_unavailable_excerpt(
+            day_text,
+            venue_id,
+            race_no=row["race_no"],
+        )
         if unavailable_excerpt is not None:
             try:
                 parsed = parse_unavailability_evidence(
