@@ -179,7 +179,7 @@ def capture_sources(
         before = before.astimezone(JST)
         if before >= hard_stop:
             raise V4PreFreezeAvailabilityCaptureError(
-                f"capture hard stop reached before source: {source['source_id']}"
+                f"earliest scheduled deadline reached before source: {source['source_id']}"
             )
 
         raw, final_url = fetcher(source["source_url"])
