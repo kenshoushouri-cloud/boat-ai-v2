@@ -15,6 +15,11 @@ on:
       - 'research/candidate_discovery_v4_availability_snapshot_binder.py'
       - 'tests/test_candidate_discovery_v4_availability_snapshot_binder.py'
       - 'docs/V4_AVAILABILITY_SNAPSHOT_BINDER_CONTRACT_20260922.md'
+      - 'research/candidate_discovery_v4_availability_guard.py'
+      - 'tests/test_candidate_discovery_v4_availability_guard.py'
+      - 'research/candidate_discovery_v4_availability_gate_runtime.py'
+      - 'tests/test_candidate_discovery_v4_availability_gate_runtime.py'
+      - 'docs/V4_AVAILABILITY_GUARD_PRODUCTION_ACTIVATION_20260923.md'
       - '.github/workflows/candidate-discovery-v4-availability-parser.yml'
 
 permissions:
@@ -45,9 +50,15 @@ jobs:
             research/candidate_discovery_v4_pre_freeze_availability_capture.py \
             tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py \
             research/candidate_discovery_v4_availability_snapshot_binder.py \
-            tests/test_candidate_discovery_v4_availability_snapshot_binder.py
+            tests/test_candidate_discovery_v4_availability_snapshot_binder.py \
+            research/candidate_discovery_v4_availability_guard.py \
+            tests/test_candidate_discovery_v4_availability_guard.py \
+            research/candidate_discovery_v4_availability_gate_runtime.py \
+            tests/test_candidate_discovery_v4_availability_gate_runtime.py
           pytest -q \
             tests/test_candidate_discovery_v4_official_availability_parser.py \
             tests/test_candidate_discovery_v4_official_active_parser.py \
             tests/test_candidate_discovery_v4_pre_freeze_availability_capture.py \
-            tests/test_candidate_discovery_v4_availability_snapshot_binder.py
+            tests/test_candidate_discovery_v4_availability_snapshot_binder.py \
+            tests/test_candidate_discovery_v4_availability_guard.py \
+            tests/test_candidate_discovery_v4_availability_gate_runtime.py
