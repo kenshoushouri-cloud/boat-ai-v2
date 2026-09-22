@@ -1,5 +1,71 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 00:58 JST
+
+This section supersedes the 00:39 JST override below where they differ.
+
+### Production LINE main/cover display — user approved and merged
+
+The user explicitly approved changing actual LINE notification behavior.
+
+Fresh Source of Truth:
+- current main: `56cb4165c261c26d5fff460f3c0c1fed33983694`
+- PR #371 `Production: show main and cover points in LINE`: merged
+- validated PR head: `7b6b87839c134fe9ac647f81b74d068d50270b23`
+- merge/main SHA: `56cb4165c261c26d5fff460f3c0c1fed33983694`
+- exact-head CI: **5/5 SUCCESS**
+- Railway Production staged changes: none
+- no manual Railway redeploy/config change
+- `cron-final-check` automatic deployment `abff25d7-10cb-47ad-b810-dfea285e42c7`: **SUCCESS**
+
+Production LINE path:
+`cron-final-check -> run_final_pg.py -> v25_final_realtime_pipeline_pg.py -> v23_line_notifier_batch_pg.py`
+
+New notification behavior:
+- considers only existing `recommendation='buy'` decisions;
+- maximum two distinct notified BUY tickets per race;
+- first eligible distinct ticket in existing final-score order = `本線`;
+- second distinct existing BUY = `押さえ`;
+- if there is only one BUY decision, message says `押さえ: BUY条件該当なし`;
+- identical tickets from different modes do not consume the second slot;
+- an already-notified main counts toward the two-point cap; a later newly eligible second BUY is labeled `押さえ`;
+- third and later BUY tickets are not notified;
+- only race groups actually visible in the LINE body are marked notified; hidden/deferred groups are not silently marked sent.
+
+Important scope boundary:
+- this is a display/notification policy over the existing realtime BUY decision rows;
+- no BUY/odds/probability threshold was relaxed;
+- no second ticket is synthesized when it does not already satisfy BUY;
+- no model/coefficient/stake/candidate-generation change;
+- no automatic purchase change;
+- this does **not** claim that realtime LINE `本線/押さえ` are identical to V4 formal `core_order 1/2`.
+- exact V4-to-LINE binding remains a separate future integration.
+
+Evidence:
+- `line_buy_notification_layout.py`
+- `tests/test_line_buy_notification_layout.py`
+- `docs/LINE_TWO_POINT_NOTIFICATION_20260923.md`
+- `.github/workflows/line-two-point-notification.yml`
+
+### PR #370 availability activation remains pending real fixture
+
+PR #370:
+- head `2a6f6f819023562b9d94f2fa273ffbee0b27d181`
+- Draft / mergeable
+- **7/7 exact-head CI SUCCESS**
+- merge is still gated on the first real timing-clean pre-freeze official raw fixture from current main shadow capture.
+
+Natural validation remains scheduled for 2026-09-23 08:45 JST:
+- re-fetch current main / Railway / PR #370;
+- select earliest timing-clean valid V4 capture using the preregistered arbiter;
+- replay exact real raw bytes through #370 binder/parser/guard without hand-editing;
+- if real fixture validates and exact-head CI is still green, the user has already approved #370 ready+merge;
+- if real HTML mismatches, do not merge; keep fail closed and fix Draft safely.
+
+### Safety
+
+`LINE_MAIN_COVER_DISPLAY_ACTIVE / EXISTING_BUY_ONLY / MAX_2_DISTINCT_POINTS_PER_RACE / NO_THRESHOLD_RELAXATION / NO_SYNTHETIC_COVER / NO_AUTO_PURCHASE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-23 00:39 JST
 
 This section supersedes the 2026-09-22 22:56 JST override below where they differ.
