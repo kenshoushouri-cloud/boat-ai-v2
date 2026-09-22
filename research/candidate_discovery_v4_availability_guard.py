@@ -239,6 +239,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
         scope = raw.get("scope")
         cancel_from_race_no = raw.get("cancel_from_race_no")
         evidence_id = raw.get("evidence_id")
+        evidence_binding_sha256 = raw.get("evidence_binding_sha256")
         if not isinstance(race_id, str) or not race_id:
             raise V4AvailabilityGuardError(f"invalid availability race_id: {race_id!r}")
         if race_id in by_race:
@@ -257,6 +258,15 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             raise V4AvailabilityGuardError(
                 f"non-race active status is insufficient for core race: {race_id}"
             )
+        if status == ACTIVE:
+            if (
+                not isinstance(evidence_binding_sha256, str)
+                or len(evidence_binding_sha256) != 64
+                or any(ch not in "0123456789abcdef" for ch in evidence_binding_sha256)
+            ):
+                raise V4AvailabilityGuardError(
+                    f"active race evidence_binding_sha256 required: {race_id}"
+                )
         if scope == VENUE_RANGE_SCOPE:
             if status != UNAVAILABLE:
                 raise V4AvailabilityGuardError(
@@ -284,6 +294,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             "status": status,
             "scope": scope,
             "evidence_id": evidence_id,
+            "evidence_binding_sha256": evidence_binding_sha256,
             "cancel_from_race_no": cancel_from_race_no,
         }
 
@@ -329,6 +340,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 "venue_id": row["venue_id"],
                 "status": observed["status"],
                 "scope": observed["scope"],
+                "evidence_binding_sha256": observed.get("evidence_binding_sha256"),
                 "cancel_from_race_no": observed.get("cancel_from_race_no"),
             }
         )
@@ -345,11 +357,27 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
             for item in used_by
         )
         same_range = len({item.get("cancel_from_race_no") for item in used_by}) == 1
+        race_active_only = all(
+            item["scope"] == RACE_SCOPE and item["status"] == ACTIVE
+            for item in used_by
+        )
+        bindings = [item.get("evidence_binding_sha256") for item in used_by]
+        distinct_bound_race_rows = (
+            race_active_only
+            and all(
+                isinstance(binding, str)
+                and len(binding) == 64
+                and all(ch in "0123456789abcdef" for ch in binding)
+                for binding in bindings
+            )
+            and len(set(bindings)) == len(bindings)
+        )
         if not (
             same_venue
             and (
                 venue_unavailable_only
                 or (venue_range_unavailable_only and same_range)
+                or distinct_bound_race_rows
             )
         ):
             raise V4AvailabilityGuardError(
@@ -381,6 +409,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 "status": observed["status"],
                 "scope": observed["scope"],
                 "cancel_from_race_no": observed.get("cancel_from_race_no"),
+                "evidence_binding_sha256": observed.get("evidence_binding_sha256"),
                 **source,
             }
         )
