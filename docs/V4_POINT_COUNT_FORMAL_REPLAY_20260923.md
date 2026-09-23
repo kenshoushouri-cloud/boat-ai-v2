@@ -32,6 +32,23 @@ For each day:
 Missing or cancelled formal races block the whole day. There is no 5R shrink,
 synthetic zero, replacement race or later-date substitution.
 
+## Existing post-result evaluator adapter
+
+The bridge also accepts the frozen output contract from
+`candidate_discovery_v4_post_result_eval.py`.
+
+`outcomes_from_post_result_eval(...)` verifies:
+
+- formal-core-only and legacy-excluded flags;
+- fixed 100 JPY/ticket stake;
+- exact six races;
+- exact-hit flags against the stored formal top two and actual trifecta;
+- summary race/ticket/hit/investment/gross/profit totals.
+
+Only then is that evidence converted into the exact-six final-outcome contract
+used by the top-five replay. This avoids retyping official outcomes into a
+second file and reduces evidence-mixing risk.
+
 ## Output
 
 The bridge delegates to `v4_point_count_marginal_revenue.py` and emits
