@@ -8,6 +8,7 @@ from research.v4_position_conditional_blend_walkforward_pg import (
     blend_distribution,
     choose_alpha,
     first_marginals,
+    paired_day_bootstrap,
 )
 
 
@@ -137,3 +138,34 @@ def test_workflow_is_non_enumerating():
     assert "postgres-recovery" in workflow
     assert "".join(("railway", " variable", " list")) not in workflow
     assert "".join(("print", "env")) not in workflow
+
+
+
+def test_paired_day_bootstrap_is_deterministic_and_paired():
+    challenger = [
+        row("2025-08-15", 2, 18.0),
+        row("2025-08-16", 3, 18.0),
+        row("2025-08-17", 1, 18.0),
+    ]
+    control = [
+        row("2025-08-15", 1, 18.0),
+        row("2025-08-16", 2, 18.0),
+        row("2025-08-17", 1, 18.0),
+    ]
+    a = paired_day_bootstrap(challenger, control, samples=200, seed=7)
+    b = paired_day_bootstrap(challenger, control, samples=200, seed=7)
+    assert a == b
+    assert a["days"] == 3
+    assert a["observed_top2_hit_rate_pp"] == 11.111
+    assert a["positive_share_percent"] > 0.0
+
+
+def test_paired_day_bootstrap_rejects_date_mismatch():
+    challenger = [row("2025-08-15", 2, 18.0)]
+    control = [row("2025-08-16", 1, 18.0)]
+    try:
+        paired_day_bootstrap(challenger, control, samples=10, seed=1)
+    except ValueError as exc:
+        assert "date mismatch" in str(exc)
+    else:
+        raise AssertionError("date mismatch must fail closed")
