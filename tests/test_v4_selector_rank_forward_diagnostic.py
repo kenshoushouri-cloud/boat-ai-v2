@@ -158,8 +158,8 @@ def test_source_has_no_mutating_or_integration_surface():
     ):
         assert forbidden not in source, forbidden
 
-    assert '"race_score_gate_allowed": false' not in source
-    assert '"candidate_count_change_allowed": false' not in source
-    assert '"threshold_change_allowed": false' not in source
-    assert '"promotion_allowed": false' not in source
-    assert '"race_score_gate_allowed": false' not in source
+    assert '"race_score_gate_allowed": false' in source
+    assert '"candidate_count_change_allowed": false' in source
+    assert '"threshold_change_allowed": false' in source
+    assert '"promotion_allowed": false' in source
+    assert '"race_score_gate_allowed": false' in source
