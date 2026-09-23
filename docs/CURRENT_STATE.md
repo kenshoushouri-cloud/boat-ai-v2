@@ -1,5 +1,76 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 10:09 JST
+
+This section supersedes the 10:05 JST override below where they differ.
+
+### Current Source of Truth
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- PR #374 availability activation: Draft / mergeable / **7/7 exact-head CI SUCCESS**
+- PR #375 top-five formal replay bridge: Draft / mergeable / **5/5 exact-head CI SUCCESS**
+- main intentionally unchanged while waiting for the 2026-09-24 real availability fixture gate
+- no Production DB/model/coefficient/threshold/stake/candidate-count mutation
+- `purchase_action=false`
+
+### PR #375 — post-result evidence adapter added
+
+Current head:
+`248f634b587eae4c419a9194c5ae2e8c989c8fa1`
+
+PR #375 remains pure/offline research and Draft.
+
+It now accepts existing frozen post-result evidence from PR #366 instead of requiring outcomes to be manually re-entered.
+
+Adapter checks before conversion:
+- contract must be `candidate_discovery_v4_post_result_eval_v1`;
+- `formal_core_only=true`;
+- legacy excluded from formal metrics;
+- fixed stake 100 JPY/ticket;
+- exactly six race rows;
+- stored formal top-two tickets are valid and distinct;
+- each stored `exact_hit` must agree with predicted top two + actual trifecta;
+- summary core-races/core-tickets/exact-hits/investment/gross/profit must recompute exactly.
+
+Only then is the evidence converted to the exact-six final-outcome contract consumed by the top-five replay bridge.
+
+This removes duplicate manual outcome entry and reduces evidence-mixing risk.
+
+The replay still requires:
+- explicit formal artifact SHA-256;
+- exact six formal core races;
+- five pre-result `research_ranked_tickets`;
+- research ranks 1–2 identical to formal core_order 1/2;
+- predeadline freeze;
+- exact-six final outcomes.
+
+No historical 3–5 rank reconstruction is permitted.
+
+### PR #374 / next natural gate
+
+No change to the Production gate:
+- PR #374 remains Draft, mergeable, 7/7 green;
+- 2026-09-23 natural availability shadow failed only because the workflow import path lacked repo-root `PYTHONPATH`;
+- #373 fixed that issue in main;
+- next timing-clean natural fixture is 2026-09-24;
+- a one-time 08:45 JST validation is scheduled to inspect scheduled primary/fallback, verify real raw timing/SHA, replay exact bytes through #374, and merge #374 only if the real-HTML contract passes.
+
+PR #375 is intentionally not merged before that gate so main remains fixed underneath #374 validation.
+
+### Handoff schedule
+
+Per user request, there is no 03:00 JST handoff update.
+
+Recurring handoff updates remain only:
+- 09:00 JST
+- 15:00 JST
+- 21:00 JST
+
+### Safety
+
+`PURCHASE_FALSE / NO_03_JST_HANDOFF / TOP5_PRE_RESULT_ONLY / NO_RESULT_AFTER_RECONSTRUCTION / NO_EVIDENCE_MIXING / NO_RETUNE / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 10:05 JST
 
 This section supersedes the 09:58 JST override below where they differ.
