@@ -113,6 +113,11 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           text=Path('.github/workflows/v4-long-history-walkforward-readonly.yml').read_text(encoding='utf-8').lower()
-          for value in (\n              'railway' + ' variable' + ' list',\n              'railway' + '_' + 'token',\n              'railway-vars' + '.json',\n          ):\n              assert value not in text, value
+          for value in (
+              'railway' + ' variable' + ' list',
+              'railway' + '_' + 'token',
+              'railway-vars' + '.json',
+          ):
+              assert value not in text, value
           print('V4_LONG_HISTORY_SECRET_ENUMERATION=0')
           PY
