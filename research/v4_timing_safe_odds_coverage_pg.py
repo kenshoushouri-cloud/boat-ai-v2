@@ -5,6 +5,7 @@ No outcomes or payouts are read. The purpose is only to diagnose where timing-
 safe odds coverage disappears: any row, complete 120, predeadline, or fixed
 predeadline margins.
 """
+# Period is entirely environment-driven so result-free coverage can be extended without changing query semantics.
 from __future__ import annotations
 
 import json
