@@ -41,7 +41,7 @@ TRAIN_START = date(2025, 7, 1)
 TRAIN_END = date(2026, 8, 9)
 TEST_START = date.fromisoformat(os.getenv("V4_VALUE_TEST_START", "2026-08-25"))
 TEST_END = date.fromisoformat(os.getenv("V4_VALUE_TEST_END", "2026-09-22"))
-ODDS_CUTOFF_MINUTES = int(os.getenv("V4_VALUE_ODDS_CUTOFF_MINUTES", "15"))
+ODDS_CUTOFF_MINUTES = int(os.getenv("V4_VALUE_ODDS_CUTOFF_MINUTES", "5"))
 MAX_LABEL_SPREAD_SECONDS = float(
     os.getenv("V4_VALUE_MAX_LABEL_SPREAD_SECONDS", "60")
 )
@@ -69,8 +69,8 @@ if TEST_END < TEST_START:
     raise RuntimeError("invalid value-test period")
 if TEST_START <= TRAIN_END:
     raise RuntimeError("profit test must start after training end")
-if ODDS_CUTOFF_MINUTES < 5:
-    raise RuntimeError("odds cutoff must preserve operational decision time")
+if ODDS_CUTOFF_MINUTES != 5:
+    raise RuntimeError("odds cutoff is frozen to the existing FINAL late-market 5m operating point")
 if BOOTSTRAP_SAMPLES < 100:
     raise RuntimeError("bootstrap samples too small")
 
