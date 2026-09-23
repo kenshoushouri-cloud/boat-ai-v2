@@ -1,0 +1,109 @@
+name: V4 timing-safe odds coverage
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_timing_safe_odds_coverage_pg.py'
+      - 'tests/test_v4_timing_safe_odds_coverage.py'
+      - '.github/workflows/v4-timing-safe-odds-coverage.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_ODDS_COVERAGE_START: '2026-07-01'
+      V4_ODDS_COVERAGE_END: '2026-09-22'
+      V4_ODDS_COVERAGE_MAX_SPREAD_SECONDS: '60'
+      V4_ODDS_COVERAGE_OUTPUT: 'v4-odds-long-coverage-ladder.json'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate coverage-only contract
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_timing_safe_odds_coverage_pg.py tests/test_v4_timing_safe_odds_coverage.py
+          pytest -q tests/test_v4_timing_safe_odds_coverage.py
+      - name: Install Railway CLI
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          npm install --global @railway/cli
+          railway --version
+      - name: Run coverage ladder
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_timing_safe_odds_coverage_pg.py' \
+            2>&1 | tee v4-odds-long-coverage-ladder.txt
+          grep -q '^RESULT=PASS_READ_ONLY_ODDS_COVERAGE_LADDER
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-odds-long-coverage-${{ github.run_id }}
+          path: |
+            v4-odds-long-coverage-ladder.json
+            v4-odds-long-coverage-ladder.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Confirm no variable enumeration
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/v4-timing-safe-odds-coverage.yml').read_text(encoding='utf-8').lower()
+          forbidden=(
+              ''.join(('railway',' variable',' list')),
+              ''.join(('print','env')),
+              ''.join(('env',' |')),
+          )
+          for value in forbidden:
+              assert value not in text, value
+          print('V4_ODDS_COVERAGE_SECRET_ENUMERATION=0')
+          PY
+ v4-odds-long-coverage-ladder.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-odds-coverage-ladder-${{ github.run_id }}
+          path: |
+            v4-odds-coverage-ladder.json
+            v4-odds-coverage-ladder.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Confirm no variable enumeration
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/v4-timing-safe-odds-coverage.yml').read_text(encoding='utf-8').lower()
+          forbidden=(
+              ''.join(('railway',' variable',' list')),
+              ''.join(('print','env')),
+              ''.join(('env',' |')),
+          )
+          for value in forbidden:
+              assert value not in text, value
+          print('V4_ODDS_COVERAGE_SECRET_ENUMERATION=0')
+          PY
