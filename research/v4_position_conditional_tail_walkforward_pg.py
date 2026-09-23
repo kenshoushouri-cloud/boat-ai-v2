@@ -589,7 +589,8 @@ def main() -> None:
             cur.execute("set local lock_timeout='10s'")
             cur.execute("set local max_parallel_workers_per_gather=0")
 
-            for block_index, block_days in enumerate(calendar_blocks, 1):
+            for block_index, block_day_set in enumerate(calendar_blocks, 1):
+                block_days = sorted(block_day_set)
                 block_training_rows: list[dict[str, Any]] = []
                 block_metrics: list[dict[str, Any]] = []
 
