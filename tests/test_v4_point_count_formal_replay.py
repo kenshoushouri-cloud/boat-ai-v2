@@ -7,6 +7,7 @@ from research.v4_point_count_formal_replay import (
     V4PointCountFormalReplayError,
     build_day_input,
     evaluate_formal_replays,
+    outcomes_from_post_result_eval,
 )
 
 
@@ -214,6 +215,107 @@ def test_artifact_sha_must_be_explicit_lowercase_hex():
         match="artifact_sha256",
     ):
         evaluate_formal_replays([rec])
+
+
+def post_result_eval_fixture():
+    art, outcomes = artifact()
+    races = []
+    exact_hits = 0
+    gross_return = 0
+    for formal, outcome in zip(art["feed"], outcomes["races"]):
+        predicted = [
+            ticket["ticket"]
+            for ticket in sorted(
+                formal["tickets"],
+                key=lambda ticket: ticket["core_order"],
+            )
+        ]
+        exact = outcome["actual_trifecta"] in predicted
+        exact_hits += int(exact)
+        if exact:
+            gross_return += outcome["trifecta_payout_yen"]
+        races.append(
+            {
+                "race_id": outcome["race_id"],
+                "daily_rank": formal["daily_rank"],
+                "tier": formal["tier"],
+                "head_lane": int(predicted[0].split("-")[0]),
+                "predicted_tickets": predicted,
+                "actual_trifecta": outcome["actual_trifecta"],
+                "trifecta_payout_yen": outcome["trifecta_payout_yen"],
+                "exact_hit": exact,
+                "head_hit": True,
+                "first_second_prefix_hit": False,
+                "third_only_miss": False,
+            }
+        )
+    investment = 6 * 2 * 100
+    return {
+        "contract": "candidate_discovery_v4_post_result_eval_v1",
+        "target_date": "2026-09-24",
+        "formal_core_only": True,
+        "legacy_excluded_from_formal_metrics": True,
+        "stake_per_ticket_yen": 100,
+        "races": races,
+        "summary": {
+            "core_races": 6,
+            "core_tickets": 12,
+            "exact_hit_races": exact_hits,
+            "head_hit_races": 6,
+            "first_second_prefix_hit_races": 0,
+            "third_only_miss_races": 0,
+            "investment_yen": investment,
+            "gross_return_yen": gross_return,
+            "profit_yen": gross_return - investment,
+            "roi_percent": round(gross_return / investment * 100.0, 3),
+        },
+    }
+
+
+def test_post_result_eval_adapter_produces_exact_six_final_outcomes():
+    converted = outcomes_from_post_result_eval(post_result_eval_fixture())
+    assert converted["contract"] == "v4_point_count_formal_outcomes_v1"
+    assert converted["target_date"] == "2026-09-24"
+    assert len(converted["races"]) == 6
+    assert {row["status"] for row in converted["races"]} == {"final"}
+
+
+def test_post_result_eval_adapter_rejects_summary_drift():
+    bad = post_result_eval_fixture()
+    bad["summary"]["gross_return_yen"] += 100
+    with pytest.raises(
+        V4PointCountFormalReplayError,
+        match="post-result summary mismatch",
+    ):
+        outcomes_from_post_result_eval(bad)
+
+
+def test_post_result_eval_adapter_rejects_exact_hit_drift():
+    bad = post_result_eval_fixture()
+    bad["races"][0]["exact_hit"] = not bad["races"][0]["exact_hit"]
+    with pytest.raises(
+        V4PointCountFormalReplayError,
+        match="exact_hit disagrees",
+    ):
+        outcomes_from_post_result_eval(bad)
+
+
+def test_post_result_eval_adapter_rejects_nonformal_shape():
+    bad = post_result_eval_fixture()
+    bad["formal_core_only"] = False
+    with pytest.raises(
+        V4PointCountFormalReplayError,
+        match="formal-core only",
+    ):
+        outcomes_from_post_result_eval(bad)
+
+    bad = post_result_eval_fixture()
+    bad["races"] = bad["races"][:-1]
+    with pytest.raises(
+        V4PointCountFormalReplayError,
+        match="exactly six races",
+    ):
+        outcomes_from_post_result_eval(bad)
 
 
 def test_module_has_no_network_db_or_production_surface():
