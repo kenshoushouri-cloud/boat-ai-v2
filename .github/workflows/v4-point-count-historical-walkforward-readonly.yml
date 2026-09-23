@@ -1,0 +1,125 @@
+name: V4 point-count historical walk-forward read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_point_count_historical_walkforward_pg.py'
+      - 'tests/test_v4_point_count_historical_walkforward.py'
+      - 'docs/V4_POINT_COUNT_HISTORICAL_WALKFORWARD_20260923.md'
+      - '.github/workflows/v4-point-count-historical-walkforward-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate read-only historical contract
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            research/v4_point_count_historical_walkforward_pg.py \
+            tests/test_v4_point_count_historical_walkforward.py
+          pytest -q tests/test_v4_point_count_historical_walkforward.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('research/v4_point_count_historical_walkforward_pg.py').read_text(encoding='utf-8')
+          assert "set transaction read only" in p
+          assert "result_read_before_ranking" in p
+          assert '"result_read_before_ranking": False' in p
+          assert '"payout_read_before_ranking": False' in p
+          assert '"db_write": False' in p
+          assert '"purchase_action": False' in p
+          assert "NO_5R_SHRINK" in p
+          assert "NO_REPLACEMENT" in p
+          print("V4_POINT_COUNT_HISTORICAL_VALIDATE=PASS")
+          PY
+
+  historical-report:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      V4_POINTS_BT_START_DATE: '2026-07-01'
+      V4_POINTS_BT_END_DATE: '2026-08-15'
+      V4_POINTS_BT_UNIT_YEN: '100'
+      V4_POINTS_BT_BLOCKS: '4'
+      V4_POINTS_BT_OUTPUT_JSON: 'v4-point-count-historical-walkforward.json'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (
+                      item.get('name')=='DATABASE_PUBLIC_URL'
+                      or item.get('key')=='DATABASE_PUBLIC_URL'
+                  ):
+                      value=item.get('value')
+                      break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+      - name: Run fixed V4 1-5 point historical walk-forward
+        run: |
+          set -euo pipefail
+          python -u research/v4_point_count_historical_walkforward_pg.py \
+            2>&1 | tee v4-point-count-historical-output.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-point-count-historical-output.txt
+      - name: Upload sanitized research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-point-count-historical-walkforward-${{ github.run_id }}
+          path: |
+            v4-point-count-historical-walkforward.json
+            v4-point-count-historical-output.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Clean temporary connection state
+        if: always()
+        run: |
+          rm -f railway-vars.json
+          unset DATABASE_URL || true
