@@ -75,9 +75,17 @@ def test_bootstrap_is_deterministic_and_does_not_mutate_policy():
     assert a["samples"] > 0
 
 
-def test_workflow_has_dedicated_secret_only_and_no_railway_enumeration():
+def test_workflow_uses_only_non_enumerating_read_only_connection_routes():
     workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/v4-long-history-walkforward-readonly.yml").read_text(encoding="utf-8").lower()
     assert "v4_backtest_database_url" in workflow
+    assert "secrets.railway_token" in workflow
+    assert "railway run" in workflow
+    assert "--project" in workflow
+    assert "--environment" in workflow
+    assert "--service" in workflow
+    assert "backtest-analysis" in workflow
     assert "railway variable list" not in workflow
     assert "railway-vars.json" not in workflow
-    assert "railway_token" not in workflow
+    assert "printenv" not in workflow
+    assert "env |" not in workflow
+    assert 'echo "$railway_token' not in workflow
