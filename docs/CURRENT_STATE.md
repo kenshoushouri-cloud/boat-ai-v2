@@ -1,5 +1,113 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 10:30 JST
+
+This section supersedes the 10:09 JST override below where they differ.
+
+### Current Source of Truth
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- PR #374 availability activation: Draft / mergeable / **7/7 exact-head CI SUCCESS**
+- PR #375 top-five formal replay bridge: Draft / mergeable / **5/5 exact-head CI SUCCESS**
+- PR #376 historical 1–5 point walk-forward: Draft / mergeable / **5/5 exact-head workflows SUCCESS**
+- no Production DB/model/coefficient/threshold/stake/candidate-count mutation
+- `purchase_action=false`
+
+### PR #376 — V4 1–5 point historical walk-forward result
+
+Exact head:
+`13dfd99f602dd32c26c33451064270bf5ae9ae9e`
+
+Evidence:
+- workflow run `35806246724`
+- artifact ID `10727519397`
+- artifact digest `sha256:426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+- read-only Production PostgreSQL
+- result/payout queried only after daily six-race + Top5 ranking freeze
+- no odds/EV selection
+- no 5R shrink / replacement / retune
+
+#### Fixed OOS: 2026-07-01..2026-08-15
+
+Coverage:
+- 46/46 days
+- 276 selected races
+- Course any 66.304%
+- Course full6 28.623%
+- Opponent timing-safe 0%
+- Motor 99.275%
+
+Cumulative fixed-point ROI / profit:
+- 1 point: 71.848% / -7,770 JPY
+- 2 points: 72.500% / -15,180 JPY
+- 3 points: 77.826% / -18,360 JPY
+- 4 points: 78.288% / -23,970 JPY
+- 5 points: 69.217% / -42,480 JPY
+
+Nth-point marginal ROI:
+- rank1 71.848%
+- rank2 73.152%
+- rank3 **88.478%**
+- rank4 79.674%
+- rank5 **32.935%**
+
+#### Recent timing-safe window: 2026-09-11..2026-09-22
+
+Coverage:
+- 10/12 days evaluable
+- 60 selected races
+- 2 whole days unevaluable due missing official selected result
+- Course any 100%
+- Course full6 78.333%
+- Opponent timing-safe 90%
+- Motor 98.333%
+
+Cumulative fixed-point ROI / profit:
+- 1 point: 27.667% / -4,340 JPY
+- 2 points: 45.333% / -6,560 JPY
+- 3 points: 60.056% / -7,190 JPY
+- 4 points: 88.250% / -2,820 JPY
+- 5 points: 76.433% / -7,070 JPY
+
+Nth-point marginal ROI:
+- rank1 27.667%
+- rank2 63.000%
+- rank3 **89.500%**
+- rank4 172.833% / +4,370 JPY / only 2 hits
+- rank5 **29.167%**
+
+Robustness:
+- recent rank4 profit disappears on the full-feature subset (Course full6 + Opponent + Motor): rank4 had 0 hits there;
+- rank4 profit came from feature-incomplete races and is high-payout / small-hit dependent;
+- rank3 marginal ROI is much more stable across windows: 88.478% vs 89.500%;
+- rank5 is consistently weak;
+- simple monotone tier policies A<=B<=C also failed to reach profitability in fixed OOS; best OOS ROI was about 82.45%.
+
+### Point-count research conclusion
+
+Do **not** change Production ticket count from this backtest.
+
+Research shortlist:
+- keep current formal **2 points** as control;
+- compare **3 points** in shadow/Forward because rank3 is the most stable additional-ticket signal;
+- keep rank4 diagnostic only until its high-payout effect replicates;
+- deprioritize rank5.
+
+The backtest indicates that fixed ticket count alone is not the main profitability bottleneck. Race selection / probability ranking quality is the more important research target.
+
+The existing Forward 30/50/100-case milestones still govern any Production point-count decision.
+
+### Other active gates
+
+- PR #374 remains waiting for 2026-09-24 real timing-clean availability fixture validation.
+- PR #375 remains pure/offline Draft until #374 is resolved so main stays fixed underneath the Production gate.
+- recurring handoff updates remain 09:00 / 15:00 / 21:00 JST only; no 03:00 JST update.
+
+### Safety
+
+`PURCHASE_FALSE / FORMAL_2_POINTS_UNCHANGED / NO_RETUNE / NO_RESULT_AFTER_RECONSTRUCTION / NO_5R_SHRINK / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 10:09 JST
 
 This section supersedes the 10:05 JST override below where they differ.
