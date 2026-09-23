@@ -118,3 +118,15 @@ def test_workflow_is_non_enumerating():
     assert "postgres-recovery" in workflow
     assert "".join(("railway", " variable", " list")) not in workflow
     assert "".join(("print", "env")) not in workflow
+
+
+def test_main_sorts_set_blocks_before_indexing_dates():
+    root = Path(__file__).resolve().parents[1]
+    source = (
+        root / "research/v4_position_conditional_tail_walkforward_pg.py"
+    ).read_text(encoding="utf-8")
+    assert "for block_index, block_day_set in enumerate(calendar_blocks, 1):" in source
+    assert "block_days = sorted(block_day_set)" in source
+    assert source.index("block_days = sorted(block_day_set)") < source.index(
+        '"start_date": block_days[0]'
+    )
