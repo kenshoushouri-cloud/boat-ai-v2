@@ -80,7 +80,10 @@ def build_day_input(
         raise V4PointCountFormalReplayError(
             "formal artifact purchase_action must be false"
         )
-    if not SHA256_RE.fullmatch(artifact_sha256):
+    if (
+        not isinstance(artifact_sha256, str)
+        or SHA256_RE.fullmatch(artifact_sha256) is None
+    ):
         raise V4PointCountFormalReplayError(
             "artifact_sha256 must be lowercase 64-hex"
         )
