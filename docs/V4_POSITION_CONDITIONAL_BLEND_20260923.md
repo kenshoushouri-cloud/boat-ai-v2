@@ -62,3 +62,18 @@ No result from this study can directly change:
 A positive result would require a separately preregistered prospective shadow.
 
 `CONSERVATIVE_BLEND / PAST_ONLY_ALPHA / FIRST_PLACE_MARGINAL_PRESERVED / CURRENT_SIX_FIXED / FORMAL_2_POINTS / NO_RETUNE / PURCHASE_FALSE`
+
+
+## Uncertainty check
+
+The completed adaptive path and the fixed alpha=0.25 descriptive comparison are also
+reported with a deterministic 20,000-sample **paired day-cluster bootstrap**.
+
+Each bootstrap draw resamples whole evaluated days and always resamples challenger and
+control from the same date together. This preserves within-day dependence and avoids
+pretending that the six races of a day are independent.
+
+The bootstrap is an uncertainty diagnostic only. Because the alpha=0.25 hypothesis was
+formed after earlier historical results, even a confidence interval above zero would
+not convert this iterative study into pristine promotion evidence. A separate
+prospective shadow remains required.
