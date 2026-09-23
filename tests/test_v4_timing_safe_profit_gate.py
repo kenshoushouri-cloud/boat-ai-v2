@@ -84,7 +84,8 @@ def test_source_has_read_only_and_result_after_policy_freeze_contract():
     source = (
         root / "research/v4_timing_safe_profit_gate_pg.py"
     ).read_text(encoding="utf-8")
-    assert source.index("frozen[rid] = freeze_policies_for_race") < source.index(
+    test_loop = source[source.index("for day in hist.daterange(TEST_START, TEST_END):") :]
+    assert test_loop.index("frozen[rid] = freeze_policies_for_race") < test_loop.index(
         "results = hist.fetch_selected_results"
     )
     low = source.lower()
