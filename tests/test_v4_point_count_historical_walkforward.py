@@ -87,3 +87,17 @@ def test_source_enforces_read_only_and_result_after_freeze_boundary():
         "purchase_action=true",
     ):
         assert forbidden not in low, forbidden
+
+
+def test_workflow_never_enumerates_railway_variables_or_uses_railway_token():
+    from pathlib import Path
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github/workflows/v4-point-count-historical-walkforward-readonly.yml"
+    ).read_text(encoding="utf-8").lower()
+
+    assert "railway variable list" not in workflow
+    assert "railway-vars.json" not in workflow
+    assert "railway_token" not in workflow
+    assert "v4_backtest_database_url" in workflow
