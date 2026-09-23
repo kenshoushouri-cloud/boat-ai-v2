@@ -33,11 +33,12 @@ def artifact():
         )
     return {
         "contract": "candidate_discovery_v4_main_feed_v1",
-        "generated_at": "2026-09-21T10:03:12+09:00",
+        "generated_at_jst": "2026-09-21T10:03:12+09:00",
         "prospective_evidence_eligible": True,
         "purchase_action": False,
         "freeze_provenance": {
             "target_date": "2026-09-21",
+            "completed_at_jst": "2026-09-21T10:03:12+09:00",
             "all_frozen_rows_pre_deadline": True,
         },
         "feed": feed,
@@ -242,6 +243,17 @@ class AvailabilityGuardTests(unittest.TestCase):
         status["races"][0]["scope"] = "inferred"
         with self.assertRaisesRegex(V4AvailabilityGuardError, "unknown availability scope"):
             evaluate_availability_guard(artifact(), status)
+
+    def test_generated_timestamp_must_match_freeze_completion(self):
+        bad = artifact()
+        bad["freeze_provenance"]["completed_at_jst"] = (
+            "2026-09-21T10:03:13+09:00"
+        )
+        with self.assertRaisesRegex(
+            V4AvailabilityGuardError,
+            "must equal freeze completion",
+        ):
+            evaluate_availability_guard(bad, snapshot())
 
     def test_evidence_observed_after_freeze_is_rejected(self):
         status = snapshot()
