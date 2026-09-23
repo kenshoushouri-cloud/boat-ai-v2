@@ -109,3 +109,119 @@ No replacement race, synthetic zero, later-date result or rerank is allowed.
 ## Safety
 
 `READ_ONLY_TRANSACTION / NO_ODDS_SELECTION / NO_RESULT_BEFORE_RANKING / NO_5R_SHRINK / NO_REPLACEMENT / NO_RETUNE / NO_LINE / PURCHASE_FALSE`
+
+
+## 2026-09-23 dual-window result
+
+The first immutable sanitized report artifact is:
+
+- workflow run: `35806246724`
+- artifact ID: `10727519397`
+- ZIP SHA-256:
+  `426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+
+### Fixed OOS window — 2026-07-01..2026-08-15
+
+Coverage:
+
+- 46/46 days evaluated;
+- 276 exact selected races;
+- no day shrink;
+- Course any: 66.304%;
+- Course full6: 28.623%;
+- Opponent timing-safe: 0%;
+- Motor: 99.275%.
+
+Marginal Nth-ticket ROI:
+
+- rank1: 71.848%;
+- rank2: 73.152%;
+- rank3: **88.478%**;
+- rank4: 79.674%;
+- rank5: **32.935%**.
+
+### Recent timing-safe window — 2026-09-11..2026-09-22
+
+Coverage:
+
+- 10/12 days evaluable;
+- 60 exact selected races;
+- 2 whole days unevaluable because an exact selected result was unavailable;
+- no 5R shrink;
+- Course any: 100%;
+- Course full6: 78.333%;
+- Opponent timing-safe: 90%;
+- Motor: 98.333%.
+
+Marginal Nth-ticket ROI:
+
+- rank1: 27.667%;
+- rank2: 63.000%;
+- rank3: **89.500%**;
+- rank4: 172.833%;
+- rank5: **29.167%**.
+
+### High-payout sensitivity
+
+The recent rank4 result is not robust:
+
+- only 2 exact rank4 hits;
+- one 9,560 JPY hit contributes **92.189%** of rank4 gross return;
+- removing that one hit reduces rank4 marginal ROI to **13.500%**;
+- among the 40 recent races with Course full6 + Opponent + Motor all present,
+  rank4 had **0 exact hits / 0% marginal ROI**.
+
+Rank3 is much more stable across the two windows:
+
+- OOS marginal ROI: **88.478%**;
+- recent marginal ROI: **89.500%**;
+- OOS marginal profit per race: **-11.522 JPY**;
+- recent marginal profit per race: **-10.500 JPY**.
+
+Rank5 is consistently weak:
+
+- OOS marginal ROI: **32.935%**;
+- recent marginal ROI: **29.167%**.
+
+A deterministic 20,000-resample day-cluster bootstrap is recorded in:
+
+`research/evidence/v4_point_count_historical_sensitivity_20260923.json`
+
+The intervals are wide because payouts are heavy-tailed, so the bootstrap is
+used as an uncertainty diagnostic rather than as a significance claim.
+
+## Current shortlist
+
+Historical replay does **not** support simply increasing the fixed ticket count.
+
+The point-count shortlist is:
+
+- formal comparison: **2 points**;
+- shadow comparison: **3 points**;
+- rank4: diagnostic only until its large-payout effect replicates;
+- rank5: deprioritize.
+
+This is not a Production point-count change.
+
+The current formal two-point policy remains unchanged while Forward evidence
+continues. The third point should be observed as a shadow marginal rank so its
+Forward incremental economics can be compared directly.
+
+## CI secret boundary
+
+The initial report run used an inherited Railway CLI variable-list pattern that
+exists elsewhere in the repository. That pattern is **not retained** in this
+PR.
+
+The workflow now:
+
+- never runs `railway variable list`;
+- never consumes `RAILWAY_TOKEN`;
+- never writes a variable-list JSON file;
+- optionally replays the database report only when a dedicated
+  `V4_BACKTEST_DATABASE_URL` GitHub secret is explicitly configured;
+- otherwise skips the live DB replay while still running all pure contract and
+  evidence tests.
+
+The already-produced report artifact above remains the immutable source for the
+recorded dual-window result.
