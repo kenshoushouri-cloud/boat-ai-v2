@@ -55,11 +55,8 @@ jobs:
     timeout-minutes: 30
     env:
       PYTHONPATH: ${{ github.workspace }}
-      V4_POINTS_BT_START_DATE: '2026-07-01'
-      V4_POINTS_BT_END_DATE: '2026-08-15'
       V4_POINTS_BT_UNIT_YEN: '100'
       V4_POINTS_BT_BLOCKS: '4'
-      V4_POINTS_BT_OUTPUT_JSON: 'v4-point-count-historical-walkforward.json'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,12 +99,59 @@ jobs:
               fh.write(f'DATABASE_URL={value}\n')
           PY
           rm -f railway-vars.json
-      - name: Run fixed V4 1-5 point historical walk-forward
+      - name: Run fixed OOS V4 1-5 point historical walk-forward
+        env:
+          V4_POINTS_BT_START_DATE: '2026-07-01'
+          V4_POINTS_BT_END_DATE: '2026-08-15'
+          V4_POINTS_BT_OUTPUT_JSON: 'v4-point-count-historical-oos.json'
         run: |
           set -euo pipefail
           python -u research/v4_point_count_historical_walkforward_pg.py \
-            2>&1 | tee v4-point-count-historical-output.txt
-          grep -q '^RESULT=PASS_READ_ONLY$' v4-point-count-historical-output.txt
+            2>&1 | tee v4-point-count-historical-oos.txt
+          grep -q '^RESULT=PASS_READ_ONLY      - name: Upload sanitized research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-point-count-historical-walkforward-${{ github.run_id }}
+          path: |
+            v4-point-count-historical-oos.json
+            v4-point-count-historical-oos.txt
+            v4-point-count-historical-recent.json
+            v4-point-count-historical-recent.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Clean temporary connection state
+        if: always()
+        run: |
+          rm -f railway-vars.json
+          unset DATABASE_URL || true
+ v4-point-count-historical-oos.txt
+
+      - name: Run recent timing-safe feature window
+        env:
+          V4_POINTS_BT_START_DATE: '2026-09-11'
+          V4_POINTS_BT_END_DATE: '2026-09-22'
+          V4_POINTS_BT_OUTPUT_JSON: 'v4-point-count-historical-recent.json'
+        run: |
+          set -euo pipefail
+          python -u research/v4_point_count_historical_walkforward_pg.py \
+            2>&1 | tee v4-point-count-historical-recent.txt
+          grep -q '^RESULT=PASS_READ_ONLY      - name: Upload sanitized research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-point-count-historical-walkforward-${{ github.run_id }}
+          path: |
+            v4-point-count-historical-walkforward.json
+            v4-point-count-historical-output.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Clean temporary connection state
+        if: always()
+        run: |
+          rm -f railway-vars.json
+          unset DATABASE_URL || true
+ v4-point-count-historical-recent.txt
       - name: Upload sanitized research evidence
         if: always()
         uses: actions/upload-artifact@v4
