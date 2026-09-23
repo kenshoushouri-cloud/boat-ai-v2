@@ -54,7 +54,7 @@ jobs:
       RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
       RAILWAY_ENVIRONMENT: 'production'
       RAILWAY_DB_SERVICE: 'postgres-recovery'
-      V4_ALPHA025_FORWARD_DATE: ${{ env.V4_ALPHA025_FORWARD_TARGET_DATE }}
+      V4_ALPHA025_FORWARD_DATE: '2026-09-24'
       V4_ALPHA025_FORWARD_OUTPUT: 'v4-alpha025-prospective-shadow.json'
     steps:
       - uses: actions/checkout@v4
