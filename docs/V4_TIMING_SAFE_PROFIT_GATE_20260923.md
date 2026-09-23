@@ -150,3 +150,41 @@ recorded as `NOT_EVALUABLE_ZERO_COVERAGE`.
 The EV threshold grid, point counts, probability sources, training cutoff,
 profit-test dates and research candidate gate are unchanged. No further cutoff
 movement is allowed in response to the 5m/10m ROI results.
+
+
+## Completed 5-minute result — 2026-09-23
+
+The frozen deadline-5m audit completed successfully before the later transient
+database-lock retry failures.
+
+Immutable evidence:
+- workflow run `35855288398`;
+- 5m artifact ID `10747441900`;
+- artifact ZIP SHA-256 `d9809649d7a25bedec46f5ca11fe394e939a5580a23e9f2c2ca5ad26b6a2bcbb`;
+- timing-safe settled races: 71.
+
+Probability quality on the exact same 71 races:
+- de-vigged market LogLoss: 3.53741458;
+- alpha0.25 LogLoss: 3.84490151;
+- current V4 LogLoss: 3.88598104.
+
+Flat ticket results:
+- current 2pt: 142 bets, 10 hits, ROI 56.268%, profit -6,210 JPY;
+- alpha0.25 2pt: 142 bets, 10 hits, ROI 51.056%, profit -6,950 JPY;
+- current 3pt: 213 bets, 13 hits, ROI 50.892%, profit -10,460 JPY;
+- alpha0.25 3pt: 213 bets, 13 hits, ROI 45.869%, profit -11,530 JPY.
+
+Direct model-EV filtering did not rescue profitability:
+- current 2pt EV>=1.00: 10 bets, ROI 85.0%, with the late fixed half at 0%;
+- alpha0.25 2pt EV>=1.00: 14 bets, ROI 60.714%, late half 0%;
+- alpha0.25 3pt EV>=1.00: 30 bets, ROI 28.333%, late half 0%;
+- all stricter tested EV thresholds failed;
+- no policy passed the preregistered research candidate gate.
+
+Conclusion:
+- do not loosen or retune the direct EV thresholds;
+- current/alpha model probabilities are materially worse than the 5m market on this
+  sample;
+- the next research direction is market-first residual value: use the market as the
+  baseline, choose model residual strength by predictive loss only, then test value
+  tickets across the full 120-ticket market on held-out chronological blocks.
