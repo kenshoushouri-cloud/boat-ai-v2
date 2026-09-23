@@ -124,3 +124,29 @@ contract documented on main before this research:
 Five minutes is therefore a fixed, operationally feasible point inside the existing
 late-market decision window while retaining a nonzero manual-action buffer. It is
 not to be moved again in response to ROI.
+
+
+## Coverage-only cutoff refinement — before ROI inspection
+
+The first 15-minute run produced zero evaluable policies because the independent
+no-result coverage ladder found:
+
+- complete coherent 120-ticket labels by deadline-15m: 0 / 174 selected races;
+- by deadline-10m: 18 / 174;
+- by deadline-5m: 71 / 174;
+- by deadline: 121 / 174.
+
+No result, payout, ROI or profit value was used to choose the refinement.
+
+The next fixed evaluation therefore uses:
+
+- **5 minutes before deadline: primary timing-safe profit audit**;
+- **10 minutes before deadline: conservative low-coverage diagnostic**.
+
+The 0-minute cutoff is excluded from profit-candidate consideration because it
+does not preserve enough operational action time. The 15-minute result remains
+recorded as `NOT_EVALUABLE_ZERO_COVERAGE`.
+
+The EV threshold grid, point counts, probability sources, training cutoff,
+profit-test dates and research candidate gate are unchanged. No further cutoff
+movement is allowed in response to the 5m/10m ROI results.
