@@ -74,10 +74,11 @@ The workflow fails closed unless one of these two routes is available:
 
 The second route uses Railway CLI's documented local execution behavior:
 
-`railway run --project <project> --environment production --service backtest-analysis <command>`
+`railway run --project <project> --environment production --service postgres-recovery <command>`
 
-Railway CLI fetches the selected service environment and injects it only into
-the local child process. The workflow does **not** call `railway variable list`,
+Railway CLI fetches the selected database service environment and injects it only into
+the local child process. The child verifies `DATABASE_PUBLIC_URL` exists and maps it to
+`DATABASE_URL` without printing either value. The workflow does **not** call `railway variable list`,
 does not write a variable-list JSON file, does not print the token or
 `DATABASE_URL`, and does not deploy/redeploy/restart/change Railway state.
 
