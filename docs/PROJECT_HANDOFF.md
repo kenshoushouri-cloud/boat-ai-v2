@@ -1,5 +1,81 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 12:02 JST
+
+This section supersedes the 11:42 JST override below where they differ.
+
+### Fresh re-audit
+
+- GitHub main remains `c93422b53c8dc384e87b7d99d444c5902c48253f` (#373).
+- Railway Production project `boat-v2-postgres`: staged changes none / pending work none.
+- PostgreSQL `postgres-recovery` 7d disk (169 samples):
+  - current `4.652175030436782 GB`
+  - average `4.545400805140123 GB`
+  - min `4.420073062399999 GB`
+  - max `4.657085660862745 GB`
+- current PostgreSQL volume config is 20,000 MB.
+- no capacity-driven deletion authorized.
+- no Railway plaintext variable enumeration was used.
+
+Key Production gate is unchanged:
+- PR #374 head `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`
+- Draft / mergeable / 7/7 exact-head CI SUCCESS
+- do not merge before the 2026-09-24 real timing-clean fixture gate.
+- if that exact real-fixture gate passes and exact-head CI remains green, the user's existing conditional Production merge approval applies.
+
+Other point-count Drafts remain unchanged:
+- PR #375 head `248f634b587eae4c419a9194c5ae2e8c989c8fa1`: Draft / mergeable / 5/5 SUCCESS
+- PR #376 head `6123a8820f840081b7067f4015ea9f94257334f0`: Draft / mergeable / 5/5 SUCCESS
+- formal 2 points remains control; 3 points shadow/Forward only; rank4 diagnostic; rank5 deprioritized.
+
+### New Draft PR #377 — selector-rank Forward diagnostics
+
+Created safely from exact current main:
+- PR #377 `Research: preregister V4 selector-rank Forward diagnostics`
+- head `4c7be65f4c5cc8e813a6de031ed73f6d17b28abc`
+- Draft / mergeable
+- 5/5 exact-head CI SUCCESS
+- pure/offline only; no DB/network/Railway/LINE/purchase surface
+- formal 2 points unchanged
+- formal six races unchanged
+- no race-score threshold
+- no candidate-count change
+- no rerank / no result-after reconstruction
+- no Production behavior change
+- does not redefine existing 30/50/100 case milestones.
+
+Immutable PR #376 artifact was re-downloaded and ZIP SHA-256 reverified exactly:
+`426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`.
+
+Historical hypothesis-generation only:
+- fixed OOS daily ranks 1-3 ROI 79.203% vs ranks 4-6 65.797%; difference +13.406 pp; day-cluster bootstrap 95% CI [-20.072, +47.320].
+- recent timing-safe ranks 1-3 ROI 54.333% vs ranks 4-6 36.333%; difference +18.000 pp; CI [-43.500, +77.167].
+- both intervals cross zero.
+- fixed-OOS race-score quartiles are non-monotonic in OOS and recent windows.
+- therefore historical evidence does not support reducing six races, adding a race-score cutoff, changing selector thresholds, or changing Production candidate logic.
+- use selector rank/calibration as Forward diagnostics only.
+
+### Open-PR exact-head audit
+
+All open PR exact-head workflows checked had no failure:
+- #374 7/7; #375 5/5; #376 5/5; #377 5/5
+- #368 5/5; #366 5/5; #363 23/23; other checked heads green
+- #351 had no exact-head workflow runs
+- #329 had 9 SUCCESS + 2 SKIPPED, no failure.
+
+### Until the 2026-09-24 fixture
+
+Keep main fixed under #374 validation:
+- do not merge #374 before the gate;
+- do not merge #375/#376/#377 merely to reduce Draft count;
+- research/docs/read-only evidence collection only;
+- no Production model/coefficient/threshold/candidate/stake change;
+- `purchase_action=false`.
+
+Safety:
+`PURCHASE_FALSE / MAIN_FIXED_FOR_REAL_FIXTURE_GATE / FORMAL_2_POINTS_UNCHANGED / SELECTOR_RANK_DIAGNOSTIC_ONLY / NO_SCORE_GATE / NO_CANDIDATE_COUNT_CHANGE / NO_SECRET_ENUMERATION / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_PRODUCTION_MUTATION`
+
+
 ## LATEST OVERRIDE — 2026-09-23 11:42 JST
 
 This section supersedes the 11:38 JST override below where they differ.
