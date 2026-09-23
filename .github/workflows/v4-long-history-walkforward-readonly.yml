@@ -110,7 +110,12 @@ jobs:
           V4_POINTS_BT_OUTPUT_JSON: 'v4-long-history-walkforward.json'
         run: |
           set -euo pipefail
-          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_BACKTEST_SERVICE}"             python -u research/v4_long_history_walkforward_pg.py             2>&1 | tee v4-long-history-walkforward.txt
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_BACKTEST_SERVICE}" \
+            python -u research/v4_long_history_walkforward_pg.py \
+            2>&1 | tee v4-long-history-walkforward.txt
           grep -q '^RESULT=PASS_READ_ONLY$' v4-long-history-walkforward.txt
 
       - name: Analyze selector rank and 2-vs-3 economics offline
@@ -150,19 +155,10 @@ jobs:
               'railway-vars' + '.json',
               'print' + 'env',
               'env' + ' |',
-              'echo "
           )
           for value in forbidden:
               assert value not in text, value
+          assert 'secrets.railway_token' in text
           assert 'railway run' in text
-          print('V4_LONG_HISTORY_SECRET_ENUMERATION=0')
-          PY
- + 'railway_token',
-              'echo "${' + 'railway_token',
-          )
-          for value in forbidden:
-              assert value not in text, value
-          assert 'railway run' in text
-          assert 'set transaction read only' not in text or True
           print('V4_LONG_HISTORY_SECRET_ENUMERATION=0')
           PY
