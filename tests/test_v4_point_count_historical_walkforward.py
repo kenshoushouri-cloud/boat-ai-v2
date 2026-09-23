@@ -101,3 +101,38 @@ def test_workflow_never_enumerates_railway_variables_or_uses_railway_token():
     assert "railway-vars.json" not in workflow
     assert "railway_token" not in workflow
     assert "v4_backtest_database_url" in workflow
+
+
+def test_frozen_sensitivity_evidence_supports_two_vs_three_shortlist():
+    import json
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "research/evidence/v4_point_count_historical_sensitivity_20260923.json"
+    )
+    evidence = json.loads(path.read_text(encoding="utf-8"))
+    windows = {row["name"]: row for row in evidence["windows"]}
+
+    oos = windows["fixed_oos"]["marginal_ranks"]
+    recent = windows["recent_timing_safe"]["marginal_ranks"]
+
+    assert oos[2]["rank"] == 3
+    assert recent[2]["rank"] == 3
+    assert oos[2]["roi_percent"] < 100.0
+    assert recent[2]["roi_percent"] < 100.0
+
+    assert oos[4]["roi_percent"] < 40.0
+    assert recent[4]["roi_percent"] < 40.0
+
+    rank4_recent = recent[3]
+    assert rank4_recent["largest_hit_share_percent"] > 90.0
+    assert rank4_recent["roi_without_largest_hit_percent"] < 100.0
+    assert (
+        windows["recent_timing_safe"]["full_feature_subset"]["rank_roi_percent"]["4"]
+        == 0.0
+    )
+
+    assert evidence["shortlist"]["formal_points"] == 2
+    assert evidence["shortlist"]["shadow_compare_points"] == 3
+    assert evidence["shortlist"]["production_change"] is False
