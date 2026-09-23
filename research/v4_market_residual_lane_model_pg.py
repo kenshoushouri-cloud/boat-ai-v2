@@ -263,6 +263,10 @@ def freeze_base_race(
         "odds": odds,
         "market_probs": market,
         "model_probs": model,
+        "market_top3": sorted(
+            market,
+            key=lambda ticket: (-float(market[ticket]), ticket),
+        )[:3],
     }
 
 
