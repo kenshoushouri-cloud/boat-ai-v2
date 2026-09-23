@@ -1,3 +1,4 @@
+# Result-free coverage extension; no outcomes or payouts are read.
 name: V4 timing-safe odds long coverage
 
 on:
