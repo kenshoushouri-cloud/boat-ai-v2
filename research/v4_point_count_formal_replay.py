@@ -251,6 +251,140 @@ def build_day_input(
     }
 
 
+def outcomes_from_post_result_eval(data: Any) -> dict[str, Any]:
+    if (
+        not isinstance(data, dict)
+        or data.get("contract") != "candidate_discovery_v4_post_result_eval_v1"
+    ):
+        raise V4PointCountFormalReplayError(
+            "unexpected post-result evaluation contract"
+        )
+    if data.get("formal_core_only") is not True:
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation must be formal-core only"
+        )
+    if data.get("legacy_excluded_from_formal_metrics") is not True:
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation must exclude legacy metrics"
+        )
+    if data.get("stake_per_ticket_yen") != STAKE_PER_TICKET_YEN:
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation stake must remain fixed at 100"
+        )
+
+    target_date = data.get("target_date")
+    if not isinstance(target_date, str):
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation target_date missing"
+        )
+    races = data.get("races")
+    if not isinstance(races, list) or len(races) != EXPECTED_CORE_RACES:
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation must contain exactly six races"
+        )
+
+    converted = []
+    seen: set[str] = set()
+    exact_hits = 0
+    gross_return = 0
+    for row in races:
+        if not isinstance(row, dict):
+            raise V4PointCountFormalReplayError(
+                "post-result evaluation race must be an object"
+            )
+        race_id = row.get("race_id")
+        if not isinstance(race_id, str) or race_id in seen:
+            raise V4PointCountFormalReplayError(
+                "post-result evaluation race_id missing or duplicated"
+            )
+        seen.add(race_id)
+
+        predicted = row.get("predicted_tickets")
+        if (
+            not isinstance(predicted, list)
+            or len(predicted) != EXPECTED_FORMAL_TICKETS
+        ):
+            raise V4PointCountFormalReplayError(
+                f"post-result predicted_tickets must contain exact formal top two: {race_id}"
+            )
+        normalized_predicted = [
+            _ticket(
+                ticket,
+                field=f"{race_id} post-result predicted ticket",
+            )
+            for ticket in predicted
+        ]
+        if len(set(normalized_predicted)) != EXPECTED_FORMAL_TICKETS:
+            raise V4PointCountFormalReplayError(
+                f"post-result predicted_tickets must be unique: {race_id}"
+            )
+
+        actual = _ticket(
+            row.get("actual_trifecta"),
+            field=f"{race_id} post-result actual_trifecta",
+        )
+        payout = row.get("trifecta_payout_yen")
+        if (
+            not isinstance(payout, int)
+            or isinstance(payout, bool)
+            or payout < 0
+        ):
+            raise V4PointCountFormalReplayError(
+                f"{race_id} post-result payout must be nonnegative integer"
+            )
+
+        exact = actual in normalized_predicted
+        if row.get("exact_hit") is not exact:
+            raise V4PointCountFormalReplayError(
+                f"post-result exact_hit disagrees with tickets/outcome: {race_id}"
+            )
+        exact_hits += int(exact)
+        if exact:
+            gross_return += payout
+
+        converted.append(
+            {
+                "race_id": race_id,
+                "status": "final",
+                "actual_trifecta": actual,
+                "trifecta_payout_yen": payout,
+            }
+        )
+
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        raise V4PointCountFormalReplayError(
+            "post-result evaluation summary missing"
+        )
+    expected_investment = (
+        EXPECTED_CORE_RACES
+        * EXPECTED_FORMAL_TICKETS
+        * STAKE_PER_TICKET_YEN
+    )
+    checks = {
+        "core_races": EXPECTED_CORE_RACES,
+        "core_tickets": EXPECTED_CORE_RACES * EXPECTED_FORMAL_TICKETS,
+        "exact_hit_races": exact_hits,
+        "investment_yen": expected_investment,
+        "gross_return_yen": gross_return,
+        "profit_yen": gross_return - expected_investment,
+    }
+    mismatches = [
+        key for key, expected in checks.items()
+        if summary.get(key) != expected
+    ]
+    if mismatches:
+        raise V4PointCountFormalReplayError(
+            "post-result summary mismatch: " + ",".join(mismatches)
+        )
+
+    return {
+        "contract": OUTCOMES_CONTRACT,
+        "target_date": target_date,
+        "races": converted,
+    }
+
+
 def evaluate_formal_replays(days: Any) -> dict[str, Any]:
     if not isinstance(days, list) or not days:
         raise V4PointCountFormalReplayError(
