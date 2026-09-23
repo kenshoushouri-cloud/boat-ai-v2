@@ -59,6 +59,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
       V4_POINTS_BT_UNIT_YEN: '100'
       V4_POINTS_BT_BLOCKS: '4'
+      DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -69,45 +70,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Install dependencies
         run: |
           set -euo pipefail
           python -m pip install -r requirements.txt
-          npm install --global @railway/cli
 
-      - name: Load public database URL without publishing it
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      - name: Report dedicated read-only replay connection availability
         run: |
-          set -euo pipefail
-          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-
-          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
-          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
-          if isinstance(data,list):
-              for item in data:
-                  if isinstance(item,dict) and (
-                      item.get('name')=='DATABASE_PUBLIC_URL'
-                      or item.get('key')=='DATABASE_PUBLIC_URL'
-                  ):
-                      value=item.get('value')
-                      break
-          if not value:
-              raise SystemExit('DATABASE_PUBLIC_URL not found')
-          print(f'::add-mask::{value}')
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
-              fh.write(f'DATABASE_URL={value}\n')
-          PY
-          rm -f railway-vars.json
+          if [ -n "${DATABASE_URL:-}" ]; then
+            echo "V4_HISTORICAL_DB_REPLAY=ENABLED_DEDICATED_SECRET"
+          else
+            echo "V4_HISTORICAL_DB_REPLAY=SKIPPED_NO_DEDICATED_SECRET"
+          fi
 
       - name: Run fixed OOS V4 1-5 point historical walk-forward
+        if: env.DATABASE_URL != ''
         env:
           V4_POINTS_BT_START_DATE: '2026-07-01'
           V4_POINTS_BT_END_DATE: '2026-08-15'
@@ -119,6 +96,7 @@ jobs:
           grep -q '^RESULT=PASS_READ_ONLY$' v4-point-count-historical-oos.txt
 
       - name: Run recent timing-safe feature window
+        if: env.DATABASE_URL != ''
         env:
           V4_POINTS_BT_START_DATE: '2026-09-11'
           V4_POINTS_BT_END_DATE: '2026-09-22'
@@ -142,8 +120,10 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
-      - name: Clean temporary connection state
+      - name: Confirm no Railway variable enumeration surface
         if: always()
         run: |
-          rm -f railway-vars.json
-          unset DATABASE_URL || true
+          set -euo pipefail
+          ! grep -q 'railway variable list' .github/workflows/v4-point-count-historical-walkforward-readonly.yml
+          ! grep -q 'RAILWAY_TOKEN' .github/workflows/v4-point-count-historical-walkforward-readonly.yml
+          echo "V4_HISTORICAL_SECRET_ENUMERATION=0"
