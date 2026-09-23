@@ -31,6 +31,7 @@ permissions:
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  PYTHONPATH: .
 
 jobs:
   safety:
@@ -90,6 +91,7 @@ jobs:
           assert 'candidate-discovery-v4-availability-raw-' in workflow
           assert 'continue-on-error: true' in workflow
           assert 'CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE' in workflow
+          assert 'PYTHONPATH: .' in workflow
           PY
 
   freeze:
