@@ -1,5 +1,106 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 11:24 JST
+
+This section supersedes the 10:30 JST override below where they differ.
+
+### Current Source of Truth
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- PR #374 availability activation: Draft / mergeable / **7/7 exact-head CI SUCCESS**
+- PR #375 top-five formal replay bridge: Draft / mergeable / **5/5 exact-head CI SUCCESS**
+- PR #376 historical 1–5 point walk-forward: Draft / mergeable / **5/5 exact-head CI SUCCESS**
+- PR #376 current head: `6123a8820f840081b7067f4015ea9f94257334f0`
+- no Production DB/model/coefficient/threshold/stake/candidate-count mutation
+- `purchase_action=false`
+
+### PR #376 — point-count shortlist hardened
+
+Original immutable dual-window evidence remains:
+- workflow run `35806246724`
+- artifact ID `10727519397`
+- ZIP SHA-256 `426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+
+New frozen sensitivity evidence:
+`research/evidence/v4_point_count_historical_sensitivity_20260923.json`
+
+#### Marginal rank robustness
+
+Fixed OOS 2026-07-01..2026-08-15, 276 races:
+- rank1 marginal ROI 71.848%
+- rank2 73.152%
+- rank3 **88.478%**, -11.522 JPY/race
+- rank4 79.674%
+- rank5 **32.935%**
+
+Recent timing-safe 2026-09-11..2026-09-22, 60 evaluated races:
+- rank1 marginal ROI 27.667%
+- rank2 63.000%
+- rank3 **89.500%**, -10.500 JPY/race
+- rank4 172.833%
+- rank5 **29.167%**
+
+Rank3 is notably stable but still sub-break-even across both windows.
+
+Recent rank4 is not robust:
+- only 2 hits;
+- one 9,560 JPY payout contributes **92.189%** of rank4 gross;
+- removing that single hit reduces rank4 marginal ROI to **13.500%**;
+- recent full-feature subset (Course full6 + Opponent + Motor, 40 races) has rank4 **0 hits / 0%**.
+
+Rank5 is consistently weak in both windows.
+
+A deterministic 20,000-resample day-cluster bootstrap is included only as an uncertainty diagnostic; payout tails make the intervals wide.
+
+#### Current research shortlist
+
+Do not increase Production ticket count from this backtest alone.
+
+Keep:
+- formal **2 points**
+- shadow/Forward comparison **3 points**
+
+Deprioritize:
+- rank5
+
+Keep diagnostic only:
+- rank4 until its high-payout effect replicates
+
+Historical evidence therefore narrows the practical point-count question to **2 vs 3**, while Forward 30/50/100-case evidence remains the final confirmation path.
+
+### PR #376 CI secret boundary corrected
+
+The first immutable report run inherited a Railway CLI variable-list pattern.
+
+That pattern is no longer present in PR #376:
+- no `railway variable list`;
+- no `RAILWAY_TOKEN`;
+- no temporary variable-list JSON;
+- future live replay can use only dedicated GitHub secret `V4_BACKTEST_DATABASE_URL`;
+- if that dedicated secret is absent, CI skips live DB replay and validates frozen evidence/contracts only.
+
+Exact-head safety test enforces this boundary.
+
+### Other active gates
+
+PR #374 remains intentionally unmerged until the 2026-09-24 real timing-clean availability fixture is replayed through the exact binder/parser/guard chain.
+
+PR #375 remains Draft until #374 is resolved so main stays fixed underneath the Production availability validation.
+
+### Handoff schedule
+
+03:00 JST update remains disabled.
+
+Recurring handoff updates:
+- 09:00 JST
+- 15:00 JST
+- 21:00 JST
+
+### Safety
+
+`PURCHASE_FALSE / FORMAL_2_POINTS_UNCHANGED / RANK3_SHADOW_ONLY / NO_SECRET_ENUMERATION / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 10:30 JST
 
 This section supersedes the 10:09 JST override below where they differ.
