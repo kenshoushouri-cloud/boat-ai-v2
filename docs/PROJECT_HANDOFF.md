@@ -1,5 +1,167 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 11:42 JST
+
+This section supersedes the 11:38 JST override below where they differ.
+
+### Final handoff checkpoint
+
+The current chat has reached its token/capacity limit. Continue in a new chat using the paste-ready handoff prompt provided to the user.
+
+Freshly re-verified before handoff:
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- Railway PostgreSQL `postgres-recovery` 7d disk:
+  - current `4.6521271532307695 GB`
+  - average `4.545399481671327 GB`
+  - min `4.419897273379311 GB`
+  - max `4.657085660862745 GB`
+  - 169 samples
+- no capacity-driven deletion authorized
+
+Active key Drafts:
+- PR #374 availability activation
+  - head `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`
+  - Draft / mergeable
+  - **7/7 exact-head CI SUCCESS**
+- PR #375 formal Top5 replay
+  - head `248f634b587eae4c419a9194c5ae2e8c989c8fa1`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+- PR #376 historical 1–5 point walk-forward
+  - head `6123a8820f840081b7067f4015ea9f94257334f0`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+- PR #363 storage ownership migration
+  - head `4cccdc5b41241f6ffa139be629172cf5a03d7500`
+  - Draft / mergeable
+  - all listed exact-head CI SUCCESS
+- PR #366 post-result evaluator
+  - head `20c835c5dabd847c96180acad6a3daf5ffd8fdf7`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+- PR #368 Forward economics gate
+  - head `2e47342912e545f8341e8678c10e940e94bcd2f3`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+
+### Point-count conclusion at handoff
+
+Historical backtest narrows the practical question to **2 vs 3 points**.
+
+PR #376 immutable dual-window evidence:
+- workflow run `35806246724`
+- artifact ID `10727519397`
+- ZIP SHA-256 `426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+
+OOS 2026-07-01..2026-08-15, 276 races:
+- cumulative ROI: 1pt 71.848%, 2pt 72.500%, 3pt 77.826%, 4pt 78.288%, 5pt 69.217%
+- marginal ROI: rank1 71.848%, rank2 73.152%, rank3 **88.478%**, rank4 79.674%, rank5 **32.935%**
+
+Recent timing-safe 2026-09-11..2026-09-22, 60 evaluated races:
+- cumulative ROI: 1pt 27.667%, 2pt 45.333%, 3pt 60.056%, 4pt 88.250%, 5pt 76.433%
+- marginal ROI: rank1 27.667%, rank2 63.000%, rank3 **89.500%**, rank4 172.833%, rank5 **29.167%**
+
+Robustness:
+- rank3 is stable across windows but remains below break-even;
+- recent rank4 is not robust: only 2 hits, one 9,560 JPY payout = 92.189% of rank4 gross, remove it => 13.500% marginal ROI, and recent full-feature subset rank4 = 0 hits;
+- rank5 is consistently weak.
+
+Current research policy:
+- formal **2 points remains control**
+- **3 points only shadow/Forward comparison**
+- rank4 diagnostic only
+- rank5 deprioritized
+- do not change Production point count from historical backtest alone
+- Forward 30/50/100-case evidence remains the confirmation path
+
+### Secret/safety correction on PR #376
+
+The first immutable report run used an older Railway CLI variable-list pattern. Current PR #376 removes that pattern.
+
+Current boundary:
+- no `railway variable list`
+- no `RAILWAY_TOKEN`
+- no temporary variable-list JSON
+- optional future live replay only through dedicated `V4_BACKTEST_DATABASE_URL` GitHub secret
+- if absent, CI skips live DB replay and validates frozen evidence/contracts only
+- never call Railway plaintext variable-list APIs/tools
+
+### Next critical event
+
+PR #374 must stay unmerged until the **2026-09-24 real timing-clean official availability fixture** is validated.
+
+One active exact automation:
+- `V4 Real Fixture Gate 9/24`
+- 2026-09-24 08:45 JST
+
+Gate requirements:
+- re-fetch main / #374 exact head+CI / Railway
+- inspect scheduled primary and any fallback
+- choose earliest valid same-date capture via preregistered arbiter
+- require matching raw availability + formal freeze from the same run
+- verify raw SHA and raw-observed/capture-complete timestamps precede freeze
+- replay exact raw bytes through #374 binder/parser/guard with no hand edits
+- supported `PASS_ACTIVE_CORE` or correctly parsed supported `BLOCK_PRE_FREEZE_UNAVAILABLE_CORE` validates real HTML
+- parser ambiguity/mismatch/SHA/timing/unsupported status blocks merge
+- if gate passes and exact-head CI is green, the user has already explicitly approved #374 Production-effect merge
+
+After safe #374 merge:
+- re-fetch main
+- rebase/recheck #375/#376 before any merge
+- #375 is pure/offline research and may proceed if still clean
+- #376 remains research evidence; do not use it alone to change Production point count
+
+### Handoff schedule / hard boundaries
+
+Recurring handoff automation:
+- 09:00 JST
+- 15:00 JST
+- 21:00 JST
+- **no 03:00 JST run**
+
+May continue without confirmation:
+- read-only audits
+- research / historical backtest / Forward evaluation
+- Draft PR creation/update
+- CI
+- docs/handoff updates
+- safe evidence collection
+
+Explicit approval required:
+- Production-effect PR merge unless already explicitly approved
+- Railway Production Variables/Cron/service/volume/migration changes
+- Production DB INSERT/UPDATE/DELETE/schema/VACUUM
+- Production model/coefficient/threshold/candidate/stake changes
+- new LINE actual-send behavior changes
+- Forward persistence
+- automatic purchase
+- paid data / external inquiry
+
+Hard safety:
+- fail closed
+- `purchase_action=false`
+- no result-after Forward/candidate reconstruction
+- no evidence mixing
+- never loosen thresholds for volume/profit/cost
+- no capacity-driven deletion
+- never expose secret values
+- do not touch TOTO staged patch
+
+### Immediate new-chat start sequence
+
+1. Read this latest override in `docs/PROJECT_HANDOFF.md`.
+2. Read `docs/CURRENT_STATE.md`.
+3. Read Draft PR #374, #375, #376.
+4. Re-fetch current main / open PRs / exact-head CI / Railway Production.
+5. Do not assume any SHA/state above is still current.
+6. If before 2026-09-24 08:45 JST, keep main fixed under #374 validation and do safe research/docs only.
+7. At/after the real fixture, execute the #374 gate exactly as above.
+
+### Safety
+
+`PURCHASE_FALSE / MAIN_FIXED_FOR_REAL_FIXTURE_GATE / FORMAL_2_POINTS_UNCHANGED / RANK3_SHADOW_ONLY / NO_SECRET_ENUMERATION / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_CAPACITY_DRIVEN_DELETE`
+
 ## LATEST OVERRIDE — 2026-09-23 11:38 JST
 
 This section supersedes the 11:24 JST override below where they differ.
