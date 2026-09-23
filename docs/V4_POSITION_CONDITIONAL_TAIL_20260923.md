@@ -1,85 +1,93 @@
 # V4 position-conditional tail model walk-forward — 2026-09-23
 
-Status: `RESEARCH_ONLY / READ_ONLY_DB / CURRENT_SIX_FIXED / CURRENT_HEAD_FIXED / PRIOR_BLOCK_TRAINING_ONLY / NO_PRODUCTION_CHANGE`
+Status: `RESEARCH_ONLY / READ_ONLY_DB / CURRENT_SIX_FIXED / FIRST_PLACE_MARGINAL_FIXED / PRIOR_BLOCK_TRAINING_ONLY / NO_PRODUCTION_CHANGE`
 
 ## Motivation
 
-Two completed long-history studies narrowed the remaining problem:
+Completed long-history studies narrowed the remaining problem:
 
 - changing the six-race structural selector did not improve unseen Top2 exact accuracy;
-- statically amplifying national/local place2 information improved calibration but
-  still reduced unseen Top2 exact accuracy;
-- among current head-correct / Top2-miss races, most misses already occur at the
-  first+second prefix.
+- static place2 amplification improved calibration but reduced unseen Top2 exact accuracy;
+- most current head-correct / Top2 misses already fail at the first+second prefix.
 
-The next test is therefore a genuinely position-conditional model rather than another
-static coefficient boost.
+The next test is a genuinely position-conditional model.
+
+## Important contract correction
+
+The initial v1 attempt incorrectly assumed that the current formal Top2 tickets always
+share one first-place head. That is not guaranteed after the full V4 distribution,
+including Motor adjustment, is ranked.
+
+The corrected v2 contract therefore does **not** force one head.
+
+Instead it preserves the complete current first-place marginal distribution exactly:
+
+`P_challenger(first) = P_current(first)`
+
+and learns only:
+
+- `P(second | first)`;
+- `P(third | first, second)`.
+
+The challenger ticket distribution is their product. This is a cleaner tail-only test
+because any current Top2 mixture across first-place heads remains possible.
 
 ## Fixed production control
 
-The experiment does **not** change:
+The experiment does not change:
 
-- current V4 probability model or coefficients;
+- current V4 model or first-place marginal;
 - current equal-four six-race selector;
-- current predicted first-place head;
 - two formal tickets per race;
 - Production behavior.
 
-The challenger only changes ordering of lanes 2 and 3 after a first-place head has
-already been fixed.
-
 ## Model
 
-Two deterministic pairwise-logit models are maintained:
-
-1. second-place model conditioned on the first lane;
-2. third-place model conditioned on the first and second lanes.
-
-Each candidate lane receives only pre-result, race-card features normalized within the
-same race:
+Two deterministic pairwise-logit models use only pre-result race-card features,
+normalized within the same race:
 
 - current base raw strength;
 - national win rate;
 - national place2 rate;
 - local place2 rate;
-- faster-start score derived from avg ST;
+- faster-start signal from avg ST;
 - motor place2 rate;
 - lane identity;
 - relative lane position/distance to the conditioned first lane;
 - and, for third place, relative position/distance to the conditioned second lane.
 
-No odds, result-derived feature, payout, or future block statistic is a model input.
+No odds, payout, result-derived feature, or future block statistic is an input.
 
 ## Strict chronological walk-forward
 
-The full 2025-07-01..2026-09-22 calendar is split into 10 chronological blocks.
+2025-07-01..2026-09-22 is split into 10 chronological blocks.
 
 - block 1 is warm-up only;
-- the model is fixed for an entire test block;
-- for each test date, current six races and both control/challenger Top2 tickets are
-  frozen before official result/payout access;
-- after the whole block has been evaluated, that block's now-historical outcomes are
-  used for training;
-- therefore a block can influence only later blocks.
+- model weights are fixed for an entire test block;
+- each day freezes current six races, current Top2, challenger Top2, and the
+  challenger's second choice for every possible first lane before result access;
+- results are then read for evaluation;
+- only after the whole block is complete can its outcomes update the model;
+- a block therefore influences only later blocks.
 
-Each historical training race is passed through the same fixed optimizer schedule.
-There is no result-driven hyperparameter search.
+Hyperparameters are fixed in the workflow; there is no result-driven search.
 
 ## Primary metrics
 
-Promotion evidence is based on unseen blocks 2-10:
+On unseen blocks 2-10:
 
-- exact Top2 trifecta hit rate;
-- first+second prefix hit rate conditional on the fixed head being correct;
-- direct second-choice hit rate conditional on the fixed head being correct;
-- consistency across chronological blocks.
+- exact formal Top2 trifecta hit rate;
+- first+second prefix hit rate when the current top first-place marginal is correct;
+- conditional second-choice hit rate evaluated using the actual first lane, where
+  choices for all possible first lanes were frozen pre-result;
+- chronological block consistency.
 
-ROI is secondary only and is not an optimizer target.
+ROI remains secondary and is never an optimizer target.
 
 ## Interpretation boundary
 
-Even if the challenger improves historical unseen blocks, this run can only nominate
-a separately preregistered prospective shadow. It cannot authorize Production model,
-coefficient, selector, ticket-count, candidate-count, stake, LINE, or purchase changes.
+Even a positive historical result can only nominate a separately preregistered
+prospective shadow. It cannot authorize Production model/coefficient/selector,
+ticket-count, candidate-count, stake, LINE, or purchase changes.
 
-`POSITION_CONDITIONAL / CURRENT_HEAD_FIXED / CURRENT_SIX_FIXED / FORMAL_2_POINTS / PRIOR_BLOCK_ONLY / RESULT_AFTER_FREEZE / NO_RETUNE / PURCHASE_FALSE`
+`POSITION_CONDITIONAL / FIRST_PLACE_MARGINAL_PRESERVED / CURRENT_SIX_FIXED / FORMAL_2_POINTS / PRIOR_BLOCK_ONLY / RESULT_AFTER_FREEZE / NO_RETUNE / PURCHASE_FALSE`
