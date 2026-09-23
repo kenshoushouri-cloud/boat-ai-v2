@@ -1,5 +1,36 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 12:02 JST
+
+Freshly reverified state:
+
+- main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none; pending work: none
+- `postgres-recovery` 7d disk: current 4.652175 GB / avg 4.545401 / min 4.420073 / max 4.657086
+- PostgreSQL volume config: 20,000 MB
+- PR #374: `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`, Draft / mergeable / 7/7 SUCCESS, real fixture gate still required
+- PR #375: `248f634b587eae4c419a9194c5ae2e8c989c8fa1`, Draft / mergeable / 5/5 SUCCESS
+- PR #376: `6123a8820f840081b7067f4015ea9f94257334f0`, Draft / mergeable / 5/5 SUCCESS
+- new PR #377: `4c7be65f4c5cc8e813a6de031ed73f6d17b28abc`, Draft / mergeable / 5/5 SUCCESS, pure selector-rank Forward diagnostic only
+
+Selector-rank research:
+- immutable #376 artifact ZIP SHA-256 reverified: `426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+- OOS ranks 1-3 vs 4-6 formal-2pt ROI: 79.203% vs 65.797%, +13.406 pp; bootstrap 95% CI crosses zero
+- recent ranks 1-3 vs 4-6: 54.333% vs 36.333%, +18.000 pp; bootstrap 95% CI crosses zero
+- race-score quartile ROI is non-monotonic; no absolute score gate supported
+- no candidate-count reduction, threshold change, rerank, point-count change, or Production selector change authorized
+- formal 2 points remains control; 3 points remains shadow/Forward comparison only
+
+Before 2026-09-24 real fixture:
+- keep main fixed for #374
+- #375/#376/#377 stay Draft
+- safe research/docs/read-only only
+- `purchase_action=false`
+
+Safety:
+`MAIN_FIXED_FOR_REAL_FIXTURE_GATE / PURCHASE_FALSE / FORMAL_2_POINTS_UNCHANGED / SELECTOR_RANK_DIAGNOSTIC_ONLY / NO_SCORE_GATE / NO_RESULT_AFTER_RECONSTRUCTION / NO_PRODUCTION_MUTATION`
+
+
 ## LATEST OVERRIDE — 2026-09-23 11:42 JST
 
 This section supersedes the 11:38 JST override below where they differ.
