@@ -1,0 +1,125 @@
+name: V4 alpha025 prospective shadow
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_alpha025_prospective_shadow.py'
+      - 'research/v4_alpha025_prospective_shadow_pg.py'
+      - 'tests/test_v4_alpha025_forward_shadow.py'
+      - 'docs/V4_ALPHA025_FORWARD_SHADOW_20260923.md'
+      - '.github/workflows/v4-alpha025-forward-shadow.yml'
+
+permissions:
+  contents: read
+
+env:
+  V4_ALPHA025_FORWARD_ENABLED: '0'
+  V4_ALPHA025_FORWARD_TARGET_DATE: '2026-09-24'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate frozen prospective contract
+        env:
+          PYTHONPATH: .
+          V4_ALPHA025_FORWARD_DATE: '2099-01-01'
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_alpha025_prospective_shadow.py research/v4_alpha025_prospective_shadow_pg.py tests/test_v4_alpha025_forward_shadow.py
+          pytest -q tests/test_v4_alpha025_forward_shadow.py
+          python - <<'PY'
+          from research import v4_alpha025_prospective_shadow as s
+          assert s.ALPHA == 0.25
+          assert s.TRAINING_END_DATE == '2026-09-22'
+          print('V4_ALPHA025_VALIDATE=PASS')
+          PY
+
+  prospective-shadow:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_ALPHA025_FORWARD_DATE: ${{ env.V4_ALPHA025_FORWARD_TARGET_DATE }}
+      V4_ALPHA025_FORWARD_OUTPUT: 'v4-alpha025-prospective-shadow.json'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Enforce gate lock
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ "$V4_ALPHA025_FORWARD_ENABLED" != "1" ]; then
+            echo "V4_ALPHA025_FORWARD=DISABLED_PENDING_374_REAL_FIXTURE_GATE"
+            echo "enabled=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "V4_ALPHA025_FORWARD=ENABLED_AFTER_GATE"
+            echo "enabled=1" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.enabled == '1'
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        if: steps.gate.outputs.enabled == '1'
+        run: python -m pip install -r requirements.txt
+      - name: Install Railway CLI
+        if: steps.gate.outputs.enabled == '1'
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          npm install --global @railway/cli
+          railway --version
+      - name: Freeze alpha025 prospective shadow
+        if: steps.gate.outputs.enabled == '1'
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_alpha025_prospective_shadow_pg.py' \
+            2>&1 | tee v4-alpha025-prospective-shadow.txt
+          grep -q '^RESULT=PASS_PROSPECTIVE_SHADOW_FREEZE$' v4-alpha025-prospective-shadow.txt
+      - name: Upload prospective evidence
+        if: steps.gate.outputs.enabled == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-alpha025-prospective-shadow-${{ github.run_id }}
+          path: |
+            v4-alpha025-prospective-shadow.json
+            v4-alpha025-prospective-shadow.txt
+          retention-days: 90
+          if-no-files-found: error
+      - name: Confirm no variable enumeration
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/v4-alpha025-forward-shadow.yml').read_text(encoding='utf-8').lower()
+          forbidden=(
+              ''.join(('railway',' variable',' list')),
+              ''.join(('print','env')),
+              ''.join(('env',' |')),
+          )
+          for value in forbidden:
+              assert value not in text, value
+          assert 'v4_alpha025_forward_enabled: \'0\'' in text
+          print('V4_ALPHA025_SECRET_ENUMERATION=0')
+          PY
