@@ -63,6 +63,44 @@ def _visible(fragment: str) -> str:
     return re.sub(r"\s+", "", html.unescape(TAG_RE.sub(" ", fragment)))
 
 
+def _artifact_generated_at(
+    artifact: dict[str, Any],
+    provenance: dict[str, Any],
+) -> datetime:
+    canonical_raw = artifact.get("generated_at_jst")
+    legacy_raw = artifact.get("generated_at")
+    if canonical_raw is None and legacy_raw is None:
+        raise V4AvailabilitySnapshotBinderError(
+            "artifact generated_at_jst missing"
+        )
+
+    generated = _aware(
+        canonical_raw if canonical_raw is not None else legacy_raw,
+        field="artifact generated_at_jst",
+    )
+    if canonical_raw is not None and legacy_raw is not None:
+        legacy = _aware(
+            legacy_raw,
+            field="artifact generated_at",
+        )
+        if legacy != generated:
+            raise V4AvailabilitySnapshotBinderError(
+                "artifact generated timestamp fields disagree"
+            )
+
+    completed_raw = provenance.get("completed_at_jst")
+    if completed_raw is not None:
+        completed = _aware(
+            completed_raw,
+            field="freeze_provenance completed_at_jst",
+        )
+        if completed != generated:
+            raise V4AvailabilitySnapshotBinderError(
+                "artifact generated_at_jst must equal freeze completion"
+            )
+    return generated
+
+
 def _formal_core(artifact: Any) -> tuple[str, datetime, list[dict[str, Any]]]:
     if not isinstance(artifact, dict) or artifact.get("contract") != ARTIFACT_CONTRACT:
         raise V4AvailabilitySnapshotBinderError("unexpected artifact contract")
@@ -78,7 +116,7 @@ def _formal_core(artifact: Any) -> tuple[str, datetime, list[dict[str, Any]]]:
     target_date = provenance.get("target_date")
     if not isinstance(target_date, str):
         raise V4AvailabilitySnapshotBinderError("target_date missing")
-    generated_at = _aware(artifact.get("generated_at"), field="artifact generated_at")
+    generated_at = _artifact_generated_at(artifact, provenance)
 
     rows = []
     for row in artifact.get("feed", []):
@@ -209,17 +247,27 @@ def _decode(raw: bytes, *, source_id: str) -> str:
         ) from exc
 
 
-def _venue_unavailable_excerpt(text: str, venue_id: str) -> str | None:
+def _venue_unavailable_excerpt(
+    text: str,
+    venue_id: str,
+    *,
+    race_no: int,
+) -> str | None:
     venue_name = VENUE_NAMES[venue_id]
     candidates = []
     for fragment in TR_RE.findall(text):
         visible = _visible(fragment)
         if venue_name not in visible:
             continue
-        if (
-            any(marker in visible for marker in VENUE_CANCEL_MARKERS)
-            or RANGE_CANCEL_RE.search(visible) is not None
-        ):
+
+        range_match = RANGE_CANCEL_RE.search(visible)
+        if range_match is not None:
+            if race_no < int(range_match.group(1)):
+                continue
+            candidates.append(fragment)
+            continue
+
+        if any(marker in visible for marker in VENUE_CANCEL_MARKERS):
             candidates.append(fragment)
     if not candidates:
         return None
@@ -277,7 +325,11 @@ def bind_availability_snapshot(
         race_id = row["race_id"]
         venue_id = row["venue_id"]
 
-        unavailable_excerpt = _venue_unavailable_excerpt(day_text, venue_id)
+        unavailable_excerpt = _venue_unavailable_excerpt(
+            day_text,
+            venue_id,
+            race_no=row["race_no"],
+        )
         if unavailable_excerpt is not None:
             try:
                 parsed = parse_unavailability_evidence(

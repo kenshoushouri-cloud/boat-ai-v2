@@ -41,6 +41,44 @@ def _aware_datetime(value: Any, *, field: str) -> datetime:
     return parsed
 
 
+def _artifact_generated_at(
+    artifact: dict[str, Any],
+    provenance: dict[str, Any],
+) -> datetime:
+    canonical_raw = artifact.get("generated_at_jst")
+    legacy_raw = artifact.get("generated_at")
+    if canonical_raw is None and legacy_raw is None:
+        raise V4AvailabilityGuardError(
+            "artifact generated_at_jst missing"
+        )
+
+    generated = _aware_datetime(
+        canonical_raw if canonical_raw is not None else legacy_raw,
+        field="artifact generated_at_jst",
+    )
+    if canonical_raw is not None and legacy_raw is not None:
+        legacy = _aware_datetime(
+            legacy_raw,
+            field="artifact generated_at",
+        )
+        if legacy != generated:
+            raise V4AvailabilityGuardError(
+                "artifact generated timestamp fields disagree"
+            )
+
+    completed_raw = provenance.get("completed_at_jst")
+    if completed_raw is not None:
+        completed = _aware_datetime(
+            completed_raw,
+            field="artifact freeze_provenance completed_at_jst",
+        )
+        if completed != generated:
+            raise V4AvailabilityGuardError(
+                "artifact generated_at_jst must equal freeze completion"
+            )
+    return generated
+
+
 def _formal_core(artifact: Any) -> list[dict[str, Any]]:
     if not isinstance(artifact, dict):
         raise V4AvailabilityGuardError("artifact must be an object")
@@ -214,7 +252,7 @@ def evaluate_availability_guard(artifact: Any, snapshot: Any) -> dict[str, Any]:
                 f"core race_id target_date mismatch: {row['race_id']}"
             )
 
-    generated_at = _aware_datetime(artifact.get("generated_at"), field="artifact generated_at")
+    generated_at = _artifact_generated_at(artifact, provenance)
 
     if not isinstance(snapshot, dict):
         raise V4AvailabilityGuardError("snapshot must be an object")
