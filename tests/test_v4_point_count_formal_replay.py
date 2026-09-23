@@ -123,7 +123,7 @@ def test_builder_preserves_exact_pre_result_rank_order():
 def test_research_top_two_must_equal_formal_top_two():
     rec = record()
     rec["artifact"]["feed"][0]["research_ranked_tickets"][:2] = [
-        "1-2-4",
+        "1-4-3",
         "1-3-2",
     ]
     with pytest.raises(
