@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -42,6 +43,8 @@ OUTPUT_JSON = Path(
     )
 )
 UNIT_YEN = 100
+BOOTSTRAP_SAMPLES = int(os.getenv("V4_POSBLEND_BOOTSTRAP_SAMPLES", "20000"))
+BOOTSTRAP_SEED = int(os.getenv("V4_POSBLEND_BOOTSTRAP_SEED", "20260923"))
 
 ALPHAS: dict[str, float] = {
     "a000": 0.00,
