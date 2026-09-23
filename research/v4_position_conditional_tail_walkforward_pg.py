@@ -1,15 +1,21 @@
 # -*- coding: utf-8 -*-
 """Strict past-only V4 position-conditional tail model walk-forward.
 
-Current V4 race selection and predicted first-place head are fixed.  Two small
-pairwise-logit models are learned only from prior chronological blocks:
+The current V4 daily six-race selector and the complete first-place marginal
+distribution are fixed. Two small pairwise-logit models are learned only from
+prior chronological blocks:
 - second place, conditional on first;
 - third place, conditional on first and second.
 
-All lane features are race-card / entry information available pre-result.  For
-each test day the current six races, current control Top2, and challenger Top2
-are frozen before official result/payout access.  Model weights are fixed for
-the whole test block and updated only after that block has ended.
+For every test race the challenger distribution is constructed as:
+    current P(first)
+    * learned P(second | first)
+    * learned P(third | first, second)
+
+Therefore this experiment cannot secretly retune first-place probability.
+All current/challenger Top2 tickets and all conditional second choices for all
+possible heads are frozen before result/payout access. Model weights are fixed
+for a whole chronological test block and updated only after that block ends.
 """
 from __future__ import annotations
 
@@ -26,7 +32,7 @@ from psycopg.rows import dict_row
 from research import candidate_discovery_v4_contract as v4
 from research import v4_long_history_walkforward_pg as hist
 
-VERSION = "2026-09-23 v4-position-conditional-tail-v1"
+VERSION = "2026-09-23 v4-position-conditional-tail-v2"
 START_DATE = date.fromisoformat(os.getenv("V4_POSCOND_START_DATE", "2025-07-01"))
 END_DATE = date.fromisoformat(os.getenv("V4_POSCOND_END_DATE", "2026-09-22"))
 BLOCKS = int(os.getenv("V4_POSCOND_BLOCKS", "10"))
@@ -131,17 +137,21 @@ def third_features(
     )
 
 
-SECOND_DIM = len(second_features(
-    {lane: (0.0,) * 6 for lane in v4.LANES},
-    candidate=2,
-    first=1,
-))
-THIRD_DIM = len(third_features(
-    {lane: (0.0,) * 6 for lane in v4.LANES},
-    candidate=3,
-    first=1,
-    second=2,
-))
+SECOND_DIM = len(
+    second_features(
+        {lane: (0.0,) * 6 for lane in v4.LANES},
+        candidate=2,
+        first=1,
+    )
+)
+THIRD_DIM = len(
+    third_features(
+        {lane: (0.0,) * 6 for lane in v4.LANES},
+        candidate=3,
+        first=1,
+        second=2,
+    )
+)
 
 
 class PairwiseLogit:
@@ -191,6 +201,14 @@ class PairwiseLogit:
         return {lane: value / total for lane, value in weights}
 
 
+def first_marginals(probs: Mapping[str, float]) -> dict[int, float]:
+    out = {lane: 0.0 for lane in v4.LANES}
+    for ticket, prob in probs.items():
+        first = int(str(ticket).split("-", 1)[0])
+        out[first] += float(prob)
+    return out
+
+
 def control_second_choice(
     probs: Mapping[str, float],
     *,
@@ -204,36 +222,52 @@ def control_second_choice(
     return sorted(masses.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
 
 
-def challenger_top2(
+def challenger_distribution(
     *,
-    first: int,
+    control_probs: Mapping[str, float],
     base_features: Mapping[int, Sequence[float]],
     second_model: PairwiseLogit,
     third_model: PairwiseLogit,
-) -> tuple[list[str], dict[int, float]]:
-    second_alts = [lane for lane in v4.LANES if lane != first]
-    p2 = second_model.softmax(
-        second_alts,
-        lambda lane: second_features(base_features, candidate=lane, first=first),
-    )
-    tickets: list[tuple[str, float]] = []
-    for second in second_alts:
-        third_alts = [
-            lane for lane in v4.LANES if lane not in (first, second)
-        ]
-        p3 = third_model.softmax(
-            third_alts,
-            lambda lane: third_features(
-                base_features,
-                candidate=lane,
-                first=first,
-                second=second,
+) -> tuple[dict[str, float], dict[int, dict[int, float]]]:
+    """Replace only conditional tail order while preserving current P(first)."""
+    control = v4._normalize_tickets(control_probs)
+    heads = first_marginals(control)
+    out: dict[str, float] = {}
+    second_by_first: dict[int, dict[int, float]] = {}
+
+    for first in v4.LANES:
+        second_alts = [lane for lane in v4.LANES if lane != first]
+        p2 = second_model.softmax(
+            second_alts,
+            lambda lane, first=first: second_features(
+                base_features, candidate=lane, first=first
             ),
         )
-        for third in third_alts:
-            tickets.append((f"{first}-{second}-{third}", p2[second] * p3[third]))
-    tickets.sort(key=lambda kv: (-kv[1], kv[0]))
-    return [ticket for ticket, _ in tickets[:2]], p2
+        second_by_first[first] = p2
+        for second in second_alts:
+            third_alts = [
+                lane for lane in v4.LANES if lane not in (first, second)
+            ]
+            p3 = third_model.softmax(
+                third_alts,
+                lambda lane, first=first, second=second: third_features(
+                    base_features,
+                    candidate=lane,
+                    first=first,
+                    second=second,
+                ),
+            )
+            for third in third_alts:
+                out[f"{first}-{second}-{third}"] = (
+                    heads[first] * p2[second] * p3[third]
+                )
+
+    out = v4._normalize_tickets(out)
+    after = first_marginals(out)
+    for lane in v4.LANES:
+        if abs(after[lane] - heads[lane]) > 1e-12:
+            raise RuntimeError("first-place marginal drift")
+    return out, second_by_first
 
 
 def current_day_snapshot(
@@ -290,28 +324,40 @@ def current_day_snapshot(
     frozen: list[dict[str, Any]] = []
     for row in selected:
         rid = str(row["race_id"])
+        control_probs = distributions[rid]
         control_top2 = list(row["tickets"])
-        head = int(row["head_lane"])
-        if any(int(ticket.split("-", 1)[0]) != head for ticket in control_top2):
-            raise RuntimeError(f"current Top2 head drift: {rid}")
-        challenger, p2 = challenger_top2(
-            first=head,
+        challenger_probs, second_by_first = challenger_distribution(
+            control_probs=control_probs,
             base_features=features[rid],
             second_model=second_model,
             third_model=third_model,
         )
+        challenger_top2 = list(v4.top_tickets(challenger_probs, 2))
+
+        heads = first_marginals(control_probs)
+        predicted_head = sorted(
+            heads.items(), key=lambda kv: (-kv[1], kv[0])
+        )[0][0]
+        control_second_by_first = {
+            str(first): control_second_choice(control_probs, first=first)
+            for first in v4.LANES
+        }
+        challenger_second_by_first = {
+            str(first): sorted(
+                second_by_first[first].items(),
+                key=lambda kv: (-kv[1], kv[0]),
+            )[0][0]
+            for first in v4.LANES
+        }
+
         frozen.append(
             {
                 "race_id": rid,
-                "head_lane": head,
+                "predicted_head": predicted_head,
                 "control_top2": control_top2,
-                "challenger_top2": challenger,
-                "challenger_second_choice": sorted(
-                    p2.items(), key=lambda kv: (-kv[1], kv[0])
-                )[0][0],
-                "control_second_choice": control_second_choice(
-                    distributions[rid], first=head
-                ),
+                "challenger_top2": challenger_top2,
+                "control_second_by_first": control_second_by_first,
+                "challenger_second_by_first": challenger_second_by_first,
                 "base_features": {
                     str(lane): list(features[rid][lane]) for lane in v4.LANES
                 },
@@ -329,7 +375,7 @@ def evaluate_frozen_day(
     if len(frozen) != v4.CORE_RACES:
         return None
 
-    control_hits = challenger_hits = head_hits = 0
+    control_hits = challenger_hits = predicted_head_hits = 0
     control_prefix_hits = challenger_prefix_hits = 0
     control_second_hits = challenger_second_hits = 0
     control_gross = challenger_gross = 0
@@ -354,9 +400,9 @@ def evaluate_frozen_day(
         control_gross += payout if control_hit else 0
         challenger_gross += payout if challenger_hit else 0
 
-        head_correct = int(row["head_lane"]) == a
-        head_hits += int(head_correct)
-        if head_correct:
+        predicted_head_correct = int(row["predicted_head"]) == a
+        predicted_head_hits += int(predicted_head_correct)
+        if predicted_head_correct:
             control_prefix_hits += int(
                 any(
                     tuple(int(x) for x in ticket.split("-"))[:2] == (a, b)
@@ -369,8 +415,14 @@ def evaluate_frozen_day(
                     for ticket in challenger_top2
                 )
             )
-            control_second_hits += int(int(row["control_second_choice"]) == b)
-            challenger_second_hits += int(int(row["challenger_second_choice"]) == b)
+
+        # These choices for every possible first lane were frozen pre-result.
+        control_second_hits += int(
+            int(row["control_second_by_first"][str(a)]) == b
+        )
+        challenger_second_hits += int(
+            int(row["challenger_second_by_first"][str(a)]) == b
+        )
 
         training_rows.append(
             {
@@ -392,11 +444,11 @@ def evaluate_frozen_day(
             "challenger_profit_yen": challenger_gross - investment,
             "control_top2_hits": control_hits,
             "challenger_top2_hits": challenger_hits,
-            "head_hits": head_hits,
-            "control_prefix_hits_given_head": control_prefix_hits,
-            "challenger_prefix_hits_given_head": challenger_prefix_hits,
-            "control_second_hits_given_head": control_second_hits,
-            "challenger_second_hits_given_head": challenger_second_hits,
+            "predicted_head_hits": predicted_head_hits,
+            "control_prefix_hits_given_predicted_head": control_prefix_hits,
+            "challenger_prefix_hits_given_predicted_head": challenger_prefix_hits,
+            "control_second_hits_given_actual_first": control_second_hits,
+            "challenger_second_hits_given_actual_first": challenger_second_hits,
         },
         training_rows,
     )
@@ -441,54 +493,64 @@ def aggregate(days: Iterable[dict[str, Any]]) -> dict[str, Any]:
     challenger_gross = sum(int(row["challenger_gross_yen"]) for row in rows)
     control_hits = sum(int(row["control_top2_hits"]) for row in rows)
     challenger_hits = sum(int(row["challenger_top2_hits"]) for row in rows)
-    head_hits = sum(int(row["head_hits"]) for row in rows)
-    control_prefix = sum(int(row["control_prefix_hits_given_head"]) for row in rows)
-    challenger_prefix = sum(
-        int(row["challenger_prefix_hits_given_head"]) for row in rows
+    head_hits = sum(int(row["predicted_head_hits"]) for row in rows)
+    control_prefix = sum(
+        int(row["control_prefix_hits_given_predicted_head"]) for row in rows
     )
-    control_second = sum(int(row["control_second_hits_given_head"]) for row in rows)
+    challenger_prefix = sum(
+        int(row["challenger_prefix_hits_given_predicted_head"]) for row in rows
+    )
+    control_second = sum(
+        int(row["control_second_hits_given_actual_first"]) for row in rows
+    )
     challenger_second = sum(
-        int(row["challenger_second_hits_given_head"]) for row in rows
+        int(row["challenger_second_hits_given_actual_first"]) for row in rows
     )
     return {
         "days": len(rows),
         "races": races,
         "investment_yen": investment,
-        "head_hits": head_hits,
-        "head_hit_rate_percent": round(head_hits / races * 100.0, 3) if races else 0.0,
+        "predicted_head_hits": head_hits,
+        "predicted_head_hit_rate_percent": round(
+            head_hits / races * 100.0, 3
+        ) if races else 0.0,
         "control": {
             "top2_hits": control_hits,
-            "top2_hit_rate_percent": round(control_hits / races * 100.0, 3)
-            if races else 0.0,
+            "top2_hit_rate_percent": round(
+                control_hits / races * 100.0, 3
+            ) if races else 0.0,
             "gross_return_yen": control_gross,
             "profit_yen": control_gross - investment,
-            "roi_percent": round(control_gross / investment * 100.0, 3)
-            if investment else 0.0,
-            "prefix_hits_given_head": control_prefix,
-            "prefix_hit_rate_given_head_percent": round(
+            "roi_percent": round(
+                control_gross / investment * 100.0, 3
+            ) if investment else 0.0,
+            "prefix_hits_given_predicted_head": control_prefix,
+            "prefix_hit_rate_given_predicted_head_percent": round(
                 control_prefix / head_hits * 100.0, 3
             ) if head_hits else 0.0,
-            "second_hits_given_head": control_second,
-            "second_hit_rate_given_head_percent": round(
-                control_second / head_hits * 100.0, 3
-            ) if head_hits else 0.0,
+            "second_hits_given_actual_first": control_second,
+            "second_hit_rate_given_actual_first_percent": round(
+                control_second / races * 100.0, 3
+            ) if races else 0.0,
         },
         "challenger": {
             "top2_hits": challenger_hits,
-            "top2_hit_rate_percent": round(challenger_hits / races * 100.0, 3)
-            if races else 0.0,
+            "top2_hit_rate_percent": round(
+                challenger_hits / races * 100.0, 3
+            ) if races else 0.0,
             "gross_return_yen": challenger_gross,
             "profit_yen": challenger_gross - investment,
-            "roi_percent": round(challenger_gross / investment * 100.0, 3)
-            if investment else 0.0,
-            "prefix_hits_given_head": challenger_prefix,
-            "prefix_hit_rate_given_head_percent": round(
+            "roi_percent": round(
+                challenger_gross / investment * 100.0, 3
+            ) if investment else 0.0,
+            "prefix_hits_given_predicted_head": challenger_prefix,
+            "prefix_hit_rate_given_predicted_head_percent": round(
                 challenger_prefix / head_hits * 100.0, 3
             ) if head_hits else 0.0,
-            "second_hits_given_head": challenger_second,
-            "second_hit_rate_given_head_percent": round(
-                challenger_second / head_hits * 100.0, 3
-            ) if head_hits else 0.0,
+            "second_hits_given_actual_first": challenger_second,
+            "second_hit_rate_given_actual_first_percent": round(
+                challenger_second / races * 100.0, 3
+            ) if races else 0.0,
         },
     }
 
@@ -506,7 +568,7 @@ def main() -> None:
     print(f"V4_POSCOND_VERSION={VERSION}", flush=True)
     print(f"PERIOD={START_DATE}..{END_DATE}", flush=True)
     print(
-        "POLICY=READ_ONLY CURRENT_SIX_FIXED CURRENT_HEAD_FIXED "
+        "POLICY=READ_ONLY CURRENT_SIX_FIXED FIRST_PLACE_MARGINAL_FIXED "
         "BLOCK_WEIGHTS_FROZEN_BEFORE_TEST_RESULT PRIOR_BLOCK_TRAINING_ONLY "
         "NO_ODDS NO_RETUNE",
         flush=True,
@@ -519,7 +581,6 @@ def main() -> None:
 
     block_results: list[dict[str, Any]] = []
     test_day_metrics: list[dict[str, Any]] = []
-    warmup_training_rows: list[dict[str, Any]] = []
 
     with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
         with conn.cursor() as cur:
@@ -532,8 +593,7 @@ def main() -> None:
                 block_training_rows: list[dict[str, Any]] = []
                 block_metrics: list[dict[str, Any]] = []
 
-                # Weights are fixed for the entire block.  Result rows are read
-                # only after each day's control/challenger tickets are frozen.
+                # Weights remain fixed for this entire block.
                 for day_text in block_days:
                     day = date.fromisoformat(day_text)
                     frozen = current_day_snapshot(
@@ -543,6 +603,8 @@ def main() -> None:
                         third_model=third_model,
                     )
                     selected_ids = [str(row["race_id"]) for row in frozen]
+                    # Results are read only after all current/challenger outputs
+                    # for the day are frozen.
                     results = hist.fetch_selected_results(cur, day, selected_ids)
                     evaluated = evaluate_frozen_day(
                         day=day,
@@ -555,11 +617,8 @@ def main() -> None:
                     block_metrics.append(metrics)
                     block_training_rows.extend(rows_for_training)
 
-                if block_index == 1:
-                    warmup_training_rows = block_training_rows
-                    evaluated_summary = aggregate(block_metrics)
-                else:
-                    evaluated_summary = aggregate(block_metrics)
+                evaluated_summary = aggregate(block_metrics)
+                if block_index > 1:
                     test_day_metrics.extend(block_metrics)
 
                 block_results.append(
@@ -574,8 +633,7 @@ def main() -> None:
                     }
                 )
 
-                # This block becomes training data only after every test day in
-                # the block has been evaluated with pre-block frozen weights.
+                # Only after the full block is evaluated does it become training data.
                 train_block(
                     second_model=second_model,
                     third_model=third_model,
@@ -614,7 +672,7 @@ def main() -> None:
     )
 
     result = {
-        "contract": "v4_position_conditional_tail_walkforward_v1",
+        "contract": "v4_position_conditional_tail_walkforward_v2",
         "version": VERSION,
         "period": {
             "start_date": START_DATE.isoformat(),
@@ -632,11 +690,12 @@ def main() -> None:
         },
         "policy": {
             "current_daily_six_fixed": True,
-            "current_predicted_head_fixed": True,
+            "first_place_marginal_preserved": True,
             "formal_ticket_count": 2,
             "test_block_weights_frozen": True,
             "training_uses_prior_blocks_only": True,
             "all_tickets_frozen_before_result": True,
+            "all_conditional_second_choices_frozen_before_result": True,
             "odds_used_for_selection": False,
             "db_write": False,
             "production_change_allowed": False,
@@ -654,14 +713,14 @@ def main() -> None:
                     - control["top2_hit_rate_percent"],
                     3,
                 ),
-                "prefix_hit_rate_given_head_pp": round(
-                    challenger["prefix_hit_rate_given_head_percent"]
-                    - control["prefix_hit_rate_given_head_percent"],
+                "prefix_hit_rate_given_predicted_head_pp": round(
+                    challenger["prefix_hit_rate_given_predicted_head_percent"]
+                    - control["prefix_hit_rate_given_predicted_head_percent"],
                     3,
                 ),
-                "second_hit_rate_given_head_pp": round(
-                    challenger["second_hit_rate_given_head_percent"]
-                    - control["second_hit_rate_given_head_percent"],
+                "second_hit_rate_given_actual_first_pp": round(
+                    challenger["second_hit_rate_given_actual_first_percent"]
+                    - control["second_hit_rate_given_actual_first_percent"],
                     3,
                 ),
                 "roi_pp": round(
