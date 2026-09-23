@@ -11,7 +11,7 @@ def test_coverage_ladder_has_no_outcome_surface():
     assert "v2_realtime_odds_snapshots" in source
     assert "v2_results" not in source
     assert "trifecta_payout" not in source
-    assert "purchase_action": false" in source
+    assert '"purchase_action": false' in source
     for forbidden in (
         "insert into",
         "update v2_",
