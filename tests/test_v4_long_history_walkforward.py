@@ -83,7 +83,8 @@ def test_workflow_uses_only_non_enumerating_read_only_connection_routes():
     assert "--project" in workflow
     assert "--environment" in workflow
     assert "--service" in workflow
-    assert "backtest-analysis" in workflow
+    assert "postgres-recovery" in workflow
+    assert "database_public_url" in workflow
     assert "railway variable list" not in workflow
     assert "railway-vars.json" not in workflow
     assert "printenv" not in workflow
