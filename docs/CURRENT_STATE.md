@@ -1,5 +1,95 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 10:05 JST
+
+This section supersedes the 09:58 JST override below where they differ.
+
+### Current Source of Truth
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- PR #372 Top5 pre-result observation: merged
+- PR #373 availability shadow `PYTHONPATH: .` repair: merged
+- PR #374 availability activation: Draft / mergeable / 7/7 exact-head CI SUCCESS
+- PR #375 top-five formal replay bridge: Draft / mergeable / 5/5 exact-head CI SUCCESS
+- no Production DB/model/coefficient/threshold/stake/candidate-count mutation
+- `purchase_action=false`
+
+### PR #375 — future 1–5 point economics replay prepared
+
+PR #375:
+`Research: replay formal V4 top-five point-count economics`
+
+Current head:
+`6a5d23d58207c01e0ab7267b6e97bfa71355700f`
+
+State:
+- Draft / mergeable
+- **5/5 exact-head CI SUCCESS**
+- pure/offline research only
+- intentionally not merged before PR #374 real-fixture validation so main stays fixed
+
+The replay bridge accepts only immutable evidence:
+- explicit formal artifact SHA-256;
+- prospective-evidence-eligible artifact;
+- no result/payout reads in freeze provenance;
+- `generated_at_jst == completed_at_jst`;
+- exact six formal core races / ranks 1..6;
+- exactly five preserved pre-result `research_ranked_tickets` per core race;
+- research ranks 1–2 exactly equal formal `core_order 1/2`;
+- every frozen ranking precedes its race deadline;
+- exact same six finalized outcome rows, with no missing/extra/non-final race.
+
+Only after those checks does it call the frozen 1..5 point marginal-revenue evaluator.
+
+This means future formal artifacts created after #372 can be scored for 1/2/3/4/5-point economics without manual ticket copying or result-after rank reconstruction.
+
+Sep18/Sep19 remain 1–2 only because their immutable artifacts never preserved ranks 3–5.
+
+### PR #374 — next real availability fixture gate
+
+PR #374 remains the current Production activation Draft:
+- head `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`
+- Draft / mergeable
+- **7/7 exact-head CI SUCCESS**
+
+The 2026-09-23 natural shadow capture exposed only:
+`ModuleNotFoundError: No module named 'research'`
+
+That workflow import-path issue was fixed and merged in #373. It did not change eligibility.
+
+The next timing-clean real raw validation is scheduled for **2026-09-24 08:45 JST**.
+
+Gate:
+- inspect scheduled primary and any 08:25 fallback;
+- choose earliest valid capture via the preregistered arbiter;
+- require raw availability evidence and formal freeze from the same run;
+- verify raw SHA and raw-observed/capture-complete timestamps precede freeze;
+- replay exact real bytes through #374 binder/parser/guard with no hand-edited status/scope;
+- PASS_ACTIVE_CORE or a correctly parsed supported cancellation BLOCK proves real-HTML contract compatibility;
+- parser ambiguity/mismatch/timing/SHA failure blocks merge.
+
+The user has explicitly approved the Production-effect #374 merge once this real-fixture gate passes.
+
+After a safe #374 merge, PR #375 may be rechecked against the new main and merged as pure research if still clean.
+
+### Handoff update schedule
+
+Per user request, the **03:00 JST handoff update has been removed**.
+
+The recurring `AI引き継ぎ日次更新` now runs only at:
+- 09:00 JST
+- 15:00 JST
+- 21:00 JST
+
+Its prompt was also simplified to require fresh current-main/open-PR/CI/Railway retrieval instead of carrying stale fixed SHAs and old blockers.
+
+Do not recreate or enable a 03:00 JST handoff update unless the user explicitly requests it again.
+
+### Safety
+
+`PURCHASE_FALSE / NO_03_JST_HANDOFF / TOP5_PRE_RESULT_ONLY / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_CAPACITY_DRIVEN_DELETE / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 09:58 JST
 
 This section supersedes the 09:54 JST override below where they differ.
