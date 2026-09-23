@@ -6,6 +6,8 @@ on:
       - 'research/v4_alpha025_prospective_shadow.py'
       - 'research/v4_alpha025_prospective_shadow_pg.py'
       - 'tests/test_v4_alpha025_forward_shadow.py'
+      - 'research/v4_alpha025_forward_evaluator.py'
+      - 'tests/test_v4_alpha025_forward_evaluator.py'
       - 'docs/V4_ALPHA025_FORWARD_SHADOW_20260923.md'
       - '.github/workflows/v4-alpha025-forward-shadow.yml'
 
@@ -35,8 +37,8 @@ jobs:
           V4_ALPHA025_FORWARD_DATE: '2099-01-01'
         run: |
           set -euo pipefail
-          python -m py_compile research/v4_alpha025_prospective_shadow.py research/v4_alpha025_prospective_shadow_pg.py tests/test_v4_alpha025_forward_shadow.py
-          pytest -q tests/test_v4_alpha025_forward_shadow.py
+          python -m py_compile research/v4_alpha025_prospective_shadow.py research/v4_alpha025_prospective_shadow_pg.py research/v4_alpha025_forward_evaluator.py tests/test_v4_alpha025_forward_shadow.py tests/test_v4_alpha025_forward_evaluator.py
+          pytest -q tests/test_v4_alpha025_forward_shadow.py tests/test_v4_alpha025_forward_evaluator.py
           python - <<'PY'
           from research import v4_alpha025_prospective_shadow as s
           assert s.ALPHA == 0.25
