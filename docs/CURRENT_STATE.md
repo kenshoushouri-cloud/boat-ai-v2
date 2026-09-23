@@ -1,5 +1,32 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 13:28 JST
+
+Freshly reverified state:
+
+- main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production: `stagedChanges=null`; visible pending patch has `changes=[]`
+- `postgres-recovery` 7d disk current 4.654747 GB / avg 4.548166 / min 4.425625 / max 4.657086
+- #374 `05c2cdea...`: Draft / mergeable / 7/7 green; 9/24 real-fixture gate unchanged
+- #375 `248f634b...`: Draft / mergeable / 5/5 green
+- #376 `6123a882...`: Draft / mergeable / 5/5 green
+- #377 `4c7be65f...`: Draft / mergeable / 5/5 green
+- #378 `991fac34...`: Draft / mergeable / 7/7 exact-head workflows green
+
+Research update:
+- long history 2025-07-01..2026-09-22: 432 evaluable days / 2,592 races; 2pt ROI 75.069%, 3pt ROI 75.554%.
+- selector challenger past-only test: 15.600% Top2 vs control 16.489%; selector replacement not supported.
+- control error split: among head-correct Top2 misses, 62.225% fail at second-prefix and 37.775% at third completion.
+- static tail place2 challenger past-only test: 16.280% Top2 vs control 16.624%; static place2 amplification not supported.
+- tail challengers improve probability log loss but do not improve discrete Top2 ranking.
+- next research target: position-conditional second/third model with strict past-only walk-forward.
+- formal policy remains six races / two points; 3pt shadow only; no score gate / candidate-count change / retune; `purchase_action=false`.
+
+Evidence:
+- long history run `35815470386`, artifact `10731821585`, ZIP `7d0db4de...160728`
+- selector run `35816984747`, artifact `10731444815`, ZIP `175cf329...8e5642`
+- tail run `35817852992`, artifact `10732018221`, ZIP `756a89a2...b69964`
+
 ## LATEST OVERRIDE — 2026-09-23 12:02 JST
 
 Freshly reverified state:
