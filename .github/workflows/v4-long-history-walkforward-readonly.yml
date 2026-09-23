@@ -59,7 +59,7 @@ jobs:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
       RAILWAY_ENVIRONMENT: 'production'
-      RAILWAY_BACKTEST_SERVICE: 'backtest-analysis'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
 
     steps:
       - uses: actions/checkout@v4
@@ -113,8 +113,8 @@ jobs:
           railway run \
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
-            --service "${RAILWAY_BACKTEST_SERVICE}" \
-            python -u research/v4_long_history_walkforward_pg.py \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_long_history_walkforward_pg.py' \
             2>&1 | tee v4-long-history-walkforward.txt
           grep -q '^RESULT=PASS_READ_ONLY$' v4-long-history-walkforward.txt
 
