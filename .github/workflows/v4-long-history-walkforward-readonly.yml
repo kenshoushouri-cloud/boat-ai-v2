@@ -148,9 +148,16 @@ jobs:
           forbidden = (
               'railway' + ' variable' + ' list',
               'railway-vars' + '.json',
-              'printenv',
-              'env |',
-              'echo "$' + 'railway_token',
+              'print' + 'env',
+              'env' + ' |',
+              'echo "
+          )
+          for value in forbidden:
+              assert value not in text, value
+          assert 'railway run' in text
+          print('V4_LONG_HISTORY_SECRET_ENUMERATION=0')
+          PY
+ + 'railway_token',
               'echo "${' + 'railway_token',
           )
           for value in forbidden:
