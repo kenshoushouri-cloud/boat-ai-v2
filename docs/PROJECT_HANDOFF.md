@@ -1,5 +1,88 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 09:58 JST
+
+This section supersedes the 09:54 JST override below where they differ.
+
+### Current main / approved merges
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- PR #372 Top5 pre-result observation: merged
+- PR #373 availability shadow import-path repair: merged
+- Railway Production staged changes: none
+- fallback service auto-deployment after #373: SUCCESS
+- no Production DB mutation
+- no model/coefficient/threshold/stake/candidate-count change
+- `purchase_action=false`
+
+### Availability activation PR replaced cleanly
+
+Old PR #370 has been closed as superseded.
+
+Current activation Draft is PR #374:
+`Production: enforce V4 pre-freeze availability guard (rebased)`
+
+- base: current main after #371/#372/#373
+- head: `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`
+- Draft / mergeable
+- **7/7 exact-head CI SUCCESS**
+
+PR #374 preserves:
+- merged LINE main/cover display
+- merged Top5 pre-result observation
+- merged shadow-capture `PYTHONPATH: .` repair
+
+The activation design is unchanged:
+- official raw capture before freeze
+- exact raw/request/manifest SHA + timing checks
+- bind exact frozen six core races to official evidence
+- formal prospective artifact is published only on `PASS_ACTIVE_CORE`
+- supported pre-freeze cancellation or any ambiguity/failure blocks the normal formal artifact
+- blocked run remains diagnostic only
+- no replacement / rerank / result read / payout read / DB write / LINE / purchase path
+
+### Remaining merge gate
+
+Do **not** merge PR #374 on synthetic CI alone.
+
+Next natural gate:
+- **2026-09-24 08:45 JST**
+
+Requirements:
+1. same-run real availability raw + formal prospective artifact
+2. exact raw/request/manifest hashes and timestamps
+3. all raw source observations completed before formal freeze
+4. replay exact preserved bytes through #374 binder/parser/guard with no hand-edited status/scope
+5. `PASS_ACTIVE_CORE` or correctly parsed supported `BLOCK_PRE_FREEZE_UNAVAILABLE_CORE`
+6. exact-head CI still green
+
+If those pass, the user has already explicitly approved Production-effect activation and #374 may be readied/merged with exact validated head SHA.
+
+If real HTML exposes ambiguity or unsupported shape, remain fail closed and update the Draft instead of weakening the guard.
+
+### Point-count economics
+
+Top5 observation is now active in future pre-result artifacts while formal tickets remain two.
+
+Current historical exact result remains:
+- 1 point/race: profit **-10 JPY**, ROI **99.167%**
+- 2 points/race: profit **+920 JPY**, ROI **138.333%**
+- point-2 marginal profit **+930 JPY**, marginal ROI **177.5%**
+- historical points 3–5 remain not evaluable because their ranks were not preserved pre-result
+
+Future settled formal days can now evaluate 1/2/3/4/5 without result-after reconstruction.
+
+### Handoff automation
+
+The user requested no 03:00 JST handoff update.
+
+Current daily handoff cadence:
+`09:00 / 15:00 / 21:00 JST`
+
+### Safety
+
+`PURCHASE_FALSE / FORMAL_CORE_TICKETS_2_UNCHANGED / TOP5_OBSERVATION_ONLY / PRE_FREEZE_RAW_REQUIRED / NO_RESULT_AFTER_RECONSTRUCTION / NO_THRESHOLD_RELAXATION / NO_DB_MUTATION / NO_RAILWAY_CONFIG_CHANGE`
+
 ## LATEST OVERRIDE — 2026-09-23 09:54 JST
 
 This section supersedes the 01:10 JST override below where they differ.
