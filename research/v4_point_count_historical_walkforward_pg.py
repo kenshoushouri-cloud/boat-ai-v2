@@ -674,6 +674,42 @@ def main() -> None:
 
     evaluated_days = [a for a in day_audit if a["status"] == "EVALUATED_EXACT_SIX"]
     aggregate_result = aggregate(complete_rows)
+    selected_feature_coverage = {
+        "races": len(complete_rows),
+        "course_any_races": sum(
+            int(row["course_lane_count"] > 0) for row in complete_rows
+        ),
+        "course_full6_races": sum(
+            int(row["course_lane_count"] == 6) for row in complete_rows
+        ),
+        "opponent_available_races": sum(
+            int(bool(row["opponent_available"])) for row in complete_rows
+        ),
+        "motor_available_races": sum(
+            int(bool(row["motor_available"])) for row in complete_rows
+        ),
+    }
+    denom = len(complete_rows) or 1
+    selected_feature_coverage.update(
+        {
+            "course_any_percent": round(
+                selected_feature_coverage["course_any_races"] / denom * 100.0,
+                3,
+            ),
+            "course_full6_percent": round(
+                selected_feature_coverage["course_full6_races"] / denom * 100.0,
+                3,
+            ),
+            "opponent_available_percent": round(
+                selected_feature_coverage["opponent_available_races"] / denom * 100.0,
+                3,
+            ),
+            "motor_available_percent": round(
+                selected_feature_coverage["motor_available_races"] / denom * 100.0,
+                3,
+            ),
+        }
+    )
 
     result = {
         "contract": "v4_point_count_historical_walkforward_v1",
@@ -708,6 +744,7 @@ def main() -> None:
                 for status in sorted({str(row["status"]) for row in day_audit})
             },
         },
+        "selected_feature_coverage": selected_feature_coverage,
         **aggregate_result,
         "evaluated_race_records": complete_rows,
         "day_audit": day_audit,
@@ -720,6 +757,15 @@ def main() -> None:
 
     print("=== COVERAGE ===", flush=True)
     print(json.dumps(result["coverage"], ensure_ascii=False, sort_keys=True), flush=True)
+    print("=== SELECTED FEATURE COVERAGE ===", flush=True)
+    print(
+        json.dumps(
+            result["selected_feature_coverage"],
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     print("=== OVERALL STRATEGIES ===", flush=True)
     for row in result["strategies"]:
         m = row["marginal"]
