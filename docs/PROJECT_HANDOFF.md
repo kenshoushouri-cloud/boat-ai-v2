@@ -1,5 +1,237 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 11:38 JST
+
+This section supersedes the 11:24 JST override below where they differ.
+
+### Conversation handoff status
+
+The current chat reached its token/capacity limit. Continue in a new chat.
+
+At the start of the new chat, read in this order:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. Draft PR #374
+4. Draft PR #375
+5. Draft PR #376
+
+Then re-fetch current GitHub main / open PRs / exact-head CI / Railway Production before acting. Do not assume the SHA/PR/CI/Railway values below are still current.
+
+### Current Source of Truth at handoff
+
+- repository: `kenshoushouri-cloud/boat-ai-v2`
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway PostgreSQL Production is Production-data Source of Truth
+- Railway Production staged changes: none
+- `purchase_action=false`
+- no Production DB/model/coefficient/threshold/stake/candidate-count mutation in this chat segment
+
+Active Drafts:
+- PR #374 `Production: enforce V4 pre-freeze availability guard (rebased)`
+  - head `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`
+  - Draft / mergeable
+  - **7/7 exact-head CI SUCCESS**
+- PR #375 `Research: replay formal V4 top-five point-count economics`
+  - head `248f634b587eae4c419a9194c5ae2e8c989c8fa1`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+- PR #376 `Research: backtest V4 1-5 point historical walk-forward`
+  - head `6123a8820f840081b7067f4015ea9f94257334f0`
+  - Draft / mergeable
+  - **5/5 exact-head CI SUCCESS**
+
+### PR #376 — historical point-count result
+
+Immutable original dual-window evidence:
+- workflow run `35806246724`
+- artifact ID `10727519397`
+- ZIP SHA-256 `426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771`
+
+Fixed OOS window: 2026-07-01..2026-08-15
+- 46/46 days
+- 276 exact selected races
+- no 5R shrink
+- cumulative ROI:
+  - 1 point 71.848%
+  - 2 points 72.500%
+  - 3 points 77.826%
+  - 4 points 78.288%
+  - 5 points 69.217%
+- Nth-point marginal ROI:
+  - rank1 71.848%
+  - rank2 73.152%
+  - rank3 **88.478%**
+  - rank4 79.674%
+  - rank5 **32.935%**
+
+Recent timing-safe window: 2026-09-11..2026-09-22
+- 10/12 days evaluable
+- 60 exact selected races
+- 2 whole days unevaluable due missing official selected result
+- no 5R shrink
+- cumulative ROI:
+  - 1 point 27.667%
+  - 2 points 45.333%
+  - 3 points 60.056%
+  - 4 points 88.250%
+  - 5 points 76.433%
+- Nth-point marginal ROI:
+  - rank1 27.667%
+  - rank2 63.000%
+  - rank3 **89.500%**
+  - rank4 172.833%
+  - rank5 **29.167%**
+
+Sensitivity result:
+- rank3 is notably stable across windows but remains below break-even:
+  - 88.478% OOS
+  - 89.500% recent
+- recent rank4 is not robust:
+  - only 2 hits
+  - one 9,560 JPY payout supplies 92.189% of rank4 gross
+  - removing that hit => 13.500% marginal ROI
+  - recent full-feature subset (Course full6 + Opponent + Motor, 40 races) => rank4 0 hits / 0%
+- rank5 is consistently weak
+- deterministic 20,000-resample day-cluster bootstrap exists as uncertainty diagnostic
+- simple monotone tier-point policies also failed to become profitable in fixed OOS
+
+Current point-count shortlist:
+- keep formal **2 points** as control
+- compare **3 points** in shadow/Forward
+- rank4 diagnostic only until replicated
+- rank5 deprioritized
+
+Do not change Production point count from this backtest alone. Forward 30/50/100-case evidence remains the confirmation path.
+
+### PR #376 secret boundary
+
+The first immutable report run used the repository's older Railway CLI variable-list pattern.
+
+That pattern was removed from current PR #376:
+- no `railway variable list`
+- no `RAILWAY_TOKEN`
+- no temporary variable-list JSON
+- future optional live DB replay only via dedicated GitHub secret `V4_BACKTEST_DATABASE_URL`
+- if that dedicated secret is absent, CI validates frozen evidence/contracts and skips live DB replay
+
+Exact-head CI enforces this boundary.
+
+### PR #375 — formal Top5 replay
+
+PR #375 is pure/offline research.
+
+It:
+- requires explicit immutable artifact SHA
+- requires exact six formal races
+- requires five pre-result `research_ranked_tickets`
+- requires research ranks 1–2 == formal core_order 1/2
+- requires predeadline freeze
+- requires exact-six final outcomes
+- can adapt frozen PR #366 `candidate_discovery_v4_post_result_eval_v1` evidence into the replay without manual result re-entry
+- does not reconstruct historical rank3–5 after results
+- has no DB/network/LINE/purchase surface
+
+Keep it Draft until #374's Production availability validation is resolved, unless current state after re-fetch clearly justifies otherwise.
+
+### PR #374 — next Production gate
+
+PR #374 remains intentionally unmerged.
+
+Reason:
+- 2026-09-23 natural availability shadow failed because repo root was missing from PYTHONPATH
+- PR #373 fixed that import-path issue in main
+- next clean natural real fixture is expected on 2026-09-24
+
+One active exact automation remains:
+- title `V4 Real Fixture Gate 9/24`
+- 2026-09-24 08:45 JST
+- inspect scheduled primary and any Railway fallback
+- select earliest timing-clean capture with preregistered arbiter
+- require matching raw + formal artifacts from same run
+- verify raw SHA/timestamps and raw-before-freeze ordering
+- replay exact raw through #374 binder/parser/guard without hand edits
+- supported `PASS_ACTIVE_CORE` or supported `BLOCK_PRE_FREEZE_UNAVAILABLE_CORE` counts as real-HTML contract validation
+- parser/ambiguity/SHA/timing/unsupported-status failure blocks merge
+- if validation succeeds and exact-head CI is green, user has already explicitly approved #374 Production-effect merge
+
+A duplicate older 08:45 gate automation was disabled during this handoff to prevent double execution.
+
+### Already merged / Production-visible relevant changes
+
+- PR #371 LINE notification display is merged:
+  - existing BUY rows only
+  - max 2 distinct tickets/race
+  - first = `本線`
+  - second = `押さえ`
+  - no synthetic second point and no threshold relaxation
+  - this realtime LINE path is **not yet proven identical** to V4 formal core_order 1/2
+- PR #372 Top5 pre-result research observation is merged:
+  - formal core remains 2 tickets
+  - `research_ranked_tickets` records Top5 for future economics
+- PR #373 PYTHONPATH repair is merged
+
+### Handoff automation schedule
+
+Per user request:
+- no 03:00 JST handoff update
+- recurring handoff updates only at 09:00 / 15:00 / 21:00 JST
+
+### Approval / safety boundaries
+
+May continue without confirmation:
+- read-only audits
+- research / historical backtest / Forward evaluation
+- Draft PR creation/update
+- CI
+- docs/handoff updates
+- safe evidence collection
+
+Explicit approval required:
+- Production-effect PR merge unless already explicitly approved
+- Railway Production Variables/Cron/service/volume/migration changes
+- Production DB INSERT/UPDATE/DELETE/schema/VACUUM
+- Production model/coefficient/threshold/candidate/stake changes
+- new LINE actual-send behavior changes
+- Forward persistence
+- automatic purchase
+- paid data / external inquiry
+
+Existing explicit approval:
+- PR #374 availability guard Production merge is approved **only after** the real timing-clean fixture gate passes.
+
+Hard safety:
+- fail closed
+- `purchase_action=false`
+- never loosen thresholds for volume/profit/cost
+- no result-after Forward/candidate reconstruction
+- no evidence mixing
+- no secret values
+- no capacity-driven deletion
+- never call Railway plaintext variable-list APIs/tools; config variable names only
+- do not change point count from #376 backtest alone
+
+### Best next action in new chat
+
+1. Re-fetch current main/open PR/CI/Railway.
+2. If before 2026-09-24 08:45 JST:
+   - keep main fixed under #374 validation
+   - do not merge #375/#376 merely to reduce Draft count
+   - safe research/docs only.
+3. At/after the natural 2026-09-24 fixture:
+   - execute/inspect the #374 real-fixture gate
+   - merge #374 only if exact real raw validates and exact-head CI is green
+   - re-fetch main after merge
+   - then rebase/recheck #375/#376 as needed.
+4. Continue 2-vs-3 point Forward economics:
+   - formal 2 points remains control
+   - rank3 is shadow/diagnostic comparison only
+   - do not activate 3 points based on historical backtest alone.
+5. Keep Sep21/Sep22 cancellation-affected formal artifacts out of settled economics unless exact six same-date final outcomes exist.
+
+### Safety
+
+`PURCHASE_FALSE / MAIN_FIXED_FOR_REAL_FIXTURE_GATE / FORMAL_2_POINTS_UNCHANGED / RANK3_SHADOW_ONLY / NO_SECRET_ENUMERATION / NO_RESULT_AFTER_RECONSTRUCTION / NO_RETUNE / NO_PRODUCTION_MUTATION`
+
 ## LATEST OVERRIDE — 2026-09-23 11:24 JST
 
 This section supersedes the 10:30 JST override below where they differ.
