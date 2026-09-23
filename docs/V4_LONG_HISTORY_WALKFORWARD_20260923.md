@@ -63,3 +63,23 @@ The long history may generate hypotheses, but it does not authorize:
 Any such change remains a separate preregistered Forward/Production approval gate.
 
 `READ_ONLY_TRANSACTION / NO_RESULT_BEFORE_FREEZE / NO_ODDS_SELECTION / NO_RETUNE / SIX_RACES_CONTROL / FORMAL_2_POINTS_CONTROL / THIRD_POINT_SHADOW / PURCHASE_FALSE`
+
+
+## Approved read-only execution routes
+
+The workflow fails closed unless one of these two routes is available:
+
+1. dedicated GitHub secret `V4_BACKTEST_DATABASE_URL`; or
+2. existing project-scoped `RAILWAY_TOKEN` used only for `railway run`.
+
+The second route uses Railway CLI's documented local execution behavior:
+
+`railway run --project <project> --environment production --service backtest-analysis <command>`
+
+Railway CLI fetches the selected service environment and injects it only into
+the local child process. The workflow does **not** call `railway variable list`,
+does not write a variable-list JSON file, does not print the token or
+`DATABASE_URL`, and does not deploy/redeploy/restart/change Railway state.
+
+The Python replay still opens PostgreSQL with `SET TRANSACTION READ ONLY` and
+rolls back before exit.
