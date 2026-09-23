@@ -1,5 +1,125 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-23 09:54 JST
+
+This section supersedes the 01:10 JST override below where they differ.
+
+### Fresh Source of Truth
+
+- current main: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+- Railway Production staged changes: none
+- no Production DB mutation
+- no model/coefficient/threshold/stake/candidate-count change
+- `purchase_action=false`
+
+### PR #372 — Top5 pre-result observation approved and merged
+
+The user explicitly approved continuing the V4 point-count marginal-revenue work.
+
+PR #372 `Research: compare V4 1-5 point marginal revenue`:
+- validated head: `81adec1d80d9f1d5c2772af33d70a1e02f745229`
+- exact-head CI before merge: **7/7 SUCCESS**
+- merge/main SHA: `49e09146551c52fc49c2b4e0939b22772435740d`
+
+Production artifact effect now on main:
+- formal `CORE_TICKETS=2` remains unchanged
+- formal `tickets` remains exactly two
+- each future pre-result V4 artifact additionally stores observation-only `research_ranked_tickets` top five from the same frozen V4 probability distribution
+- `research_ranked_tickets[:2]` must remain the formal top two
+- ranks 3–5 have no candidate eligibility, LINE, threshold, stake, model or purchase effect
+
+Historical exact evidence remains:
+- 1 point/race: invest 1,200 / gross 1,190 / profit **-10 JPY** / ROI **99.167%**
+- 2 points/race: invest 2,400 / gross 3,320 / profit **+920 JPY** / ROI **138.333%**
+- point-2 marginal contribution: **+930 JPY**, marginal ROI **177.5%**
+- Sep18/Sep19 ranks 3–5 remain `NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS`; no result-after reconstruction was performed
+
+Future settled formal days can now compare cumulative and marginal economics for 1/2/3/4/5 points using preserved pre-result ranks.
+
+### 2026-09-23 real availability fixture attempt — blocked before raw HTML
+
+Natural fallback run:
+- GitHub run `35797576979` (`workflow_dispatch`)
+- availability artifact ID `10724442796`
+- prospective freeze artifact ID `10724298102`
+- freeze JSON SHA-256 `238691641fe8deee44da93cc50baadb92c066d8b893c67e3f8d66818da56a942`
+- canonical core SHA-256 `8a50f645239778a3adae8fb24f8c5df18b6c25d698a1136f00006482c8075639`
+- freeze completed `2026-09-23T08:28:46.600474+09:00`
+- earliest core deadline `08:58 JST`
+
+The availability capture step failed before any official HTML/raw/request manifest was written:
+
+`ModuleNotFoundError: No module named 'research'`
+
+Therefore Sep23 does **not** provide a valid real availability fixture and PR #370 must not be merged from this evidence.
+
+### PR #373 — shadow availability import-path repair merged
+
+To avoid repeating the same failure on the next natural run, the user-approved minimal Production workflow repair was separated from guard activation.
+
+PR #373 `Production: fix V4 availability shadow import path`:
+- one workflow file / two-line functional delta
+- adds workflow-level `PYTHONPATH: .`
+- asserts the invariant in safety CI
+- exact-head CI: **5/5 SUCCESS**
+- validated head: `aebf4b0720798d28852dc9c7326caa137f1b2ed1`
+- merge/main SHA: `c93422b53c8dc384e87b7d99d444c5902c48253f`
+
+Important:
+- this repairs already-merged shadow raw capture only
+- shadow capture remains `continue-on-error`
+- shadow capture still has `eligibility_effect=0`
+- it does not enable availability guard enforcement
+- no Railway Variables/Cron/service/volume change was made
+
+### PR #370 — availability guard activation remains real-fixture gated
+
+Current PR #370 head:
+`a5c13f4e93ee09641e3a4552faeb7e881570d652`
+
+State:
+- Draft
+- exact-head **7/7 CI SUCCESS**
+- currently behind/diverged from newer main after #371/#372/#373
+- do not merge stale branch as-is
+- if the next real fixture validates, rebase/recreate the equivalent activation changes cleanly on current main while preserving newer LINE and Top5 changes
+
+Next real-fixture gate:
+- **2026-09-24 08:45 JST**
+- inspect the natural scheduled primary and/or Railway fallback
+- require matching real pre-freeze raw + formal artifact from the same timing-clean run
+- verify exact raw/request/manifest hashes and timestamps
+- replay exact bytes through binder/parser/guard without hand-editing status/scope
+- `PASS_ACTIVE_CORE` or a correctly parsed supported pre-freeze BLOCK is acceptable real-HTML validation
+- parser ambiguity, missing raw, timing violation, unsupported status or identity mismatch remains a blocker
+- user has already explicitly approved Production-effect activation if the real-fixture gate passes and exact-head CI is green
+
+### LINE notification state
+
+The merged LINE main/cover display remains active from main:
+- existing BUY decisions only
+- maximum two distinct tickets per race
+- first = `本線`
+- second = `押さえ`
+- no synthetic cover / no threshold relaxation
+
+This realtime LINE path is still separate from exact V4 formal `core_order 1/2` identity.
+
+### Handoff automation cadence
+
+The user requested no overnight 03:00 handoff update.
+
+`AI引き継ぎ日次更新` is now scheduled only at:
+- 09:00 JST
+- 15:00 JST
+- 21:00 JST
+
+No 03:00 JST run.
+
+### Safety
+
+`PURCHASE_FALSE / FORMAL_CORE_TICKETS_2_UNCHANGED / TOP5_OBSERVATION_ONLY / PRE_FREEZE_RAW_REQUIRED / NO_RESULT_AFTER_RECONSTRUCTION / NO_THRESHOLD_RELAXATION / NO_DB_MUTATION / NO_RAILWAY_CONFIG_CHANGE`
+
 ## LATEST OVERRIDE — 2026-09-23 01:10 JST
 
 This section supersedes the 00:58 JST override below where they differ.
