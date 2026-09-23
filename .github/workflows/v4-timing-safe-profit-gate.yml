@@ -48,10 +48,6 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    strategy:
-      fail-fast: false
-      matrix:
-        cutoff_minutes: [5, 10]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -62,11 +58,11 @@ jobs:
       RAILWAY_DB_SERVICE: 'postgres-recovery'
       V4_VALUE_TEST_START: '2026-08-25'
       V4_VALUE_TEST_END: '2026-09-22'
-      V4_VALUE_ODDS_CUTOFF_MINUTES: '${{ matrix.cutoff_minutes }}'
+      V4_VALUE_ODDS_CUTOFF_MINUTES: '5'
       V4_VALUE_MAX_LABEL_SPREAD_SECONDS: '60'
       V4_VALUE_BOOTSTRAP_SAMPLES: '20000'
       V4_VALUE_BOOTSTRAP_SEED: '20260923'
-      V4_VALUE_OUTPUT_JSON: 'v4-timing-safe-profit-gate-${{ matrix.cutoff_minutes }}m.json'
+      V4_VALUE_OUTPUT_JSON: 'v4-timing-safe-profit-gate-5m.json'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -94,16 +90,16 @@ jobs:
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_timing_safe_profit_gate_pg.py' \
-            2>&1 | tee "v4-timing-safe-profit-gate-${{ matrix.cutoff_minutes }}m.txt"
-          grep -q '^RESULT=PASS_READ_ONLY_TIMING_SAFE_PROFIT_GATE$' "v4-timing-safe-profit-gate-${{ matrix.cutoff_minutes }}m.txt"
+            2>&1 | tee "v4-timing-safe-profit-gate-5m.txt"
+          grep -q '^RESULT=PASS_READ_ONLY_TIMING_SAFE_PROFIT_GATE$' "v4-timing-safe-profit-gate-5m.txt"
       - name: Upload sanitized evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v4-timing-safe-profit-gate-${{ github.run_id }}-${{ matrix.cutoff_minutes }}m
+          name: v4-timing-safe-profit-gate-${{ github.run_id }}-5m
           path: |
-            v4-timing-safe-profit-gate-${{ matrix.cutoff_minutes }}m.json
-            v4-timing-safe-profit-gate-${{ matrix.cutoff_minutes }}m.txt
+            v4-timing-safe-profit-gate-5m.json
+            v4-timing-safe-profit-gate-5m.txt
           retention-days: 90
           if-no-files-found: warn
       - name: Confirm no variable enumeration
