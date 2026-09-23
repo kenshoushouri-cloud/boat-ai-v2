@@ -265,6 +265,72 @@ def aggregate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def paired_day_bootstrap(
+    challenger_rows: Iterable[dict[str, Any]],
+    control_rows: Iterable[dict[str, Any]],
+    *,
+    samples: int = BOOTSTRAP_SAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+) -> dict[str, Any]:
+    challenger = sorted(list(challenger_rows), key=lambda row: str(row["date"]))
+    control = sorted(list(control_rows), key=lambda row: str(row["date"]))
+    if len(challenger) != len(control):
+        raise ValueError("paired bootstrap requires equal day counts")
+    if not challenger:
+        return {
+            "days": 0,
+            "samples": samples,
+            "seed": seed,
+            "observed_top2_hit_rate_pp": 0.0,
+            "ci95_low_pp": 0.0,
+            "ci95_high_pp": 0.0,
+            "positive_share_percent": 0.0,
+        }
+
+    pairs = []
+    for left, right in zip(challenger, control):
+        if str(left["date"]) != str(right["date"]):
+            raise ValueError("paired bootstrap date mismatch")
+        if int(left["races"]) != int(right["races"]):
+            raise ValueError("paired bootstrap race-count mismatch")
+        pairs.append(
+            (
+                int(left["top2_hits"]) - int(right["top2_hits"]),
+                int(left["races"]),
+            )
+        )
+
+    total_hit_diff = sum(hit_diff for hit_diff, _ in pairs)
+    total_races = sum(races for _, races in pairs)
+    observed = total_hit_diff / total_races * 100.0
+
+    rng = random.Random(seed)
+    diffs: list[float] = []
+    n = len(pairs)
+    for _ in range(samples):
+        sampled_hit_diff = 0
+        sampled_races = 0
+        for _ in range(n):
+            hit_diff, races = pairs[rng.randrange(n)]
+            sampled_hit_diff += hit_diff
+            sampled_races += races
+        diffs.append(sampled_hit_diff / sampled_races * 100.0)
+
+    diffs.sort()
+    low_idx = max(0, min(len(diffs) - 1, int(0.025 * len(diffs))))
+    high_idx = max(0, min(len(diffs) - 1, int(0.975 * len(diffs)) - 1))
+    positive = sum(1 for value in diffs if value > 0.0)
+    return {
+        "days": n,
+        "samples": samples,
+        "seed": seed,
+        "observed_top2_hit_rate_pp": round(observed, 3),
+        "ci95_low_pp": round(diffs[low_idx], 3),
+        "ci95_high_pp": round(diffs[high_idx], 3),
+        "positive_share_percent": round(positive / samples * 100.0, 3),
+    }
+
+
 def choose_alpha(
     prior_oos: Mapping[str, list[dict[str, Any]]],
 ) -> tuple[str, dict[str, Any] | None]:
@@ -444,6 +510,14 @@ def main() -> None:
         if row["candidate_metrics"][row["chosen_alpha"]]["top2_hit_rate_percent"]
         == row["candidate_metrics"]["a000"]["top2_hit_rate_percent"]
     )
+    selected_bootstrap = paired_day_bootstrap(
+        selected_oos_rows,
+        control_oos_rows,
+    )
+    fixed_a025_bootstrap = paired_day_bootstrap(
+        all_oos["a025"],
+        all_oos["a000"],
+    )
 
     result = {
         "contract": "v4_position_conditional_blend_walkforward_v1",
@@ -493,6 +567,8 @@ def main() -> None:
             },
             "selected_top2_block_wins": selected_block_wins,
             "selected_top2_block_ties": selected_block_ties,
+            "paired_day_bootstrap_selected_vs_control": selected_bootstrap,
+            "paired_day_bootstrap_fixed_a025_vs_control": fixed_a025_bootstrap,
             "fixed_alpha_oos_descriptive": fixed_oos,
             "block_results": block_results,
         },
