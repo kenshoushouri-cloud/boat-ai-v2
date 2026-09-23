@@ -56,7 +56,7 @@ if END_DATE < START_DATE:
     raise RuntimeError("invalid backtest period")
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE
+ROOT = HERE.parent
 V1_PATH = ROOT / ".github" / "scripts" / "candidate_discovery_v1_pg.py"
 v1_spec = importlib.util.spec_from_file_location("candidate_discovery_v1_pg", V1_PATH)
 v1 = importlib.util.module_from_spec(v1_spec)
@@ -709,6 +709,7 @@ def main() -> None:
             },
         },
         **aggregate_result,
+        "evaluated_race_records": complete_rows,
         "day_audit": day_audit,
     }
 
