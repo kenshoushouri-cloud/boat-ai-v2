@@ -1,5 +1,73 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-23 13:28 JST
+
+This section supersedes the 12:02 JST override below where they differ.
+
+### Fresh re-audit
+
+- GitHub main remains `c93422b53c8dc384e87b7d99d444c5902c48253f`.
+- Railway Production `boat-v2-postgres`: `stagedChanges=null`; the visible pending EnvironmentPatch has an empty `changes=[]` payload and no Production mutation was made by this research.
+- `postgres-recovery` 7d disk: current 4.654747 GB / avg 4.548166 / min 4.425625 / max 4.657086.
+- PR #374 remains Draft / mergeable at `05c2cdea22c96fdcaaa45e565ff06450cc33fad5`; 7/7 exact-head CI SUCCESS; real 2026-09-24 timing-clean fixture gate still required before the already-approved conditional merge.
+- PR #375 remains Draft / mergeable at `248f634b587eae4c419a9194c5ae2e8c989c8fa1`; 5/5 exact-head CI SUCCESS.
+- PR #376 remains Draft / mergeable at `6123a8820f840081b7067f4015ea9f94257334f0`; 5/5 exact-head CI SUCCESS.
+- PR #377 remains Draft / mergeable at `4c7be65f4c5cc8e813a6de031ed73f6d17b28abc`; 5/5 exact-head CI SUCCESS.
+- PR #378 is Draft / mergeable at `991fac345ce6d9b1da859b98c83617ecb846760d`; 7/7 exact-head workflows SUCCESS.
+
+### 2025-07 onward long-history research
+
+PR #378 completed a READ ONLY replay for 2025-07-01..2026-09-22:
+- 449 calendar days; 432 exact-six evaluable days; 2,592 races.
+- formal 2pt ROI 75.069%; shadow 3pt ROI 75.554%; third-ticket marginal ROI 76.524%.
+- 10 chronological blocks: formal 2pt profitable 1/10; shadow 3pt profitable 1/10.
+- historical feature caveat: 2025-07..2026-06 largely exercises fail-neutral Course/Opponent paths; do not label all 2,592 races as today's full-feature V4.
+- fixed 2026-07-01..08-15 subset reproduces #376 exactly.
+
+Immutable long-history evidence:
+- run `35815470386`
+- artifact `10731821585`
+- ZIP SHA-256 `7d0db4de5563d4d29c3d13429806b5ea0454e53260449f1f5256bc6f34160728`
+
+### Selector challenger result
+
+15 preregistered structural selector formulas were compared on 417 common-evaluable days / 2,502 races.
+- fixed current equal-four control Top2 hit 16.667%.
+- best fixed descriptive challenger `head_p1_head_margin_concentration`: 16.906%, but this is not walk-forward promotion evidence.
+- past-only adaptive unseen test: challenger 15.600% vs control 16.489% (-0.889pp).
+- challenger improves head hit by +5.023pp but worsens Top2 exact, log loss, and secondary ROI.
+- conclusion: keep current equal-four selector; no candidate-count / score-gate / selector change.
+
+Immutable selector evidence:
+- run `35816984747`
+- artifact `10731444815`
+- ZIP SHA-256 `175cf3296d77d6c5300a29b8a0368d12d8ede7b2c7431c0ab8e74ab5a38e5642`
+
+### Tail-order challenger result
+
+Current six races and every first-place lane marginal were held fixed; nine predeclared second/third place2 reweight candidates were frozen before result access.
+- control error decomposition: 1,372 head-correct races; among 953 head-correct Top2 misses, 593 (62.225%) already miss the first+second prefix and 360 (37.775%) fail at third completion.
+- fixed control Top2 hit 16.860%; every tested static place2 boost is lower.
+- past-only adaptive unseen test: challenger 16.280% vs control 16.624% (-0.344pp).
+- adaptive mean log loss improves by -0.011975, but discrete Top2 accuracy and secondary ROI worsen.
+- the adaptive chooser reverts to control for the final six test blocks.
+- conclusion: static place2 amplification is not a Top2 ranking improvement; next research target is a genuinely position-conditional second/third model, not another static coefficient boost.
+
+Immutable tail evidence:
+- run `35817852992`
+- artifact `10732018221`
+- ZIP SHA-256 `756a89a2e8a3940f4f1031d4a1106310747164b78d9dcf1fa1a96350a4b69964`
+
+### Frozen policy
+
+- formal control remains 6 races / 2 points.
+- 3 points stays shadow-only.
+- current equal-four race selector stays control.
+- current tail-order model stays control.
+- historical research alone cannot change model / coefficient / temperature / threshold / candidate count / point count / stake.
+- `purchase_action=false`.
+- no Production DB / Railway / LINE / purchase mutation was made.
+
 ## LATEST OVERRIDE — 2026-09-23 12:02 JST
 
 This section supersedes the 11:42 JST override below where they differ.
