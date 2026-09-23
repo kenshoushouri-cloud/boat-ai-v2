@@ -121,10 +121,22 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
-      - name: Confirm no Railway variable enumeration surface
+      - name: Confirm no Railway secret-enumeration surface
         if: always()
         run: |
           set -euo pipefail
-          ! grep -q 'railway variable list' .github/workflows/v4-point-count-historical-walkforward-readonly.yml
-          ! grep -q 'RAILWAY_TOKEN' .github/workflows/v4-point-count-historical-walkforward-readonly.yml
-          echo "V4_HISTORICAL_SECRET_ENUMERATION=0"
+          python - <<'PY'
+          from pathlib import Path
+
+          text = Path(
+              ".github/workflows/v4-point-count-historical-walkforward-readonly.yml"
+          ).read_text(encoding="utf-8").lower()
+          forbidden = [
+              "railway" + " variable" + " list",
+              "railway" + "_" + "token",
+              "railway-vars" + ".json",
+          ]
+          for value in forbidden:
+              assert value not in text, value
+          print("V4_HISTORICAL_SECRET_ENUMERATION=0")
+          PY
