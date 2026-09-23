@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/value_s03_m2_forward_frozen_pg.py'
+      - '.github/scripts/value_s03_m2_forward_diagnostics_pg.py'
       - '.github/workflows/value-s03-m2-forward-current.yml'
       - 'docs/VALUE_S03_M2_FORWARD_FREEZE_20260912.md'
 
@@ -21,6 +22,10 @@ jobs:
       RAILWAY_DB_SERVICE: 'postgres-recovery'
       VALUE_S03_M2_FORWARD_END: '2026-09-23'
       VALUE_S03_M2_FORWARD_OUTPUT: 'value-s03-m2-forward-current.json'
+      VALUE_S03_M2_DIAG_END: '2026-09-23'
+      VALUE_S03_M2_DIAG_OUTPUT: 'value-s03-m2-forward-diagnostics.json'
+      VALUE_S03_M2_DIAG_BOOTSTRAP_SAMPLES: '20000'
+      VALUE_S03_M2_DIAG_BOOTSTRAP_SEED: '20260923'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +56,44 @@ jobs:
             2>&1 | tee value-s03-m2-forward-current.txt
           grep -q '^VALUE_S03_M2_FORWARD_RESULT=PASS_READ_ONLY$' value-s03-m2-forward-current.txt
           grep -q '^VALUE_S03_M2_FORWARD_PROMOTION_ALLOWED=0$' value-s03-m2-forward-current.txt
+      - name: Run S03 M2 Forward diagnostics
+        run: |
+          set -euo pipefail
+          railway run \\
+            --project "\${RAILWAY_PROJECT_ID}" \\
+            --environment "\${RAILWAY_ENVIRONMENT}" \\
+            --service "\${RAILWAY_DB_SERVICE}" \\
+            bash -lc 'test -n "\${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u .github/scripts/value_s03_m2_forward_diagnostics_pg.py' \\
+            2>&1 | tee value-s03-m2-forward-diagnostics.txt
+          grep -q '^RESULT=PASS_READ_ONLY_S03_M2_DIAGNOSTICS        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-s03-m2-forward-current-${{ github.run_id }}
+          path: |
+            value-s03-m2-forward-current.json
+            value-s03-m2-forward-current.txt
+            value-s03-m2-forward-diagnostics.json
+            value-s03-m2-forward-diagnostics.txt
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Confirm no variable enumeration
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/value-s03-m2-forward-current.yml').read_text(encoding='utf-8').lower()
+          forbidden=(
+              ''.join(('railway',' variable',' list')),
+              ''.join(('print','env')),
+              ''.join(('env',' |')),
+          )
+          for value in forbidden:
+              assert value not in text, value
+          assert 'railway run' in text
+          print('VALUE_S03_M2_FORWARD_SECRET_ENUMERATION=0')
+          PY
+ value-s03-m2-forward-diagnostics.txt
       - name: Upload aggregate research evidence
         if: always()
         uses: actions/upload-artifact@v4
