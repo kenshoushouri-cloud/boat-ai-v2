@@ -6,6 +6,7 @@ on:
       - 'research/v4_point_count_historical_walkforward_pg.py'
       - 'tests/test_v4_point_count_historical_walkforward.py'
       - 'docs/V4_POINT_COUNT_HISTORICAL_WALKFORWARD_20260923.md'
+      - 'research/evidence/v4_point_count_historical_sensitivity_20260923.json'
       - '.github/workflows/v4-point-count-historical-walkforward-readonly.yml'
 
 permissions:
