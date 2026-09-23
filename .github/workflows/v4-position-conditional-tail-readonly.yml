@@ -36,7 +36,7 @@ jobs:
           src=Path('research/v4_position_conditional_tail_walkforward_pg.py').read_text(encoding='utf-8').lower()
           assert 'set transaction read only' in src
           assert 'training_uses_prior_blocks_only' in src
-          assert 'current_predicted_head_fixed' in src
+          assert 'first_place_marginal_preserved' in src
           for value in ('insert into','update v2_','delete from','vacuum ','purchase_action=true'):
               assert value not in src, value
           print('V4_POSCOND_VALIDATE=PASS')
