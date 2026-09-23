@@ -1,0 +1,84 @@
+{
+  "contract": "v4_point_count_marginal_revenue_result_v1",
+  "formal_days": 2,
+  "formal_races": 12,
+  "stake_per_ticket_yen": 100,
+  "requested_point_range": [1, 5],
+  "available_pre_result_rank_count": 2,
+  "strategies": [
+    {
+      "points_per_race": 1,
+      "status": "EVALUATED",
+      "race_count": 12,
+      "investment_yen": 1200,
+      "gross_return_yen": 1190,
+      "profit_yen": -10,
+      "roi_percent": 99.167,
+      "hit_races": 2,
+      "hit_rate_percent": 16.667,
+      "max_drawdown_yen": 500,
+      "incremental_point": {
+        "point_rank": 1,
+        "incremental_investment_yen": 1200,
+        "incremental_gross_return_yen": 1190,
+        "incremental_profit_yen": -10,
+        "marginal_roi_percent": 99.167,
+        "incremental_hit_races": 2,
+        "incremental_hit_rate_percent": 16.667
+      },
+      "day_summaries": [
+        {"target_date":"2026-09-18","investment_yen":600,"gross_return_yen":610,"profit_yen":10},
+        {"target_date":"2026-09-19","investment_yen":600,"gross_return_yen":580,"profit_yen":-20}
+      ]
+    },
+    {
+      "points_per_race": 2,
+      "status": "EVALUATED",
+      "race_count": 12,
+      "investment_yen": 2400,
+      "gross_return_yen": 3320,
+      "profit_yen": 920,
+      "roi_percent": 138.333,
+      "hit_races": 4,
+      "hit_rate_percent": 33.333,
+      "max_drawdown_yen": 600,
+      "incremental_point": {
+        "point_rank": 2,
+        "incremental_investment_yen": 1200,
+        "incremental_gross_return_yen": 2130,
+        "incremental_profit_yen": 930,
+        "marginal_roi_percent": 177.5,
+        "incremental_hit_races": 2,
+        "incremental_hit_rate_percent": 16.667
+      },
+      "day_summaries": [
+        {"target_date":"2026-09-18","investment_yen":1200,"gross_return_yen":1100,"profit_yen":-100},
+        {"target_date":"2026-09-19","investment_yen":1200,"gross_return_yen":2220,"profit_yen":1020}
+      ]
+    },
+    {
+      "points_per_race": 3,
+      "status": "NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS",
+      "required_rank_count": 3,
+      "available_rank_count": 2,
+      "post_result_reconstruction_allowed": false
+    },
+    {
+      "points_per_race": 4,
+      "status": "NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS",
+      "required_rank_count": 4,
+      "available_rank_count": 2,
+      "post_result_reconstruction_allowed": false
+    },
+    {
+      "points_per_race": 5,
+      "status": "NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS",
+      "required_rank_count": 5,
+      "available_rank_count": 2,
+      "post_result_reconstruction_allowed": false
+    }
+  ],
+  "historical_3_to_5_reconstruction_performed": false,
+  "purchase_action": false,
+  "production_mutation": false
+}

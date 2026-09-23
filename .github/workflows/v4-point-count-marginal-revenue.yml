@@ -1,0 +1,64 @@
+name: V4 point-count marginal revenue
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_point_count_marginal_revenue.py'
+      - 'research/evidence/v4_point_count_marginal_revenue_input_20260918_20260919.json'
+      - 'research/evidence/v4_point_count_marginal_revenue_result_20260918_20260919.json'
+      - 'research/candidate_discovery_v4_contract.py'
+      - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
+      - 'tests/test_v4_point_count_marginal_revenue.py'
+      - 'tests/test_v4_point_count_rank_observation.py'
+      - 'docs/V4_POINT_COUNT_MARGINAL_REVENUE_20260923.md'
+      - '.github/workflows/v4-point-count-marginal-revenue.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  point-count-economics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest only
+        run: python -m pip install pytest
+      - name: Compile and reproduce frozen point-count evidence
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile \
+            research/v4_point_count_marginal_revenue.py \
+            research/candidate_discovery_v4_contract.py \
+            .github/scripts/candidate_discovery_v4_main_feed_pg.py \
+            tests/test_v4_point_count_marginal_revenue.py \
+            tests/test_v4_point_count_rank_observation.py
+          pytest -q \
+            tests/test_v4_point_count_marginal_revenue.py \
+            tests/test_v4_point_count_rank_observation.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research.v4_point_count_marginal_revenue import evaluate_point_counts
+
+          src = Path('research/evidence/v4_point_count_marginal_revenue_input_20260918_20260919.json')
+          expected = Path('research/evidence/v4_point_count_marginal_revenue_result_20260918_20260919.json')
+          actual = evaluate_point_counts(json.loads(src.read_text(encoding='utf-8')))
+          assert actual == json.loads(expected.read_text(encoding='utf-8'))
+          assert actual['strategies'][0]['profit_yen'] == -10
+          assert actual['strategies'][1]['profit_yen'] == 920
+          assert actual['strategies'][1]['incremental_point']['incremental_profit_yen'] == 930
+          assert all(
+              row.get('status') == 'NOT_EVALUABLE_MISSING_PRE_RESULT_RANKS'
+              for row in actual['strategies'][2:]
+          )
+          assert actual['historical_3_to_5_reconstruction_performed'] is False
+          assert actual['purchase_action'] is False
+          assert actual['production_mutation'] is False
+          PY

@@ -346,6 +346,12 @@ def main() -> None:
             "head_lane": int(row["head_lane"]),
             "head_p1": round(float(row["head_p1"]), 8),
             "tickets": tickets,
+            "research_ranked_tickets": list(
+                v4.top_tickets(
+                    distributions[rid],
+                    v4.RESEARCH_TICKET_RANKS,
+                )
+            ),
             "legacy_carryover": False,
         }
 
@@ -441,6 +447,7 @@ def main() -> None:
             "motor2_position_weights": list(v4.MOTOR_POS_W),
             "core_races_per_day": v4.CORE_RACES,
             "core_tickets_per_race": v4.CORE_TICKETS,
+            "research_ticket_rank_count": v4.RESEARCH_TICKET_RANKS,
             "expected_value_filter": False,
             "odds_filter": False,
             "odds_read": False,
