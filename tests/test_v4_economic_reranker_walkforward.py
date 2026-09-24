@@ -59,8 +59,8 @@ def test_pair_selection_is_global_per_block_and_warmup_is_control():
     pairs = select_walkforward_pairs(rows)
     assert pairs[1] == CONTROL_PAIR
     assert pairs[2] == CONTROL_PAIR
-    # Prior warmup blocks pay only ranks 4/5, so block 3 must not stay control.
-    assert pairs[3] == (4, 5)
+    # Prior warmup blocks pay only rank 4. Multiple pairs tie on ROI; the\n    # preregistered conservative tie-break chooses the pair closest to (1,2).
+    assert pairs[3] == (1, 4)
     assert all(isinstance(pair, tuple) and len(pair) == 2 for pair in pairs.values())
 
 
