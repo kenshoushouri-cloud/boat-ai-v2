@@ -133,3 +133,38 @@ not include:
 - automatic purchase.
 
 `SIX_RACES_FIXED / TWO_POINTS_FIXED / TEN_PAIRS_ONLY / BLOCK_PAST_ONLY / NO_MARKET_GATE / NO_VOLUME_REDUCTION / PURCHASE_FALSE`
+
+
+## Frozen historical evaluator
+
+The first offline evaluator is now implemented as
+`research/v4_economic_reranker_walkforward.py`.
+
+It is deliberately bound to one immutable source:
+
+- source run: `35851936772`;
+- GitHub artifact: `10745234979`;
+- artifact ZIP SHA-256:
+  `549a4f964d087ef30b961a39c31d8d378d03eafe1f5e18eb0e7f105a96feee97`;
+- `v4-long-history-walkforward.json` SHA-256:
+  `4f814a4c5a89e7f014ca32a91ef9e477ce076ebd1527eeab306c96be5759b286`;
+- exactly 432 evaluated days;
+- exactly 2,592 evaluated races;
+- exactly six races on every evaluated day;
+- the ten chronological block boundaries already frozen inside that artifact.
+
+The evaluator fails closed if the JSON hash, source contract, evaluated-day count,
+evaluated-race count, exact-six structure, Top5 uniqueness, block identity, or
+official result/payout fields drift.
+
+For each block it freezes one global rank pair. Blocks 1-2 are the current
+`(1,2)` control. For block 3 onward the chosen pair may use only records from
+strictly earlier blocks.
+
+The evaluator reports equal-volume control vs selected-pair economics and a
+paired block bootstrap. It has no DB, Railway, network, odds, market-rank, LINE,
+or purchase dependency.
+
+The immutable artifact has **not** been evaluated in the PR workflow at this
+stage. CI validates only the frozen contract and pure evaluator logic. Historical
+result execution is intentionally kept as the next separate work unit.
