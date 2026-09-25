@@ -12,7 +12,8 @@ jobs:
   replay:
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.sha == 'a40ea1d4858a87fd6fb230cb3ef4347331e69f19'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
