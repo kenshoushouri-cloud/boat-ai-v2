@@ -119,7 +119,13 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           text=Path('.github/workflows/v4-input-ablation-replay-readonly.yml').read_text(encoding='utf-8').lower()
-          for value in ('railway variable list','railway-vars.json','printenv','env |'):
+          forbidden = (
+              'railway' + ' variable' + ' list',
+              'railway-vars' + '.json',
+              'print' + 'env',
+              'env' + ' |',
+          )
+          for value in forbidden:
               assert value not in text, value
           assert 'secrets.railway_token' in text
           assert 'railway run' in text
