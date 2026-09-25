@@ -1,0 +1,46 @@
+name: V4 structural rank reranker contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_structural_rank_reranker_contract.py'
+      - 'tests/test_v4_structural_rank_reranker_contract.py'
+      - 'docs/V4_STRUCTURAL_RANK_RERANKER_PREREG_20260924.md'
+      - '.github/workflows/v4-structural-rank-reranker-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen structural reranker contract
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/v4_structural_rank_reranker_contract.py             tests/test_v4_structural_rank_reranker_contract.py
+          python -m pip install pytest
+          pytest -q tests/test_v4_structural_rank_reranker_contract.py
+          python - <<'PY'
+          from research.v4_structural_rank_reranker_contract import contract_metadata
+          meta=contract_metadata()
+          assert meta['contexts'] == ['H1_P0','H1_P1','HM_P0','HM_P1']
+          assert meta['core_races_per_day'] == 6
+          assert meta['points_per_race'] == 2
+          assert meta['daily_rank_used_for_selection'] is False
+          assert meta['market_input_allowed'] is False
+          assert meta['odds_gate_allowed'] is False
+          assert meta['candidate_skip_allowed'] is False
+          assert meta['production_change_allowed'] is False
+          assert meta['purchase_action'] is False
+          print('V4_STRUCTURAL_RANK_RERANKER_CONTRACT=PASS')
+          PY
