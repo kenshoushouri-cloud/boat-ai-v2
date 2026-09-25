@@ -198,3 +198,32 @@ It does not authorize removal/addition of a Production feature, coefficient chan
 selector changes, or promotion. Any new missing-information hypothesis must be
 preregistered and ultimately requires fresh prospective shadow evidence.
 
+### Execution-protocol deviation and evidence handling
+
+A workflow-trigger bug was discovered **after** the canonical run had completed and
+its result had been recorded.
+
+GitHub \`pull_request.paths\` continued to match the PR-wide diff while the one-shot
+sentinel remained present. Therefore the result-recording commit unintentionally
+started a second identical read-only replay:
+
+- unintended duplicate run: \`36099438608\` — SUCCESS
+- duplicate input family/coefficients/period: unchanged from the preregistration
+- Production/DB mutation: none; the replay remained READ ONLY
+- duplicate artifact/metrics: deliberately **not inspected and not used**
+- canonical scientific evidence remains run \`36098761397\` only
+
+This is a process deviation from the intended physical execution count of one and
+is recorded explicitly rather than hidden. It does not add a second hypothesis,
+variant, coefficient search, or result-driven reconstruction to the canonical run.
+
+Mitigation:
+
+- commit \`43d3f1d558777e951c9adf7734a43f7fb40f5181\` hard-locks the replay job to the
+  canonical trigger SHA \`a40ea1d4858a87fd6fb230cb3ef4347331e69f19\`;
+- follow-up replay workflow run \`36099535526\` was SKIPPED under that guard;
+- commit \`7c9bbc421bba486e1eefcb25a4cda063d2fa663f\` removes the consumed sentinel.
+
+No further historical ablation replay is authorized from this PR. Future work must
+start from the recorded canonical result and a new preregistered hypothesis.
+
