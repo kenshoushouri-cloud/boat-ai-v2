@@ -16,19 +16,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      PYTHONPATH: \${{ github.workspace }}
-      DEDICATED_DATABASE_URL: \${{ secrets.V4_BACKTEST_DATABASE_URL }}
-      RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+      PYTHONPATH: ${{ github.workspace }}
+      DEDICATED_DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
       RAILWAY_ENVIRONMENT: 'production'
       RAILWAY_DB_SERVICE: 'postgres-recovery'
       V4_INPUT_ABLATION_OUTPUT_JSON: 'v4-input-ablation-replay.json'
-      V4_LONG_HELPER_PATH: \${{ github.workspace }}/.v4-long-helper/research/v4_long_history_walkforward_pg.py
+      V4_LONG_HELPER_PATH: ${{ github.workspace }}/.v4-long-helper/research/v4_long_history_walkforward_pg.py
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Verify exact one-shot trigger
@@ -56,9 +56,9 @@ jobs:
       - name: Select read-only execution route
         run: |
           set -euo pipefail
-          if [ -n "\${DEDICATED_DATABASE_URL:-}" ]; then
+          if [ -n "${DEDICATED_DATABASE_URL:-}" ]; then
             echo "V4_INPUT_ABLATION_DB_REPLAY=DEDICATED_DATABASE_SECRET"
-          elif [ -n "\${RAILWAY_TOKEN:-}" ]; then
+          elif [ -n "${RAILWAY_TOKEN:-}" ]; then
             echo "V4_INPUT_ABLATION_DB_REPLAY=RAILWAY_RUN_NON_ENUMERATING"
           else
             echo "V4_INPUT_ABLATION_DB_REPLAY=BLOCKED_NO_APPROVED_CONNECTION_ROUTE"
@@ -75,7 +75,7 @@ jobs:
       - name: Run ablation via dedicated read-only connection
         if: env.DEDICATED_DATABASE_URL != ''
         env:
-          DATABASE_URL: \${{ secrets.V4_BACKTEST_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
         run: |
           set -euo pipefail
           python -u research/v4_input_ablation_replay_pg.py 2>&1 | tee v4-input-ablation-replay.txt
@@ -86,10 +86,10 @@ jobs:
         run: |
           set -euo pipefail
           railway run \
-            --project "\${RAILWAY_PROJECT_ID}" \
-            --environment "\${RAILWAY_ENVIRONMENT}" \
-            --service "\${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "\${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_input_ablation_replay_pg.py' \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_input_ablation_replay_pg.py' \
             2>&1 | tee v4-input-ablation-replay.txt
           grep -q '^RESULT=PASS_READ_ONLY$' v4-input-ablation-replay.txt
 
@@ -104,7 +104,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v4-input-ablation-replay-\${{ github.run_id }}
+          name: v4-input-ablation-replay-${{ github.run_id }}
           path: |
             v4-input-ablation-replay.json
             v4-input-ablation-replay.txt
