@@ -1,106 +1,263 @@
 # boat-ai-v2 Project Handoff
 
-更新: 2026-09-12 JST
+## LATEST OVERRIDE — 2026-09-25 13:51 JST
 
-この文書は**現在地だけを短く共有するための引き継ぎ**です。個別PRの経緯、日次件数、長い実験結果はここへ追記しません。
+**このsectionを最新の引き継ぎ情報として扱うこと。これより下・過去PR・過去SHAに残る古いfallback状態、日付、件数、判断は歴史的背景として扱い、現在値と仮定しないこと。**
 
-再開時は、この文書の数値やPR番号を最新値と決めつけず、必ず GitHub `main`、open PR、Railway read-only health を確認してください。
+再開時は必ず次の順でread-only再取得する。
 
-## 再開時の指示
+1. GitHub `kenshoushouri-cloud/boat-ai-v2` の current `main`
+2. open PR
+3. relevant CI
+4. Railway project `boat-v2-postgres` Production status
+5. 必要ならProduction PostgreSQLのSELECT-only evidence
 
-> GitHub `kenshoushouri-cloud/boat-ai-v2` の `docs/PROJECT_HANDOFF.md` を読み、現在の `main`、open PR、Railway Production の read-only health を確認してから続行してください。GitHub `main` をコードの Source of Truth、Railway PostgreSQL を本番データの Source of Truth としてください。安全な監査・研究・Draft PR・CI・文書整理は継続可、Production変更は明示承認まで実施しないでください。
+GitHub `main` をコードのSource of Truth、Railway PostgreSQLをProduction dataのSource of Truthとする。
 
-## Source of Truth
+### Current Boat main / Production
 
-- Repository: `kenshoushouri-cloud/boat-ai-v2`
-- Code: GitHub `main`
-- Production DB: Railway PostgreSQL
-- Railway service構成: `docs/RAILWAY_SERVICE_MAP.md`
-- 判断履歴: `docs/PROJECT_HISTORY.md`
-- 詳細研究ログ: `docs/DEVELOPMENT_STATUS.md` と各PR
-- Railway監査ログ: Issue #42
+- Boat main: `903a55f5bcd4a6fe3bff6d39270e5b911878a83e`
+- latest main message: PR #374 merge、V4 pre-freeze availability guard
+- Railway Production environment: no staged changes at latest check
+- `candidate-discovery-v4-fallback-dispatcher`: Cron `25 23 * * *` UTC、latest deployment SUCCESS
+- main Production cron群（data-prepare/final-check/nightly-results/window morning/day/night）もlatest deployment SUCCESS
+- automatic purchase: disabled / `purchase_action=false`
+- Production model / coefficient / threshold / candidate logicは今回変更していない
 
-GitHubは `branch → Draft PR → CI → review → merge` を基本とし、mainを直接編集しません。
+### V4 current contract
 
-## Production変更の承認境界
+Current research contract:
 
-以下は明示承認が必要です。
+- `COURSE_COEF=0.50`
+- `OPPONENT_COEF=1.0`
+- `MOTOR_BETA=0.06`
+- `PROB_TEMP=2.20`
+- daily selector: `head_p1 / head_margin / top3_mass / concentration` のpercentile-rank平均
+- current core: TOP6 races / formal TOP2 tickets
+- odds / EVはmain selectorには使わない
+- Course/Opponent/Motorは欠損時neutral
+- no automatic purchase
 
-- PRのProduction反映を伴うmerge
-- Railway Production設定・Variables・Cron・service変更
-- DB schema作成、Production DB書込み・削除・VACUUM等
-- モデル、係数、閾値、Production判定ロジック変更
-- LINE実送信に関わる変更
-- Forward予測の実保存開始
-- 自動購入
-- 有料データ契約・外部問い合わせ送信
+### Immutable long-history evidence
 
-安全なread-only監査、研究コード、Draft PR、CI、文書整理は確認なしで進めてよいです。
+Canonical long-history run:
 
-## 現行Productionの要点
+- workflow run: `35851936772`
+- artifact: `10745234979`
+- ZIP: `v4-long-history-35851936772.zip`
+- inner JSON SHA256: `4f814a4c5a89e7f014ca32a91ef9e477ce076ebd1527eeab306c96be5759b286`
+- period: `2025-07-01..2026-09-22`
+- evaluated: 432 exact-six days / 2,592 races
+- result/payout read only after daily six + Top5 freeze
+- no odds/EV selection
+- 17 unevaluable days
 
-主軸は競艇です。Production予想は概ね次の2段階です。
+Fixed point-count economics:
 
-1. PRE: `run_window_pipeline_pg.py` 系
-2. FINAL: `run_final_pg.py` → realtime collection → v22判定 → LINE通知
+- 1pt ROI 67.488%, profit -84,270
+- 2pt ROI 75.069%, profit -129,240
+- 3pt ROI 75.554%, profit -190,090
+- 4pt ROI 75.395%
+- 5pt ROI 73.542%
 
-自動購入はありません。Shadow / Forward研究はProduction BUY/WATCH/SKIP・LINEから隔離したまま扱います。
+No fixed point count is historically profitable.
 
-正しい出走表テーブル名は `v2_race_entries` です。
+Feature coverage in this long history:
 
-## 2026-09-12 時点の重要な現在地
+- Motor: 97.762%
+- Course any: 14.699%
+- Course full6: 7.215%
+- Opponent: 3.009%
 
-### 1. 精度向上研究
+Important: this long history is a fail-neutral replay of the current contract, not a fully populated modern Course/Opponent regime.
 
-- Opponent Pressure V2 は自然CronでForward観測中。Production昇格は未承認。
-- Racer Course 0.50 は有望な研究結果があるが、欠損laneをneutral扱いするForward Shadow設計を含め、まだ研究段階。
-- Shadow成功だけでProductionへ昇格しない。自然Forward日数・タイミング整合・独立評価を優先する。
+### Daily purchase-volume research
 
-### 2. PRE LINE周辺
+Draft PR #385:
+`Research: preregister V4 daily 1-3 race count`
 
-- PRE用LINE上限変数のalias差異と、重複通知防止機能が未有効である点を研究中。
-- Production Variables、dedupe schema、通知仕様はまだ変更しない。
+- head: `4b05572fe7bbd48b40330a9789ca142c1e42b584`
+- base: current main
+- Draft / mergeable / 5 CI SUCCESS
+- fixed formal Top2, 100 yen/ticket
+- no odds/EV/rerank/stake change
 
-### 3. Railway / DB容量
+Historical one-time evaluation:
 
-容量圧迫は確認済みです。ただし、**安全性を優先して削除・VACUUM・Cron停止は未実施**です。
+All 432 days:
+- 1R/day: ROI 97.083%, profit -2,520
+- 2R/day: ROI 76.811%, profit -40,070
+- 3R/day: ROI 78.009%, profit -57,000
+- current 6R/day: ROI 75.069%, profit -129,240
+- adaptive 1-3R: ROI 90.468%, profit -14,870
 
-重要な結論:
-- `v2_odds_trifecta` の大半は実データで、単純な削除対象ではない。
-- `learning_all` と `final_ab` は大きく重複するが、`learning_all` のオッズが FINAL の previous-odds / drift / steam 特徴へ間接的に使われるため、単純停止はProduction出力に影響し得る。
-- したがって `cron-learning-all` の全面停止や既存 `learning_all` 行削除は現在ブロック。
-- 容量対策は、Production意味を維持する設計を研究してから承認を取る。
-- DB削除を検討する場合は、直前のread-only再監査と新しい復元可能バックアップが必要。
+Pure evaluation blocks 3-10:
+- 1R/day: ROI 75.131%, profit -17,110
+- 2R/day: ROI 67.195%, profit -45,140
+- 3R/day: ROI 65.475%, profit -71,260
+- 6R/day: ROI 69.748%, profit -124,880
+- adaptive: ROI 71.773%, profit -29,130
 
-## 現在の優先順位
+Conclusion:
+Reducing 6R -> 1R sharply reduces loss magnitude and drawdown, but simple daily-rank-1 is **not proven profitable**. Do not interpret all-period 97.08% as prospective profitability; early blocks contribute heavily.
 
-1. 競艇Productionの自然運用とread-only health監視を維持する。
-2. Opponent Pressure / Racer Course等のForward証拠を自然データで蓄積する。
-3. DB容量対策は、予測・学習・LINEへ影響しないことを証明してから進める。
-4. Draft研究を整理し、Production変更候補は承認単位を小さく分ける。
-5. 競艇の実戦投入・収益性を最優先とし、他競技は容量・データ取得・期待収益を見て採否判断する。
+### One-race structural selector
 
-## open PRの扱い
+Draft PR #386:
+`Research: preregister V4 daily one-race selector`
 
-再開時にopen PRを必ず一覧取得してください。2026-09-12時点では、主に以下の研究Draftがあります。
+- head: `4bdd57d197b7e61f0c1c15b8e303a87df9b94d46`
+- base: current main
+- Draft / mergeable / 5 CI SUCCESS
+- exactly 1R/day, formal 2 tickets
+- only four Top5 structural contexts: `H1_P0/H1_P1/HM_P0/HM_P1`
+- no odds/EV/venue/race#/date filter
 
-- Course / Opponent Pressure のpre-production timing研究
-- Racer Course neutral-missing Forward Shadow設計
-- PRE LINE limit / dedupe契約研究
-- Storage retention / duplicate-load研究
-- `learning_all` の安全な負荷削減研究
+One-time historical evaluation:
+- fixed daily-rank-1 all-period ROI: 97.08%
+- structural selector all-period ROI: 94.11%
+- fixed daily-rank-1 blocks 3-10 ROI: 75.13%
+- structural selector blocks 3-10 ROI: 71.40%
 
-これらは**Draft研究であり、存在だけを理由にmerge・deployしません**。
+Conclusion:
+The four-context economic selector FAILED to improve fixed daily-rank-1. Do not tune these contexts further on the same history.
 
-## この文書の更新ルール
+### Rank1 head-error diagnosis
 
-`PROJECT_HANDOFF.md` には次だけ残します。
+For daily-rank-1 in pure evaluation blocks 3-10 (344 days):
 
-- 現在のProduction境界
-- 重要な未解決事項
-- 現在の優先順位
-- 次の担当者が知らないと危険な事項
+- formal Top2 hit: 74 / 344 = 21.5%
+- first-place miss: 142 / 344 = 41.3%
+- first correct, second miss: 70 / 344 = 20.3%
+- first+second correct, third miss: 58 / 344 = 16.9%
 
-個別PR番号ごとの長い説明、日次ログ、検証の全数値、過去に完了した経緯は追記せず、`PROJECT_HISTORY.md`、`DEVELOPMENT_STATUS.md`、各PR本文へ残してください。
+Head-specific diagnosis:
 
-目安として、引き継ぎ本文は**短く読み切れる長さを維持し、追記ではなく古い記述を置き換える**運用にします。
+- Top1 first-place correct: 198 / 344 = 57.6%
+- Top2 first-place coverage: 202 / 344 = 58.7%
+- second formal ticket adds a different-head rescue on only 4 days
+- Top2 share same first-place head: 327 / 344 = 95.1%
+- race_score AUC for head-correct vs head-miss: about 0.522
+
+Interpretation:
+The dominant bottleneck is first-place/head prediction. Current race_score does not meaningfully discriminate head correctness once daily-rank-1 is selected. Two tickets are also heavily concentrated on the same head.
+
+Saved-feature coverage on this 344-race slice:
+- Motor available: 334
+- Course available: 64
+- Opponent available: 13
+
+Course/Opponent coverage is too sparse/time-confounded to infer causal value from the saved artifact alone.
+
+### NEXT HIGHEST PRIORITY — input-information ablation
+
+Draft PR #387:
+`Research: preregister V4 input-information ablation`
+
+- head: `0cb6b0192a58ed41f9f644ea73c9c43f20cc8b32`
+- base: current main
+- Draft / mergeable / 5 CI SUCCESS
+- **preregistration only; long-history replay has NOT yet been run**
+
+Frozen variants:
+- `control`
+- `no_course`
+- `no_opponent`
+- `no_motor`
+- `base_only`
+
+Frozen evaluation design:
+
+Track A — fixed control race:
+- freeze current V4 daily six + daily-rank-1 before result
+- recompute all variants on the exact same rank1 race
+- isolates prediction-layer effect
+- primary: Top1 head accuracy, first-place multiclass logloss, first-place Brier
+- secondary: formal Top2 hit rate, 2-point ROI/profit
+
+Track B — full variant reselection:
+- each variant independently rebuilds distributions before result
+- unchanged `select_daily` chooses its own six/rank1
+- measures prediction + selector interaction
+
+Rules:
+- same `2025-07-01..2026-09-22` period / 10 blocks
+- main retrospective comparison = blocks 3-10
+- same 08:15 JST source cutoff
+- result only after all freezes
+- no odds/EV
+- no threshold search
+- no coefficient retune
+- no new feature
+- PostgreSQL read-only
+- no LINE / no Production change / `purchase_action=false`
+
+**Next safe action:** implement/run #387's read-only replay exactly once using the already established non-enumerating read-only connection route from PR #378. Do not add variants after seeing results.
+
+### Other research conclusions to preserve
+
+- #382 economic Top5 pair reranker: FAIL
+- #384 structural rank reranker: FAIL
+- simple high-retention structural filters did not reach robust ROI 100%
+- timing-safe market/EV research #381 did not produce a robust profitable policy; `PASSED_POLICIES=[]`
+- conservative alpha025 tail blend showed a small historical Top2 improvement but ROI remained <100 and uncertainty crossed zero; do not promote
+- #379/#380 overlap; resolve before any future promotion
+- repeated post-hoc tuning on the same 2,592R is now a serious overfitting risk
+
+### Information strategy
+
+Current working hypothesis is now split cleanly:
+
+1. harmful/noisy existing information may be lowering head quality; test this with #387 ablation first
+2. if removals do not improve fixed-race proper scoring/accuracy, the next hypothesis is **missing first-place information**
+3. only after #387 should new features such as exhibition ST / entry-course movement / weather-water conditions / stronger current-form signals be considered
+
+Do not add new feature families before the ablation result.
+
+### Production approval boundary
+
+May continue without asking:
+- read-only audits
+- historical backtest / Forward evaluation
+- Draft PR create/update
+- CI
+- docs/handoff updates
+- safe evidence collection
+
+Explicit approval required:
+- Production-effect PR merge
+- Railway Production Variables / Cron / service / volume / migration change
+- Production DB INSERT / UPDATE / DELETE / schema / VACUUM
+- Production model / coefficient / threshold / candidate / stake logic change
+- new LINE actual-send behavior
+- Forward persistence
+- automatic purchase
+- paid data / external inquiry
+
+Never:
+- loosen thresholds only to increase volume/profit
+- reconstruct Forward/candidates after seeing results
+- mix evidence regimes
+- expose secrets
+- use Railway plaintext variable enumeration
+- capacity-driven deletion
+- touch unrelated staged patches
+
+### Parallel TOTO status — separate repo
+
+TOTO is a separate system:
+`kenshoushouri-cloud/toto-ai-v1`
+
+At latest check:
+- TOTO main: `f78494159ad0c2d4a670f9c908a6710a65767a76`
+- PR #164 merged: `栃木シティ -> 栃木Ｃ` team alias fix
+- `toto-ai-core` Production deployment: SUCCESS
+- next Round 1656 natural cron/LINE result still needs confirmation
+- TOTO Railway has one old STAGED patch on diagnostic service `diagnostic-round-1654-reader`; **do not touch it**
+- TOTO and Boat DB / services / variables remain separate
+
+---
+
+## Restart instruction
+
+> Read this LATEST OVERRIDE first. Then refetch current Boat main/open PR/CI/Railway Production read-only. Treat main as code Source of Truth and Railway PostgreSQL as Production data Source of Truth. Do not assume any SHA/count/status above is still current. If #387 remains current and CI-green, continue with exactly one read-only V4 input-ablation replay; do not tune the preregistered family after seeing results.
