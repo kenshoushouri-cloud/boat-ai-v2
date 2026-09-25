@@ -10,12 +10,17 @@ run_learning_all_realtime_pg.py
 - v21_realtime_collector_pg_safe.py を利用する。
 - 本番判定用 TARGET_RACE_IDS_FILE を上書きしない。
 
-保存される主な情報（v21側）:
+通常保存される主な情報（v21側）:
 - 展示タイム / 展示ST / 展示進入 / チルト
 - 気象 / 気温 / 水温 / 風速 / 風向 / 波高
 - 選手体重 / 調整体重 / 部品交換 / 前走ST / 前走着順等
 - 直前三連単オッズ / 市場順位 / オッズ変化
 - race condition / racer condition
+
+研究用 default-off mode:
+- LEARNING_ODDS_ONLY=1 の場合だけ、beforeinfo系を取得・保存せず
+  learning_all の直前三連単オッズ系列だけを維持する。
+- デフォルトは0で現行収集を変更しない。
 
 重要:
 - LINE通知なし
@@ -31,6 +36,7 @@ Start Command:
     LEARNING_WINDOW_BEFORE_MIN=30
     LEARNING_WINDOW_AFTER_MIN=0
     LEARNING_REALTIME_SLEEP_SEC=0.10
+    LEARNING_ODDS_ONLY=0  # research mode; explicit opt-in only
 
 既存:
     DATABASE_URL
@@ -44,10 +50,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "2026-09-10 learning-all-safe-odds-v2"
+VERSION = "2026-09-12 learning-all-odds-only-research-v1"
 
 
-def _bool(v: str, default: bool = True) -> bool:
+def _bool(v: str | None, default: bool = True) -> bool:
     if v is None:
         return default
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
@@ -70,6 +76,7 @@ def main() -> None:
         print("LEARNING_ALL_ENABLED=0: skip", flush=True)
         return
 
+    odds_only = _bool(os.getenv("LEARNING_ODDS_ONLY", "0"), False)
     env = os.environ.copy()
 
     # 本番判定とは完全に分離する。
@@ -78,6 +85,9 @@ def main() -> None:
         os.getenv("LEARNING_SNAPSHOT_LABEL", "learning_all").strip()
         or "learning_all"
     )
+
+    # 研究用。明示opt-inされない限り現行の全realtime収集を維持する。
+    env["ODDS_ONLY_MODE"] = "1" if odds_only else "0"
 
     # 全日一括ではなく、締切前ウィンドウだけを収集。
     # final-checkと同等の頻度で実行すれば全レースを順次拾える。
@@ -112,6 +122,7 @@ def main() -> None:
         f"TARGET_DATE={env.get('TARGET_DATE', '(JST today)')} "
         f"COLLECT_SCOPE={env['COLLECT_SCOPE']} "
         f"SNAPSHOT_LABEL={env['SNAPSHOT_LABEL']} "
+        f"ODDS_ONLY_MODE={env['ODDS_ONLY_MODE']} "
         f"FINAL_WINDOW_BEFORE_MIN={env['FINAL_WINDOW_BEFORE_MIN']} "
         f"FINAL_WINDOW_AFTER_MIN={env['FINAL_WINDOW_AFTER_MIN']} "
         f"TARGET_RACE_IDS_FILE={env['TARGET_RACE_IDS_FILE']}",
