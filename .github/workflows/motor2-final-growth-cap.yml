@@ -1,0 +1,41 @@
+name: Motor2 FINAL Growth Cap Research
+
+on:
+  pull_request:
+    paths:
+      - "research/motor2_final_growth_cap.py"
+      - "tests/test_motor2_final_growth_cap.py"
+      - "docs/MOTOR2_FINAL_GROWTH_CAP_20260912.md"
+      - ".github/workflows/motor2-final-growth-cap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run pure research contract tests
+        run: python -m pytest -q tests/test_motor2_final_growth_cap.py
+      - name: Assert no Production runtime wiring
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          prod = Path('v25_final_realtime_pipeline_pg.py').read_text(encoding='utf-8')
+          assert 'latest_per_race' not in prod
+          assert 'MOTOR2_FINAL_SNAPSHOT_MODE' not in prod
+          research = Path('research/motor2_final_growth_cap.py').read_text(encoding='utf-8')
+          for token in ('db_pg', 'psycopg', 'execute(', 'delete from', 'vacuum', 'drop index'):
+              assert token.lower() not in research.lower(), token
+          print('RESEARCH_ISOLATION=PASS')
+          PY
