@@ -1,0 +1,94 @@
+name: Exhibition ST current Forward health one-shot
+
+on:
+  pull_request:
+    paths:
+      - 'research/.exhibition-st-health-run-once-20260927'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'research/exhibition-st-forward-health-20260927'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify one-shot trigger
+        run: |
+          set -euo pipefail
+          test "$(cat research/.exhibition-st-health-run-once-20260927)" = "RUN_ONCE_20260927_EXHIBITION_ST_HEALTH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate existing report is read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile report_exhibition_st_forward_health_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('report_exhibition_st_forward_health_pg.py').read_text(encoding='utf-8').lower()
+          for token in (
+              'insert into','update v2_','delete from','create table','alter table',
+              'drop table','vacuum ','send_line','upsert_rows'
+          ):
+              assert token not in low, token
+          assert 'v2_exhibition_st_forward_shadow' in low
+          assert 'block_manual_review_only' in low
+          print('EXH_ST_CURRENT_HEALTH_VALIDATE=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Run existing health report through non-enumerating read-only route
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; exec python -u report_exhibition_st_forward_health_pg.py' \
+            2>&1 | tee exhibition-st-current-health.txt
+          grep -q '^EXH_ST_FORWARD_HEALTH_RESULT=PASS_READ_ONLY$' exhibition-st-current-health.txt
+      - name: Hash sanitized evidence
+        run: |
+          set -euo pipefail
+          grep '^EXH_ST_FORWARD_HEALTH_' exhibition-st-current-health.txt > exhibition-st-current-health-sanitized.txt
+          sha256sum exhibition-st-current-health-sanitized.txt | tee exhibition-st-current-health.sha256
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhibition-st-current-health-${{ github.run_id }}
+          path: |
+            exhibition-st-current-health-sanitized.txt
+            exhibition-st-current-health.sha256
+          retention-days: 90
+      - name: Confirm no variable enumeration or collection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          low=Path('.github/workflows/exhibition-st-current-health-one-shot.yml').read_text(encoding='utf-8').lower()
+          for token in ('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json'):
+              assert token not in low, token
+          assert 'collect_exhibition_st_forward_shadow_pg.py' not in low
+          assert 'report_exhibition_st_forward_health_pg.py' in low
+          print('EXH_ST_CURRENT_HEALTH_SECRET_ENUMERATION=0')
+          print('EXH_ST_CURRENT_HEALTH_COLLECTION=0')
+          PY
