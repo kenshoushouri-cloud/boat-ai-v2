@@ -1,0 +1,31 @@
+name: V4 course-entry error diagnostic validation
+on:
+  pull_request:
+    paths:
+      - 'research/v4_course_entry_error_contract.py'
+      - 'research/v4_course_entry_error_replay_pg.py'
+      - 'tests/test_v4_course_entry_error.py'
+      - 'docs/V4_COURSE_ENTRY_ERROR_PREREG_20260927.md'
+      - '.github/workflows/v4-course-entry-error-validation.yml'
+      - '.github/workflows/v4-course-entry-error-one-shot.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Validate diagnostic contract
+        env: {PYTHONPATH: .}
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_course_entry_error_contract.py research/v4_course_entry_error_replay_pg.py tests/test_v4_course_entry_error.py
+          pytest -q tests/test_v4_course_entry_error.py
