@@ -14,6 +14,7 @@ import importlib.util
 import json
 import math
 import os
+import sys
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -53,6 +54,7 @@ def load_long_helper():
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load long helper: {LONG_HELPER_PATH}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
