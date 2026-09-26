@@ -13,6 +13,7 @@ from research.v4_strict_prior_st_contract import (
 )
 from research.v4_strict_prior_st_replay_pg import (
     aggregate,
+    block_for,
     latest_prior_st,
     split_blocks,
 )
@@ -95,6 +96,16 @@ def test_aggregate_keeps_prediction_and_economics_separate():
 def test_block_split_is_deterministic():
     days = [f"2026-01-{x:02d}" for x in range(1, 11)]
     assert [len(x) for x in split_blocks(days, 3)] == [4, 3, 3]
+
+
+def test_variant_only_date_after_last_control_day_uses_final_canonical_block():
+    bounds = [
+        {"block": 1, "start": "2026-01-01", "end": "2026-01-03", "days": 3},
+        {"block": 2, "start": "2026-01-04", "end": "2026-01-06", "days": 3},
+    ]
+    assert block_for("2026-01-02", bounds) == 1
+    assert block_for("2026-01-06", bounds) == 2
+    assert block_for("2026-01-07", bounds) == 2
 
 
 def test_replay_source_is_read_only_result_after_freeze_and_no_odds():

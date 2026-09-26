@@ -87,10 +87,18 @@ def block_bounds(days: list[str]) -> list[dict[str, object]]:
 
 
 def block_for(value: str, bounds: list[dict[str, object]]) -> int:
+    """Match the canonical V4 control-date block assignment.
+
+    Variant-only dates can exist just beyond the last control-evaluable date.
+    As in the completed input-ablation replay, assign by the first block end
+    that is >= the date, and clamp later variant-only dates to the final block.
+    """
+    if not bounds:
+        raise ValueError("block bounds required")
     for item in bounds:
-        if str(item["start"]) <= value <= str(item["end"]):
+        if value <= str(item["end"]):
             return int(item["block"])
-    raise ValueError(f"date outside block bounds: {value}")
+    return int(bounds[-1]["block"])
 
 
 def first_place_marginal(probs: Mapping[str, float]) -> dict[int, float]:
