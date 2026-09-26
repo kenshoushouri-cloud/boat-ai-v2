@@ -13,7 +13,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/v4-strict-prior-st-20260927'
+      github.event.pull_request.head.ref == 'research/v4-strict-prior-st-20260927' &&
+      github.event.pull_request.head.sha == 'bbcb65f11d6c9df59583557694682e02b27a3b24'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
