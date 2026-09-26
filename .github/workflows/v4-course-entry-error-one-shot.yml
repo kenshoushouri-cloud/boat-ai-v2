@@ -1,0 +1,87 @@
+name: V4 course-entry error one-shot read-only diagnostic
+on:
+  pull_request:
+    paths:
+      - 'research/.v4-course-entry-error-run-once-20260927'
+permissions:
+  contents: read
+jobs:
+  replay:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'research/v4-course-entry-error-diagnostic-20260927'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      DEDICATED_DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_COURSE_ERROR_OUTPUT_JSON: 'v4-course-entry-error-diagnostic.json'
+      V4_LONG_HELPER_PATH: ${{ github.workspace }}/.v4-long-helper/research/v4_long_history_walkforward_pg.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify one-shot trigger
+        run: test "$(cat research/.v4-course-entry-error-run-once-20260927)" = "RUN_ONCE_20260927_V4_COURSE_ENTRY_ERROR"
+      - name: Checkout pinned canonical helper
+        uses: actions/checkout@v4
+        with:
+          ref: ac91c9a2e9570d3af3589e2e98b6529a77c14756
+          path: .v4-long-helper
+          persist-credentials: false
+          sparse-checkout: |
+            research/v4_long_history_walkforward_pg.py
+            .github/scripts/candidate_discovery_v1_pg.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Install Railway CLI
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: npm install --global @railway/cli
+      - name: Run via dedicated read-only connection
+        if: env.DEDICATED_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -u research/v4_course_entry_error_replay_pg.py 2>&1 | tee v4-course-entry-error-diagnostic.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-course-entry-error-diagnostic.txt
+      - name: Run via Railway non-enumerating injection
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_course_entry_error_replay_pg.py'             2>&1 | tee v4-course-entry-error-diagnostic.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-course-entry-error-diagnostic.txt
+      - name: Hash result
+        if: success()
+        run: |
+          test -s v4-course-entry-error-diagnostic.json
+          sha256sum v4-course-entry-error-diagnostic.json | tee v4-course-entry-error-diagnostic.sha256
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-course-entry-error-${{ github.run_id }}
+          path: |
+            v4-course-entry-error-diagnostic.json
+            v4-course-entry-error-diagnostic.txt
+            v4-course-entry-error-diagnostic.sha256
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Confirm no variable enumeration
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('.github/workflows/v4-course-entry-error-one-shot.yml').read_text().lower()
+          for v in ('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json'):
+              assert v not in t
+          print('V4_COURSE_ERROR_SECRET_ENUMERATION=0')
+          PY
