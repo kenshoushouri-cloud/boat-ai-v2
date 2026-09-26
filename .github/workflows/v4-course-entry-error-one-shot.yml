@@ -10,7 +10,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/v4-course-entry-error-diagnostic-20260927'
+      github.event.pull_request.head.ref == 'research/v4-course-entry-error-diagnostic-20260927' &&
+      github.event.pull_request.head.sha == '239d312db7184dcc4a5b31c4435d9cb259f84262'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
