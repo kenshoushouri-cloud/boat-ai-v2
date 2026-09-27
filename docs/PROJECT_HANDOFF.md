@@ -1,5 +1,99 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 21:36 JST
+
+### Post-nightly and next-day Forward operations are now main-integrated
+- main: `c0e0c4336150a85f76d8abe00ac640247b5a2ba8`
+- #429: combined manual V4 + S03 checkpoint — merged
+- #431: result-day terminal readiness guard — merged
+- #432: future-only V4 day-strength shadow tooling/manual workflow — merged
+- #411: closed as superseded by #432; original preregistration preserved
+- Railway dispatcher latest deployment: SUCCESS
+- staged changes: none
+- pending work: none
+- fallback Cron remains 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+### Tonight: combined Forward refresh
+Preferred workflow:
+`.github/workflows/research-forward-combined-checkpoint-manual.yml`
+
+For `end_date=2026-09-27` it now:
+1. freezes provider inventory before any result access;
+2. requires all 2026-09-27 races to be terminal via #431 readiness guard;
+3. if not terminal, fails closed before V4/S03 counts advance;
+4. settles immutable V4 artifacts read-only;
+5. evaluates frozen S03_M2 read-only;
+6. computes the existing review-gate status locally.
+
+Terminal readiness definition:
+- OFFICIAL = official/official + valid trifecta + positive payout
+- VOID = cancelled/cancelled
+- missing/no_result_page/partial/unknown = NOT_READY_FAIL_CLOSED
+
+Validation:
+- known completed 2026-09-26 = 156/156 terminal, READY.
+
+Nightly Production results remain:
+- Cron 23:30 JST
+- recent starts 23:30:14..23:34:01
+- recent completion around 23:38..23:42
+
+Operationally, use the combined checkpoint after ~23:45 JST; the DB readiness guard is authoritative and will still fail closed if loading is incomplete.
+
+Current pre-nightly gates:
+- V4 formal: 6 resolved days; 4 remaining to 10-day review
+- S03_M2: 53 evaluated; 47 remaining to 100-review
+
+### Tomorrow 2026-09-28: future-only day-strength shadow
+Main workflow:
+`.github/workflows/research-v4-day-strength-shadow-manual.yml`
+
+Contract:
+- manual `workflow_dispatch` only
+- no schedule
+- no Railway/DB/result/payout/odds access
+- provider-selected immutable FORMAL_AVAILABLE artifacts only
+- archive SHA256 verified
+- target date must be >=2026-09-28
+- `day_strength = mean(formal TOP6 race_score)`
+- reference = median immediately prior 7 FORMAL_AVAILABLE strengths
+- KEEP_SHADOW iff target >= reference, else SKIP_SHADOW
+- unavailable days never reconstructed
+- formal action unchanged
+- promotion false
+
+Frozen first target reference, independently reproduced in #432 CI:
+- 2026-09-21: 0.93817204
+- 2026-09-22: 0.92814371
+- 2026-09-23: 0.95483871
+- 2026-09-24: 0.94166667
+- 2026-09-25: 0.96153846
+- 2026-09-26: 0.90618279
+- 2026-09-27: 0.91720430
+- **2026-09-28 reference = 0.93817204**
+
+The 9/28 shadow may be classified as soon as its valid immutable formal artifact exists; it does not need race results.
+
+First descriptive day-strength review remains:
+- >=10 future resolved formal days
+- >=3 KEEP
+- >=3 SKIP
+
+No shadow label can alter formal TOP6/TOP2 without a separate explicit Production proposal/approval.
+
+### Approval boundaries unchanged
+Still explicit approval required for:
+- fallback Cron 08:25 -> 08:20
+- F-count live read/capture/persistence/schedule
+- Production DB writes/schema
+- Production model/selector/threshold/candidate/stake changes
+- LINE real-send
+- purchase activation
+
+`POST_NIGHTLY_COMBINED_MAIN / RESULT_READY_GUARD_MAIN / DAY_STRENGTH_MAIN / 928_REFERENCE_0_93817204 / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 21:25 JST
 
 ### Combined Forward checkpoint is integrated on main
