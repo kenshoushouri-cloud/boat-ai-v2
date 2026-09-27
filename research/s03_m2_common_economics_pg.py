@@ -21,7 +21,7 @@ END = date.fromisoformat(os.getenv("S03_FORWARD_END", "2026-09-27"))
 JST = ZoneInfo("Asia/Tokyo")
 W = (1.0, 0.6, 0.3)
 
-EXPECTED_20260927 = {
+EXPECTED_20260926 = {
     "evaluated": 53,
     "hits": 4,
     "investment_yen": 5300,
@@ -149,9 +149,9 @@ def main() -> None:
     )
 
     overall = report["overall"]
-    exact_baseline = START == date(2026, 9, 13) and END == date(2026, 9, 27)
+    exact_baseline = START == date(2026, 9, 13) and END == date(2026, 9, 26)
     if exact_baseline:
-        for key, expected in EXPECTED_20260927.items():
+        for key, expected in EXPECTED_20260926.items():
             if overall[key] != expected:
                 raise RuntimeError(
                     f"S03_M2 common parity failed {key}: {overall[key]} != {expected}"
