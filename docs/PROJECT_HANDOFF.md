@@ -1,5 +1,60 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 21:25 JST
+
+### Combined Forward checkpoint is integrated on main
+- main: `c9d9731cd0c96929aee671987eb5c97ea26e9d4e`
+- #425 merged: manual provider-selected V4 checkpoint
+- #426 merged: manual S03_M2 checkpoint
+- #427 merged: frozen review-gate helper
+- #429 merged: combined manual Forward checkpoint
+- Production model/selector/TOP6/TOP2/stake unchanged
+- fallback Cron remains 08:25 JST
+- `purchase_action=false`
+
+Primary operational entry point:
+`.github/workflows/research-forward-combined-checkpoint-manual.yml`
+
+The combined checkpoint is:
+- `workflow_dispatch` only;
+- no schedule;
+- optional `end_date=YYYY-MM-DD`;
+- V4 provider inventory/hash freeze occurs before result access;
+- V4 settlement uses PostgreSQL READ ONLY;
+- S03_M2 uses the frozen rule and PostgreSQL READ ONLY;
+- review-gate status is computed locally after both reports;
+- no promotion / DB write / Railway config mutation / LINE / BUY / Production change.
+
+Current pre-9/27-settlement baseline:
+- V4 formal resolved days: 6 -> 4 remaining to 10-day review
+- S03_M2 evaluated: 53 -> 47 remaining to 100-review
+- day-strength future evidence: 0; begins 2026-09-28
+
+Nightly result timing remains:
+- `cron-nightly-results`: 23:30 JST
+- recent Stage 1 starts: 23:30:14..23:34:01
+- recent full pipeline completion: approximately 23:38..23:42
+- operational checkpoint refresh target: after 23:45 JST
+
+After natural 2026-09-27 result completion:
+1. run the combined manual checkpoint with `end_date=2026-09-27`;
+2. read actual V4/S03 outputs and review-gate counts;
+3. do not retune from the single added day;
+4. preserve 2026-09-28+ day-strength shadow as future-only evidence.
+
+Evidence provenance:
+- #409 remains the V4 formal historical/prospective evidence PR;
+- #405 remains the S03_M2 evidence PR;
+- operational refresh should now use main-integrated #429 rather than rebuilding ad hoc checkpoint branches.
+
+Still explicit-approval only:
+- fallback 08:25 -> 08:20 Cron activation
+- F-count live read/capture/persistence/schedule
+- Production model/selector/threshold/stake changes
+- LINE real-send / purchase
+
+`COMBINED_MANUAL_CHECKPOINT_MAIN / V4_6_TO_10 / S03_53_TO_100 / WAIT_927_NIGHTLY / REFRESH_AFTER_2345 / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 21:18 JST
 
 ### Manual Forward checkpoint infrastructure is ready on main

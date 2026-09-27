@@ -6,6 +6,35 @@ This registry does **not** close historical PRs. It defines which PRs are curren
 
 Always re-read current main / open PR heads / CI / Railway Production before acting.
 
+## Tier A0 — main-integrated checkpoint entry points
+
+### #425 / #426 — individual manual checkpoints
+Main-integrated read-only refresh paths:
+- #425: provider-selected immutable formal V4 checkpoint;
+- #426: frozen S03_M2 checkpoint.
+
+Both are `workflow_dispatch` only and unscheduled.
+
+### #427 — frozen review-gate helper
+Main-integrated pure status contract:
+- V4: 10 / 20 / 30 resolved formal days;
+- S03_M2: 100 evaluated observations;
+- day-strength: >=10 future resolved days and >=3 KEEP / >=3 SKIP.
+
+### #429 — combined manual Forward checkpoint
+**Preferred operational refresh entry point.**
+
+One manual run performs:
+1. V4 provider inventory/arbitration before result access;
+2. immutable artifact hash validation;
+3. V4 read-only settlement;
+4. frozen S03_M2 read-only checkpoint;
+5. combined scorecard and existing review-gate status.
+
+No schedule and no Production behavior change.
+
+#409/#405 remain evidence-provenance sources; use #429 for routine refresh instead of creating new ad hoc checkpoint code.
+
 ## Tier A — current ROI / Forward decision sources
 
 ### #409 — formal V4 immutable-artifact settlement
@@ -133,10 +162,11 @@ Only reactivate one with a new explicit preregistration or a later handoff overr
 
 For ROI work:
 1. main handoff/current-state;
-2. #409;
-3. #405;
-4. #411;
-5. main-integrated #422/#423 validation suite.
+2. main-integrated #429 combined manual checkpoint for refresh;
+3. #409 V4 evidence provenance;
+4. #405 S03_M2 evidence provenance;
+5. #411 future-only day-strength shadow;
+6. main-integrated #422/#423 common economics/validation suite.
 
 For operational safety:
 1. #412;
@@ -159,4 +189,4 @@ A PR may be closed later when:
 
 Until then, use this registry to avoid reference ambiguity.
 
-`CURRENT_DECISION_SOURCES_409_405_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
+`CHECKPOINT_MAIN_425_426_427_429 / EVIDENCE_409_405_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
