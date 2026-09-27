@@ -1,5 +1,26 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 17:22 JST
+
+- main: `db8ab21270ea5bc8fd6872bed576d4ba196c43e8`
+- PR #401 is **merged/activated** with explicit approval.
+- active prospective-freeze workflow no longer enumerates Railway variables or writes `railway-vars.json`.
+- DB injection now uses fixed project / `production` / `postgres-recovery` through `railway run`, with child-process `DATABASE_PUBLIC_URL -> DATABASE_URL`.
+- schedule remains `16 23 * * *` UTC; 08:15 cutoff / V4 model / selector / formal tickets / availability guard unchanged.
+- Railway Production staged changes: none; pending work: none.
+- fallback dispatcher deployment `e7c51f36-3e5b-4f4d-85a3-7e872ec453c7`: SUCCESS at main `db8ab212...`.
+- fallback dispatcher Cron remains `25 23 * * *` UTC.
+- recent GitHub scheduled formal freezes 2026-09-23..09-27 failed closed due late schedule delivery.
+- recent fallback workflow_dispatch formal freezes 2026-09-23..09-27 all succeeded.
+- 2026-09-27 fallback run `36279479671`: 08:29:29 -> 08:29:31 JST, earliest feed deadline 08:32, eligible=true, guard PASS_ACTIVE_CORE.
+- fallback completion headroom can be tight: recent minimum about 81 seconds.
+- fallback Cron change remains a separate explicit approval gate.
+- #397/#398/#400 F-count preparation remains research-only; live F-count capture/persistence/schedule is not approved.
+- Production model / selector / threshold / candidate / stake unchanged.
+- `purchase_action=false`.
+
+`PR401_ACTIVATED / NON_ENUMERATING_ROUTE_LIVE / FALLBACK_CAPTURE_HEALTHY_WITH_TIGHT_MARGIN / FCOUNT_LIVE_CAPTURE_NOT_APPROVED / PRODUCTION_MODEL_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 16:52 JST
 
 - main: `e3272d23841aa1d3ce5459ba68841e48cddcf16f` (docs-only PR #402)
