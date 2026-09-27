@@ -1,5 +1,40 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-28 01:12 JST
+
+- main before docs update: `6e82ee37961c3e83f867be0773b8f0ac94d6842b`
+- 9/27 nightly result load: PASS
+- readiness: 156/156 terminal
+- #446 S03 live-checkpoint fix: merged
+- #447 post-nightly combined refresh: PASS_READ_ONLY
+
+V4 formal TOP2:
+- 7 resolved days
+- 38 settled races
+- ROI **162.3684%**
+- profit **+4,740 JPY**
+- later block ROI **145.6250%**
+- leave-one-day worst 123.1250%
+- 3 days remaining to 10-day review
+
+S03_M2:
+- 61 evaluated / 1 invalid / 0 pending
+- ROI **165.9016%**
+- profit **+4,020 JPY**
+- second half ROI **58.3871%**
+- bootstrap P>100 **79.50%**
+- 39 remaining to 100-review
+- no retune
+
+V5 core:
+- V4 7/20
+- S03 61/100
+- target 2026-10-15
+- status COLLECTING_CORE_EVIDENCE
+
+Production model/selector/stake unchanged.
+`purchase_action=false`.
+
 ## LATEST OVERRIDE — 2026-09-27 22:40 JST
 
 - main: `41fbe4f4b3cf1da5d6a48df98d4c2714ab26ece4`
