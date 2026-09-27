@@ -59,7 +59,7 @@ jobs:
           from pathlib import Path
           w=Path('.github/workflows/research-forward-combined-checkpoint-manual.yml').read_text(encoding='utf-8').lower()
           assert 'workflow_dispatch:' in w
-          assert 'schedule:' not in w
+          assert ''.join(('schedule', ':')) not in w
           assert ''.join(('railway',' variable',' list')) not in w
           assert 'railway run' in w
           PY
