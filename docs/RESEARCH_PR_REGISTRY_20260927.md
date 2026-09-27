@@ -6,6 +6,21 @@ This registry does **not** close historical PRs. It defines which PRs are curren
 
 Always re-read current main / open PR heads / CI / Railway Production before acting.
 
+## V5 freeze tooling / scope — main-integrated
+
+### #440 — V5 freeze review packet
+Pure review-only builder on main.
+- standardizes V4/S03/V5-core evidence;
+- optional day-strength can be attached;
+- never auto-promotes.
+
+### #441 — V5 scope lock
+Main-integrated change-control contract through 2026-10-15.
+- no new V5-core features;
+- no deadline-driven gate lowering;
+- optional layers keep their own gates;
+- deferred ideas move to later V5.1 research.
+
 ## V5 research-candidate milestone — main-integrated
 
 ### #437 — V5 core milestone
@@ -246,4 +261,4 @@ A PR may be closed later when:
 
 Until then, use this registry to avoid reference ambiguity.
 
-`V5_MILESTONE_MAIN_437_438 / CHECKPOINT_MAIN_425_426_427_429_431_432_434 / E2E_435_PASS / EVIDENCE_409_405 / DAY_STRENGTH_432_SUPERSEDES_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
+`V5_MILESTONE_MAIN_437_438 / V5_FREEZE_TOOLING_MAIN_440_441 / CHECKPOINT_MAIN_425_426_427_429_431_432_434 / E2E_435_PASS / EVIDENCE_409_405 / DAY_STRENGTH_432_SUPERSEDES_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`

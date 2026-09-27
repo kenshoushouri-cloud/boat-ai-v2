@@ -1,5 +1,42 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 22:40 JST
+
+- main: `41fbe4f4b3cf1da5d6a48df98d4c2714ab26ece4`
+- #437 milestone: merged
+- #438 combined V5 progress: merged
+- #439 roadmap: merged
+- #440 freeze-review packet: merged
+- #441 scope lock: merged
+- Production remains V4
+- target V5 core freeze review: **2026-10-15**
+- `purchase_action=false`
+
+Mandatory core:
+- V4 >=20 resolved days
+- S03_M2 >=100 evaluated
+- clean evidence
+
+Current pre-nightly:
+- V4 6/20
+- S03 53/100
+
+Schedule estimate if current evidence flow continues:
+- V4 20 around 2026-10-10
+- S03 100 around 2026-10-09..10
+
+Scope through 10/15:
+- no new V5-core feature
+- no gate lowering
+- no post-outcome retune
+- day-strength optional at its unchanged gate
+- F-count separately approval-gated
+- recent_form/L/exhibition/weather/odds-EV/new features deferred to later research
+
+V5 freeze packet is ready on main and remains review-only.
+
+`V5_MID_OCT_FRAMEWORK_COMPLETE / EVIDENCE_COLLECTION_NEXT / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 22:33 JST
 
 - main: `56a968c9fb7d0ba05a7e04a54f50fd4a25268b84`
