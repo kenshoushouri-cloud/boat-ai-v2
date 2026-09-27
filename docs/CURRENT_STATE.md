@@ -1,5 +1,19 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 16:17 JST
+
+- main: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- Railway Production staged changes: none
+- Production behavior unchanged / `purchase_action=false`
+- #394: recent_form empty 0/413,820 -> reject
+- #395: unused numeric entry fields high coverage, but historical 08:15 row timing unproven
+- #396: F count shape-ready (100% full-six, 57.0741% within-race variation, 15.0826% positive); L count degenerate
+- #397: pure prospective F-count head-error diagnostic preregistered, final CI SUCCESS, no collector/persistence
+- next step is **explicit-approval gate** for prospective F-count Forward collection/persistence
+- no historical F-count coefficient search is authorized
+
+`F_COUNT_PROSPECTIVE_DIAGNOSTIC_READY_FOR_ACTIVATION_REVIEW / NO_FORWARD_PERSISTENCE_YET / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 15:30 JST
 
 **現在の短期スナップショット。古いsectionは履歴として扱い、再開時はlive再取得する。**
