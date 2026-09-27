@@ -1,5 +1,23 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 POST-PR401
+
+- main: `a255aa3a5d17cef953685f801b447ca6c80db28a`
+- Railway Production staged changes: none
+- dispatcher latest deployment SUCCESS; Production prediction/purchase behavior unchanged
+- #394 recent_form empty -> reject
+- #395 unused entry data present but historical 08:15 row timing unproven
+- #396 F count shape-ready; L count degenerate
+- #397 prospective head-error diagnostic pure contract green; no persistence
+- #398 hash-bound companion pure contract green; formal V4 core immutable
+- #400 exact-36-row pure adapter green; no I/O/persistence
+- #401 non-enumerating DB-route hardening Draft green; PR safety-only run confirmed; live freeze skipped
+- next step remains an **explicit approval gate** for any live Forward-route activation or F-count companion persistence
+- no historical F-count coefficient search is authorized
+- `purchase_action=false`
+
+`FCOUNT_ACTIVATION_PREP_COMPLETE / LIVE_CAPTURE_NOT_APPROVED / PRODUCTION_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 16:24 JST
 
 - main: `dac9314f17035c424f5455ff604432150a276e13` (docs-only #393)
