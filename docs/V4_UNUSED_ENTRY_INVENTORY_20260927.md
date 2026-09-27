@@ -75,3 +75,57 @@ No coefficients or transformations are defined here.
 
 Safety:
 `READ_ONLY / RESULT_BLIND / NO_DB_WRITE / NO_LINE / NO_FORWARD_PERSISTENCE / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+
+## Canonical one-shot result
+
+- trigger head: `d26ccaf5a936e6708db96d477dc02c7ad7972117`
+- workflow run: `36301606766` — SUCCESS
+- artifact: `10926285564`
+- artifact ZIP digest: `sha256:2b9376f67b458fb1e0e5775d51ebe35896348d955fe300f59725f49cd9e0f3e7`
+- result JSON SHA256: `435f343d0af25d1d0449142f5d6432c304408c55a17a9961869ff7d745eebf2c`
+- canonical entry rows: **413,820**
+- exact-six races: **68,970**
+- strong row-level source-capture timestamp column: **NONE**
+- outcome read: **0**
+- secret enumeration: **0**
+
+Coverage / full-six coverage among exact-six races:
+
+| field | row coverage | full-six coverage | readiness |
+|---|---:|---:|---|
+| national_place3_rate | 99.8531% | 99.1272% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| local_win_rate | 99.8531% | 99.1272% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| local_place3_rate | 99.8528% | 99.1257% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| motor_place3_rate | 99.8231% | 98.9517% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| boat_place2_rate | 99.6552% | 98.0107% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| boat_place3_rate | 99.6153% | 97.7816% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| f_count | 100.0000% | 100.0000% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| l_count | 100.0000% | 100.0000% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| branch | 6.5942% | 6.5942% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| origin | 6.5942% | 6.5942% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| motor_no | 99.8526% | 99.1243% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+| boat_no | 99.7422% | 98.5167% | DATA_PRESENT_0815_ROW_TIMING_UNPROVEN |
+
+## Frozen interpretation
+
+The audit establishes **data presence**, not predictive value or historical
+timing safety. The high-coverage numeric fields are materially different from
+`recent_form`: they are present in almost all canonical rows and are produced
+by the current official `racelist` parser. However, no strong row-level
+capture timestamp exists in `v2_race_entries`, so the canonical database alone
+cannot prove that every historical row was fixed by 08:15 JST.
+
+Therefore no historical coefficient search is authorized from this inventory.
+
+Next safe work may use only result-blind redundancy/provenance analysis to
+determine whether these fields add genuinely independent information relative
+to current V4 inputs. Any predictive test requiring historical timing safety
+must either prove an independent timing source or use a separately approved
+prospective first-write-wins shadow.
+
+Frozen gate:
+`UNUSED_ENTRY_DATA_PRESENT / NUMERIC_COVERAGE_HIGH / HISTORICAL_0815_ROW_TIMING_UNPROVEN / NO_OUTCOME_READ / NO_COEFFICIENT_SELECTION / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+The one-shot is hard-locked to the canonical trigger SHA and its sentinel has
+been consumed.
