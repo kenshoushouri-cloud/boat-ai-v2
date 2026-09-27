@@ -1,5 +1,247 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 16:17 JST
+
+**このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
+
+### Live source / Production
+- GitHub main at latest read-only check: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- Railway Production staged changes: none
+- V4 fallback dispatcher: SUCCESS, Cron `25 23 * * *` UTC
+- Production model / selector / threshold / candidate / stake unchanged
+- `purchase_action=false`
+
+### PR #394 — recent_form readiness
+Canonical run `36300918133`, artifact `10925970218`.
+- 413,820 canonical-period entry rows
+- non-empty `recent_form`: 0
+- strong capture timestamp: none
+- conclusion: `NOT_READY_FAIL_CLOSED`
+Do not reconstruct historical recent_form after outcomes.
+
+### PR #395 — unused entry inventory
+Canonical run `36301606766`, artifact `10926285564`.
+- 68,970 exact-six races
+- unused numeric fields generally ~97.8%–100% full-six coverage
+- F/L counts full-six 100%
+- branch/origin only 6.59%
+- no strong historical row-level 08:15 capture timestamp
+Conclusion: data exists, historical timestamp proof does not.
+
+### PR #396 — input-only novelty
+Canonical run `36302265912`, artifact `10926306186`, JSON SHA256 `bf7ef418a2d0568cec17fd2af6c52eca329e68b7adbf72dd1c88730218f33b48`.
+- F count: full-six 100%, within-race variation 57.0741%, F>0 rows 15.0826% — shape gate PASS
+- L count: variation 0.8221%, positive rows 0.1382% — shape gate FAIL
+- fixed pair Pearson correlations all below preregistered |r|=0.95 redundancy line
+- no outcomes read
+Conclusion:
+`F_COUNT_INPUT_SHAPE_READY / L_COUNT_TOO_DEGENERATE / HISTORICAL_0815_TIMING_STILL_UNPROVEN / NO_HISTORICAL_COEFFICIENT_SEARCH / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+### Current prospective source timing
+- `cron-data-prepare` runs around 06:30 JST and executes daily pre-result data preparation.
+- current code forces results collection off in that path and obtains official race-card entries from BOAT RACE `racelist`.
+- F count is therefore technically available for a new future pre-result freeze before the current V4 08:15 boundary, subject to per-run integrity checks.
+- this does not retroactively prove old DB rows were captured by 08:15.
+
+### PR #397 — F-count prospective diagnostic DESIGN ONLY
+Draft / mergeable / final contract CI SUCCESS.
+- head `844d0f4961367e21213f99579678fd1e20bd7937`
+- no collector / no schedule / no persistence
+- no coefficient
+- frozen question: does current V4 head accuracy materially worsen when predicted head has F>=1?
+- primary population: unchanged V4 six core races
+- minimum interpretation gate: 200 finalized core races, >=30 F-positive predicted heads, >=100 F-zero
+- future coefficient preregistration only if F-zero head accuracy exceeds F-positive by >=5.0pt and direction agrees in >=3/4 chronological quarters
+- passing diagnostic would still not authorize Production promotion
+
+### Current approval boundary
+**Next scientific step requires explicit approval** because it would activate prospective Forward persistence/collection for F-count snapshots.
+Until approval:
+- do not schedule F-count collection;
+- do not write a new Forward table/artifact stream;
+- do not run historical F-count coefficient searches;
+- do not merge a Production-effect model change.
+
+Safe completed state:
+`RECENT_FORM_REJECTED_EMPTY / UNUSED_ENTRY_INVENTORY_COMPLETE / F_COUNT_NEXT_PROSPECTIVE_DIAGNOSTIC_PREREGISTERED / ACTIVATION_NOT_APPROVED / PRODUCTION_UNCHANGED / PURCHASE_FALSE`
+
+## LATEST OVERRIDE — 2026-09-27 15:30 JST
+
+**このsectionを最新の引き継ぎ情報として扱うこと。これより下の古いSHA・研究途中状態・Railway状態・次アクションは歴史的背景として扱い、再開時は必ずlive再取得すること。**
+
+### Source of Truth / Production
+- repo: `kenshoushouri-cloud/boat-ai-v2`
+- current main: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- GitHub main = code Source of Truth
+- Railway PostgreSQL = Production data Source of Truth
+- Railway project: `boat-v2-postgres`
+- Production environment latest read-only check: staged changes none
+- `candidate-discovery-v4-fallback-dispatcher`: Cron `25 23 * * *` UTC, latest deployment SUCCESS
+- main Production cron群（data-prepare / final-check / nightly-results / window morning/day/night）latest deployment SUCCESS
+- Production model / coefficient / threshold / candidate / stake logic: unchanged
+- automatic purchase disabled / `purchase_action=false`
+
+### Current V4 contract
+- Course coefficient `0.50`
+- Opponent Pressure coefficient `1.0` first-place-only
+- Motor2 beta `0.06`
+- probability temperature `2.20`
+- daily structural selector: `head_p1 / head_margin / top3_mass / concentration`
+- core: TOP6 races / formal TOP2 tickets
+- odds / EV not used by the main selector
+- missing Course/Opponent/Motor is neutral
+- no automatic purchase
+
+### Completed evidence chain after the 2026-09-25 handoff
+#### PR #387 — input-information ablation
+Canonical one-shot:
+- run `36098761397` SUCCESS
+- artifact `10847994618`
+- ZIP SHA256 `2a775d97c8ed4c1495f33772699bae6aa50234c83a51ff09c115ba7a7edd6368`
+- JSON SHA256 `277927e9a9a66f12797168cf4c7af4bb91684ae84f5f4a6853e6f54e4447e779`
+- no harmful existing layer removal supported
+- fixed-race head accuracy unchanged by every removal
+- no_course / no_motor / base_only worsen proper scores
+- no_opponent does not pass the fixed-race harmful-layer criterion
+- conclusion: existing-input removal is not the next path; missing first-place information is the next hypothesis
+
+#### PR #389 — strict-prior official ST
+Canonical run `36254658202`, artifact `10910380430`.
+Blocks 3-10 fixed current-V4 daily-rank-1:
+- head accuracy 57.558% -> 57.558%
+- LogLoss 1.340703 -> 1.339431
+- Brier 0.655212 -> 0.654967
+- head classification changed 0/344
+Full reselection worsened head accuracy / LogLoss / Brier.
+Conclusion: tiny calibration-only movement; not a missing head-classification signal. Do not promote.
+
+#### PR #390 — actual course-movement error attribution
+Canonical run `36255242556`, artifact `10910461830`.
+Complete-course daily-rank-1 rows blocks 3-10: n=306.
+- any course change n=76, head 57.895%
+- no course change n=230, head 55.652%
+- predicted-head moved n=19, head 42.105%, but small/unstable
+Conclusion: broad course movement is not the dominant head-error concentration. Do not create a broad course-change filter from this history.
+
+#### PR #391 — frozen Exhibition ST Forward health
+Canonical run `36288188460`, artifact `10921021546`.
+- n=1,879
+- trifecta proper scores slightly worse overall
+- first-place proper scores slightly worse overall
+- venue signs heterogeneous
+Conclusion: frozen beta=-0.02 Exhibition ST is not supported for promotion; no subgroup salvage.
+
+#### PR #392 — current-V4 exhibition-time-rank chronological OOS
+Canonical run:
+- trigger head `6d5986f7889a8bb89cc0d32a95b2b1f50492bc0c`
+- run `36288864737` SUCCESS
+- artifact `10921393420`
+- artifact ZIP SHA256 `8ddca8ff36a89452620a3a3e780ec959e8edfcc01f697f474145fbb98a92d33e`
+- result JSON SHA256 `99f4d32e2bbbddaa698767d434ed37e57b43d290752d72d92b3897bd4d915498`
+- read-only route: Railway non-enumerating local env injection
+- secret enumeration 0 / collector execution 0 / Production change 0
+
+Frozen coefficients were `0 / 0.05 / 0.10 / 0.20`; prior-block training selected 0.20 in all evaluation blocks 3-10. **Do not expand this grid after seeing the result.**
+
+Track A, fixed control rank1, blocks 3-10:
+- control: head 57.558%, LogLoss 1.340703, Brier 0.655212, ROI 75.131%
+- exhibition time: head 57.558%, LogLoss 1.314880, Brier 0.643763, ROI 77.689%
+- predicted head changed 0/344
+- primary head-accuracy improvement gate FAILED
+
+Track B full reselection:
+- head 62.464%, LogLoss 1.278669, Brier 0.624626
+- rank1 overlap 52.770%, mean Top6 overlap 63.994%
+- economics did not improve correspondingly
+
+Frozen conclusion:
+`CURRENT_V4_EXHIBITION_TIME_CALIBRATION_SIGNAL_SUPPORTED / FIXED_RACE_HEAD_CLASSIFICATION_CHANGED_0_OF_344 / PRIMARY_HEAD_ACCURACY_GATE_FAILED / TRACK_B_RESELECTION_DESCRIPTIVELY_BETTER_BUT_NOT_PROMOTION_AUTHORITY / DO_NOT_EXPAND_COEFFICIENT_GRID / NO_NEW_FORWARD_FROM_THIS_REPLAY / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+### Current research interpretation
+The dominant bottleneck remains first-place classification. The following have **not** supplied a robust missing classification signal:
+- removing current Course/Opponent/Motor layers
+- strict-prior ST
+- broad course-movement hypothesis
+- frozen Exhibition ST
+- exhibition-time-rank on the fixed current-V4 race
+
+Do not retune these families on the same 2025-07-01..2026-09-22 history.
+
+Historical note already established:
+- real `boat_place2_rate` contributed only a very small incremental improvement compared with Motor2 in PR #186/#187/#188, so Boat2 is low priority.
+- weather/wave/exhibition interaction research exists from earlier generations; do not duplicate it blindly without first checking timing compatibility with current V4.
+
+### PR #394 — recent-form readiness audit completed
+Canonical result-blind one-shot:
+- trigger head `1fec3d9c0ade35c48634ca1220ebcd2b188bd8d7`
+- run `36300918133` SUCCESS
+- artifact `10925970218`
+- artifact ZIP digest `sha256:3a2fcb827916be87facbb7b4ccb40200ce5c512b96136d9fe66ec6c7a52df107`
+- result JSON SHA256 `11dd669a7af7da690e13fde312be4725cef3c9baee80ff221b2492915bc61a19`
+- canonical-period `v2_race_entries`: 413,820 rows
+- non-empty `recent_form`: 0 rows
+- full-six races with six non-empty values: 0
+- strong source-capture timestamp column: none
+- outcome/result read: 0
+- collector execution: 0
+- secret enumeration: 0
+- PostgreSQL READ ONLY
+
+Frozen conclusion:
+`RECENT_FORM_EMPTY_IN_CANONICAL_PERIOD / NO_NONEMPTY_COVERAGE / NO_STRONG_CAPTURE_TIMESTAMP / NOT_READY_FAIL_CLOSED / DO_NOT_DEFINE_TRANSFORMATION_OR_COEFFICIENT / NO_OUTCOME_READ / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+Do not backfill or reconstruct historical `recent_form` after outcomes merely to create a test set.
+
+### NEXT SAFE ACTION — unused pre-race information inventory
+Before defining another model family, audit current V4's already-available entry information without reading outcomes:
+1. enumerate current `v2_race_entries` fields not already consumed by V4 base/Course/Opponent/Motor2;
+2. measure canonical-period non-null/full-six coverage;
+3. map each field to current-main writer/source provenance;
+4. confirm target-day availability and 08:15 JST compatibility;
+5. reject fields that are redundant, post-race mutable, or provenance-unclear before any coefficient is defined.
+
+Initial static mapping shows V4 base already consumes racer class, national win rate, national place2 rate, local place2 rate and avg ST; Motor2 is separately used. Candidate inventory therefore starts from remaining official entry fields such as place3/local-win/boat-related and operational counters, without presuming predictive value.
+
+### Open Draft handling
+Highest-relevance current Drafts:
+- #387 completed input ablation — canonical evidence frozen, no rerun
+- #389 strict-prior ST — completed, no promotion
+- #390 course-movement attribution — completed diagnostic
+- #391 Exhibition ST Forward health — completed, no promotion
+- #392 exhibition-time-rank OOS — completed; primary gate failed; no rerun / no grid expansion
+
+Always refetch the full open PR list and exact-head CI before acting.
+
+### Safety / approval boundary
+May continue without confirmation:
+- read-only audits
+- historical backtest / Forward evaluation
+- Draft PR create/update
+- CI
+- docs/handoff updates
+- safe evidence collection
+
+Explicit approval required:
+- Production-effect PR merge
+- Railway Production Variables / Cron / service / volume / migration changes
+- Production DB INSERT / UPDATE / DELETE / schema / VACUUM
+- Production model / coefficient / threshold / candidate / stake logic changes
+- new LINE real-send behavior
+- Forward persistence
+- automatic purchase
+- paid data / external inquiry
+
+Never:
+- reconstruct Forward/candidates after seeing outcomes
+- expand #392 coefficient grid after seeing the upper-edge selection
+- adopt Track-B-only descriptive gains when the preregistered primary gate failed
+- loosen thresholds merely for volume/profit
+- expose secrets or enumerate Railway plaintext variables
+- delete data for capacity pressure without the approved storage contract
+
+### Restart instruction
+> Read this LATEST OVERRIDE first. Refetch current main/open PR/CI/Railway Production read-only. Treat #392 as completed canonical evidence and do not rerun it. The next safe research task is a result-blind coverage/provenance audit of stronger current-form information, beginning with `recent_form`; only after timing-safe readiness is proven may a new preregistered predictive test be defined.
+
 ## LATEST OVERRIDE — 2026-09-25 13:51 JST
 
 **このsectionを最新の引き継ぎ情報として扱うこと。これより下・過去PR・過去SHAに残る古いfallback状態、日付、件数、判断は歴史的背景として扱い、現在値と仮定しないこと。**
