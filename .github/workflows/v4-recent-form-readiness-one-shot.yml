@@ -1,0 +1,117 @@
+name: V4 recent-form readiness one-shot read-only audit
+
+on:
+  pull_request:
+    paths:
+      - 'research/.v4-recent-form-readiness-run-once-20260927'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'research/v4-recent-form-readiness-20260927'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      DEDICATED_DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_RECENT_FORM_OUTPUT_JSON: 'v4-recent-form-readiness.json'
+      PGOPTIONS: '-c default_transaction_read_only=on'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Verify exact one-shot trigger
+        run: |
+          set -euo pipefail
+          test "$(cat research/.v4-recent-form-readiness-run-once-20260927)" = "RUN_ONCE_20260927_V4_RECENT_FORM_READINESS"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Select read-only execution route
+        run: |
+          set -euo pipefail
+          if [ -n "${DEDICATED_DATABASE_URL:-}" ]; then
+            echo "V4_RECENT_FORM_DB_AUDIT=DEDICATED_DATABASE_SECRET"
+          elif [ -n "${RAILWAY_TOKEN:-}" ]; then
+            echo "V4_RECENT_FORM_DB_AUDIT=RAILWAY_RUN_NON_ENUMERATING"
+          else
+            echo "V4_RECENT_FORM_DB_AUDIT=BLOCKED_NO_APPROVED_CONNECTION_ROUTE"
+            exit 1
+          fi
+
+      - name: Install Railway CLI for non-enumerating local env injection
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: npm install --global @railway/cli
+
+      - name: Run audit via dedicated read-only connection
+        if: env.DEDICATED_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -u research/v4_recent_form_readiness_audit_pg.py 2>&1 | tee v4-recent-form-readiness.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-recent-form-readiness.txt
+
+      - name: Run audit via Railway local env injection
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; exec python -u research/v4_recent_form_readiness_audit_pg.py'             2>&1 | tee v4-recent-form-readiness.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-recent-form-readiness.txt
+
+      - name: Hash immutable result
+        if: success()
+        run: |
+          set -euo pipefail
+          test -s v4-recent-form-readiness.json
+          sha256sum v4-recent-form-readiness.json | tee v4-recent-form-readiness.sha256
+
+      - name: Upload sanitized research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-recent-form-readiness-${{ github.run_id }}
+          path: |
+            v4-recent-form-readiness.json
+            v4-recent-form-readiness.txt
+            v4-recent-form-readiness.sha256
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Confirm no variable enumeration, result read, or collector execution
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          wf=Path('.github/workflows/v4-recent-form-readiness-one-shot.yml').read_text(encoding='utf-8').lower()
+          code=Path('research/v4_recent_form_readiness_audit_pg.py').read_text(encoding='utf-8').lower()
+          forbidden_wf=('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json','collect_'+'beforeinfo')
+          for value in forbidden_wf:
+              assert value not in wf, value
+          forbidden_code=('v2_'+'results','v2_'+'result_entries','v2_'+'odds','payout','send_'+'line')
+          for value in forbidden_code:
+              assert value not in code, value
+          assert 'railway run' in wf
+          assert 'set transaction read only' in code
+          print('V4_RECENT_FORM_SECRET_ENUMERATION=0')
+          print('V4_RECENT_FORM_OUTCOME_READ=0')
+          print('V4_RECENT_FORM_COLLECTOR_EXECUTION=0')
+          PY
