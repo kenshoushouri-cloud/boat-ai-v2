@@ -58,13 +58,17 @@ A positive review may justify a separate Production proposal only. It does not i
 
 ## Current checkpoint context — not a new threshold
 
-At 54 timing-valid evaluated observations through 2026-09-27:
-- ROI 187.4074%;
-- profit +4,720 JPY;
+At 53 timing-valid **officially evaluated** observations through 2026-09-27:
+- ROI 190.9434%;
+- profit +4,820 JPY;
 - largest-hit share 44.3676%;
-- max drawdown 1,700 JPY;
-- max losing streak 17;
-- whole-day bootstrap P(ROI > 100%) 85.52%.
+- max drawdown 1,600 JPY;
+- max losing streak 16;
+- whole-day bootstrap P(ROI > 100%) 86.13%;
+- first chronological half ROI 319.6154%;
+- second chronological half ROI 67.0370%.
+
+One Motor2-positive row had `evaluation_status=invalid_result` and is excluded from investment/ROI. Invalid/cancelled results must never be counted as a 100 JPY losing bet.
 
 These numbers are recorded only as the current checkpoint. They must not be used to alter the frozen rule or invent a new subgroup before the 100-observation review.
 
