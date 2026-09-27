@@ -1,0 +1,50 @@
+name: Research V4 F-count Current Artifact Compatibility
+on:
+  pull_request:
+    paths:
+      - 'research/v4_fcount_current_artifact_compat.py'
+      - 'tests/test_v4_fcount_current_artifact_compat.py'
+      - 'research/v4_fcount_prospective_activation_manifest.py'
+      - 'tests/test_v4_fcount_prospective_activation_manifest.py'
+      - 'docs/V4_FCOUNT_PROSPECTIVE_ACTIVATION_MANIFEST_20260927.md'
+      - 'docs/V4_FCOUNT_CURRENT_ARTIFACT_COMPAT_20260927.md'
+      - '.github/workflows/v4-fcount-current-artifact-compat.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compat:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify compatibility runner isolation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v4_fcount_current_artifact_compat.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','urllib','subprocess','insert into','update v2_','delete from','send_line'):
+              assert token not in t, token
+          assert 'synthetic_only' in t
+          PY
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=. pytest -q tests/test_v4_fcount_companion_contract.py tests/test_v4_fcount_companion_adapter.py tests/test_v4_fcount_current_artifact_compat.py tests/test_v4_fcount_prospective_activation_manifest.py
+      - name: Download exact current formal artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10918742073/zip > formal.zip
+          echo 'd251c0d918964e3dc8c467b8f43038cae0571892a2b0539ad8ccf27a39d98da0  formal.zip' | sha256sum -c -
+          unzip -q formal.zip -d formal
+      - name: Run synthetic-only compatibility proof
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python -u research/v4_fcount_current_artifact_compat.py formal/candidate-discovery-v4-prospective-freeze.json | tee fcount-current-artifact-compat.txt
+          grep -q '^FCOUNT_COMPAT_SYNTHETIC_ONLY=1$' fcount-current-artifact-compat.txt
+          grep -q '^FCOUNT_COMPAT_DB_READ=0 RESULT_READ=0 ODDS_READ=0 PAYOUT_READ=0$' fcount-current-artifact-compat.txt
+          grep -q '^FCOUNT_COMPAT_DB_WRITE=0 PERSISTENCE=0 PROD_CHANGE=0 BUY=0$' fcount-current-artifact-compat.txt
+          grep -q '^FCOUNT_COMPAT_RESULT=PASS_PURE_CURRENT_ARTIFACT$' fcount-current-artifact-compat.txt
