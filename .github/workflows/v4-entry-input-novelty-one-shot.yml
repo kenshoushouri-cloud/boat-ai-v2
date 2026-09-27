@@ -10,7 +10,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/v4-entry-input-novelty-20260927'
+      github.event.pull_request.head.ref == 'research/v4-entry-input-novelty-20260927' &&\n      github.event.pull_request.head.sha == '05cbc5e2ff5f4af71fdeb66510964711317de3fd'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
