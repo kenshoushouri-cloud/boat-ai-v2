@@ -81,7 +81,7 @@ Use for:
 
 Do not use old pre-freeze profitability as support.
 
-### #411 — future-only formal V4 day-strength shadow
+### #432 — future-only formal V4 day-strength shadow (main-integrated)
 Current role: **future skip/keep diagnostic only**.
 
 Frozen:
@@ -90,6 +90,15 @@ Frozen:
 - prior-seven FORMAL_AVAILABLE median reference;
 - first 9/28 reference = 0.93817204;
 - shadow label cannot change formal TOP6/TOP2.
+
+#411 is closed as superseded by #432; its preregistration history remains provenance.
+
+### #434 / #435 — combined checkpoint repair and E2E proof
+- #434 is merged: malformed manual workflow repaired;
+- YAML structural/order safety CI is main-integrated;
+- #435 is closed unmerged evidence-only;
+- canonical E2E run 36320499779 is PASS_READ_ONLY;
+- V4/S03 outputs exactly match the established checkpoint values.
 
 ## Tier B — active infrastructure / safety research
 
@@ -211,4 +220,4 @@ A PR may be closed later when:
 
 Until then, use this registry to avoid reference ambiguity.
 
-`CHECKPOINT_MAIN_425_426_427_429_431_432 / EVIDENCE_409_405 / DAY_STRENGTH_432_SUPERSEDES_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
+`CHECKPOINT_MAIN_425_426_427_429_431_432_434 / E2E_435_PASS / EVIDENCE_409_405 / DAY_STRENGTH_432_SUPERSEDES_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
