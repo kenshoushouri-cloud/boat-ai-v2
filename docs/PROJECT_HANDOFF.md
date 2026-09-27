@@ -1,5 +1,111 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 20:03 JST
+
+**共通Forward評価の最新確定。これより下の古い評価定義・件数は履歴。**
+
+### Source of Truth / Production
+- GitHub main: `2e89e81f00b02a66c7a99ac0f6b02e2d43bf406b`
+- Railway Production staged changes: none
+- pending work: none
+- fallback Cron remains `25 23 * * *` UTC = 08:25 JST
+- Production V4 model / selector / TOP6 / TOP2 / stake unchanged
+- `purchase_action=false`
+
+### Common economics contract — #415
+All CI SUCCESS.
+
+One settlement definition now covers prospective evidence:
+- `evaluated`: investment-bearing official settlement
+- `invalid_result`: void / zero investment
+- pending/other: zero investment
+- common ROI / profit / largest-hit share / max DD / max losing streak / halves / day-bootstrap
+- immutable formal V4 `official` rows normalize into the same contract
+
+### Exact Production-data parity — #416
+Canonical run `36313916909`.
+
+S03 all-row 2026-09-13..09-27:
+- rows 116
+- evaluated 102
+- invalid 2
+- pending 12
+- legacy metrics == common metrics exactly
+- legacy risk == common risk exactly
+
+This proves reporting semantics only, not a candidate promotion.
+
+### Formal V4 TOP2 common parity — #419
+Canonical run `36314249617`.
+
+Exact immutable formal evidence 2026-09-21..09-26:
+- frozen races 36
+- evaluated/official 32
+- void/invalid 4
+- hits 10
+- investment 6,400 JPY
+- return 10,970 JPY
+- profit **+4,570 JPY**
+- ROI **171.4062%**
+- largest-hit share 32.7256%
+
+Common observation-level risk:
+- max DD **2,200 JPY**
+- max losing streak **11**
+- first 16 evaluated races ROI **203.4375%**
+- second 16 evaluated races ROI **139.3750%**
+- whole-day bootstrap P(ROI>100%) **89.13%**
+
+Result: `PASS_EXACT_V4_TOP2`.
+
+### S03_M2 common parity — #420
+Canonical run `36314384084`.
+
+Exact frozen M2-positive evidence 2026-09-13..09-27:
+- source S03 116
+- timing rejected 0
+- missing Motor2 0
+- positive rows 62
+- evaluated 53
+- invalid 1
+- pending 8
+- hits 4
+- investment 5,300 JPY
+- return 10,120 JPY
+- profit **+4,820 JPY**
+- ROI **190.9434%**
+- largest-hit share 44.3676%
+
+Common risk:
+- max DD **1,600 JPY**
+- max losing streak **16**
+- first 26 ROI **319.6154%**
+- second 27 ROI **67.0370%**
+- whole-day bootstrap P(ROI>100%) **86.13%**
+
+Result: `PASS_EXACT_FROZEN_SUBSET`.
+
+### Standardized interpretation
+Do not rank/promote from these small checkpoints.
+
+Facts under the same definitions:
+- V4 TOP2 has lower current ROI than S03_M2 but both chronological halves remain >100%.
+- S03_M2 has higher current overall ROI, but its second half is <100%.
+- V4 has lower largest-hit concentration, shorter max losing streak, and slightly higher bootstrap P(ROI>100%) at the current checkpoint.
+- S03_M2 has lower max DD in yen at the current checkpoint.
+- samples/exposure differ; neither comparison authorizes selector/stake changes.
+
+Continue frozen evidence collection:
+- V4 formal: next review 10 resolved formal days
+- S03_M2: next full review 100 officially evaluated observations
+
+### Main references
+- `docs/RESEARCH_PR_REGISTRY_20260927.md`
+- `docs/FORWARD_EVIDENCE_FAILURE_RUNBOOK_20260927.md`
+
+Current gate:
+`COMMON_ECON_EXACT_V4_AND_S03_PARITY / V4_TOP2_32_EVAL_ROI_171_41 / S03_M2_53_EVAL_ROI_190_94_RECENT_WEAKNESS / NO_RETUNE / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 19:53 JST
 
 **評価基盤・研究PR整理の最新追記。これより下の古い評価定義・PR優先度は履歴。**
