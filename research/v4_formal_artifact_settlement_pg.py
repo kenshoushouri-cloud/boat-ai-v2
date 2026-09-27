@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
 import zipfile
 from pathlib import Path
@@ -19,6 +20,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 UNIT_YEN = 100
+BOOTSTRAP_SAMPLES = 20000
+BOOTSTRAP_SEED = 20260927
 ARTIFACT_DIR = Path(os.getenv("V4_FORMAL_ARTIFACT_DIR", "v4-artifacts"))
 OUTPUT = Path(os.getenv("V4_FORMAL_SETTLEMENT_OUTPUT", "v4-formal-artifact-settlement.json"))
 
@@ -175,6 +178,33 @@ def summarize(rows: list[dict[str, Any]], points: int) -> dict[str, Any]:
     }
 
 
+def top2_day_bootstrap(day_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    complete = [d for d in day_rows if d["complete"]]
+    if not complete:
+        return {"samples": 0}
+    rnd = random.Random(BOOTSTRAP_SEED)
+    rois: list[float] = []
+    for _ in range(BOOTSTRAP_SAMPLES):
+        inv = gross = 0
+        for _j in complete:
+            d = complete[rnd.randrange(len(complete))]
+            inv += int(d["top2"]["investment_yen"])
+            gross += int(d["top2"]["return_yen"])
+        rois.append(gross / inv * 100.0 if inv else 0.0)
+    rois.sort()
+    n = len(rois)
+    return {
+        "samples": n,
+        "seed": BOOTSTRAP_SEED,
+        "median_roi_pct": round(rois[n // 2], 4),
+        "ci95_roi_pct": [
+            round(rois[int(0.025 * (n - 1))], 4),
+            round(rois[int(0.975 * (n - 1))], 4),
+        ],
+        "p_roi_gt_100_pct": round(sum(x > 100.0 for x in rois) / n * 100.0, 4),
+    }
+
+
 def main() -> None:
     print("V4_FORMAL_SETTLEMENT_POLICY=EXACT_IMMUTABLE_ARTIFACTS_BEFORE_RESULT_QUERY", flush=True)
     print("V4_FORMAL_SETTLEMENT_RECONSTRUCT_CANDIDATES=0 ODDS_READ=0", flush=True)
@@ -256,6 +286,68 @@ def main() -> None:
     head_n = len(complete_rows)
     head_hits = sum(int(r["head_lane"] == r["actual_head_lane"]) for r in complete_rows)
 
+    complete_days = [d for d in by_day if d["complete"]]
+    mid = len(complete_days) // 2
+    first_days = complete_days[:mid]
+    second_days = complete_days[mid:]
+
+    def aggregate_day_slice(days: list[dict[str, Any]]) -> dict[str, Any]:
+        inv = sum(int(d["top2"]["investment_yen"]) for d in days)
+        gross = sum(int(d["top2"]["return_yen"]) for d in days)
+        hits = sum(int(d["top2"]["hits"]) for d in days)
+        bets = sum(int(d["top2"]["bets"]) for d in days)
+        return {
+            "days": [d["date"] for d in days],
+            "bets": bets,
+            "hits": hits,
+            "investment_yen": inv,
+            "return_yen": gross,
+            "profit_yen": gross - inv,
+            "roi_pct": round(gross / inv * 100.0, 4) if inv else None,
+        }
+
+    leave_day = []
+    for removed in complete_days:
+        kept = [d for d in complete_days if d["date"] != removed["date"]]
+        leave_day.append({"removed_date": removed["date"], **aggregate_day_slice(kept)})
+    leave_day.sort(key=lambda x: (x["roi_pct"] if x["roi_pct"] is not None else -1.0, x["removed_date"]))
+
+    hit_returns = []
+    for r in complete_rows:
+        if r["official"] and r["actual_ticket"] in {r["ticket1"], r["ticket2"]}:
+            hit_returns.append({"race_id": r["race_id"], "date": r["date"], "payout_yen": int(r["payout_yen"])})
+    hit_returns.sort(key=lambda x: (-x["payout_yen"], x["race_id"]))
+    gross_top2 = int(overall_top2["return_yen"])
+    largest_hit_share = (
+        round(hit_returns[0]["payout_yen"] / gross_top2 * 100.0, 4)
+        if hit_returns and gross_top2 else 0.0
+    )
+    leave_hit = []
+    for hit in hit_returns:
+        inv = int(overall_top2["investment_yen"]) - 2 * UNIT_YEN
+        gross = gross_top2 - int(hit["payout_yen"])
+        leave_hit.append({
+            "removed_race_id": hit["race_id"],
+            "removed_payout_yen": hit["payout_yen"],
+            "investment_yen": inv,
+            "return_yen": gross,
+            "profit_yen": gross - inv,
+            "roi_pct": round(gross / inv * 100.0, 4) if inv else None,
+        })
+    leave_hit.sort(key=lambda x: (x["roi_pct"] if x["roi_pct"] is not None else -1.0, x["removed_race_id"]))
+
+    robustness = {
+        "top2_chronological_halves": {
+            "first": aggregate_day_slice(first_days),
+            "second": aggregate_day_slice(second_days),
+        },
+        "top2_largest_hit_yen": hit_returns[0]["payout_yen"] if hit_returns else 0,
+        "top2_largest_hit_share_pct": largest_hit_share,
+        "top2_leave_one_hit_min_roi_pct": leave_hit[0]["roi_pct"] if leave_hit else None,
+        "top2_leave_one_day_worst": leave_day[0] if leave_day else None,
+        "top2_day_bootstrap": top2_day_bootstrap(by_day),
+    }
+
     out = {
         "contract": "v4_formal_immutable_artifact_settlement_v1",
         "artifact_provenance": provenance,
@@ -274,6 +366,7 @@ def main() -> None:
             "profitable_days_top1": sum(int(x["complete"] and x["top1"]["profit_yen"] > 0) for x in by_day),
             "profitable_days_top2": sum(int(x["complete"] and x["top2"]["profit_yen"] > 0) for x in by_day),
         },
+        "robustness": robustness,
         "void_races": [
             {"date": r["date"], "race_id": r["race_id"]}
             for r in settled_rows if r["void"]
@@ -303,6 +396,7 @@ def main() -> None:
 
     print("V4_FORMAL_SETTLEMENT_DAYS=" + json.dumps(by_day, sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_COMPLETE=" + json.dumps(out["complete_day_only"], sort_keys=True), flush=True)
+    print("V4_FORMAL_SETTLEMENT_ROBUSTNESS=" + json.dumps(robustness, sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_VOID=" + json.dumps(out["void_races"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_PENDING=" + json.dumps(out["pending_or_invalid_races"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_PROMOTION_ALLOWED=0", flush=True)
