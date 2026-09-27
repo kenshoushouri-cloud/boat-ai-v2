@@ -52,8 +52,8 @@ jobs:
           w=Path('.github/workflows/research-v4-day-strength-shadow-manual.yml').read_text(encoding='utf-8').lower()
           assert 'workflow_dispatch:' in w
           assert ''.join(('schedule', ':')) not in w
-          assert 'railway run' not in w
-          assert 'database_url' not in w
+          assert ''.join(('railway', ' run')) not in w
+          assert ''.join(('database', '_url')) not in w
           PY
       - name: Freeze provider inventory without results
         run: |
