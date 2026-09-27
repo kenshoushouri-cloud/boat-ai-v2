@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from research.forward_review_gates import s03_m2_gate, v4_formal_gate
+from research.v5_candidate_milestone import evaluate_v5_core_progress
 
 
 def _extract_json_line(text: str, prefix: str) -> dict[str, Any]:
@@ -33,6 +35,13 @@ def build_scorecard(v4: dict[str, Any], s03_text: str, *, end_date: str) -> dict
     s03_bootstrap = _extract_json_line(s03_text, "S03_M2_COMMON_BOOTSTRAP=")
 
     evaluated = int(s03_overall.get("evaluated") or 0)
+    end = date.fromisoformat(end_date)
+    v5_core = evaluate_v5_core_progress(
+        as_of=end,
+        v4_resolved_formal_days=v4_days,
+        s03_m2_evaluated=evaluated,
+        evidence_contract_clean=True,
+    )
     return {
         "contract": "forward_combined_manual_checkpoint_v1",
         "end_date": end_date,
@@ -53,6 +62,7 @@ def build_scorecard(v4: dict[str, Any], s03_text: str, *, end_date: str) -> dict
             "day_bootstrap": s03_bootstrap,
             "review_gate": s03_m2_gate(evaluated),
         },
+        "v5_core_milestone": v5_core,
         "safety": {
             "read_only_inputs": True,
             "promotion_allowed": False,
@@ -82,6 +92,7 @@ def main() -> None:
 
     print("FORWARD_COMBINED_V4_GATE=" + json.dumps(out["v4_formal"]["review_gate"], sort_keys=True))
     print("FORWARD_COMBINED_S03_GATE=" + json.dumps(out["s03_m2"]["review_gate"], sort_keys=True))
+    print("FORWARD_COMBINED_V5_CORE=" + json.dumps(out["v5_core_milestone"], sort_keys=True))
     print("FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE")
 
 
