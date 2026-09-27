@@ -13,7 +13,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/exhibition-st-forward-health-20260927'
+      github.event.pull_request.head.ref == 'research/exhibition-st-forward-health-20260927' &&
+      github.event.pull_request.head.sha == '62571830b6d09a91fad9874e5a2c8c91555107d7'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
