@@ -38,21 +38,17 @@ jobs:
           assert 'railway run' in w
           PY
       - run: npm install --global @railway/cli
-      - name: Run exact N02 parity audit
+      - name: Run exact N02 and S03 parity audit
         run: |
           set -euo pipefail
-          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/forward_economics_parity_pg.py'             2>&1 | tee forward-economics-parity.txt
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/forward_economics_parity_pg.py' \
+            2>&1 | tee forward-economics-parity.txt
           grep -q '^FORWARD_ECON_PARITY_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' forward-economics-parity.txt
-          grep -q '^FORWARD_ECON_PARITY_RESULT=PASS_EXACT_N02_S03
-      - name: Upload parity evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: forward-economics-parity-${{ github.run_id }}
-          path: forward-economics-parity.txt
-          retention-days: 90
-          if-no-files-found: error
- forward-economics-parity.txt
+          grep -q '^FORWARD_ECON_PARITY_RESULT=PASS_EXACT_N02_S03$' forward-economics-parity.txt
       - name: Upload parity evidence
         if: always()
         uses: actions/upload-artifact@v4
