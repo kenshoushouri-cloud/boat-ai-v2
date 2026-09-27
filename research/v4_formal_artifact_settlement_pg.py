@@ -283,8 +283,8 @@ def main() -> None:
     complete_rows = [r for r in settled_rows if r["date"] in complete_dates]
     overall_top1 = summarize(complete_rows, 1)
     overall_top2 = summarize(complete_rows, 2)
-    head_n = len(complete_rows)
-    head_hits = sum(int(r["head_lane"] == r["actual_head_lane"]) for r in complete_rows)
+    head_n = sum(int(r["official"]) for r in complete_rows)
+    head_hits = sum(int(r["official"] and r["head_lane"] == r["actual_head_lane"]) for r in complete_rows)
 
     complete_days = [d for d in by_day if d["complete"]]
     mid = len(complete_days) // 2
