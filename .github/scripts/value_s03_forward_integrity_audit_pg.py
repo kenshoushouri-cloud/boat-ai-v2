@@ -17,7 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 START = date(2026, 9, 13)
-END = date(2026, 9, 27)
+END = date.fromisoformat(os.getenv("S03_FORWARD_END", "2026-09-27"))
 JST = ZoneInfo("Asia/Tokyo")
 OUTPUT = Path(os.getenv("S03_INTEGRITY_OUTPUT", "s03-forward-integrity-audit.json"))
 
