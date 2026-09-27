@@ -38,6 +38,29 @@ Run a **result-blind recent-form readiness audit** before defining another model
 
 If provenance/timing cannot be proven, reject `recent_form` as a current V4 input candidate and move to the next independent information family without tuning the failed families.
 
+### Recent-form readiness result
+
+PR #394 completed a result-blind read-only audit:
+- run `36300918133` SUCCESS;
+- 413,820 canonical-period entry rows scanned;
+- non-empty `recent_form`: 0;
+- full-six non-empty races: 0;
+- strong source-capture timestamp column: none;
+- classification: `NOT_READY_FAIL_CLOSED`;
+- no result/odds/payout read, no collector, no DB write.
+
+Do not define a recent-form transformation or coefficient and do not reconstruct historical values after outcomes.
+
+### Immediate next action
+
+Run a **result-blind unused pre-race information inventory**:
+- identify entry fields not already consumed by current V4;
+- measure non-null/full-six coverage;
+- verify source/writer provenance and 08:15 availability;
+- no outcome read and no performance-based feature selection.
+
+Current V4 base already consumes racer class, national win rate, national place2 rate, local place2 rate and avg ST; Motor2 is separately used.
+
 ### Do not
 - rerun #387/#389/#390/#391/#392 canonical experiments
 - expand #392 coefficient grid
