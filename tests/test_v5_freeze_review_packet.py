@@ -95,3 +95,19 @@ def test_rejects_non_neutral_combined_input():
         assert "production-neutral" in str(e)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_legacy_combined_without_v5_field_derives_current_core_progress():
+    x0 = combined(v4_days=6, s03_eval=53, core_ready=False)
+    del x0["v5_core_milestone"]
+    x = build_v5_review_packet(x0)
+    assert x["v5_core_milestone_source"] == "derived_from_frozen_v4_s03_counts"
+    assert x["v5_core_milestone"]["target_freeze_date"] == "2026-10-15"
+    assert x["v5_core_milestone"]["remaining"]["v4_resolved_formal_days"] == 14
+    assert x["v5_core_milestone"]["remaining"]["s03_m2_evaluated"] == 47
+    assert x["core_review_status"] == "COLLECTING_CORE_EVIDENCE"
+
+
+def test_new_combined_keeps_embedded_milestone():
+    x = build_v5_review_packet(combined())
+    assert x["v5_core_milestone_source"] == "embedded_combined_checkpoint"

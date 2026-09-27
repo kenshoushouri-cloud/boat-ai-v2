@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
+
+from research.v5_candidate_milestone import evaluate_v5_core_progress
 
 
 COMBINED_CONTRACT = "forward_combined_manual_checkpoint_v1"
@@ -65,6 +68,20 @@ def build_v5_review_packet(
 
     v4_top2 = v4.get("top2") or {}
     s03_overall = s03.get("overall") or {}
+    v4_days = int(v4.get("resolved_formal_days") or 0)
+    s03_evaluated = int(s03_overall.get("evaluated") or 0)
+
+    milestone_source = "embedded_combined_checkpoint"
+    if "core_evidence_ready" not in v5:
+        end_date = date.fromisoformat(str(combined.get("end_date") or ""))
+        v5 = evaluate_v5_core_progress(
+            as_of=end_date,
+            v4_resolved_formal_days=v4_days,
+            s03_m2_evaluated=s03_evaluated,
+            evidence_contract_clean=True,
+        )
+        milestone_source = "derived_from_frozen_v4_s03_counts"
+
     core_ready = bool(v5.get("core_evidence_ready"))
 
     return {
@@ -78,7 +95,7 @@ def build_v5_review_packet(
         ),
         "core_evidence_ready": core_ready,
         "v4_formal": {
-            "resolved_formal_days": int(v4.get("resolved_formal_days") or 0),
+            "resolved_formal_days": v4_days,
             "top2": v4_top2,
             "robustness": v4.get("robustness") or {},
             "review_gate": v4.get("review_gate") or {},
@@ -94,6 +111,7 @@ def build_v5_review_packet(
             "roi_gt_100_descriptive": _roi_gt_100(s03_overall),
         },
         "v5_core_milestone": v5,
+        "v5_core_milestone_source": milestone_source,
         "optional_layers": {
             "day_strength": _optional_day_strength(day_strength_summary),
             "f_count": {
