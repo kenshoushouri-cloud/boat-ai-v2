@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/v4-recent-form-readiness-20260927'
+      github.event.pull_request.head.ref == 'research/v4-recent-form-readiness-20260927' &&\n      github.event.pull_request.head.sha == '1fec3d9c0ade35c48634ca1220ebcd2b188bd8d7'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
