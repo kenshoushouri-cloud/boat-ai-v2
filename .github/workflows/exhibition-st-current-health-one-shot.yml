@@ -87,7 +87,8 @@ jobs:
           low=Path('.github/workflows/exhibition-st-current-health-one-shot.yml').read_text(encoding='utf-8').lower()
           for token in ('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json'):
               assert token not in low, token
-          assert 'collect_exhibition_st_forward_shadow_pg.py' not in low
+          collector = 'collect_' + 'exhibition_st_forward_shadow_pg.py'
+          assert collector not in low
           assert 'report_exhibition_st_forward_health_pg.py' in low
           print('EXH_ST_CURRENT_HEALTH_SECRET_ENUMERATION=0')
           print('EXH_ST_CURRENT_HEALTH_COLLECTION=0')
