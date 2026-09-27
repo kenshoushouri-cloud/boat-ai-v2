@@ -101,7 +101,11 @@ def score_for(entries: list[dict[str, Any]], ticket: Any) -> float | None:
 
 
 def settled(row: dict[str, Any]) -> bool:
-    return row.get("hit") is not None and row.get("return_yen") is not None
+    return (
+        str(row.get("evaluation_status") or "") == "evaluated"
+        and row.get("hit") is not None
+        and row.get("return_yen") is not None
+    )
 
 
 def max_drawdown_and_losing_streak(rows: list[dict[str, Any]]) -> tuple[int, int]:
@@ -234,7 +238,7 @@ def main() -> None:
             cur.execute("set local statement_timeout='120s'")
             cur.execute(
                 """select s.race_id,s.race_date,s.rule_id,s.ticket,s.snapshot_at,
-                          s.hit,s.return_yen,s.evaluated_at,r.deadline_at
+                          s.hit,s.return_yen,s.evaluated_at,s.evaluation_status,r.deadline_at
                      from v2_candidate_filter_shadow s
                      join v2_races r on r.race_id=s.race_id
                     where s.rule_id='S03'
