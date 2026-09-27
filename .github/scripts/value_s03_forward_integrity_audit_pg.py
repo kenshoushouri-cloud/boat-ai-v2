@@ -73,7 +73,7 @@ def main() -> None:
                 select s.id,s.race_id,s.race_date,s.venue_id,s.race_no,s.window_name,
                        s.rule_id,s.ticket,s.odds,s.prob,s.prob_rank,s.market_rank,
                        s.raw_ev,s.venue_style,s.event_category,s.snapshot_at,
-                       s.hit,s.return_yen,s.evaluated_at,s.raw,
+                       s.hit,s.return_yen,s.evaluated_at,s.evaluation_status,s.evaluation_note,s.raw,
                        r.deadline_at,
                        x.result_status,x.race_status,x.trifecta_ticket,x.trifecta_payout_yen
                   from v2_candidate_filter_shadow s
@@ -92,7 +92,7 @@ def main() -> None:
     hard_errors: list[dict[str, Any]] = []
     raw_errors: list[dict[str, Any]] = []
     settlement_errors: list[dict[str, Any]] = []
-    pending = evaluated = official_evaluated = 0
+    pending = evaluated = official_evaluated = expected_invalid_result = 0
     lead_minutes: list[float] = []
 
     def hard(row: dict[str, Any], reason: str) -> None:
@@ -164,16 +164,26 @@ def main() -> None:
             if raw.get("selector_source") != "v24_probability_model":
                 raw_errors.append({"race_id": rid, "reason": "selector_source", "value": raw.get("selector_source")})
 
-        is_eval = row.get("hit") is not None and row.get("return_yen") is not None
+        status = str(row.get("evaluation_status") or "")
+        official = (
+            str(row.get("result_status") or "").lower() == "official"
+            and str(row.get("race_status") or "").lower() == "official"
+        )
+
+        if status == "invalid_result":
+            expected_invalid_result += 1
+            if official:
+                settlement_errors.append({"race_id": rid, "reason": "invalid_result_but_official"})
+            if bool(row.get("hit")) or int(row.get("return_yen") or 0) != 0:
+                settlement_errors.append({"race_id": rid, "reason": "invalid_result_nonzero_settlement"})
+            continue
+
+        is_eval = status == "evaluated"
         if not is_eval:
             pending += 1
             continue
         evaluated += 1
 
-        official = (
-            str(row.get("result_status") or "").lower() == "official"
-            and str(row.get("race_status") or "").lower() == "official"
-        )
         if not official:
             settlement_errors.append({"race_id": rid, "reason": "evaluated_without_official_result"})
             continue
@@ -215,6 +225,7 @@ def main() -> None:
             "evaluated": evaluated,
             "pending": pending,
             "official_evaluated": official_evaluated,
+            "expected_invalid_result": expected_invalid_result,
             "min_minutes_before_deadline": round(min(lead_minutes), 3) if lead_minutes else None,
             "median_minutes_before_deadline": round(sorted(lead_minutes)[len(lead_minutes)//2], 3) if lead_minutes else None,
         },
