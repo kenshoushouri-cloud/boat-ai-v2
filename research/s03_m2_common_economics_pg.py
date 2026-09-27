@@ -16,12 +16,12 @@ from psycopg.rows import dict_row
 
 from research.forward_economics import forward_report
 
-START = date(2026, 9, 13)
-END = date(2026, 9, 27)
+START = date.fromisoformat(os.getenv("S03_FORWARD_START", "2026-09-13"))
+END = date.fromisoformat(os.getenv("S03_FORWARD_END", "2026-09-27"))
 JST = ZoneInfo("Asia/Tokyo")
 W = (1.0, 0.6, 0.3)
 
-EXPECTED = {
+EXPECTED_20260927 = {
     "evaluated": 53,
     "hits": 4,
     "investment_yen": 5300,
@@ -149,22 +149,24 @@ def main() -> None:
     )
 
     overall = report["overall"]
-    for key, expected in EXPECTED.items():
-        if overall[key] != expected:
-            raise RuntimeError(
-                f"S03_M2 common parity failed {key}: {overall[key]} != {expected}"
-            )
+    exact_baseline = START == date(2026, 9, 13) and END == date(2026, 9, 27)
+    if exact_baseline:
+        for key, expected in EXPECTED_20260927.items():
+            if overall[key] != expected:
+                raise RuntimeError(
+                    f"S03_M2 common parity failed {key}: {overall[key]} != {expected}"
+                )
 
-    if report["risk"]["max_drawdown_yen"] != 1600:
-        raise RuntimeError("unexpected max drawdown")
-    if report["risk"]["max_losing_streak"] != 16:
-        raise RuntimeError("unexpected max losing streak")
-    if report["chronological_halves"]["first"]["roi_pct"] != 319.6154:
-        raise RuntimeError("unexpected first-half ROI")
-    if report["chronological_halves"]["second"]["roi_pct"] != 67.037:
-        raise RuntimeError("unexpected second-half ROI")
-    if report["day_bootstrap"]["p_roi_gt_100_pct"] != 86.13:
-        raise RuntimeError("unexpected bootstrap probability")
+        if report["risk"]["max_drawdown_yen"] != 1600:
+            raise RuntimeError("unexpected max drawdown")
+        if report["risk"]["max_losing_streak"] != 16:
+            raise RuntimeError("unexpected max losing streak")
+        if report["chronological_halves"]["first"]["roi_pct"] != 319.6154:
+            raise RuntimeError("unexpected first-half ROI")
+        if report["chronological_halves"]["second"]["roi_pct"] != 67.037:
+            raise RuntimeError("unexpected second-half ROI")
+        if report["day_bootstrap"]["p_roi_gt_100_pct"] != 86.13:
+            raise RuntimeError("unexpected bootstrap probability")
 
     print(
         "S03_M2_COMMON_INPUT="
@@ -184,7 +186,13 @@ def main() -> None:
     print("S03_M2_COMMON_RISK=" + json.dumps(report["risk"], sort_keys=True), flush=True)
     print("S03_M2_COMMON_HALVES=" + json.dumps(report["chronological_halves"], sort_keys=True), flush=True)
     print("S03_M2_COMMON_BOOTSTRAP=" + json.dumps(report["day_bootstrap"], sort_keys=True), flush=True)
-    print("S03_M2_COMMON_RESULT=PASS_EXACT_FROZEN_SUBSET", flush=True)
+    print(f"S03_M2_COMMON_PERIOD={START.isoformat()}..{END.isoformat()}", flush=True)
+    print(f"S03_M2_COMMON_REMAINING_TO_100={max(0, 100 - int(overall['evaluated']))}", flush=True)
+    print(
+        "S03_M2_COMMON_RESULT="
+        + ("PASS_EXACT_FROZEN_SUBSET" if exact_baseline else "PASS_READ_ONLY_CHECKPOINT"),
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
