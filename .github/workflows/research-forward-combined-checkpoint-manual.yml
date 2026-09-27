@@ -118,7 +118,7 @@ jobs:
             echo '- no promotion / Production change / LINE / BUY'
             echo
             if [ -f forward-combined-checkpoint.json ]; then
-              jq '{end_date,v4_formal:{resolved_formal_days,top2,review_gate},s03_m2:{coverage,overall,risk,review_gate},safety}' forward-combined-checkpoint.json
+              jq '{end_date, v4_formal: (.v4_formal | {resolved_formal_days,top2,review_gate}), s03_m2: (.s03_m2 | {coverage,overall,risk,review_gate}), safety}' forward-combined-checkpoint.json
             fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload evidence
