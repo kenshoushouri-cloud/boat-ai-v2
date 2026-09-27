@@ -21,7 +21,7 @@ from psycopg.rows import dict_row
 START_DATE = date(2025, 7, 1)
 END_DATE = date(2026, 9, 22)
 JST = timezone(timedelta(hours=9))
-CUTOFF_CLOCK = time(8, 15)
+CUTOFF_CLOCK = time(8, 15)  # 08:15 JST morning evidence boundary
 OUTPUT_JSON = Path(os.getenv("V4_RECENT_FORM_OUTPUT_JSON", "v4-recent-form-readiness.json"))
 VERSION = "2026-09-27-v4-recent-form-readiness-v1"
 
