@@ -17,6 +17,21 @@ MANIFEST = {
     "current_jst": "08:25",
     "proposed_jst": "08:20",
     "allowed_changed_fields": ["cronSchedule"],
+    "baseline_service_config": {
+        "source_repo": "kenshoushouri-cloud/boat-ai-v2",
+        "source_branch": "main",
+        "builder": "RAILPACK",
+        "build_environment": "V3",
+        "start_command": "python -u research/candidate_discovery_v4_fallback_dispatcher.py",
+        "restart_policy_type": "NEVER",
+        "runtime": "V2",
+        "region": "us-west2",
+        "num_replicas": 1,
+        "cron_schedule": "25 23 * * *",
+    },
+    "proposed_service_config_delta": {
+        "cron_schedule": ["25 23 * * *", "20 23 * * *"],
+    },
     "unchanged_requirements": [
         "project",
         "environment",
@@ -64,6 +79,10 @@ def validate_manifest() -> dict:
         raise ValueError("unexpected proposed cron")
     if MANIFEST["rollback"]["cron"] != MANIFEST["current_cron"]:
         raise ValueError("rollback must restore current cron")
+    if set(MANIFEST["proposed_service_config_delta"]) != {"cron_schedule"}:
+        raise ValueError("only cron schedule delta allowed")
+    if MANIFEST["baseline_service_config"]["cron_schedule"] != MANIFEST["current_cron"]:
+        raise ValueError("baseline/current cron mismatch")
     if MANIFEST["activation_performed"] is not False:
         raise ValueError("research manifest cannot claim activation")
     return MANIFEST
