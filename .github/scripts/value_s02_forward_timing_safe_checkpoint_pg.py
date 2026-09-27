@@ -25,7 +25,12 @@ def jt(v:Any):
     if not isinstance(v,datetime):return None
     if v.tzinfo is None:v=v.replace(tzinfo=JST)
     return v.astimezone(JST)
-def settled(r):return r.get("hit") is not None and r.get("return_yen") is not None
+def settled(r):
+    return (
+        str(r.get("evaluation_status") or "") == "evaluated"
+        and r.get("hit") is not None
+        and r.get("return_yen") is not None
+    )
 def metrics(rows):
     rr=sorted([r for r in rows if settled(r)],key=lambda r:(str(r["race_date"]),str(r["race_id"])))
     inv=len(rr)*UNIT; gross=hits=0; vals=[]; eq=peak=dd=loss=maxloss=0
@@ -74,7 +79,7 @@ def main():
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
             cur.execute("""select s.race_id,s.race_date,s.window_name,s.ticket,s.snapshot_at,
-                                  s.hit,s.return_yen,s.evaluated_at,r.deadline_at
+                                  s.hit,s.return_yen,s.evaluated_at,s.evaluation_status,r.deadline_at
                              from v2_candidate_filter_shadow s
                              join v2_races r on r.race_id=s.race_id
                             where s.rule_id='S02' and s.race_date between %s and %s
@@ -90,6 +95,7 @@ def main():
     out={"contract":"S02_FORWARD_V1_timing_safe_checkpoint",
          "period":{"start":START.isoformat(),"end":END.isoformat()},
          "coverage":{"source_rows":len(rows),"timing_valid_rows":len(valid),"late_or_unknown_rows":len(late),
+                     "invalid_result_rows":sum(1 for r in valid if str(r.get("evaluation_status") or "") == "invalid_result"),
                      "min_minutes_before_deadline":round(min(margins),3) if margins else None},
          "forward":{"overall":m,"chronological_halves":halves(valid),"day_bootstrap":bootstrap(valid)},
          "checkpoints":{"30":m["evaluated"]>=30,"50":m["evaluated"]>=50,"100":m["evaluated"]>=100},
