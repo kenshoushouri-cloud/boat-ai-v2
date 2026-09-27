@@ -106,15 +106,36 @@ Historical note already established:
 - real `boat_place2_rate` contributed only a very small incremental improvement compared with Motor2 in PR #186/#187/#188, so Boat2 is low priority.
 - weather/wave/exhibition interaction research exists from earlier generations; do not duplicate it blindly without first checking timing compatibility with current V4.
 
-### NEXT SAFE ACTION — stronger current-form readiness, evidence only
-Before defining another predictive feature, audit whether `v2_race_entries.recent_form` is actually usable:
-1. coverage / non-empty rate in the canonical period;
-2. exact structure and whether usable facts can be bound to the racer;
-3. source/provenance;
-4. whether every candidate fact is strictly known before the target race / 08:15 JST cutoff;
-5. fail closed if chronology cannot be proven.
+### PR #394 — recent-form readiness audit completed
+Canonical result-blind one-shot:
+- trigger head `1fec3d9c0ade35c48634ca1220ebcd2b188bd8d7`
+- run `36300918133` SUCCESS
+- artifact `10925970218`
+- artifact ZIP digest `sha256:3a2fcb827916be87facbb7b4ccb40200ce5c512b96136d9fe66ec6c7a52df107`
+- result JSON SHA256 `11dd669a7af7da690e13fde312be4725cef3c9baee80ff221b2492915bc61a19`
+- canonical-period `v2_race_entries`: 413,820 rows
+- non-empty `recent_form`: 0 rows
+- full-six races with six non-empty values: 0
+- strong source-capture timestamp column: none
+- outcome/result read: 0
+- collector execution: 0
+- secret enumeration: 0
+- PostgreSQL READ ONLY
 
-This next step is **coverage/provenance only**. Do not read outcomes to choose a recent-form transformation. Do not create coefficients until the readiness gate passes.
+Frozen conclusion:
+`RECENT_FORM_EMPTY_IN_CANONICAL_PERIOD / NO_NONEMPTY_COVERAGE / NO_STRONG_CAPTURE_TIMESTAMP / NOT_READY_FAIL_CLOSED / DO_NOT_DEFINE_TRANSFORMATION_OR_COEFFICIENT / NO_OUTCOME_READ / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+Do not backfill or reconstruct historical `recent_form` after outcomes merely to create a test set.
+
+### NEXT SAFE ACTION — unused pre-race information inventory
+Before defining another model family, audit current V4's already-available entry information without reading outcomes:
+1. enumerate current `v2_race_entries` fields not already consumed by V4 base/Course/Opponent/Motor2;
+2. measure canonical-period non-null/full-six coverage;
+3. map each field to current-main writer/source provenance;
+4. confirm target-day availability and 08:15 JST compatibility;
+5. reject fields that are redundant, post-race mutable, or provenance-unclear before any coefficient is defined.
+
+Initial static mapping shows V4 base already consumes racer class, national win rate, national place2 rate, local place2 rate and avg ST; Motor2 is separately used. Candidate inventory therefore starts from remaining official entry fields such as place3/local-win/boat-related and operational counters, without presuming predictive value.
 
 ### Open Draft handling
 Highest-relevance current Drafts:
