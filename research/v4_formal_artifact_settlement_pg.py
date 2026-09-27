@@ -23,6 +23,18 @@ ARTIFACT_DIR = Path(os.getenv("V4_FORMAL_ARTIFACT_DIR", "v4-artifacts"))
 OUTPUT = Path(os.getenv("V4_FORMAL_SETTLEMENT_OUTPUT", "v4-formal-artifact-settlement.json"))
 
 EXPECTED = {
+    "2026-09-21": {
+        "run_id": 35549611949,
+        "artifact_id": 10617384166,
+        "archive_sha256": "b40c34f99c42685ebbee330c90eeab0f45a829cfc18513d2517d9fc9da9da666",
+        "core_sha256": "d07ec4347ccd30eb82c8511da9118784a124cbe90459fe8d2ce5f4c2773debaf",
+    },
+    "2026-09-22": {
+        "run_id": 35667553345,
+        "artifact_id": 10670080150,
+        "archive_sha256": "60ae93e3758679fc0109fd180bbd66a54978c0b483514a724bb5ace376c5a94c",
+        "core_sha256": "1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9",
+    },
     "2026-09-23": {
         "run_id": 35797576979,
         "artifact_id": 10724298102,
@@ -137,8 +149,8 @@ def load_and_freeze() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             "earliest_feed_deadline_at_jst": fp.get("earliest_feed_deadline_at_jst"),
         })
 
-    if len(frozen) != 30 or len({r["race_id"] for r in frozen}) != 30:
-        raise RuntimeError("expected exact 30 unique frozen core races")
+    if len(frozen) != 42 or len({r["race_id"] for r in frozen}) != 42:
+        raise RuntimeError("expected exact 42 unique frozen core races")
     return frozen, provenance
 
 
