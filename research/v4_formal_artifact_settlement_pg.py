@@ -24,6 +24,7 @@ BOOTSTRAP_SAMPLES = 20000
 BOOTSTRAP_SEED = 20260927
 ARTIFACT_DIR = Path(os.getenv("V4_FORMAL_ARTIFACT_DIR", "v4-artifacts"))
 OUTPUT = Path(os.getenv("V4_FORMAL_SETTLEMENT_OUTPUT", "v4-formal-artifact-settlement.json"))
+INVENTORY_MANIFEST = (os.getenv("V4_FORMAL_INVENTORY_MANIFEST") or "").strip()
 
 EXPECTED = {
     "2026-09-21": {
@@ -84,10 +85,33 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def load_and_freeze() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def expected_artifacts() -> tuple[dict[str, dict[str, Any]], str]:
+    if not INVENTORY_MANIFEST:
+        return EXPECTED, "PINNED_EXACT_SET"
+    raw = json.loads(Path(INVENTORY_MANIFEST).read_text(encoding="utf-8"))
+    out: dict[str, dict[str, Any]] = {}
+    for day in raw.get("days", []):
+        if day.get("classification") != "FORMAL_AVAILABLE":
+            continue
+        selected = day.get("selected")
+        if not isinstance(selected, dict):
+            raise RuntimeError(f"formal day missing selected artifact: {day.get('date')}")
+        d = str(day["date"])
+        out[d] = {
+            "run_id": int(selected["run_id"]),
+            "artifact_id": int(selected["artifact_id"]),
+            "archive_sha256": str(selected["archive_sha256"]),
+            "core_sha256": str(selected["core_sha256"]),
+        }
+    if not out:
+        raise RuntimeError("inventory manifest contains no formal available dates")
+    return out, "FROZEN_PROVIDER_INVENTORY"
+
+
+def load_and_freeze(expected: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     frozen: list[dict[str, Any]] = []
     provenance: list[dict[str, Any]] = []
-    for day, exp in sorted(EXPECTED.items()):
+    for day, exp in sorted(expected.items()):
         path = ARTIFACT_DIR / f"{day}.zip"
         if not path.exists():
             raise RuntimeError(f"artifact missing: {path}")
@@ -152,8 +176,9 @@ def load_and_freeze() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             "earliest_feed_deadline_at_jst": fp.get("earliest_feed_deadline_at_jst"),
         })
 
-    if len(frozen) != 42 or len({r["race_id"] for r in frozen}) != 42:
-        raise RuntimeError("expected exact 42 unique frozen core races")
+    expected_races = 6 * len(expected)
+    if len(frozen) != expected_races or len({r["race_id"] for r in frozen}) != expected_races:
+        raise RuntimeError(f"expected exact {expected_races} unique frozen core races")
     return frozen, provenance
 
 
@@ -210,8 +235,11 @@ def main() -> None:
     print("V4_FORMAL_SETTLEMENT_RECONSTRUCT_CANDIDATES=0 ODDS_READ=0", flush=True)
     print("V4_FORMAL_SETTLEMENT_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0", flush=True)
 
-    # Critical ordering: validate/freeze every artifact before DB result access.
-    frozen, provenance = load_and_freeze()
+    # Critical ordering: choose provider artifacts and validate/freeze every artifact
+    # before DB result access.
+    expected, artifact_set_mode = expected_artifacts()
+    frozen, provenance = load_and_freeze(expected)
+    print(f"V4_FORMAL_SETTLEMENT_ARTIFACT_SET_MODE={artifact_set_mode}", flush=True)
     print(f"V4_FORMAL_SETTLEMENT_FROZEN_RACES={len(frozen)}", flush=True)
 
     db = (os.getenv("DATABASE_URL") or "").strip()
@@ -261,7 +289,7 @@ def main() -> None:
         })
 
     by_day = []
-    for day in sorted(EXPECTED):
+    for day in sorted(expected):
         rr = [r for r in settled_rows if r["date"] == day]
         complete = len(rr) == 6 and all(r["official"] or r["void"] for r in rr)
         top1 = summarize(rr, 1)
@@ -350,6 +378,7 @@ def main() -> None:
 
     out = {
         "contract": "v4_formal_immutable_artifact_settlement_v1",
+        "artifact_set_mode": artifact_set_mode,
         "artifact_provenance": provenance,
         "frozen_core_races": frozen,
         "days": by_day,
