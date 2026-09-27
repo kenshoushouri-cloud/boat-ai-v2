@@ -1,6 +1,6 @@
 # Current V4 exhibition-time-rank missing-information preregistration — 2026-09-27
 
-Status: `RESEARCH_ONLY / PREREGISTERED / RETROSPECTIVE_OOS / NO_ODDS / NO_PRODUCTION_CHANGE`
+Status: `RESEARCH_ONLY / COMPLETED / RETROSPECTIVE_OOS / NO_ODDS / NO_PRODUCTION_CHANGE`
 
 ## Why this is the next bounded hypothesis
 
@@ -130,3 +130,107 @@ Therefore even a fully positive replay is **not** prospective evidence. It must 
 - Result/payout access occurs only after that day's control and all four candidate selectors are frozen.
 
 `CURRENT_V4_BASE_FROZEN / EXHIBITION_TIME_RANK_ONLY / TRAIN_PRIOR_BLOCKS_ONLY / FOUR_POINT_GRID_FROZEN / ZERO_NULL_INCLUDED / RESULT_AFTER_ALL_VARIANT_FREEZE / NO_POST_RESULT_SUBGROUP / FRESH_FORWARD_REQUIRED_IF_POSITIVE / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+
+## Completed canonical replay
+
+Canonical execution:
+
+- trigger head: `6d5986f7889a8bb89cc0d32a95b2b1f50492bc0c`
+- workflow run: `36288864737` — SUCCESS
+- artifact: `10921393420`
+- artifact name: `v4-exhibition-time-rank-oos-36288864737`
+- artifact ZIP SHA-256: `8ddca8ff36a89452620a3a3e780ec959e8edfcc01f697f474145fbb98a92d33e`
+- result JSON SHA-256: `99f4d32e2bbbddaa698767d434ed37e57b43d290752d72d92b3897bd4d915498`
+- PostgreSQL: READ ONLY
+- variable enumeration: 0
+- collector execution: 0
+- Production / LINE / purchase changes: none / `purchase_action=false`
+
+Historical exhibition coverage was sourced entirely from
+`official_beforeinfo_historical` rows; 373,230 lane rows were observed by the
+read-only replay. This remains retrospective evidence, not prospective
+capture-time proof.
+
+### Frozen coefficient selection
+
+The preregistered training-only selector chose coefficient **0.20** in every pure
+evaluation block 3–10.
+
+- positive coefficient blocks: 8 / 8
+- Track A LogLoss-better blocks: 8 / 8
+- the selected value was the upper edge of the frozen four-point grid in all
+  blocks
+
+The grid must **not** be expanded after seeing this result. A larger coefficient
+is not an authorized follow-up on the same history.
+
+### Track A — fixed current-V4 rank1 race, blocks 3–10
+
+| model | days | head acc | LogLoss | Brier | formal Top2 | ROI | profit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| control | 344 | 57.558% | 1.340703 | 0.655212 | 21.512% | 75.131% | -17,110 |
+| exhibition time | 344 | 57.558% | 1.314880 | 0.643763 | 22.093% | 77.689% | -15,350 |
+
+Primary proper-score deltas:
+
+- LogLoss: **-0.025823**
+- Brier: **-0.011450**
+- head accuracy: **unchanged**
+- predicted head changed: **0 / 344**
+- control-wrong -> exhibition-right: **0**
+- control-right -> exhibition-wrong: **0**
+
+Complete-six exhibition subset:
+
+- paired days: 308
+- control LogLoss 1.352353 -> exhibition 1.323512
+- control Brier 0.661857 -> exhibition 0.649069
+- head accuracy 56.818% -> 56.818%
+
+Thus the feature changes confidence/calibration materially, but on the fixed
+current-V4 rank1 race it does **not** alter first-place classification at all.
+
+### Track B — full variant reselection, blocks 3–10
+
+| model | days | head acc | LogLoss | Brier | formal Top2 | ROI | profit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| control | 344 | 57.558% | 1.340703 | 0.655212 | 21.512% | 75.131% | -17,110 |
+| exhibition time | 349 | 62.464% | 1.278669 | 0.624626 | 21.490% | 73.109% | -18,770 |
+
+Selector movement was substantial:
+
+- common evaluable days: 343
+- rank1 overlap: 52.770%
+- mean Top6 overlap: 63.994%
+
+Track B proper scores and head accuracy are descriptively better, while formal
+Top2 economics are slightly worse. Because Track B changes the selected race
+population and the preregistered primary Track A head-accuracy gate failed, this
+secondary result cannot be used to rewrite the hypothesis or authorize a Forward
+experiment.
+
+### Frozen support gate
+
+Passed:
+
+- Track A aggregate LogLoss better
+- Track A aggregate Brier better
+- Track A LogLoss better in at least 6/8 blocks (actual 8/8)
+- positive coefficient selected in at least 6/8 blocks (actual 8/8)
+- Track B aggregate LogLoss not worse
+- Track B aggregate Brier not worse
+- Track B aggregate head accuracy not worse
+
+Failed:
+
+- **Track A head accuracy better**
+
+Therefore the preregistered decision is:
+
+`CURRENT_V4_EXHIBITION_TIME_CALIBRATION_SIGNAL_SUPPORTED / FIXED_RACE_HEAD_CLASSIFICATION_CHANGED_0_OF_344 / PRIMARY_HEAD_ACCURACY_GATE_FAILED / TRACK_B_RESELECTION_DESCRIPTIVELY_BETTER_BUT_NOT_PROMOTION_AUTHORITY / DO_NOT_EXPAND_COEFFICIENT_GRID / NO_NEW_FORWARD_FROM_THIS_REPLAY / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+The canonical trigger SHA is hard-locked and the sentinel consumed. Do not rerun
+or retune this experiment on the same history. A future exhibition-time study
+would need a genuinely new preregistered question and, for promotion evidence,
+fresh first-write-wins prospective data.
