@@ -23,5 +23,9 @@ def test_combined_scorecard_uses_frozen_review_gates():
     assert out["v4_formal"]["review_gate"]["remaining"] == 3
     assert out["s03_m2"]["review_gate"]["next_gate"] == 100
     assert out["s03_m2"]["review_gate"]["remaining"] == 42
+    assert out["v5_core_milestone"]["target_freeze_date"] == "2026-10-15"
+    assert out["v5_core_milestone"]["remaining"]["v4_resolved_formal_days"] == 13
+    assert out["v5_core_milestone"]["remaining"]["s03_m2_evaluated"] == 42
+    assert out["v5_core_milestone"]["status"] == "COLLECTING_CORE_EVIDENCE"
     assert out["safety"]["promotion_allowed"] is False
     assert out["safety"]["production_change"] is False
