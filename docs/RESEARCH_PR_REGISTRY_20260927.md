@@ -21,8 +21,30 @@ Main-integrated pure status contract:
 - S03_M2: 100 evaluated observations;
 - day-strength: >=10 future resolved days and >=3 KEEP / >=3 SKIP.
 
+### #429 + #431 — combined manual Forward checkpoint with terminal readiness
+**Preferred post-nightly operational refresh entry point.**
+
+#431 adds a fail-closed target-day readiness guard:
+- every target race must be OFFICIAL or VOID;
+- missing/partial/unknown result state stops the checkpoint before review counts advance.
+
+### #432 — future-only V4 day-strength manual checkpoint
+**Preferred next-day pre-result shadow entry point.**
+
+Main workflow:
+`.github/workflows/research-v4-day-strength-shadow-manual.yml`
+
+- target >=2026-09-28;
+- no DB/result/payout/odds access;
+- provider-selected immutable formal artifacts only;
+- frozen prior-7 median rule;
+- first 9/28 reference = 0.93817204;
+- shadow label cannot change formal action.
+
+#411 is closed as superseded; its preregistration history remains provenance.
+
 ### #429 — combined manual Forward checkpoint
-**Preferred operational refresh entry point.**
+**Core combined implementation.**
 
 One manual run performs:
 1. V4 provider inventory/arbitration before result access;
@@ -162,10 +184,10 @@ Only reactivate one with a new explicit preregistration or a later handoff overr
 
 For ROI work:
 1. main handoff/current-state;
-2. main-integrated #429 combined manual checkpoint for refresh;
-3. #409 V4 evidence provenance;
-4. #405 S03_M2 evidence provenance;
-5. #411 future-only day-strength shadow;
+2. main-integrated #429/#431 combined checkpoint for post-nightly refresh;
+3. main-integrated #432 for future-only day-strength shadow;
+4. #409 V4 evidence provenance;
+5. #405 S03_M2 evidence provenance;
 6. main-integrated #422/#423 common economics/validation suite.
 
 For operational safety:
@@ -189,4 +211,4 @@ A PR may be closed later when:
 
 Until then, use this registry to avoid reference ambiguity.
 
-`CHECKPOINT_MAIN_425_426_427_429 / EVIDENCE_409_405_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
+`CHECKPOINT_MAIN_425_426_427_429_431_432 / EVIDENCE_409_405 / DAY_STRENGTH_432_SUPERSEDES_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
