@@ -1,5 +1,122 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 22:40 JST
+
+### V5 mid-October completion framework is fully main-integrated
+- main: `41fbe4f4b3cf1da5d6a48df98d4c2714ab26ece4`
+- #437 merged: V5 core milestone contract
+- #438 merged: V5 core progress in combined checkpoint
+- #439 merged: V5 Oct 15 roadmap in handoff/current-state
+- #440 merged: pure V5 freeze review packet builder
+- #441 merged: V5 scope lock through 2026-10-15
+- Production remains V4
+- `purchase_action=false`
+
+### What "V5 complete by mid-October" means
+Target:
+- **2026-10-15 V5 core research-candidate freeze review**
+
+Completion at this milestone means:
+1. mandatory prospective evidence gates are reached;
+2. the review packet can be generated from frozen evidence;
+3. the V5 core research specification can be deliberately frozen for a new Forward phase.
+
+It does not mean:
+- long-run ROI >100% is proven;
+- automatic Production promotion;
+- purchase activation.
+
+### Mandatory gates
+- formal V4 >=20 resolved FORMAL_AVAILABLE days;
+- S03_M2 >=100 officially evaluated observations;
+- evidence contract clean.
+
+Current pre-9/27-nightly baseline:
+- V4: 6 / 20;
+- S03_M2: 53 / 100.
+
+If 9/27 settles naturally:
+- V4 becomes 7 / 20;
+- daily formal evidence would place 20 days around 2026-10-10.
+
+Recent S03 observation pace suggests:
+- 100 evaluated around 2026-10-09..10 if the pace remains similar.
+
+These are schedule estimates only.
+
+### #440 — V5 freeze review packet
+Main:
+- `research/v5_freeze_review_packet.py`
+- `docs/V5_FREEZE_REVIEW_PACKET_20261015.md`
+
+Input:
+- combined Forward checkpoint JSON;
+- optional day-strength summary.
+
+Output includes:
+- V4 economics/robustness;
+- S03 economics/risk/halves/bootstrap;
+- V5 core milestone status;
+- optional-layer admission state;
+- descriptive ROI>100 flags.
+
+Even when counts are ready, output is only:
+`CORE_EVIDENCE_READY_FOR_HUMAN_FREEZE_REVIEW`
+
+Never automatic:
+- Production activation;
+- model/selector/stake changes;
+- LINE;
+- purchase.
+
+### #441 — V5 scope lock
+Main:
+- `research/v5_scope_lock.py`
+- `docs/V5_RESEARCH_SCOPE_LOCK_20260927.md`
+
+Until 2026-10-15:
+- no new feature enters V5 core;
+- mandatory gates are not lowered to meet the date;
+- no post-outcome retuning;
+- current V4 probability/selector contract remains the baseline.
+
+Optional/nonblocking:
+- day-strength only if its existing 10 future resolved + 3 KEEP + 3 SKIP gate is naturally satisfied;
+- F-count remains separately approval-gated.
+
+Deferred from the 10/15 core:
+- recent_form;
+- L-count;
+- exhibition ST/time;
+- weather/water;
+- odds/EV selector;
+- any new unpreregistered feature.
+
+These can become later V5.1 research instead of delaying the V5 core milestone.
+
+### Operational path
+Tonight after natural result completion:
+- run the repaired combined checkpoint for `end_date=2026-09-27`;
+- it now emits V5 core remaining counts/status directly;
+- terminal result readiness remains fail-closed;
+- do not retune.
+
+From 2026-09-28:
+- continue result-blind day-strength shadow;
+- frozen first reference = 0.93817204;
+- day-strength remains optional for V5 core.
+
+### Approval boundaries unchanged
+Explicit approval remains required for:
+- fallback Cron 08:25 -> 08:20;
+- F-count live read/capture/persistence/schedule;
+- Production DB writes/schema;
+- Production model/selector/threshold/candidate/stake changes;
+- LINE real-send;
+- purchase activation.
+
+`V5_TARGET_20261015 / FREEZE_PACKET_MAIN / SCOPE_LOCK_MAIN / NO_FEATURE_CREEP / CORE_V4_20_S03_100 / PROD_V4_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 22:33 JST
 
 ### V5 research-candidate roadmap is now main-integrated
