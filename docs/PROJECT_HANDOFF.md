@@ -1,5 +1,99 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 17:22 JST
+
+**PR #401 の承認済み live-route activation 後の最新状態。これより下の古いSHA・PR状態・Railway状態は履歴。再開時は必ず GitHub main / open PR / CI / Railway Production を read-only で再取得する。**
+
+### Source of Truth / Production
+- repo: `kenshoushouri-cloud/boat-ai-v2`
+- GitHub main: `db8ab21270ea5bc8fd6872bed576d4ba196c43e8`
+- main は承認済み PR #401「Research: remove Railway variable enumeration from V4 freeze」の merge commit
+- Railway project: `boat-v2-postgres`
+- Production environment staged changes: **none**
+- Production pending work after merge-triggered redeploy: **none**
+- `candidate-discovery-v4-fallback-dispatcher`
+  - Cron: `25 23 * * *` UTC
+  - latest deployment: `e7c51f36-3e5b-4f4d-85a3-7e872ec453c7`
+  - commit: `db8ab21270ea5bc8fd6872bed576d4ba196c43e8`
+  - status: **SUCCESS**
+- Production model / coefficient / selector / threshold / candidate / stake: unchanged
+- automatic purchase disabled / `purchase_action=false`
+
+### PR #401 activation result
+PR #401 is now merged and live on `main`.
+
+The active `.github/workflows/candidate-discovery-v4-prospective-freeze.yml` now:
+- contains **no** `railway variable list`;
+- contains **no** local `railway-vars.json` variable dump;
+- uses fixed project `268a5b17-0712-440a-884d-27f7fa887a2d`;
+- uses environment `production`;
+- uses service `postgres-recovery`;
+- injects DB access through `railway run`;
+- maps `DATABASE_PUBLIC_URL -> DATABASE_URL` only inside the child process.
+
+Unchanged:
+- schedule `16 23 * * *` UTC;
+- 08:15 JST source cutoff;
+- current V4 model / selector / tickets;
+- availability guard;
+- artifact contract / retention;
+- result/payout reads remain blocked;
+- `purchase_action=false`.
+
+No Railway Variable/Cron/service/volume/migration change was made for #401 activation.
+
+### Current formal V4 capture health
+Natural GitHub scheduled runs for target dates 2026-09-23 through 2026-09-27 were FAILURE because GitHub schedule delivery occurred too late on recent days.
+
+Latest example:
+- scheduled run `36285417940` for 2026-09-27
+- started around 10:24 JST
+- earliest frozen-feed deadline: 08:32 JST
+- availability capture rejected late start
+- formal prospective freeze rejected completion after earliest frozen-feed deadline
+- fail-closed behavior worked as designed
+
+The independent Railway fallback is currently carrying the formal natural capture:
+- 2026-09-27 dispatcher log: `DISPATCH_FALLBACK`
+- workflow_dispatch run `36279479671`: SUCCESS
+- formal freeze started `08:29:29 JST`
+- completed `08:29:31 JST`
+- earliest feed deadline `08:32:00 JST`
+- `CANDIDATE_V4_PROSPECTIVE_EVIDENCE_ELIGIBLE=true`
+- `CANDIDATE_V4_PROSPECTIVE_RESULT=PASS_PRE_RESULT_FREEZE`
+- availability guard: `PASS_ACTIVE_CORE`
+- canonical-core SHA256:
+  `8907e2443a172d7938395145824497479f3f3bf23d3170943973545adc47f8d3`
+- immutable prospective artifact uploaded
+- `purchase_action=false`
+
+Recent workflow_dispatch formal freezes for 2026-09-23..2026-09-27 were all SUCCESS.
+
+Operational note:
+- completion-to-earliest-feed-deadline headroom across those five fallback runs was approximately **81 seconds to 15m13s**;
+- 2026-09-24, 09-26 and 09-27 had only about **85s / 81s / 148s** headroom;
+- therefore the current 08:25 JST fallback is working, but timing margin can be narrow.
+
+Any fallback Cron change still requires separate explicit approval.
+
+### F-count research boundary remains unchanged
+- #397 prospective diagnostic: no live capture/persistence
+- #398 hash-bound companion contract: no live capture/persistence
+- #400 exact-36-row pure adapter: no I/O/persistence
+- F-count live companion capture/persistence/schedule has **not** been approved or started
+- no historical F-count backfill or coefficient search
+- formal V4 core remains immutable
+
+### Current gate
+`PR401_LIVE_ROUTE_ACTIVATED / NON_ENUMERATING_DB_ROUTE_ON_MAIN / DISPATCHER_SUCCESS / PRIMARY_GITHUB_SCHEDULE_LATE_RECENTLY / FALLBACK_FORMAL_CAPTURE_HEALTHY_BUT_HEADROOM_TIGHT / FCOUNT_LIVE_CAPTURE_NOT_APPROVED / PRODUCTION_MODEL_UNCHANGED / PURCHASE_FALSE`
+
+### Safe next action without further Production approval
+- observe the next natural formal V4 run and confirm the newly merged non-enumerating route executes successfully;
+- continue read-only health checks and CI/docs evidence;
+- do not change fallback Cron timing;
+- do not start F-count companion persistence;
+- do not change Production model/selector/threshold/candidate/stake/purchase behavior.
+
 ## LATEST OVERRIDE — 2026-09-27 16:52 JST
 
 **このsectionを最新の引き継ぎ情報として扱うこと。これより下の古いSHA・PR状態・Railway状態・次アクションは履歴。再開時は必ずGitHub main / open PR / CI / Railway Productionをread-onlyで再取得する。**
