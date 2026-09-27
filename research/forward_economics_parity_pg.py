@@ -11,9 +11,12 @@ from psycopg.rows import dict_row
 
 from research.forward_economics import coverage, metrics, risk
 
-START_DATE = "2026-08-18"
 END_DATE = "2026-09-27"
 UNIT_YEN = 100
+RULE_PERIODS = {
+    "N02": "2026-08-18",
+    "S03": "2026-09-13",
+}
 
 
 def si(value: Any, default: int = 0) -> int:
@@ -106,51 +109,71 @@ def main() -> None:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
             cur.execute("set local statement_timeout='60s'")
-            cur.execute(
-                """
-                select race_id,race_date,evaluation_status,investment_yen,
-                       hit,return_yen,payout_yen
-                  from v2_candidate_filter_shadow
-                 where rule_id='N02'
-                   and race_date between %s and %s
-                 order by race_date,snapshot_at,race_id,id
-                """,
-                (START_DATE, END_DATE),
-            )
-            rows = [dict(r) for r in cur.fetchall()]
+            for rule_id, start_date in RULE_PERIODS.items():
+                cur.execute(
+                    """
+                    select race_id,race_date,evaluation_status,investment_yen,
+                           hit,return_yen,payout_yen
+                      from v2_candidate_filter_shadow
+                     where rule_id=%s
+                       and race_date between %s and %s
+                     order by race_date,snapshot_at,race_id,id
+                    """,
+                    (rule_id, start_date, END_DATE),
+                )
+                rows = [dict(r) for r in cur.fetchall()]
+
+                old_m = legacy_metrics(rows)
+                new_m = metrics(rows, unit_yen=UNIT_YEN)
+                old_r = legacy_risk(rows)
+                new_r = risk(rows, unit_yen=UNIT_YEN)
+                cov = coverage(rows)
+
+                comparable_new = {
+                    "evaluated": new_m["evaluated"],
+                    "hits": new_m["hits"],
+                    "investment_yen": new_m["investment_yen"],
+                    "return_yen": new_m["return_yen"],
+                    "profit_yen": new_m["profit_yen"],
+                    "roi_pct": new_m["roi_pct"],
+                    "largest_hit_yen": new_m["largest_hit_yen"],
+                    "largest_hit_share_pct": new_m["largest_hit_share_pct"],
+                }
+                if old_m != comparable_new:
+                    raise RuntimeError(
+                        f"{rule_id} metrics parity failure: "
+                        + json.dumps(
+                            {"legacy": old_m, "common": comparable_new},
+                            sort_keys=True,
+                        )
+                    )
+                if old_r != new_r:
+                    raise RuntimeError(
+                        f"{rule_id} risk parity failure: "
+                        + json.dumps(
+                            {"legacy": old_r, "common": new_r},
+                            sort_keys=True,
+                        )
+                    )
+
+                print(
+                    f"FORWARD_ECON_PARITY_{rule_id}_COVERAGE="
+                    + json.dumps(cov, sort_keys=True),
+                    flush=True,
+                )
+                print(
+                    f"FORWARD_ECON_PARITY_{rule_id}_METRICS="
+                    + json.dumps(old_m, sort_keys=True),
+                    flush=True,
+                )
+                print(
+                    f"FORWARD_ECON_PARITY_{rule_id}_RISK="
+                    + json.dumps(old_r, sort_keys=True),
+                    flush=True,
+                )
         conn.rollback()
 
-    old_m = legacy_metrics(rows)
-    new_m = metrics(rows, unit_yen=UNIT_YEN)
-    old_r = legacy_risk(rows)
-    new_r = risk(rows, unit_yen=UNIT_YEN)
-    cov = coverage(rows)
-
-    comparable_new = {
-        "evaluated": new_m["evaluated"],
-        "hits": new_m["hits"],
-        "investment_yen": new_m["investment_yen"],
-        "return_yen": new_m["return_yen"],
-        "profit_yen": new_m["profit_yen"],
-        "roi_pct": new_m["roi_pct"],
-        "largest_hit_yen": new_m["largest_hit_yen"],
-        "largest_hit_share_pct": new_m["largest_hit_share_pct"],
-    }
-    if old_m != comparable_new:
-        raise RuntimeError(
-            "metrics parity failure: "
-            + json.dumps({"legacy": old_m, "common": comparable_new}, sort_keys=True)
-        )
-    if old_r != new_r:
-        raise RuntimeError(
-            "risk parity failure: "
-            + json.dumps({"legacy": old_r, "common": new_r}, sort_keys=True)
-        )
-
-    print("FORWARD_ECON_PARITY_COVERAGE=" + json.dumps(cov, sort_keys=True), flush=True)
-    print("FORWARD_ECON_PARITY_METRICS=" + json.dumps(old_m, sort_keys=True), flush=True)
-    print("FORWARD_ECON_PARITY_RISK=" + json.dumps(old_r, sort_keys=True), flush=True)
-    print("FORWARD_ECON_PARITY_RESULT=PASS_EXACT_N02", flush=True)
+    print("FORWARD_ECON_PARITY_RESULT=PASS_EXACT_N02_S03", flush=True)
 
 
 if __name__ == "__main__":
