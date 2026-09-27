@@ -4,6 +4,7 @@ from research.v5_candidate_milestone import (
     V5MilestoneInput,
     current_baseline,
     evaluate_v5_milestone,
+    evaluate_v5_core_progress,
 )
 
 
@@ -66,3 +67,17 @@ def test_unclean_evidence_fails_closed():
         )
     )
     assert x["core_evidence_ready"] is False
+
+
+def test_core_progress_does_not_infer_optional_layers():
+    x = evaluate_v5_core_progress(
+        as_of=date(2026, 10, 10),
+        v4_resolved_formal_days=20,
+        s03_m2_evaluated=100,
+        evidence_contract_clean=True,
+    )
+    assert x["status"] == "V5_CORE_FREEZE_REVIEW_READY"
+    assert x["remaining"]["v4_resolved_formal_days"] == 0
+    assert x["remaining"]["s03_m2_evaluated"] == 0
+    assert x["optional_layers_not_evaluated_here"] == ["day_strength", "f_count"]
+    assert x["production_activation_allowed"] is False
