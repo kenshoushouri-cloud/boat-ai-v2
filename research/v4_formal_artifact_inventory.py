@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from research import candidate_discovery_v4_capture_arbiter as arb
 
 START = date(2026, 9, 16)
-END = date(2026, 9, 27)
+END = date.fromisoformat(os.getenv("V4_INVENTORY_END", "2026-09-27"))
 RUN_LIST = Path(os.getenv("V4_INVENTORY_RUN_LIST", "v4-run-list.json"))
 OUTPUT = Path(os.getenv("V4_INVENTORY_OUTPUT", "v4-formal-artifact-inventory.json"))
 REPO = os.environ["GITHUB_REPOSITORY"]
