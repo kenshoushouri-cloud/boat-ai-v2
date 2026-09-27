@@ -240,6 +240,62 @@ def day_bootstrap(
     }
 
 
+def normalize_formal_settlement_row(
+    row: Mapping[str, Any],
+    *,
+    investment_yen_per_bet: int = DEFAULT_UNIT_YEN,
+    ticket_count: int = 1,
+) -> dict[str, Any]:
+    """Map immutable-artifact settlement shape into the common economics shape.
+
+    Expected input fields:
+    - official: bool
+    - hit or hits: exact hit indicator/count for the evaluated ticket set
+    - return_yen: realized gross return for the ticket set
+    - race_date or date
+
+    A non-official race becomes invalid_result and therefore carries zero
+    economic investment under the common contract.
+    """
+    if ticket_count <= 0:
+        raise ValueError("ticket_count must be positive")
+    official = bool(row.get("official"))
+    raw_hits = row.get("hits", row.get("hit", 0))
+    try:
+        hit_count = int(raw_hits)
+    except Exception:
+        hit_count = int(bool(raw_hits))
+    hit = hit_count > 0
+    returned = max(0, _safe_int(row.get("return_yen"), 0))
+    payout = max(0, _safe_int(row.get("payout_yen"), returned))
+    race_date = str(row.get("race_date") or row.get("date") or "")
+    return {
+        **dict(row),
+        "race_date": race_date,
+        "evaluation_status": VALID_ECONOMIC_STATUS if official else INVALID_ECONOMIC_STATUS,
+        "investment_yen": investment_yen_per_bet * ticket_count if official else 0,
+        "hit": hit if official else False,
+        "return_yen": returned if official else 0,
+        "payout_yen": payout if official and hit else 0,
+    }
+
+
+def normalize_formal_settlement_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    investment_yen_per_bet: int = DEFAULT_UNIT_YEN,
+    ticket_count: int = 1,
+) -> list[dict[str, Any]]:
+    return [
+        normalize_formal_settlement_row(
+            row,
+            investment_yen_per_bet=investment_yen_per_bet,
+            ticket_count=ticket_count,
+        )
+        for row in rows
+    ]
+
+
 def forward_report(
     rows: Sequence[Mapping[str, Any]],
     *,
