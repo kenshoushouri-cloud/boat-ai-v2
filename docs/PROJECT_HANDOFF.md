@@ -1,5 +1,170 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 16:52 JST
+
+**このsectionを最新の引き継ぎ情報として扱うこと。これより下の古いSHA・PR状態・Railway状態・次アクションは履歴。再開時は必ずGitHub main / open PR / CI / Railway Productionをread-onlyで再取得する。**
+
+### Source of Truth / Production
+- repo: `kenshoushouri-cloud/boat-ai-v2`
+- GitHub main: `e3272d23841aa1d3ce5459ba68841e48cddcf16f`
+- mainはdocs-only PR #402「Docs: refresh Boat handoff through PR #401」のmerge commit
+- Railway project: `boat-v2-postgres`
+- Production environment staged changes: **none**
+- `candidate-discovery-v4-fallback-dispatcher`
+  - Cron: `25 23 * * *` UTC
+  - latest deployment: `85791bd2-dc70-4aa5-a6ae-aee7790d33de`
+  - commit: `e3272d23841aa1d3ce5459ba68841e48cddcf16f`
+  - status: **SUCCESS**
+- main Production Cron群（data-prepare / final-check / nightly-results / window morning/day/night）latest known deployment: SUCCESS
+- Production model / coefficient / selector / threshold / candidate / stake: unchanged
+- automatic purchase disabled / `purchase_action=false`
+
+### Current V4 production contract
+- Course coefficient `0.50`
+- Opponent Pressure coefficient `1.0` first-place-only
+- Motor2 beta `0.06`
+- probability temperature `2.20`
+- daily structural selector: `head_p1 / head_margin / top3_mass / concentration`
+- core: TOP6 races / formal TOP2 tickets
+- odds / EV are not used by the main selector
+- missing Course/Opponent/Motor is neutral
+- formal V4 core evidence must remain immutable
+
+### Recent evidence chain
+#### PR #394 — recent_form readiness
+- canonical run `36300918133` SUCCESS
+- artifact `10925970218`
+- canonical-period entry rows: **413,820**
+- non-empty `recent_form`: **0**
+- strong source-capture timestamp: none
+- conclusion: `NOT_READY_FAIL_CLOSED`
+- do not reconstruct historical recent_form after outcomes
+
+#### PR #395 — unused entry inventory
+- canonical run `36301606766` SUCCESS
+- artifact `10926285564`
+- exact-six races: **68,970**
+- unused numeric entry fields broadly present
+- F/L full-six coverage: 100%
+- branch/origin coverage: 6.59%
+- historical row-level 08:15 capture timestamp: not proven
+
+#### PR #396 — result-blind input novelty
+- canonical run `36302265912` SUCCESS
+- artifact `10926306186`
+- result JSON SHA256 `bf7ef418a2d0568cec17fd2af6c52eca329e68b7adbf72dd1c88730218f33b48`
+- F count:
+  - full-six 100%
+  - within-race variation 57.0741%
+  - F>0 rows 15.0826%
+  - shape gate PASS
+- L count:
+  - within-race variation 0.8221%
+  - positive rows 0.1382%
+  - shape gate FAIL
+- no outcome/odds/payout read
+- no historical F-count coefficient search authorized
+
+#### PR #397 — prospective F-count head-error diagnostic
+- Draft
+- head `844d0f4961367e21213f99579678fd1e20bd7937`
+- pure contract/tests/docs only
+- final contract CI SUCCESS
+- frozen question: current V4 predicted head with `F>=1` vs `F=0` head accuracy
+- minimum interpretation gate:
+  - >=200 finalized core races
+  - >=30 F-positive predicted heads
+  - >=100 F-zero predicted heads
+- future coefficient experiment can only be preregistered separately if:
+  - F-zero head accuracy exceeds F-positive by >=5.0pt
+  - same direction in >=3/4 chronological quarters
+- no collection/persistence/coefficient/Production change
+- current PR may show mergeable=false because main advanced by docs-only merges; rebase before any future merge
+
+#### PR #398 — hash-bound F-count companion artifact
+- Draft
+- head `f55403cfa33e9ad6fc27d69872927711c4856af0`
+- pure in-memory contract/tests/docs only
+- all CI SUCCESS
+- F-count evidence is a **separate companion artifact**
+- companion binds to formal V4 canonical-core SHA256
+- exact same six core race IDs / daily ranks / predicted heads
+- capture must be target-day, >=08:15 JST, >=formal freeze, and before every core deadline
+- exactly six non-negative integer F counts per race
+- tests prove research metadata does not alter formal V4 canonical-core hash
+- no capture/upload/persistence/schedule/coefficient
+- current PR may show mergeable=false because main advanced by docs-only merges; rebase before any future merge
+
+#### PR #400 — pure F-count companion row adapter
+- stacked Draft on #398
+- head `5d0c0481658bfe16f2660d2fbd491845a0753469`
+- base: `research/v4-fcount-companion-contract-20260927`
+- mergeable=true at latest check
+- all 5 CI workflows SUCCESS:
+  - V4 F-count companion adapter validation
+  - Production shadow isolation
+  - Critical mojibake guard
+  - Critical Python syntax
+  - V21 parser sanity
+- pure adapter only; **no I/O / no persistence**
+- requires exact 36 rows: `race_id/lane/f_count`
+- exact formal six races and lanes 1..6
+- duplicate/missing/extra/outcome-like rows fail closed
+- non-integer or negative F counts fail closed
+- formal canonical-core SHA256 verified unchanged before/after
+- future approved DB read is frozen narrowly as:
+  `select race_id,lane,f_count from v2_race_entries where race_id=any(%s) order by race_id,lane`
+- query string is contract only; PR #400 does not execute it
+
+#### PR #401 — remove Railway variable enumeration from V4 freeze
+- Draft / **not merged**
+- head `787a0bc4554c1cf6bac4a36b77105d300dd9a9e4`
+- proposed safety hardening for the existing scheduled V4 prospective-freeze route
+- removes Railway variable enumeration / local variable JSON
+- uses non-enumerating `railway run` against fixed `postgres-recovery`
+- schedule `16 23 * * *` UTC unchanged
+- 08:15 cutoff / V4 model / selector / tickets / availability guard unchanged
+- all CI SUCCESS, including Candidate Discovery V4 Prospective Freeze PR safety job
+- live freeze job was **SKIPPED** on PR event
+- no live route activation occurred
+- current PR may show mergeable=false because main advanced by docs-only #402; rebase required before any future merge
+- do **not** merge from a generic `進めて下さい`
+
+### Current prospective source timing
+- `cron-data-prepare` runs at `30 21 * * *` UTC = 06:30 JST
+- current daily preparation obtains BOAT RACE official `racelist` entry data with result collection disabled in that path
+- F count is therefore technically available for a **new future pre-result capture**
+- this does **not** retroactively prove historical rows were available by 08:15 JST
+
+### Explicit approval boundary
+No live F-count capture/persistence has been started.
+
+Explicit approval is required before any of the following:
+1. merge/activation of a live Forward-route change such as #401;
+2. F-count companion capture/persistence/scheduling;
+3. creation/write of a Forward table or persistent artifact stream;
+4. future settled F-count result evaluation using newly persisted snapshots;
+5. Production model/coefficient/threshold/candidate/stake changes;
+6. Railway Production Variables/Cron/service/volume/migration changes;
+7. Production DB INSERT/UPDATE/DELETE/schema/VACUUM;
+8. new LINE real-send behavior or automatic purchase.
+
+Until approval:
+- do not run historical F-count coefficient searches;
+- do not backfill F-count snapshots after outcomes;
+- do not modify formal V4 selector/rank/tickets;
+- do not merge #397/#398/#400/#401 as Production-effect work;
+- do not enable live F-count persistence.
+
+### Safe next action without approval
+- read-only audit of current formal V4 prospective-freeze health / recent natural captures;
+- re-read current main/open PR/CI/Railway before any work;
+- docs/handoff/CI/evidence cleanup;
+- prepare a **non-executing** capture/persistence implementation Draft if needed, but do not activate it.
+
+Safe state:
+`FCOUNT_ACTIVATION_PREP_COMPLETE / RECENT_FORM_REJECTED / F_COUNT_SHAPE_READY / PROSPECTIVE_DIAGNOSTIC_PREREGISTERED / COMPANION_HASH_CONTRACT_GREEN / PURE_ROW_ADAPTER_GREEN / NON_ENUMERATING_ROUTE_DRAFT_GREEN / LIVE_CAPTURE_NOT_APPROVED / PRODUCTION_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 POST-PR401
 
 **このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
