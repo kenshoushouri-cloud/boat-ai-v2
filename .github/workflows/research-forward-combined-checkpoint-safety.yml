@@ -22,19 +22,56 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install pytest
+      - run: python -m pip install pytest pyyaml
       - run: PYTHONPATH=. pytest -q tests/test_forward_combined_checkpoint.py
-      - name: Verify manual-only contract
+      - name: Verify manual workflow YAML and safety contract
         run: |
           python - <<'PY'
           from pathlib import Path
+          import yaml
+
           p=Path('.github/workflows/research-forward-combined-checkpoint-manual.yml')
-          w=p.read_text(encoding='utf-8').lower()
-          assert 'workflow_dispatch:' in w
-          assert 'schedule:' not in w
-          assert 'railway run' in w
+          raw=p.read_text(encoding='utf-8')
+          w=raw.lower()
+          doc=yaml.load(raw, Loader=yaml.BaseLoader)
+
+          assert isinstance(doc, dict)
+          assert 'on' in doc and 'workflow_dispatch' in doc['on']
+          assert 'schedule' not in doc['on']
           assert ''.join(('railway',' variable',' list')) not in w
-          assert 'v4_formal_artifact_inventory.py' in w
-          assert 'v4_formal_artifact_settlement_pg.py' in w
-          assert 's03_m2_common_economics_pg.py' in w
+
+          steps=doc['jobs']['checkpoint']['steps']
+          names=[x.get('name') for x in steps if isinstance(x, dict) and x.get('name')]
+          required=[
+              'Resolve end date',
+              'Verify manual read-only contract',
+              'Freeze provider inventory before result access',
+              'Materialize selected formal artifacts',
+              'Require target result day terminal',
+              'Settle frozen V4',
+              'Run frozen S03 M2',
+              'Build combined scorecard',
+              'Summary',
+              'Upload evidence',
+          ]
+          for name in required:
+              assert names.count(name) == 1, (name, names)
+
+          assert names.index('Require target result day terminal') < names.index('Settle frozen V4')
+          assert names.index('Settle frozen V4') < names.index('Run frozen S03 M2')
+          assert names.index('Run frozen S03 M2') < names.index('Build combined scorecard')
+
+          for token in (
+              'result_day_terminal_readiness_pg.py',
+              'v4_formal_artifact_inventory.py',
+              'v4_formal_artifact_settlement_pg.py',
+              's03_m2_common_economics_pg.py',
+              'forward_combined_checkpoint.py',
+          ):
+              assert token in w, token
+
+          assert raw.count('RESULT_DAY_READINESS_RESULT=READY') == 1
+          assert raw.count('V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY') == 1
+          assert raw.count('S03_M2_COMMON_RESULT=PASS_') == 1
+          assert raw.count('FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE') == 1
           PY
