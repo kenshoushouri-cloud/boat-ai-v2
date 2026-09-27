@@ -1,5 +1,142 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 22:33 JST
+
+### V5 research-candidate roadmap is now main-integrated
+- main: `56a968c9fb7d0ba05a7e04a54f50fd4a25268b84`
+- #437 merged: V5 research-candidate milestone contract
+- #438 merged: V5 core progress exposed by the combined manual checkpoint
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- fallback Cron remains 08:25 JST
+- `purchase_action=false`
+
+### Naming / scope
+Production is still V4.
+
+However the project is now explicitly tracking a **V5 research candidate** rather than treating all work as another V4 coefficient tweak.
+
+Target:
+- **2026-10-15 V5 core freeze review**
+
+This target means:
+- enough independent prospective evidence exists to freeze a V5 core research specification;
+- that specification can enter a new Forward phase.
+
+It does **not** mean:
+- long-run ROI >100% has been proven;
+- Production is automatically promoted;
+- purchase is enabled.
+
+### Mandatory V5 core gates
+Both are required:
+1. formal V4 >= **20 resolved FORMAL_AVAILABLE days**;
+2. S03_M2 >= **100 officially evaluated observations**;
+3. evidence contract remains clean.
+
+Current pre-9/27-nightly baseline:
+- V4: **6 / 20**, remaining 14;
+- S03_M2: **53 / 100**, remaining 47;
+- evidence contract: clean.
+
+If 2026-09-27 settles naturally:
+- V4 becomes 7/20;
+- at one resolved formal day/day, the 20-day point is approximately **2026-10-10**.
+
+S03 recent pace:
+- 53 evaluated observations accumulated over 2026-09-13..09-26;
+- if roughly the recent pace continues, 47 remaining is approximately another 12-13 days;
+- practical estimate: around **2026-10-09..10**.
+
+These are observation-count schedule estimates only, not ROI forecasts.
+
+### Optional layers do not block the 10/15 core milestone
+#### Day-strength
+Frozen admission gate remains unchanged:
+- >=10 future resolved days from 2026-09-28;
+- >=3 KEEP_SHADOW;
+- >=3 SKIP_SHADOW.
+
+If those labels do not occur naturally by 10/15:
+- do not loosen the gate;
+- do not manufacture volume;
+- freeze the V5 core without day-strength;
+- keep day-strength shadow-only until its own gate is reached.
+
+#### F-count
+- not required for 10/15 core freeze;
+- live capture remains separately approval-gated;
+- no historical backfill;
+- no historical coefficient search.
+
+This avoids delaying V5 just to force an unproven input into the architecture.
+
+### V5 architecture principle
+Start from the existing V4 baseline rather than replacing it wholesale.
+
+Core baseline:
+- racer class;
+- national win rate;
+- national place2 rate;
+- local place2 rate;
+- average ST;
+- venue/course bias;
+- Racer Course coefficient 0.50;
+- Opponent Pressure 1.0 first-place-only;
+- Motor2 beta 0.06;
+- probability temperature 2.20;
+- structural selector head_p1 / head_margin / top3_mass / concentration;
+- TOP6 races / formal TOP2 tickets.
+
+V5 candidate review may admit only evidence that survives its own prospective contract.
+
+Do not automatically blend:
+- S03_M2;
+- day-strength;
+- F-count;
+- exhibition/weather/other late features.
+
+### Combined checkpoint now reports V5 core progress
+Main workflow:
+`.github/workflows/research-forward-combined-checkpoint-manual.yml`
+
+The combined output now includes:
+- V4 resolved formal days remaining to 20;
+- S03_M2 evaluated observations remaining to 100;
+- target freeze date 2026-10-15;
+- `COLLECTING_CORE_EVIDENCE` or `V5_CORE_FREEZE_REVIEW_READY`.
+
+Optional layers are deliberately not inferred by the combined core progress field.
+
+### Schedule assessment
+10/15 is **achievable as a research-candidate freeze target**, provided:
+- formal artifacts continue to be available on most days;
+- nightly result/data operations remain healthy;
+- S03 observation rate does not collapse;
+- neither frozen evidence stream fails its economics/robustness review.
+
+The schedule is not compatible with claiming long-run profitability by 10/15.
+
+### Immediate work remains
+Tonight:
+- after natural 23:30 JST nightly results and terminal readiness, run the combined checkpoint for end_date=2026-09-27;
+- update actual V4/S03/V5 progress only from that output;
+- do not retune.
+
+2026-09-28:
+- run the result-blind day-strength shadow after the immutable formal artifact exists;
+- frozen first reference remains 0.93817204.
+
+### Approval boundaries unchanged
+Still explicit approval required for:
+- fallback Cron 08:25 -> 08:20;
+- F-count live read/capture/persistence/schedule;
+- Production DB writes/schema;
+- Production model/selector/threshold/candidate/stake changes;
+- LINE real-send;
+- purchase activation.
+
+`V5_TARGET_20261015 / CORE_GATES_V4_20_S03_100 / OPTIONAL_LAYERS_NONBLOCKING / COMBINED_V5_PROGRESS_MAIN / PROD_V4_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 21:55 JST
 
 ### Combined checkpoint repaired and end-to-end proven
