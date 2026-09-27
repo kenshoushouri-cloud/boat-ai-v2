@@ -1,0 +1,126 @@
+name: Research V4 Day Strength Shadow Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'JST target date YYYY-MM-DD; blank = current JST date'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      V4_INVENTORY_RUN_LIST: 'v4-run-list.json'
+      V4_INVENTORY_OUTPUT: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_ARTIFACT_DIR: 'v4-day-strength-artifacts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve target date
+        id: target
+        run: |
+          set -euo pipefail
+          requested='${{ inputs.target_date }}'
+          if [ -n "$requested" ]; then TARGET_DATE="$requested"; else TARGET_DATE="$(TZ=Asia/Tokyo date +%F)"; fi
+          python - <<'PY' "$TARGET_DATE"
+          import sys
+          from datetime import date
+          d=date.fromisoformat(sys.argv[1])
+          if d < date(2026,9,28):
+              raise SystemExit("target must be >= 2026-09-28")
+          PY
+          echo "target_date=$TARGET_DATE" >> "$GITHUB_OUTPUT"
+          echo "V4_INVENTORY_END=$TARGET_DATE" >> "$GITHUB_ENV"
+      - name: Verify result-blind manual contract
+        run: |
+          set -euo pipefail
+          grep -q 'DB_READ=0 RESULT_READ=0 PAYOUT_READ=0 ODDS_READ=0' research/v4_formal_artifact_inventory.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-v4-day-strength-shadow-manual.yml').read_text(encoding='utf-8').lower()
+          assert 'workflow_dispatch:' in w
+          assert ''.join(('schedule', ':')) not in w
+          assert ''.join(('railway', ' run')) not in w
+          assert ''.join(('database', '_url')) not in w
+          PY
+      - name: Freeze provider inventory without results
+        run: |
+          set -euo pipefail
+          gh run list             --workflow candidate-discovery-v4-prospective-freeze.yml             --limit 100             --json databaseId,event,createdAt,status,conclusion,headSha             > "${V4_INVENTORY_RUN_LIST}"
+          python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-day-strength-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-day-strength-inventory.txt
+      - name: Require target FORMAL_AVAILABLE and materialize selected artifacts
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.target_date }}
+        run: |
+          set -euo pipefail
+          jq -e --arg d "$TARGET_DATE"             '.days[] | select(.date==$d and .classification=="FORMAL_AVAILABLE" and .selected!=null)'             "${V4_INVENTORY_OUTPUT}" >/dev/null
+          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
+          : > v4-day-strength-sha256.txt
+          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date,.selected.artifact_id,.selected.archive_sha256] | @tsv'             "${V4_INVENTORY_OUTPUT}" |
+            while IFS=$'\t' read -r day artifact_id sha; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
+              printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-day-strength-sha256.txt
+            done
+          sha256sum -c v4-day-strength-sha256.txt
+          test -f "${V4_FORMAL_ARTIFACT_DIR}/$TARGET_DATE.zip"
+      - name: Classify future-only shadow
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.target_date }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python -u research/v4_formal_day_strength_classify.py             "${V4_FORMAL_ARTIFACT_DIR}/$TARGET_DATE.zip"             "${V4_FORMAL_ARTIFACT_DIR}"             | tee v4-day-strength-shadow.txt
+          grep -q '^V4_DAY_STRENGTH_CLASSIFY_PASS_PURE_LOCAL_FILES$' v4-day-strength-shadow.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          line=next(x for x in Path('v4-day-strength-shadow.txt').read_text(encoding='utf-8').splitlines()
+                    if x.startswith('V4_DAY_STRENGTH_CLASSIFICATION='))
+          obj=json.loads(line.split('=',1)[1])
+          Path('v4-day-strength-shadow.json').write_text(
+              json.dumps(obj,ensure_ascii=False,indent=2,sort_keys=True)+'\n',
+              encoding='utf-8'
+          )
+          assert obj['formal_action_changed'] is False
+          assert obj['promotion_allowed'] is False
+          PY
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## V4 day-strength shadow'
+            echo
+            echo "- target_date: ${{ steps.target.outputs.target_date }}"
+            echo '- provider-selected immutable artifacts only'
+            echo '- DB/result/payout/odds reads: 0'
+            echo '- formal action change: false'
+            echo
+            if [ -f v4-day-strength-shadow.json ]; then
+              jq . v4-day-strength-shadow.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-day-strength-shadow-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-inventory.json
+            v4-day-strength-inventory.txt
+            v4-day-strength-sha256.txt
+            v4-day-strength-shadow.txt
+            v4-day-strength-shadow.json
+          retention-days: 90
+          if-no-files-found: warn
