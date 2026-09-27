@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import zipfile
 from collections import defaultdict
@@ -18,6 +19,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from research import candidate_discovery_v4_capture_arbiter as arb
 
 START = date(2026, 9, 16)
