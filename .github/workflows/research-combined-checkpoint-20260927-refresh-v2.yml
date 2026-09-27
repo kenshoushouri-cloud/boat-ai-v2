@@ -3,7 +3,7 @@ name: Research Combined Checkpoint 2026-09-27 Refresh V2
 on:
   pull_request:
     paths:
-      - '.github/workflows/research-combined-checkpoint-20260927-refresh.yml'
+      - '.github/workflows/research-combined-checkpoint-20260927-refresh-v2.yml'
 
 permissions:
   contents: read
