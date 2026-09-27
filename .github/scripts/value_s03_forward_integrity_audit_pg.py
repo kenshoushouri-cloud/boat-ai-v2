@@ -238,6 +238,7 @@ def main() -> None:
     print(f"S03_INTEGRITY_HARD_ERRORS={len(hard_errors)}", flush=True)
     print(f"S03_INTEGRITY_RAW_METADATA_ERRORS={len(raw_errors)}", flush=True)
     print(f"S03_INTEGRITY_SETTLEMENT_ERRORS={len(settlement_errors)}", flush=True)
+    print("S03_INTEGRITY_SETTLEMENT_ERROR_SAMPLE=" + json.dumps(settlement_errors[:20], sort_keys=True), flush=True)
     print(f"S03_INTEGRITY_CLASSIFICATION={classification}", flush=True)
     print("S03_INTEGRITY_PROMOTION_ALLOWED=0", flush=True)
     print("S03_INTEGRITY_RESULT=PASS_READ_ONLY", flush=True)
