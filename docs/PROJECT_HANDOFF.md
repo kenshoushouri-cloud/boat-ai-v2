@@ -1,5 +1,154 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 18:36 JST
+
+**回収率改善研究の最新状態。これより下の古いROI・件数・PR headは履歴。再開時はGitHub main / open PR / CI / Railway Productionをread-onlyで再取得する。**
+
+### Production / main
+- GitHub main: `1d40d83b4cb0a2ecbf21a8555ea06d23a7ca1d6f`
+- #401 non-enumerating prospective-freeze route: activated
+- Railway Production staged changes: none
+- Production pending work: none
+- Production model / selector / threshold / candidate / stake: unchanged
+- automatic purchase disabled / `purchase_action=false`
+- F-count live companion capture/persistence/schedule: not approved / not started
+
+### ROI research — current strongest prospective evidence
+
+#### A. Formal V4 immutable artifact Forward — Draft #409
+Provider-wide artifact inventory scanned 60 prospective-freeze workflow runs and 10 formal artifact copies.
+
+Frozen arbiter result:
+- 2026-09-16..09-20: `UNAVAILABLE_NO_VALID_CAPTURE`
+- 2026-09-21..09-27: `FORMAL_AVAILABLE`
+- unavailable days remain unavailable; do not reconstruct from historical DB state
+
+Canonical provider-selected checkpoint:
+- run `36309872048`
+- artifact `10928339152`
+- artifact digest `sha256:5b1dddef797da2b3f899c3f115bc265849051b378ce5cf0135cb166e2f538870`
+- artifact-set mode: `FROZEN_PROVIDER_INVENTORY`
+
+Economically resolved through 2026-09-26:
+- formal days: 6
+- official races: 32
+- void/cancelled races: 4
+- predicted-head accuracy: 20/32 = 62.5%
+
+Formal TOP2:
+- bets: 64
+- hits: 10
+- investment: 6,400 JPY
+- return: 10,970 JPY
+- profit: **+4,570 JPY**
+- ROI: **171.4062%**
+- profitable formal days: 3/6
+
+Robustness:
+- first 3 formal days ROI: 191.0714%
+- second 3 formal days ROI: 156.1111%
+- largest-hit share: 32.7256%
+- leave-one-hit-out minimum ROI: 119.0323%
+- leave-one-day-out worst remaining ROI: 125.1923%
+- whole-day bootstrap 20,000 samples:
+  - median ROI 171.4062%
+  - 95% interval [58.0%, 281.1765%]
+  - P(ROI > 100%) 89.13%
+
+Ticket-order attribution is descriptive only:
+- order 1: 32 bets / 4 hits / ROI 80.3125% / -630 JPY
+- order 2: 32 bets / 6 hits / ROI 262.5000% / +5,200 JPY
+- **do not** create a ticket2-only policy from this six-day checkpoint
+- frozen Production/formal contract remains TOP2
+
+Dynamic provider-selected checkpoint path now exists in Draft #409:
+inventory/arbitration -> selected-artifact hash validation -> freeze -> only then read official results.
+This removes manual artifact-ID selection from future 10/20/30-day refreshes.
+
+2026-09-27 formal artifact exists but results were still pending at this checkpoint. Do not synthesize/guess same-day results.
+
+Next formal V4 review gates are frozen at 10 / 20 / 30 economically resolved formal days. No rule change before those reviews.
+
+#### B. S03_M2_POSITIVE_V1 prospective Forward — Draft #405
+Strict current prospective period: 2026-09-13..09-27.
+
+Integrity:
+- source S03 rows: 116
+- pre-deadline rows: 116/116
+- frozen-rule hard errors: 0
+- raw metadata errors: 0
+- settlement errors: 0
+- classification: `CONTRACT_CLEAN`
+- two all-S03 rows were expected `invalid_result`; invalid/cancelled rows are not charged as bets
+
+Frozen Motor2-positive track:
+- positive rows: 62
+- positive invalid_result rows: 1
+- officially evaluated: **53**
+- hits: 4
+- investment: 5,300 JPY
+- return: 10,120 JPY
+- profit: **+4,820 JPY**
+- ROI: **190.9434%**
+- largest-hit share: 44.3676%
+- max drawdown: 1,600 JPY
+- max losing streak: 16
+- day-bootstrap P(ROI > 100%): 86.13%
+
+Descriptive stability:
+- first 26 observations ROI: 319.6154%
+- second 27 observations ROI: **67.0370%**
+- remove any one winning observation: minimum ROI 108.2692%
+- remove any one active date: worst remaining ROI 119.7872%
+- profitable active days: 4/14
+
+Interpretation:
+- prospective evidence remains economically positive;
+- second-half deterioration is material;
+- continue exact frozen rule to 100 officially evaluated observations;
+- 47 more officially evaluated observations remain from the 53 checkpoint;
+- no beta/threshold/subgroup/date/venue retune before 100.
+
+#### Historical S03 correction — Draft #406
+Old pre-freeze ~126% ROI must not be used as promotion support.
+
+Original 2026-08-14..09-12 window after strict evaluation-status handling:
+- timing-valid M2-positive: 76 evaluated / 1 hit
+- ROI 26.1842%
+- profit -5,610 JPY
+
+All-available pre-freeze strict timing-safe:
+- 102 evaluated / 1 hit
+- ROI 19.5098%
+- bootstrap P(ROI > 100%) 0.02%
+
+Decision:
+`HISTORICAL_S03_PROFITABILITY_SUPPORT_REJECTED`.
+Only prospective 2026-09-13+ evidence remains valid.
+
+### Deprioritized tracks
+- #408 S02_FORWARD_V1:
+  - 43 evaluated / 1 hit
+  - ROI 16.7442%
+  - profit -3,580 JPY
+  - P(ROI > 100%) 0.01%
+  - do not widen gates to rescue it
+- #407 GUARD05:
+  - 825 rows / 768 evaluated
+  - affected_evaluated = 0
+  - GUARD05 == FULL on all evaluated rows
+  - do not loosen threshold 5 / PRIOR_DAY to manufacture affected cases
+
+### Current research priority
+1. preserve and extend immutable formal V4 TOP2 evidence to 10 resolved formal days;
+2. preserve S03_M2_POSITIVE_V1 unchanged to 100 officially evaluated observations;
+3. keep historical S03 profitability rejected;
+4. avoid new same-history ROI filters while these two genuine prospective tracks mature;
+5. F-count remains preparation-only until separately approved.
+
+### Current gate
+`V4_FORMAL_TOP2_6_DAYS_ROI_171.41 / S03_M2_53_FORWARD_ROI_190.94_BUT_SECOND_HALF_67.04 / HISTORICAL_S03_REJECTED / S02_DEPRIORITIZED / GUARD05_NO_AFFECTED / NO_RETUNE / FCOUNT_LIVE_NOT_APPROVED / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 17:22 JST
 
 **PR #401 の承認済み live-route activation 後の最新状態。これより下の古いSHA・PR状態・Railway状態は履歴。再開時は必ず GitHub main / open PR / CI / Railway Production を read-only で再取得する。**
