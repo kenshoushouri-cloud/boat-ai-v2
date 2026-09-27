@@ -1,5 +1,74 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 19:53 JST
+
+**評価基盤・研究PR整理の最新追記。これより下の古い評価定義・PR優先度は履歴。**
+
+### Source of Truth
+- main: `809f47ec618a29b2f6b356173b286ec70181777d`
+- Production staged changes: none
+- Production pending work: none
+- fallback Cron: `25 23 * * *` UTC = 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+### Common Forward economics — #415
+Draft #415 defines one pure economic contract:
+- `evaluation_status=evaluated`: investment-bearing settlement
+- `evaluation_status=invalid_result`: void / zero investment
+- other: pending / zero investment
+- common ROI / profit / largest-hit share / DD / losing streak / halves / daily/monthly / bootstrap
+- immutable V4 `official` rows can be normalized into the same semantics
+- no I/O / promotion / Production behavior
+
+All #415 CI SUCCESS.
+
+### Production-data parity — #416
+Read-only exact parity passed.
+
+Canonical parity run:
+- `36313916909`
+
+S03 2026-09-13..09-27 all-row coverage:
+- rows 116
+- evaluated 102
+- invalid_result 2
+- pending 12
+- legacy vs common metrics: exact match
+- legacy vs common risk: exact match
+
+This validates settlement/report semantics only; it is not the S03_M2 economic subset result.
+
+### Research PR registry
+Main now contains:
+- `docs/RESEARCH_PR_REGISTRY_20260927.md`
+
+Reading priority:
+- ROI decision: #409 / #405 / #411
+- common economics: #415 / #416
+- operational timing prep: #412
+- F-count chain: #397 / #398 / #400 / #413
+- correction/deprioritized: #406 / #407 / #408
+- old #376..#393: historical/reference unless explicitly reactivated
+
+Do not mass-close historical Drafts while stacked dependencies/evidence provenance remain useful.
+
+### Failure runbook
+New docs:
+- `docs/FORWARD_EVIDENCE_FAILURE_RUNBOOK_20260927.md`
+
+Frozen handling:
+- missing formal capture = unavailable, never reconstructed
+- pending results = zero investment until official
+- invalid/cancelled = void, not a loss
+- F-count companion failure cannot invalidate formal V4
+- day-strength missing artifact = no label
+- unexpected non-Cron Railway config change = stop
+- no discrepancy is resolved by outcome-driven threshold tuning
+
+Current gate:
+`COMMON_ECON_SEMANTICS_GREEN / S03_REAL_DATA_PARITY_GREEN / PR_REGISTRY_ACTIVE / FAILURE_RUNBOOK_FROZEN / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 19:10 JST
 
 **Forward準備の最新追記。これより下の古い件数・時刻・候補は履歴。再開時はmain/open PR/CI/Railway Productionをread-onlyで再取得する。**

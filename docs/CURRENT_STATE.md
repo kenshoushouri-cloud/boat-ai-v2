@@ -1,5 +1,29 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 19:53 JST
+
+- main: `809f47ec618a29b2f6b356173b286ec70181777d`
+- Production staged/pending: none
+- fallback remains 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Evaluation infrastructure:
+- #415 common Forward economics: all CI SUCCESS
+  - evaluated = economic settlement
+  - invalid_result = void / zero investment
+  - pending = zero investment
+  - V4 official/non-official normalization included
+- #416 read-only parity: PASS
+  - S03 rows 116 / evaluated 102 / invalid 2 / pending 12
+  - common vs existing metrics/risk exact match
+- main registry: `docs/RESEARCH_PR_REGISTRY_20260927.md`
+- failure runbook: `docs/FORWARD_EVIDENCE_FAILURE_RUNBOOK_20260927.md`
+
+No research result is promoted by the common evaluator itself.
+
+`INVALID_RESULT_VOID / COMMON_FORWARD_METRICS / EXACT_S03_PARITY / PR_AMBIGUITY_REDUCED / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 19:10 JST
 
 - main: `a50afa2f166da498b25f03f09383be14ab78b044`
