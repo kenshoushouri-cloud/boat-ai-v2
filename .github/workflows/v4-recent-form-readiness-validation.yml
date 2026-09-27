@@ -1,0 +1,50 @@
+name: V4 recent-form readiness contract validation
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_recent_form_readiness_audit_pg.py'
+      - 'docs/V4_RECENT_FORM_READINESS_AUDIT_20260927.md'
+      - '.github/workflows/v4-recent-form-readiness-*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax
+        run: python -m py_compile research/v4_recent_form_readiness_audit_pg.py
+      - name: Validate safety boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('research/v4_recent_form_readiness_audit_pg.py')
+          text=p.read_text(encoding='utf-8').lower()
+          required=('set transaction read only','recent_form','08:15','pass_read_only')
+          for token in required:
+              assert token in text, token
+          forbidden=(
+              'v2_'+'results',
+              'v2_'+'result_entries',
+              'v2_'+'odds',
+              'payout',
+              'send_'+'line',
+              'insert into',
+              'update v2_',
+              'delete from',
+              'create table',
+              'alter table',
+              'drop table',
+          )
+          for token in forbidden:
+              assert token not in text, token
+          print('V4_RECENT_FORM_RESULT_BLIND=PASS')
+          PY
