@@ -1,4 +1,5 @@
 name: Research V4 Formal Day Strength Shadow
+
 on:
   pull_request:
     paths:
@@ -9,17 +10,21 @@ on:
       - 'docs/V4_FORMAL_DAY_STRENGTH_SEED_20260928.md'
       - 'docs/V4_FORMAL_DAY_STRENGTH_SHADOW_20260927.md'
       - '.github/workflows/research-v4-formal-day-strength-shadow.yml'
+
 permissions:
   contents: read
   actions: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - name: Verify isolation
         run: |
           set -euo pipefail
@@ -57,5 +62,4 @@ jobs:
           EOF
           sha256sum -c seed-artifacts/SHA256SUMS
           PYTHONPATH=. python -u research/v4_formal_day_strength_seed.py seed-artifacts | tee v4-day-strength-seed-20260928.txt
-          grep -q '^V4_DAY_STRENGTH_SEED_PASS_INPUT_ONLY
- v4-day-strength-seed-20260928.txt
+          grep -q '^V4_DAY_STRENGTH_SEED_PASS_INPUT_ONLY$' v4-day-strength-seed-20260928.txt
