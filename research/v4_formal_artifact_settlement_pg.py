@@ -217,6 +217,9 @@ def main() -> None:
         )
         settled_rows.append({
             **row,
+            "result_present": bool(res),
+            "result_status": str(res.get("result_status") or ""),
+            "race_status": str(res.get("race_status") or ""),
             "official": official,
             "actual_ticket": norm_ticket(res.get("trifecta_ticket")) if official else None,
             "payout_yen": int(res.get("trifecta_payout_yen") or 0) if official else 0,
@@ -267,7 +270,13 @@ def main() -> None:
             "profitable_days_top2": sum(int(x["complete"] and x["top2"]["profit_yen"] > 0) for x in by_day),
         },
         "pending_or_invalid_races": [
-            {"date": r["date"], "race_id": r["race_id"]}
+            {
+                "date": r["date"],
+                "race_id": r["race_id"],
+                "result_present": r["result_present"],
+                "result_status": r["result_status"],
+                "race_status": r["race_status"],
+            }
             for r in settled_rows if not r["official"]
         ],
         "safety": {
