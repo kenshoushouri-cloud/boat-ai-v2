@@ -1,5 +1,108 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 21:18 JST
+
+### Manual Forward checkpoint infrastructure is ready on main
+- main: `d33460822cecf7bc6f92b68b8ba153343da57bad`
+- #425 merged: manual provider-selected V4 Forward checkpoint
+- #426 merged: manual S03_M2 Forward checkpoint
+- #427 merged: pure frozen review-gate status helper
+- Railway dispatcher deployment `7d6c5fdb-33aa-4112-878e-0940a108d3cf`: SUCCESS
+- Railway staged changes: none
+- pending work: none
+- fallback Cron remains `25 23 * * *` UTC = 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+### #425 — manual provider-selected V4 checkpoint
+Main workflow:
+`.github/workflows/research-v4-provider-selected-forward-checkpoint-manual.yml`
+
+Contract:
+- `workflow_dispatch` only
+- no `schedule`
+- optional `end_date=YYYY-MM-DD`
+- enumerate provider runs before result access
+- frozen arbiter selects only FORMAL_AVAILABLE artifacts
+- selected artifact archives are SHA256-verified
+- only after freeze, PostgreSQL result query opens in READ ONLY transaction
+- unavailable dates are never reconstructed
+- no odds / DB write / Railway config mutation / LINE / BUY / Production change
+
+Current pre-2026-09-27-settlement baseline:
+- resolved formal days: **6**
+- next frozen review gate: **10**
+- remaining: **4**
+
+The 2026-09-27 formal artifact exists but must not count as resolved until official settlement is naturally available.
+
+### #426 — manual S03_M2 checkpoint
+Main workflow:
+`.github/workflows/research-s03-m2-forward-checkpoint-manual.yml`
+
+Contract:
+- `workflow_dispatch` only
+- no `schedule`
+- optional `end_date=YYYY-MM-DD`
+- frozen `S03_M2_POSITIVE_V1`
+- exact Motor2 score / `score > 0`
+- strict stored `snapshot_at < deadline_at`
+- common Forward economics
+- `invalid_result` remains void / zero investment
+- no retune / DB write / Railway mutation / LINE / BUY / Production change
+
+Current baseline:
+- evaluated: **53**
+- full review gate: **100**
+- remaining: **47**
+
+### #427 — frozen review-gate helper
+Main:
+- `research/forward_review_gates.py`
+- `docs/FORWARD_REVIEW_GATES_20260927.md`
+
+Mirrors existing gates only:
+- V4 formal: 10 / 20 / 30 resolved FORMAL_AVAILABLE days
+- S03_M2: 100 evaluated observations
+- day-strength: >=10 future resolved formal days and >=3 KEEP / >=3 SKIP
+
+It has no I/O and no promotion authority.
+
+### Nightly result timing / next safe refresh
+Production `cron-nightly-results`:
+- Cron: `30 14 * * *` UTC = **23:30 JST**
+- latest service deployment: SUCCESS
+
+Observed Stage 1 starts:
+- 2026-09-23: 23:34:01 JST
+- 2026-09-24: 23:30:14 JST
+- 2026-09-25: 23:30:55 JST
+- 2026-09-26: 23:30:20 JST
+
+Recent full nightly pipelines completed around **23:38..23:42 JST**.
+
+Therefore:
+- do not treat 9/27 results as ready before the nightly pipeline;
+- a manual #425/#426 refresh **after 23:45 JST** is operationally separated from recent completion times;
+- this is not a new schedule and does not authorize automation.
+
+### Immediate next evidence actions
+After natural 2026-09-27 nightly result completion:
+1. run the main manual V4 provider-selected checkpoint with `end_date=2026-09-27`;
+2. run the main manual S03_M2 checkpoint with `end_date=2026-09-27`;
+3. update review-gate counts from actual output only;
+4. do not retune from one new day;
+5. on 2026-09-28, classify the future-only day-strength shadow from the immutable target artifact.
+
+Still explicit-approval only:
+- fallback Cron 08:25 -> 08:20
+- F-count live read/capture/persistence/schedule
+- Production model/selector/threshold/stake changes
+- LINE real-send / purchase
+
+Current gate:
+`MANUAL_V4_CHECKPOINT_MAIN / MANUAL_S03_CHECKPOINT_MAIN / REVIEW_GATES_MAIN / WAIT_NATURAL_927_RESULTS / REFRESH_AFTER_2345 / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 20:12 JST
 
 ### Common Forward economics is now integrated on main
