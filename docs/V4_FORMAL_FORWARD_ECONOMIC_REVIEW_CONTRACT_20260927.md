@@ -68,7 +68,7 @@ TOP1 is not profitable at this checkpoint:
 - profit -630 JPY
 - ROI 80.3125%
 
-Predicted-head accuracy on all 36 resolved/void-selected formal races is not the economic denominator. On the 36 selected races, 20 predicted heads matched the recorded first lane when a result was available under the current report, reported as 55.5556% by the current checkpoint script.
+Predicted-head accuracy is computed only on official-result races; void races are excluded from its denominator. The corrected checkpoint uses 32 official races.
 
 ## Frozen future review
 
