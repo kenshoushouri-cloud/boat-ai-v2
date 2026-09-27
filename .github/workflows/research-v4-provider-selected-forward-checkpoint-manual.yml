@@ -1,0 +1,139 @@
+name: Research V4 Provider-Selected Forward Checkpoint Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: 'JST inventory end date YYYY-MM-DD; blank = current JST date'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_INVENTORY_RUN_LIST: 'v4-run-list.json'
+      V4_INVENTORY_OUTPUT: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_INVENTORY_MANIFEST: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_ARTIFACT_DIR: 'v4-artifacts'
+      V4_FORMAL_SETTLEMENT_OUTPUT: 'v4-provider-selected-forward-settlement.json'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Resolve checkpoint end date
+        id: end
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested='${{ inputs.end_date }}'
+          if [ -n "$requested" ]; then
+            END_DATE="$requested"
+          else
+            END_DATE="$(TZ=Asia/Tokyo date +%F)"
+          fi
+          python - <<'PY' "$END_DATE"
+          import sys
+          from datetime import date
+          date.fromisoformat(sys.argv[1])
+          PY
+          echo "end_date=$END_DATE" >> "$GITHUB_OUTPUT"
+          echo "V4_INVENTORY_END=$END_DATE" >> "$GITHUB_ENV"
+          echo "V4_MANUAL_CHECKPOINT_END=$END_DATE"
+      - name: Verify read-only and no schedule
+        run: |
+          set -euo pipefail
+          grep -q 'V4_INVENTORY_DB_READ=0 RESULT_READ=0 PAYOUT_READ=0 ODDS_READ=0' research/v4_formal_artifact_inventory.py
+          grep -q 'RECONSTRUCT_CANDIDATES=0 ODDS_READ=0' research/v4_formal_artifact_settlement_pg.py
+          grep -q 'set transaction read only' research/v4_formal_artifact_settlement_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-v4-provider-selected-forward-checkpoint-manual.yml').read_text(encoding='utf-8').lower()
+          assert 'workflow_dispatch:' in w
+          assert 'schedule:' not in w
+          assert ''.join(('railway',' variable',' list')) not in w
+          assert 'railway run' in w
+          PY
+      - name: Enumerate provider runs before any result access
+        run: |
+          set -euo pipefail
+          gh run list \
+            --workflow candidate-discovery-v4-prospective-freeze.yml \
+            --limit 100 \
+            --json databaseId,event,createdAt,status,conclusion,headSha \
+            > "${V4_INVENTORY_RUN_LIST}"
+          python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-provider-inventory.txt
+          grep -q '^V4_INVENTORY_DB_READ=0 RESULT_READ=0 PAYOUT_READ=0 ODDS_READ=0$' v4-provider-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-provider-inventory.txt
+      - name: Materialize only frozen provider-selected artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
+          : > v4-provider-selected-sha256.txt
+          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date, .selected.artifact_id, .selected.archive_sha256] | @tsv' \
+            "${V4_FORMAL_INVENTORY_MANIFEST}" \
+            | while IFS=$'\t' read -r day artifact_id sha; do
+                test -n "$day"
+                test -n "$artifact_id"
+                test -n "$sha"
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
+                printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-provider-selected-sha256.txt
+              done
+          test -s v4-provider-selected-sha256.txt
+          sha256sum -c v4-provider-selected-sha256.txt
+      - run: npm install --global @railway/cli
+      - name: Settle selected artifacts only after frozen manifest
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' \
+            2>&1 | tee v4-provider-selected-forward-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_ARTIFACT_SET_MODE=FROZEN_PROVIDER_INVENTORY$' v4-provider-selected-forward-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0$' v4-provider-selected-forward-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-provider-selected-forward-settlement.txt
+      - name: Write checkpoint summary
+        if: always()
+        run: |
+          {
+            echo '## V4 provider-selected Forward checkpoint'
+            echo
+            echo "- end_date: ${{ steps.end.outputs.end_date }}"
+            echo '- provider inventory is frozen before result access'
+            echo '- unavailable dates are not reconstructed'
+            echo '- DB access is read-only'
+            echo '- no odds / LINE / BUY / Production change'
+            echo
+            if [ -f v4-provider-selected-forward-settlement.json ]; then
+              jq '{complete_day_count,complete_day_dates,complete_day_only,robustness,void_races,pending_or_invalid_races}' v4-provider-selected-forward-settlement.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload checkpoint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-provider-selected-manual-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-inventory.json
+            v4-provider-inventory.txt
+            v4-provider-selected-sha256.txt
+            v4-provider-selected-forward-settlement.json
+            v4-provider-selected-forward-settlement.txt
+          retention-days: 90
+          if-no-files-found: warn
