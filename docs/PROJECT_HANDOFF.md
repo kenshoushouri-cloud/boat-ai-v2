@@ -1,5 +1,70 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 16:17 JST
+
+**このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
+
+### Live source / Production
+- GitHub main at latest read-only check: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- Railway Production staged changes: none
+- V4 fallback dispatcher: SUCCESS, Cron `25 23 * * *` UTC
+- Production model / selector / threshold / candidate / stake unchanged
+- `purchase_action=false`
+
+### PR #394 — recent_form readiness
+Canonical run `36300918133`, artifact `10925970218`.
+- 413,820 canonical-period entry rows
+- non-empty `recent_form`: 0
+- strong capture timestamp: none
+- conclusion: `NOT_READY_FAIL_CLOSED`
+Do not reconstruct historical recent_form after outcomes.
+
+### PR #395 — unused entry inventory
+Canonical run `36301606766`, artifact `10926285564`.
+- 68,970 exact-six races
+- unused numeric fields generally ~97.8%–100% full-six coverage
+- F/L counts full-six 100%
+- branch/origin only 6.59%
+- no strong historical row-level 08:15 capture timestamp
+Conclusion: data exists, historical timestamp proof does not.
+
+### PR #396 — input-only novelty
+Canonical run `36302265912`, artifact `10926306186`, JSON SHA256 `bf7ef418a2d0568cec17fd2af6c52eca329e68b7adbf72dd1c88730218f33b48`.
+- F count: full-six 100%, within-race variation 57.0741%, F>0 rows 15.0826% — shape gate PASS
+- L count: variation 0.8221%, positive rows 0.1382% — shape gate FAIL
+- fixed pair Pearson correlations all below preregistered |r|=0.95 redundancy line
+- no outcomes read
+Conclusion:
+`F_COUNT_INPUT_SHAPE_READY / L_COUNT_TOO_DEGENERATE / HISTORICAL_0815_TIMING_STILL_UNPROVEN / NO_HISTORICAL_COEFFICIENT_SEARCH / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
+### Current prospective source timing
+- `cron-data-prepare` runs around 06:30 JST and executes daily pre-result data preparation.
+- current code forces results collection off in that path and obtains official race-card entries from BOAT RACE `racelist`.
+- F count is therefore technically available for a new future pre-result freeze before the current V4 08:15 boundary, subject to per-run integrity checks.
+- this does not retroactively prove old DB rows were captured by 08:15.
+
+### PR #397 — F-count prospective diagnostic DESIGN ONLY
+Draft / mergeable / final contract CI SUCCESS.
+- head `844d0f4961367e21213f99579678fd1e20bd7937`
+- no collector / no schedule / no persistence
+- no coefficient
+- frozen question: does current V4 head accuracy materially worsen when predicted head has F>=1?
+- primary population: unchanged V4 six core races
+- minimum interpretation gate: 200 finalized core races, >=30 F-positive predicted heads, >=100 F-zero
+- future coefficient preregistration only if F-zero head accuracy exceeds F-positive by >=5.0pt and direction agrees in >=3/4 chronological quarters
+- passing diagnostic would still not authorize Production promotion
+
+### Current approval boundary
+**Next scientific step requires explicit approval** because it would activate prospective Forward persistence/collection for F-count snapshots.
+Until approval:
+- do not schedule F-count collection;
+- do not write a new Forward table/artifact stream;
+- do not run historical F-count coefficient searches;
+- do not merge a Production-effect model change.
+
+Safe completed state:
+`RECENT_FORM_REJECTED_EMPTY / UNUSED_ENTRY_INVENTORY_COMPLETE / F_COUNT_NEXT_PROSPECTIVE_DIAGNOSTIC_PREREGISTERED / ACTIVATION_NOT_APPROVED / PRODUCTION_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 15:30 JST
 
 **このsectionを最新の引き継ぎ情報として扱うこと。これより下の古いSHA・研究途中状態・Railway状態・次アクションは歴史的背景として扱い、再開時は必ずlive再取得すること。**
