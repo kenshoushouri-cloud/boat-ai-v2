@@ -1,5 +1,29 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 21:25 JST
+
+- main: `c9d9731cd0c96929aee671987eb5c97ea26e9d4e`
+- #425/#426 individual manual checkpoints: merged
+- #427 frozen review gates: merged
+- #429 combined manual checkpoint: merged
+- combined workflow: `.github/workflows/research-forward-combined-checkpoint-manual.yml`
+- manual only / no schedule / read-only
+- fallback Cron remains 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Current pre-nightly review progress:
+- V4: 6 resolved formal days; 4 to 10-day review
+- S03_M2: 53 evaluated; 47 to 100-review
+- day-strength: starts 2026-09-28
+
+Nightly:
+- results Cron 23:30 JST
+- recent completion ~23:38..23:42
+- use combined checkpoint after 23:45 JST for 2026-09-27 refresh
+
+`COMBINED_CHECKPOINT_READY / WAIT_NATURAL_RESULTS / NO_RETUNE / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 21:18 JST
 
 - main: `d33460822cecf7bc6f92b68b8ba153343da57bad`
