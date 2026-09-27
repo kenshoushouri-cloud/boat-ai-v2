@@ -1,0 +1,72 @@
+name: Research V4 Common Economics Parity
+
+on:
+  pull_request:
+    paths:
+      - 'research/forward_economics.py'
+      - 'research/v4_common_economics_parity_pg.py'
+      - '.github/workflows/research-v4-common-economics-parity.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_COMMON_ARTIFACT_DIR: 'v4-common-artifacts'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Verify artifact-first read-only contract
+        run: |
+          set -euo pipefail
+          grep -q 'set transaction read only' research/v4_common_economics_parity_pg.py
+          grep -q 'RECONSTRUCT=0 ODDS_READ=0' research/v4_common_economics_parity_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-v4-common-economics-parity.yml').read_text(encoding='utf-8').lower()
+          assert ''.join(('railway',' variable',' list')) not in w
+          PY
+      - name: Download exact formal artifacts before result access
+        run: |
+          set -euo pipefail
+          mkdir -p "${V4_COMMON_ARTIFACT_DIR}"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10617384166/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-21.zip"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10670080150/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-22.zip"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10724298102/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-23.zip"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10782581362/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-24.zip"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10838744179/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-25.zip"
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10891628808/zip > "${V4_COMMON_ARTIFACT_DIR}/2026-09-26.zip"
+      - run: npm install --global @railway/cli
+      - name: Run exact formal V4 TOP2 common-economics parity
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/v4_common_economics_parity_pg.py' \
+            2>&1 | tee v4-common-economics-parity.txt
+          grep -q '^V4_COMMON_ECON_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' v4-common-economics-parity.txt
+          grep -q '^V4_COMMON_ECON_RESULT=PASS_EXACT_V4_TOP2$' v4-common-economics-parity.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-common-economics-parity-${{ github.run_id }}
+          path: v4-common-economics-parity.txt
+          retention-days: 90
+          if-no-files-found: error
