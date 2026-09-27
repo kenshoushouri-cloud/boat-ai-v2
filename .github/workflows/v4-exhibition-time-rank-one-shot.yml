@@ -13,7 +13,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'research/v4-exhibition-time-rank-oos-20260927'
+      github.event.pull_request.head.ref == 'research/v4-exhibition-time-rank-oos-20260927' &&
+      github.event.pull_request.head.sha == '6d5986f7889a8bb89cc0d32a95b2b1f50492bc0c'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
