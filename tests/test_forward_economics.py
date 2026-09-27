@@ -4,6 +4,7 @@ from research.forward_economics import (
     investment_yen,
     is_economically_settled,
     metrics,
+    normalize_formal_settlement_rows,
     risk,
 )
 
@@ -83,3 +84,38 @@ def test_forward_report_is_policy_neutral():
     assert report["promotion_allowed"] is False
     assert report["production_change"] is False
     assert report["purchase_action"] is False
+
+
+def test_formal_artifact_rows_normalize_to_same_settlement_semantics():
+    raw = [
+        {
+            "date": "2026-09-21",
+            "official": True,
+            "hits": 1,
+            "return_yen": 450,
+            "payout_yen": 450,
+        },
+        {
+            "date": "2026-09-21",
+            "official": False,
+            "hits": 0,
+            "return_yen": 0,
+            "payout_yen": 0,
+        },
+    ]
+    rows = normalize_formal_settlement_rows(
+        raw,
+        investment_yen_per_bet=100,
+        ticket_count=2,
+    )
+    assert rows[0]["evaluation_status"] == "evaluated"
+    assert rows[0]["investment_yen"] == 200
+    assert rows[0]["hit"] is True
+    assert rows[1]["evaluation_status"] == "invalid_result"
+    assert rows[1]["investment_yen"] == 0
+    m = metrics(rows)
+    assert m["evaluated"] == 1
+    assert m["investment_yen"] == 200
+    assert m["return_yen"] == 450
+    assert m["profit_yen"] == 250
+    assert m["roi_pct"] == 225.0
