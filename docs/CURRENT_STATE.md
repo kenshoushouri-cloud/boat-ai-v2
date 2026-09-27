@@ -1,5 +1,39 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 22:33 JST
+
+- main: `56a968c9fb7d0ba05a7e04a54f50fd4a25268b84`
+- #437 V5 milestone: merged
+- #438 V5 progress in combined checkpoint: merged
+- Production remains V4
+- V5 is research-candidate terminology only
+- target V5 core freeze review: **2026-10-15**
+- fallback Cron 08:25 JST unchanged
+- `purchase_action=false`
+
+Mandatory V5 core gates:
+- formal V4: 20 resolved days
+- S03_M2: 100 evaluated observations
+- evidence contract clean
+
+Current pre-nightly:
+- V4 6/20
+- S03 53/100
+
+Count-based planning:
+- if 9/27 settles and daily formal evidence continues, V4 20-day point ~2026-10-10
+- recent S03 pace suggests 100 observations ~2026-10-09..10
+- these are schedule estimates, not ROI forecasts
+
+Optional/nonblocking:
+- day-strength keeps its own 10-day + 3 KEEP + 3 SKIP gate
+- F-count remains separately approval-gated
+- do not lower optional gates to meet 10/15
+
+Combined manual checkpoint now emits V5 core remaining counts/status.
+
+`V5_CORE_TARGET_REALISTIC_NOT_GUARANTEED / PROD_V4_UNCHANGED / NO_AUTO_PROMOTION`
+
 ## LATEST OVERRIDE — 2026-09-27 21:55 JST
 
 - main: `e14821db4c82bd7ed66cd8314a323095224366c8`
