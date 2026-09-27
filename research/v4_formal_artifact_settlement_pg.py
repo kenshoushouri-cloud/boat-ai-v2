@@ -215,12 +215,16 @@ def main() -> None:
             and norm_ticket(res.get("trifecta_ticket")) != ""
             and int(res.get("trifecta_payout_yen") or 0) > 0
         )
+        result_status = str(res.get("result_status") or "").lower()
+        race_status = str(res.get("race_status") or "").lower()
+        void = bool(res) and result_status in {"cancelled", "canceled"} and race_status in {"cancelled", "canceled"}
         settled_rows.append({
             **row,
             "result_present": bool(res),
-            "result_status": str(res.get("result_status") or ""),
-            "race_status": str(res.get("race_status") or ""),
+            "result_status": result_status,
+            "race_status": race_status,
             "official": official,
+            "void": void,
             "actual_ticket": norm_ticket(res.get("trifecta_ticket")) if official else None,
             "payout_yen": int(res.get("trifecta_payout_yen") or 0) if official else 0,
             "actual_head_lane": int(res.get("first_lane") or 0) if official else None,
@@ -229,7 +233,7 @@ def main() -> None:
     by_day = []
     for day in sorted(EXPECTED):
         rr = [r for r in settled_rows if r["date"] == day]
-        complete = len(rr) == 6 and all(r["official"] for r in rr)
+        complete = len(rr) == 6 and all(r["official"] or r["void"] for r in rr)
         top1 = summarize(rr, 1)
         top2 = summarize(rr, 2)
         head_n = sum(int(r["official"]) for r in rr)
@@ -238,6 +242,7 @@ def main() -> None:
             "date": day,
             "complete": complete,
             "official_races": head_n,
+            "void_races": sum(int(r["void"]) for r in rr),
             "head_hits": head_hits,
             "head_accuracy_pct": round(head_hits / head_n * 100.0, 4) if head_n else None,
             "top1": top1,
@@ -269,6 +274,10 @@ def main() -> None:
             "profitable_days_top1": sum(int(x["complete"] and x["top1"]["profit_yen"] > 0) for x in by_day),
             "profitable_days_top2": sum(int(x["complete"] and x["top2"]["profit_yen"] > 0) for x in by_day),
         },
+        "void_races": [
+            {"date": r["date"], "race_id": r["race_id"]}
+            for r in settled_rows if r["void"]
+        ],
         "pending_or_invalid_races": [
             {
                 "date": r["date"],
@@ -277,7 +286,7 @@ def main() -> None:
                 "result_status": r["result_status"],
                 "race_status": r["race_status"],
             }
-            for r in settled_rows if not r["official"]
+            for r in settled_rows if not r["official"] and not r["void"]
         ],
         "safety": {
             "artifact_first": True,
@@ -294,6 +303,7 @@ def main() -> None:
 
     print("V4_FORMAL_SETTLEMENT_DAYS=" + json.dumps(by_day, sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_COMPLETE=" + json.dumps(out["complete_day_only"], sort_keys=True), flush=True)
+    print("V4_FORMAL_SETTLEMENT_VOID=" + json.dumps(out["void_races"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_PENDING=" + json.dumps(out["pending_or_invalid_races"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_PROMOTION_ALLOWED=0", flush=True)
     print("V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY", flush=True)
