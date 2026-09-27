@@ -1,0 +1,36 @@
+name: Research Common Forward Economics
+
+on:
+  pull_request:
+    paths:
+      - 'research/forward_economics.py'
+      - 'tests/test_forward_economics.py'
+      - 'docs/FORWARD_ECONOMICS_COMMON_CONTRACT_20260927.md'
+      - '.github/workflows/research-forward-economics-common.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pure isolation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/forward_economics.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','urllib','subprocess','insert into','update v2_','delete from','send_line'):
+              assert token not in t, token
+          assert 'invalid_result' in t
+          assert 'promotion_allowed' in t
+          PY
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=. pytest -q tests/test_forward_economics.py
