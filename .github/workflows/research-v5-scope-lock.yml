@@ -1,0 +1,35 @@
+name: Research V5 Scope Lock
+
+on:
+  pull_request:
+    paths:
+      - 'research/v5_scope_lock.py'
+      - 'tests/test_v5_scope_lock.py'
+      - 'docs/V5_RESEARCH_SCOPE_LOCK_20260927.md'
+      - '.github/workflows/research-v5-scope-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=. pytest -q tests/test_v5_scope_lock.py
+      - name: Verify pure no-action scope
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v5_scope_lock.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','urllib','subprocess','send_line'):
+              assert token not in t, token
+          assert 'purchase_action' in t
+          assert 'no_gate_lowering_to_meet_date' in t
+          PY
