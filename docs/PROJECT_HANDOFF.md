@@ -1,5 +1,117 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 21:55 JST
+
+### Combined checkpoint repaired and end-to-end proven
+- main: `e14821db4c82bd7ed66cd8314a323095224366c8`
+- #434 merged: repaired malformed combined manual workflow + added YAML structural CI
+- #435 one-off E2E audit: PASS, closed unmerged as evidence-only
+- Railway dispatcher deployment `174b2317-85d5-4f98-a2c7-93cc144f165e`: SUCCESS
+- Railway staged changes: none
+- pending work: none
+- fallback Cron remains `25 23 * * *` UTC = 08:25 JST
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+### Important repair
+A malformed #431 insertion had left the main combined manual workflow duplicated/truncated.
+
+Impact:
+- manual research checkpoint workflow only;
+- no Production cron/model/selector/purchase behavior was affected;
+- no broken manual run was used as evidence.
+
+#434 restored one clean workflow and strengthened CI to:
+- parse YAML with PyYAML;
+- require every critical step exactly once;
+- enforce order:
+  terminal readiness -> V4 settlement -> S03 checkpoint -> combined scorecard;
+- require each PASS sentinel exactly once.
+
+Current workflow:
+`.github/workflows/research-forward-combined-checkpoint-manual.yml`
+
+### Canonical E2E audit — #435
+Run:
+- workflow run `36320499779`
+- job `108623282063`
+- fixed known-completed target: 2026-09-26
+- result: `PASS_READ_ONLY`
+
+Readiness:
+- races 156
+- official 156
+- void 0
+- pending 0
+- missing 0
+- READY=true
+
+V4 formal exact parity:
+- resolved formal days: 6
+- official races: 32
+- predicted-head accuracy: 20/32 = 62.5%
+- TOP2: 64 bets / 10 hits
+- investment 6,400 JPY
+- return 10,970 JPY
+- profit +4,570 JPY
+- ROI **171.4062%**
+- next review: 10 resolved days
+- remaining: 4
+
+S03_M2 exact parity:
+- evaluated 53
+- invalid 1
+- pending 0
+- hits 4
+- investment 5,300 JPY
+- return 10,120 JPY
+- profit +4,820 JPY
+- ROI **190.9434%**
+- max DD 1,600 JPY
+- max losing streak 16
+- first-half ROI 319.6154%
+- second-half ROI 67.0370%
+- bootstrap P(ROI>100%) 86.13%
+- next review: 100 evaluated
+- remaining: 47
+
+Combined gates:
+- V4 = COLLECTING / current 6 / next 10 / remaining 4
+- S03 = COLLECTING / current 53 / next 100 / remaining 47
+- promotion_allowed=false
+- production_change=false
+
+### Tonight / next operational step
+Natural Production nightly results:
+- Cron 23:30 JST
+- recent full completion around 23:38..23:42
+
+After ~23:45 JST:
+- run the repaired combined manual checkpoint with `end_date=2026-09-27`;
+- terminal readiness is authoritative and fails closed if loading is incomplete;
+- use actual output only;
+- do not retune from one new day.
+
+### 2026-09-28 day-strength
+Main-integrated #432 remains ready:
+`.github/workflows/research-v4-day-strength-shadow-manual.yml`
+
+Frozen first reference:
+- **0.93817204**
+
+No result/DB access; shadow label only; formal action unchanged.
+
+### Approval boundaries unchanged
+Explicit approval still required for:
+- fallback Cron 08:25 -> 08:20
+- F-count live read/capture/persistence/schedule
+- Production DB writes/schema
+- Production model/selector/threshold/candidate/stake changes
+- LINE real-send
+- purchase activation
+
+`COMBINED_WORKFLOW_REPAIRED / YAML_STRUCTURAL_CI_GREEN / E2E_PASS_READ_ONLY / V4_6_TO_10 / S03_53_TO_100 / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 21:36 JST
 
 ### Post-nightly and next-day Forward operations are now main-integrated

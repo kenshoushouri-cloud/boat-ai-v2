@@ -1,5 +1,34 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 21:55 JST
+
+- main: `e14821db4c82bd7ed66cd8314a323095224366c8`
+- #434 repaired combined manual checkpoint: merged
+- YAML structural/order CI: green
+- #435 E2E read-only audit on 2026-09-26: PASS, closed unmerged
+- Railway dispatcher deployment: SUCCESS
+- staged/pending: none
+- fallback Cron 08:25 JST unchanged
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+E2E parity:
+- readiness 156/156 terminal
+- V4 TOP2: 6 days / ROI 171.4062% / +4,570 JPY / 4 days to review
+- S03_M2: 53 evaluated / ROI 190.9434% / +4,820 JPY / 47 to review
+
+Tonight:
+- use repaired combined checkpoint after ~23:45 JST
+- target-day terminal guard is authoritative
+- no retune from one added day
+
+2026-09-28:
+- #432 day-strength manual remains ready
+- frozen reference 0.93817204
+- result-blind / shadow-only
+
+`COMBINED_E2E_GREEN / WAIT_NATURAL_927_RESULTS / DAY_STRENGTH_READY / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 21:36 JST
 
 - main: `c0e0c4336150a85f76d8abe00ac640247b5a2ba8`
