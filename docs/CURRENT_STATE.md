@@ -1,5 +1,32 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 21:36 JST
+
+- main: `c0e0c4336150a85f76d8abe00ac640247b5a2ba8`
+- #429 combined manual Forward checkpoint: merged
+- #431 terminal result-day readiness guard: merged
+- #432 future-only day-strength tooling/manual workflow: merged
+- #411 closed as superseded
+- Railway dispatcher: SUCCESS
+- staged/pending: none
+- fallback Cron 08:25 JST unchanged
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Tonight:
+- combined checkpoint waits for target-day all-race terminal READY
+- 9/27 pre-nightly baseline: V4 6 resolved / S03 53 evaluated
+- run after ~23:45 JST; readiness guard remains authoritative
+
+2026-09-28:
+- manual day-strength workflow is on main
+- result-blind / no DB
+- frozen prior-7 reference = **0.93817204**
+- KEEP_SHADOW iff target TOP6 mean race_score >= reference
+- formal action never changes
+
+`COMBINED_READY_GUARD / DAY_STRENGTH_READY / NO_AUTO_PROMOTION / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 21:25 JST
 
 - main: `c9d9731cd0c96929aee671987eb5c97ea26e9d4e`
