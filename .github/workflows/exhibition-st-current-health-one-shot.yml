@@ -30,7 +30,7 @@ jobs:
       - name: Verify one-shot trigger
         run: |
           set -euo pipefail
-          test "$(cat research/.exhibition-st-health-run-once-20260927)" = "RUN_ONCE_20260927_EXHIBITION_ST_HEALTH"
+          test "$(cat research/.exhibition-st-health-run-once-20260927)" = "RUN_ONCE_20260927_EXHIBITION_ST_HEALTH_RETRY1"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
