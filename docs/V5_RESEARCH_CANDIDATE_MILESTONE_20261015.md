@@ -23,9 +23,9 @@ It does **not** mean:
 - Production can be switched automatically;
 - purchase can be enabled.
 
-## Required evidence before V5 freeze review
+## Required evidence before V5 core freeze review
 
-All are required.
+The core freeze review has two mandatory evidence gates. Optional new layers keep their own unchanged admission gates and cannot delay the core milestone.
 
 ### 1. Formal V4 baseline
 - >=20 resolved FORMAL_AVAILABLE days.
@@ -42,22 +42,31 @@ the current positive V4 TOP2 checkpoint should survive materially more natural F
 Reason:
 S03_M2 currently has strong overall economics but a weaker second half. It must reach its already-frozen 100-observation review before it can inform V5 architecture.
 
-### 3. Future-only day-strength shadow
-All:
-- >=10 economically resolved target days from 2026-09-28 onward;
-- >=3 KEEP_SHADOW days;
-- >=3 SKIP_SHADOW days.
-
-Reason:
-the day-level skip/keep concept cannot be judged if only one side of the split naturally occurs.
-
-### 4. Evidence contract remains clean
+### 3. Evidence contract remains clean
 Required:
 - immutable formal artifacts selected before result access;
 - invalid/cancelled results remain void;
 - no reconstructed unavailable days;
 - no post-outcome retuning;
 - no hidden odds/EV gate in formal selection.
+
+## Optional-layer admission
+
+### Future-only day-strength
+Its frozen gate is unchanged:
+- >=10 economically resolved target days from 2026-09-28 onward;
+- >=3 KEEP_SHADOW days;
+- >=3 SKIP_SHADOW days.
+
+If this is not ready by 2026-10-15:
+- do not lower the gate;
+- do not invent SKIP/KEEP volume;
+- freeze the V5 core without day-strength;
+- keep day-strength shadow-only until its own gate is naturally reached.
+
+### F-count
+Not required for the 2026-10-15 core milestone.
+Its live capture remains separately approval-gated and future-only.
 
 ## Proposed V5 research architecture
 
@@ -114,8 +123,10 @@ A mid-October V5 candidate should **not** be delayed merely to force unproven ex
 
 ## Milestone interpretation
 
-When all evidence-count gates are reached:
-`V5_RESEARCH_CANDIDATE_FREEZE_REVIEW_READY`
+When the mandatory core gates are reached:
+`V5_CORE_FREEZE_REVIEW_READY`
+
+Optional layers have separate admission readiness and do not inherit core readiness.
 
 That status only authorizes a research review.
 
@@ -130,10 +141,11 @@ It does not authorize:
 
 - V4 resolved formal days: 6 / 20
 - S03_M2 evaluated: 53 / 100
-- day-strength future resolved: 0 / 10
-- day-strength KEEP: 0 / 3
-- day-strength SKIP: 0 / 3
+- mandatory V4: 6 / 20
+- mandatory S03_M2: 53 / 100
 - evidence contract: clean
+- optional day-strength: 0 / 10 future resolved, KEEP 0 / 3, SKIP 0 / 3
+- optional F-count: not active
 
 ## Schedule feasibility
 
@@ -141,8 +153,8 @@ If natural evidence continues at roughly the recent rate:
 - V4 10-day review should occur well before mid-October;
 - V4 20-day review is compatible with roughly early-to-mid October;
 - S03 100 observations is compatible with roughly early-to-mid October at its recent observation pace;
-- day-strength 10 future resolved days is compatible with early October if formal days remain available.
+- day-strength 10 future resolved days is compatible with early October if formal days remain available, but its KEEP/SKIP balance is not schedule-controllable.
 
-Therefore 2026-10-15 is a **reasonable research-candidate freeze target**, with the main schedule risks being missing formal days, result/data outages, or one of the frozen evidence tracks failing its economics/robustness review.
+Therefore 2026-10-15 is a **reasonable V5 core research-candidate freeze target**. Optional layers cannot be forced merely to meet the date. The main schedule risks are missing formal days, result/data outages, or V4/S03 evidence failing its frozen economics/robustness review.
 
 `TARGET_20261015 / EVIDENCE_FIRST / NO_POSTHOC_RETUNE / V5_RESEARCH_NOT_PRODUCTION / PURCHASE_FALSE`
