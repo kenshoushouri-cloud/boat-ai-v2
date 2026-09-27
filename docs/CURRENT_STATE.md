@@ -1,5 +1,23 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 20:12 JST
+
+- main: `19cb1f0cff51509bbb39346b499af33f7280ecf7`
+- #422 common Forward economics: merged
+- #423 exact validation suite: merged
+- #415/#416/#419/#420: closed as superseded
+- Railway staged/pending: none
+- fallback Cron: 08:25 JST unchanged
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Validated common scorecard:
+- V4 TOP2: ROI 171.4062%, +4,570 JPY, DD 2,200, max losing 11
+- S03_M2: ROI 190.9434%, +4,820 JPY, DD 1,600, max losing 16
+- invalid_result / non-official = void, zero investment
+
+`COMMON_ECON_ON_MAIN / EXACT_VALIDATION_ON_MAIN / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 20:03 JST
 
 - main: `2e89e81f00b02a66c7a99ac0f6b02e2d43bf406b`

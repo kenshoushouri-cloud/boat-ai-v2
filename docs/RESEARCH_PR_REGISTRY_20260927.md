@@ -50,20 +50,25 @@ Current role: **Production-change proposal preparation only**.
 - activation is constrained to cronSchedule only;
 - explicit approval required before any Railway change.
 
-### #415 — common prospective Forward economics
-Current role: **common pure economic semantics**.
+### #422 — common prospective Forward economics integrated
+Current role: **main-integrated common pure economic semantics**.
 
-Defines:
+Now on main:
 - evaluated = investment-bearing settlement;
 - invalid_result = void / zero-investment;
 - pending = zero-investment;
 - common ROI, DD, losing streak, largest-hit share, halves and bootstrap;
 - normalization of immutable V4 official/non-official settlement into the same semantics.
 
-### #416 — common economics Production-data parity
-Current role: **stacked validation of #415**.
+### #423 — common economics validation suite integrated
+Current role: **main-integrated exact validation suite**.
 
-Must prove exact read-only parity against existing N02 semantics before commonization can be trusted.
+Contains the already-green read-only audits for:
+- existing N02/S03 semantics parity;
+- formal V4 TOP2 parity;
+- frozen S03_M2 parity.
+
+Historical stacked PRs #415/#416/#419/#420 are closed as superseded; their comments/runs remain provenance.
 
 ## Tier C — F-count future activation path
 
@@ -131,7 +136,7 @@ For ROI work:
 2. #409;
 3. #405;
 4. #411;
-5. #415/#416.
+5. main-integrated #422/#423 validation suite.
 
 For operational safety:
 1. #412;
@@ -154,4 +159,4 @@ A PR may be closed later when:
 
 Until then, use this registry to avoid reference ambiguity.
 
-`CURRENT_DECISION_SOURCES_409_405_411 / COMMON_ECON_415_416 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`
+`CURRENT_DECISION_SOURCES_409_405_411 / COMMON_ECON_MAIN_422_423 / FALLBACK_PREP_412 / FCOUNT_CHAIN_397_398_400_413 / DEPRIORITIZED_406_407_408 / LEGACY_REFERENCE_ONLY_376_393`

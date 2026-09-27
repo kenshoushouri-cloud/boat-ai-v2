@@ -1,5 +1,37 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 20:12 JST
+
+### Common Forward economics is now integrated on main
+- main: `19cb1f0cff51509bbb39346b499af33f7280ecf7`
+- #422 merged: pure common Forward economics module/tests/contract/CI
+- #423 merged: read-only validation suite for N02/S03 semantics, formal V4 TOP2, and S03_M2
+- old stacked #415/#416/#419/#420 closed as superseded; evidence preserved
+- Production model/selector/TOP6/TOP2/stake unchanged
+- Railway staged changes: none
+- pending work: none
+- fallback Cron remains 08:25 JST
+- `purchase_action=false`
+
+Common exact checkpoints remain:
+- formal V4 TOP2: 32 evaluated / 4 void / ROI 171.4062% / +4,570 JPY / DD 2,200 / max losing 11
+- S03_M2: 53 evaluated / 1 invalid / 8 pending / ROI 190.9434% / +4,820 JPY / DD 1,600 / max losing 16
+- common denominator treats invalid/cancelled as void, never as a losing 100 JPY bet
+
+Main references:
+- `research/forward_economics.py`
+- `docs/FORWARD_ECONOMICS_COMMON_CONTRACT_20260927.md`
+- `docs/RESEARCH_PR_REGISTRY_20260927.md`
+- `docs/FORWARD_EVIDENCE_FAILURE_RUNBOOK_20260927.md`
+
+Next evidence work remains unchanged:
+1. refresh formal V4 only after natural 2026-09-27 result availability;
+2. classify 2026-09-28 day-strength shadow from the immutable target artifact;
+3. continue S03_M2 frozen to 100 evaluated observations;
+4. no 08:20 Cron activation or F-count live activation without explicit approval.
+
+`COMMON_ECON_MAIN_INTEGRATED / VALIDATION_SUITE_MAIN_INTEGRATED / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 20:03 JST
 
 **共通Forward評価の最新確定。これより下の古い評価定義・件数は履歴。**
