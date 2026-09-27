@@ -1,5 +1,99 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-28 01:12 JST
+
+### 2026-09-27 natural settlement is complete
+- main before this docs update: `6e82ee37961c3e83f867be0773b8f0ac94d6842b`
+- nightly results completed 2026-09-27 23:38:50 JST
+- target readiness: 156/156 terminal, official 156, pending/missing 0
+- #446 merged: S03 exact-parity baseline separated from live checkpoint
+- #447 canonical post-nightly refresh: PASS_READ_ONLY, closed unmerged as evidence-only
+- Production model/selector/TOP6/TOP2/stake unchanged
+- fallback Cron remains 08:25 JST
+- `purchase_action=false`
+
+### Formal V4 TOP2 — 7 resolved days
+Through 2026-09-27:
+- resolved formal days: **7**
+- official settled races: 38
+- head accuracy: **65.7895%**
+- TOP2 bets: 76
+- hits: 11
+- investment 7,600 JPY
+- return 12,340 JPY
+- profit **+4,740 JPY**
+- ROI **162.3684%**
+
+Robustness:
+- first block 9/21..9/23 ROI 191.0714%
+- later block 9/24..9/27 ROI **145.6250%**
+- largest-hit share 29.0924%
+- leave-one-day worst ROI **123.1250%**
+- leave-one-hit min ROI **118.2432%**
+- whole-day bootstrap P(ROI>100%) **89.64%**
+
+Next frozen formal review:
+- 10 resolved days
+- remaining **3**
+
+### S03_M2 — 61 evaluated
+Natural 9/27 settlement increased evaluated count from 53 to **61**.
+
+Current:
+- positive rows 62
+- evaluated 61
+- invalid 1
+- pending 0
+- hits 4
+- investment 6,100 JPY
+- return 10,120 JPY
+- profit **+4,020 JPY**
+- ROI **165.9016%**
+- max DD 1,800 JPY
+- max losing streak 18
+
+Stability:
+- first half ROI 277.0%
+- second half ROI **58.3871%**
+- bootstrap P(ROI>100%) **79.50%**
+
+Interpretation:
+- overall remains >100%;
+- recent-half weakness increased;
+- do not retune;
+- continue unchanged to the frozen 100-evaluated review.
+
+Remaining:
+- **39** observations.
+
+### S03 checkpoint bug fixed
+The first post-nightly refresh exposed that `research/s03_m2_common_economics_pg.py` incorrectly treated END=2026-09-27 as an immutable 53-evaluated parity baseline.
+
+#446 fixed this safely:
+- exact parity is now pinned to fully settled 2026-09-13..09-26;
+- later dates are dynamic read-only checkpoints;
+- scoring/timing rule unchanged.
+
+### V5 core progress
+Target:
+- **2026-10-15** core freeze review.
+
+Mandatory current progress:
+- V4: **7 / 20**, remaining **13**
+- S03_M2: **61 / 100**, remaining **39**
+- evidence contract: clean
+- status: `COLLECTING_CORE_EVIDENCE`
+
+No automatic promotion is authorized.
+
+### Next
+- continue formal V4 daily evidence unchanged;
+- continue S03_M2 unchanged;
+- 2026-09-28 day-strength shadow remains result-blind/manual with frozen first reference 0.93817204;
+- do not add new V5-core features before 2026-10-15 scope review.
+
+`V4_7D_ROI_162_37 / S03_61_ROI_165_90_RECENT_WEAK / V5_7_OF_20_61_OF_100 / NO_RETUNE / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 22:40 JST
 
 ### V5 mid-October completion framework is fully main-integrated
