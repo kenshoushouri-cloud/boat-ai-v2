@@ -1,5 +1,43 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 18:36 JST
+
+- main: `1d40d83b4cb0a2ecbf21a8555ea06d23a7ca1d6f`
+- Production model/selector/threshold/candidate/stake unchanged.
+- `purchase_action=false`.
+- Railway staged changes: none; pending work: none.
+- F-count live capture/persistence/schedule remains unapproved.
+
+Research:
+- #409 V4 immutable formal Forward:
+  - formal available dates 2026-09-21..09-27;
+  - 09-16..09-20 remain unavailable and must not be reconstructed;
+  - through 09-26: 6 resolved formal days / 32 official races / 4 void;
+  - formal TOP2: 64 bets / 10 hits / ROI **171.4062%** / **+4,570 JPY**;
+  - first 3 days ROI 191.0714%, second 3 days 156.1111%;
+  - leave-one-hit min ROI 119.0323%;
+  - leave-one-day worst ROI 125.1923%;
+  - bootstrap P(ROI>100%) 89.13%;
+  - TOP1 ROI 80.3125%;
+  - ticket-order attribution: order1 80.3125%, order2 262.5% — descriptive only, no policy change;
+  - provider-selected dynamic checkpoint path validated;
+  - next gates 10 / 20 / 30 resolved formal days.
+- #405 S03_M2 prospective:
+  - CONTRACT_CLEAN;
+  - 53 officially evaluated / 4 hits / ROI **190.9434%** / **+4,820 JPY**;
+  - bootstrap P(ROI>100%) 86.13%;
+  - first half 319.6154%, second half **67.0370%**;
+  - leave-one-hit min ROI 108.2692%;
+  - 100-observation frozen review still required; 47 remain.
+- #406 historical S03:
+  - timing-valid original-window ROI 26.1842%;
+  - all-available strict timing-safe ROI 19.5098%;
+  - old ~126% profitability support rejected.
+- #408 S02: 43 evaluated / ROI 16.7442% / -3,580 JPY; deprioritized.
+- #407 GUARD05: 768 evaluated / affected 0; deprioritized.
+
+`V4_TOP2_PROSPECTIVE_POSITIVE_SMALL_N / S03_PROSPECTIVE_POSITIVE_WITH_RECENT_WEAKNESS / HISTORICAL_PROFIT_SUPPORT_REJECTED / NO_RETUNE / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 17:22 JST
 
 - main: `db8ab21270ea5bc8fd6872bed576d4ba196c43e8`
