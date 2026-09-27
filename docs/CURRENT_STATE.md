@@ -1,5 +1,52 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 15:30 JST
+
+**現在の短期スナップショット。古いsectionは履歴として扱い、再開時はlive再取得する。**
+
+### Current source / health
+- main: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- Railway Production staged changes: none at latest read-only check
+- V4 fallback dispatcher: SUCCESS, Cron `25 23 * * *` UTC
+- main Production cron群: latest deployments SUCCESS
+- Production prediction/selector/purchase behavior unchanged
+- `purchase_action=false`
+
+### Research state
+Canonical long history remains 432 exact-six days / 2,592 races through 2026-09-22.
+
+Completed since the prior snapshot:
+- #387 input ablation: no harmful current layer removal supported
+- #389 strict-prior ST: 0/344 head classifications changed; tiny calibration-only gain, full reselection worse
+- #390 course movement: broad movement not head-error concentration; predicted-head-moved n=19 too small/unstable
+- #391 Exhibition ST Forward health: n=1,879, proper scores slightly worse overall; no promotion
+- #392 exhibition-time-rank OOS: canonical run `36288864737`, artifact `10921393420`
+  - Track A fixed-race LogLoss/Brier improved
+  - head accuracy unchanged 57.558% -> 57.558%
+  - head changed 0/344
+  - preregistered primary head-accuracy gate failed
+  - Track B descriptively improved but is not promotion authority
+  - do not rerun or expand coefficient grid
+
+### Immediate next action
+Run a **result-blind recent-form readiness audit** before defining another model variant:
+- canonical-period non-empty coverage;
+- racer binding / structure;
+- official source/provenance;
+- strict-prior chronology relative to target race and current 08:15 JST cutoff;
+- no result-based feature design.
+
+If provenance/timing cannot be proven, reject `recent_form` as a current V4 input candidate and move to the next independent information family without tuning the failed families.
+
+### Do not
+- rerun #387/#389/#390/#391/#392 canonical experiments
+- expand #392 coefficient grid
+- create a Track-B-only promotion path from #392
+- retune old weather/course/ST/exhibition families on the same history
+- change Production without explicit approval
+
+`FAIL_CLOSED / RESULT_BLIND_READINESS_FIRST / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-25 13:51 JST
 
 **このsectionを現在の短期スナップショットとして扱う。古いsectionのSHA、PR状態、Railway staged状態、件数は歴史的背景であり、再開時は必ずlive再取得する。**
