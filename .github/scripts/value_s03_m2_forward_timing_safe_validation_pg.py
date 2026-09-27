@@ -49,7 +49,12 @@ def score(entries,ticket):
     z={i+1:(vals[i]-mu)/sd for i in range(6)}
     a,b,c=ls
     return W[0]*z[a]+W[1]*z[b]+W[2]*z[c]
-def settled(r):return r.get("hit") is not None and r.get("return_yen") is not None
+def settled(r):
+    return (
+        str(r.get("evaluation_status") or "") == "evaluated"
+        and r.get("hit") is not None
+        and r.get("return_yen") is not None
+    )
 def metrics(rows):
     rr=sorted([r for r in rows if settled(r)],key=lambda r:(str(r["race_date"]),str(r["race_id"])))
     inv=len(rr)*UNIT; gross=0; hits=0; vals=[]; run=peak=dd=loss=maxloss=0
@@ -98,7 +103,8 @@ def main():
     with psycopg.connect(db,row_factory=dict_row,autocommit=False) as conn:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
-            cur.execute("""select s.race_id,s.race_date,s.ticket,s.snapshot_at,s.hit,s.return_yen,r.deadline_at
+            cur.execute("""select s.race_id,s.race_date,s.ticket,s.snapshot_at,s.hit,s.return_yen,
+                                  s.evaluation_status,r.deadline_at
                              from v2_candidate_filter_shadow s
                              join v2_races r on r.race_id=s.race_id
                             where s.rule_id='S03' and s.race_date between %s and %s
@@ -127,6 +133,7 @@ def main():
          "coverage":{"source_s03_rows":len(rows),"timing_valid_rows":len(timing_valid),
                      "late_or_unknown_rows":len(late),"missing_motor_rows":missing,
                      "positive_rows":len(positive),
+                     "positive_invalid_result_rows":sum(1 for r in positive if str(r.get("evaluation_status") or "") == "invalid_result"),
                      "min_minutes_before_deadline":round(min(margins),3) if margins else None},
          "timing_safe_positive":{"overall":metrics(positive),"monthly":monthly(positive),"day_bootstrap":bootstrap(positive)},
          "checkpoints":{"30":len([r for r in positive if settled(r)])>=30,
