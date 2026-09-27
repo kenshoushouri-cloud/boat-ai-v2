@@ -46,11 +46,14 @@ def evaluate_v5_milestone(x: V5MilestoneInput) -> dict[str, Any]:
     ):
         _nonnegative(name, int(getattr(x, name)))
 
-    checks = {
+    core_checks = {
         "v4_20_resolved_days": (
             x.v4_resolved_formal_days >= V4_REQUIRED_RESOLVED_DAYS
         ),
         "s03_100_evaluated": x.s03_m2_evaluated >= S03_REQUIRED_EVALUATED,
+        "evidence_contract_clean": bool(x.evidence_contract_clean),
+    }
+    day_strength_checks = {
         "day_strength_10_resolved": (
             x.day_strength_future_resolved_days >= DAY_STRENGTH_REQUIRED_RESOLVED
         ),
@@ -60,9 +63,9 @@ def evaluate_v5_milestone(x: V5MilestoneInput) -> dict[str, Any]:
         "day_strength_skip_ge_3": (
             x.day_strength_skip_days >= DAY_STRENGTH_REQUIRED_SKIP
         ),
-        "evidence_contract_clean": bool(x.evidence_contract_clean),
     }
-    evidence_ready = all(checks.values())
+    core_ready = all(core_checks.values())
+    day_strength_admission_ready = all(day_strength_checks.values())
 
     return {
         "contract": "V5_RESEARCH_CANDIDATE_MILESTONE_V1",
@@ -71,7 +74,10 @@ def evaluate_v5_milestone(x: V5MilestoneInput) -> dict[str, Any]:
             **asdict(x),
             "as_of": x.as_of.isoformat(),
         },
-        "checks": checks,
+        "core_checks": core_checks,
+        "optional_layer_checks": {
+            "day_strength": day_strength_checks,
+        },
         "remaining": {
             "v4_resolved_formal_days": max(
                 0, V4_REQUIRED_RESOLVED_DAYS - x.v4_resolved_formal_days
@@ -92,11 +98,23 @@ def evaluate_v5_milestone(x: V5MilestoneInput) -> dict[str, Any]:
             ),
         },
         "status": (
-            "V5_RESEARCH_CANDIDATE_FREEZE_REVIEW_READY"
-            if evidence_ready
-            else "COLLECTING_EVIDENCE"
+            "V5_CORE_FREEZE_REVIEW_READY"
+            if core_ready
+            else "COLLECTING_CORE_EVIDENCE"
         ),
-        "evidence_ready": evidence_ready,
+        "core_evidence_ready": core_ready,
+        "optional_layers": {
+            "day_strength": {
+                "admission_ready": day_strength_admission_ready,
+                "required_for_core_freeze": False,
+                "remain_shadow_if_not_ready": True,
+            },
+            "f_count": {
+                "admission_ready": False,
+                "required_for_core_freeze": False,
+                "explicit_live_approval_required": True,
+            },
+        },
         "production_activation_allowed": False,
         "automatic_model_change_allowed": False,
         "automatic_selector_change_allowed": False,
