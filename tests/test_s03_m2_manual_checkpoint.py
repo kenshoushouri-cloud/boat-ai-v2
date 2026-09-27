@@ -22,3 +22,16 @@ def test_s03_checkpoint_script_is_parameterized_but_frozen_rule():
     assert "score > 0.0" in t
     assert "s03_m2_common_remaining_to_100" in t
     assert "pass_read_only_checkpoint" in t
+
+
+def test_s03_exact_parity_uses_last_fully_settled_pre_refresh_baseline():
+    t = Path("research/s03_m2_common_economics_pg.py").read_text(
+        encoding="utf-8"
+    ).lower()
+    w = Path(
+        ".github/workflows/research-s03-m2-common-economics.yml"
+    ).read_text(encoding="utf-8").lower()
+    assert "end == date(2026, 9, 26)" in t
+    assert "expected_20260926" in t
+    assert "s03_forward_end: '2026-09-26'" in w
+    assert "pass_read_only_checkpoint" in t
