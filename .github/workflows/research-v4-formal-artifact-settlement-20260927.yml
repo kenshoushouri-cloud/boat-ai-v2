@@ -45,12 +45,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p v4-artifacts
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10617384166/zip > v4-artifacts/2026-09-21.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10670080150/zip > v4-artifacts/2026-09-22.zip
           gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10724298102/zip > v4-artifacts/2026-09-23.zip
           gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10782581362/zip > v4-artifacts/2026-09-24.zip
           gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10838744179/zip > v4-artifacts/2026-09-25.zip
           gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10891628808/zip > v4-artifacts/2026-09-26.zip
           gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10918742073/zip > v4-artifacts/2026-09-27.zip
           cat > v4-artifacts/SHA256SUMS <<'EOF'
+          b40c34f99c42685ebbee330c90eeab0f45a829cfc18513d2517d9fc9da9da666  v4-artifacts/2026-09-21.zip
+          60ae93e3758679fc0109fd180bbd66a54978c0b483514a724bb5ace376c5a94c  v4-artifacts/2026-09-22.zip
           9b7bb37e8d91753923774acb728499b499a3b12f2919c91ff321a7369d1c7a32  v4-artifacts/2026-09-23.zip
           4527b05e320dfcf546d2d9604edbbc5721cc50b4de2da723935eec5e7b5a0997  v4-artifacts/2026-09-24.zip
           6abac7b17061dd8e6449c98ec7cba21f2b2ae708804890076c7304e7f52bcca1  v4-artifacts/2026-09-25.zip
