@@ -1,0 +1,72 @@
+name: Research V5 Freeze Packet Real Evidence Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-v5-freeze-packet-real-evidence.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download canonical combined E2E evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10932267594/zip > combined-e2e.zip
+          echo 'dc0d714724a7649c4becd4a6eeb6e8c0c9524bf8f933999484cebf246785cdd6  combined-e2e.zip' | sha256sum -c -
+          mkdir combined-e2e
+          unzip -q combined-e2e.zip -d combined-e2e
+          test -f combined-e2e/forward-combined-checkpoint.json
+      - name: Build V5 freeze review packet from real evidence
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python -u research/v5_freeze_review_packet.py             --combined-json combined-e2e/forward-combined-checkpoint.json             --output v5-freeze-review-real-evidence.json             | tee v5-freeze-review-real-evidence.txt
+          grep -q '^V5_FREEZE_REVIEW_PACKET_RESULT=PASS_PURE_REVIEW_ONLY$' v5-freeze-review-real-evidence.txt
+          jq -e '
+            .core_review_status == "COLLECTING_CORE_EVIDENCE" and
+            .v4_formal.resolved_formal_days == 6 and
+            .s03_m2.overall.evaluated == 53 and
+            .decision_boundary.automatic_production_activation_allowed == false and
+            .decision_boundary.purchase_action == false
+          ' v5-freeze-review-real-evidence.json >/dev/null
+      - name: Emit evidence summary
+        run: |
+          set -euo pipefail
+          jq -c '{
+            end_date,
+            target_freeze_date,
+            core_review_status,
+            v4: {
+              resolved_formal_days: .v4_formal.resolved_formal_days,
+              roi_pct: .v4_formal.top2.roi_pct,
+              profit_yen: .v4_formal.top2.profit_yen
+            },
+            s03: {
+              evaluated: .s03_m2.overall.evaluated,
+              roi_pct: .s03_m2.overall.roi_pct,
+              profit_yen: .s03_m2.overall.profit_yen
+            },
+            decision_boundary
+          }' v5-freeze-review-real-evidence.json
+          echo 'V5_REAL_EVIDENCE_PACKET_RESULT=PASS'
+      - name: Upload review packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-freeze-review-real-evidence-${{ github.run_id }}
+          path: |
+            v5-freeze-review-real-evidence.json
+            v5-freeze-review-real-evidence.txt
+          retention-days: 90
+          if-no-files-found: error
