@@ -1,5 +1,97 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 19:10 JST
+
+**Forward準備の最新追記。これより下の古い件数・時刻・候補は履歴。再開時はmain/open PR/CI/Railway Productionをread-onlyで再取得する。**
+
+### Source of Truth / Production
+- GitHub main: `a50afa2f166da498b25f03f09383be14ab78b044`
+- Railway Production staged changes: none
+- pending work: none
+- fallback dispatcher current Cron: `25 23 * * *` UTC = 08:25 JST
+- Production V4 model / selector / TOP6 / TOP2 / stake: unchanged
+- `purchase_action=false`
+- F-count live read/capture/persistence/schedule: **not approved / not started**
+
+### PR #411 — future-only V4 day-strength shadow
+Draft head: `832ed2c252b8a7cc13efe22ceea5965e0658a76a`
+All CI: SUCCESS.
+
+Frozen from target date **2026-09-28 onward**:
+- artifact-native `race_score` only
+- `day_strength = mean(race_score of formal TOP6)`
+- reference = median of immediately prior 7 `FORMAL_AVAILABLE` day strengths
+- `KEEP_SHADOW` iff current >= reference, otherwise `SKIP_SHADOW`
+- unavailable dates stay unavailable
+- 2026-09-21..09-27 outcomes are not retrospective evidence for the gate
+- first review requires >=10 future resolved formal days, >=3 KEEP, >=3 SKIP
+- no schedule/persistence/Production action in the Draft
+
+This is a **shadow label only**. Formal TOP6/TOP2 remains unchanged.
+
+### PR #412 — V4 fallback timing margin
+Draft head: `a673dcc4f2880d963239e9837444b566995e819d`
+All CI: SUCCESS.
+
+Frozen evidence 2026-09-23..09-27:
+- current 08:25 schedule produced narrowest completion-to-feed headroom ~80.604s
+- observed schedule/dispatch latency is nontrivial
+
+Frozen candidate criteria:
+1. >=5m after 08:15 source cutoff
+2. >=4m after nominal 08:16 primary
+3. >=5m projected worst feed headroom under all five observed latencies
+
+Candidate comparison:
+- 08:18: spacing criteria fail
+- **08:20: only candidate passing all criteria**
+- projected worst feed headroom at 08:20: ~380.604s (~6m21s)
+- 08:22: projected worst headroom criterion fail
+- 08:25: projected worst headroom criterion fail
+
+Preferred **separate-approval candidate**:
+`20 23 * * *` UTC = **08:20 JST**
+
+Important:
+- Railway Cron is still `25 23 * * *`
+- no timing change has been applied
+- actual Cron change requires explicit user approval
+
+### PR #413 — current formal artifact × F-count compatibility
+Stacked on #400.
+Draft head: `05ad45599738257eabc926d3cde6494a9784f246`
+All CI: SUCCESS.
+
+Exact formal source:
+- 2026-09-27 formal run `36279479671`
+- artifact `10918742073`
+- formal core SHA256 `8907e2443a172d7938395145824497479f3f3bf23d3170943973545adc47f8d3`
+
+Synthetic-only compatibility proof:
+- exact 36 synthetic `race_id/lane/f_count` rows
+- exact formal six races / lanes 1..6
+- #400 adapter + #398 companion contract PASS
+- formal canonical-core hash before == after
+- synthetic companion SHA256 `0812a3fba760dd31db09609dc5682a99c24469a5ee9d35229cb7ed0e9fdff6a9`
+- DB read/result/odds/payout = 0
+- DB write/persistence/Production/BUY = 0
+
+Synthetic values are **not evidence**.
+
+Conclusion:
+- current formal V4 artifact shape is technically compatible with the frozen F-count companion design;
+- actual prospective F-count read/capture/persistence remains an explicit approval gate.
+
+### Immediate safe priorities
+1. After 2026-09-27 results are naturally loaded, refresh #409 provider-selected formal settlement; do not reconstruct.
+2. From 2026-09-28 onward, preserve artifacts needed for #411 future-only shadow evaluation; do not change formal actions.
+3. Continue S03 frozen evidence toward 100 officially evaluated observations.
+4. Do not apply 08:20 fallback Cron without explicit approval.
+5. Do not activate F-count live capture/persistence without explicit approval.
+
+Current gate:
+`V4_TOP2_FORWARD_ACTIVE_EVIDENCE / DAY_STRENGTH_SHADOW_PREREG_GREEN / FALLBACK_0820_DESIGN_GREEN_NOT_APPLIED / FCOUNT_CURRENT_ARTIFACT_COMPAT_GREEN_LIVE_NOT_APPROVED / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 18:36 JST
 
 **回収率改善研究の最新状態。これより下の古いROI・件数・PR headは履歴。再開時はGitHub main / open PR / CI / Railway Productionをread-onlyで再取得する。**
