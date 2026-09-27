@@ -1,0 +1,137 @@
+name: Research Forward Combined Checkpoint Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: 'JST end date YYYY-MM-DD; blank = current JST date'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_INVENTORY_RUN_LIST: 'v4-run-list.json'
+      V4_INVENTORY_OUTPUT: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_INVENTORY_MANIFEST: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_ARTIFACT_DIR: 'v4-artifacts'
+      V4_FORMAL_SETTLEMENT_OUTPUT: 'v4-provider-selected-forward-settlement.json'
+      S03_FORWARD_START: '2026-09-13'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Resolve end date
+        id: end
+        run: |
+          set -euo pipefail
+          requested='${{ inputs.end_date }}'
+          if [ -n "$requested" ]; then END_DATE="$requested"; else END_DATE="$(TZ=Asia/Tokyo date +%F)"; fi
+          python - <<'PY' "$END_DATE"
+          import sys
+          from datetime import date
+          date.fromisoformat(sys.argv[1])
+          PY
+          echo "end_date=$END_DATE" >> "$GITHUB_OUTPUT"
+          echo "V4_INVENTORY_END=$END_DATE" >> "$GITHUB_ENV"
+          echo "S03_FORWARD_END=$END_DATE" >> "$GITHUB_ENV"
+      - name: Verify manual read-only contract
+        run: |
+          set -euo pipefail
+          grep -q 'set transaction read only' research/v4_formal_artifact_settlement_pg.py
+          grep -q 'set transaction read only' research/s03_m2_common_economics_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-forward-combined-checkpoint-manual.yml').read_text(encoding='utf-8').lower()
+          assert 'workflow_dispatch:' in w
+          assert 'schedule:' not in w
+          assert ''.join(('railway',' variable',' list')) not in w
+          assert 'railway run' in w
+          PY
+      - name: Freeze provider inventory before result access
+        run: |
+          set -euo pipefail
+          gh run list --workflow candidate-discovery-v4-prospective-freeze.yml --limit 100 --json databaseId,event,createdAt,status,conclusion,headSha > "${V4_INVENTORY_RUN_LIST}"
+          python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-provider-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-provider-inventory.txt
+      - name: Materialize selected formal artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
+          : > v4-provider-selected-sha256.txt
+          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date, .selected.artifact_id, .selected.archive_sha256] | @tsv' "${V4_FORMAL_INVENTORY_MANIFEST}" |
+            while IFS=$'\t' read -r day artifact_id sha; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
+              printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-provider-selected-sha256.txt
+            done
+          test -s v4-provider-selected-sha256.txt
+          sha256sum -c v4-provider-selected-sha256.txt
+      - run: npm install --global @railway/cli
+      - name: Settle frozen V4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' \
+            2>&1 | tee v4-provider-selected-forward-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-provider-selected-forward-settlement.txt
+      - name: Run frozen S03 M2
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/s03_m2_common_economics_pg.py' \
+            2>&1 | tee s03-m2-forward-checkpoint.txt
+          grep -Eq '^S03_M2_COMMON_RESULT=PASS_(EXACT_FROZEN_SUBSET|READ_ONLY_CHECKPOINT)$' s03-m2-forward-checkpoint.txt
+      - name: Build combined scorecard
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python -u research/forward_combined_checkpoint.py \
+            --v4-json v4-provider-selected-forward-settlement.json \
+            --s03-log s03-m2-forward-checkpoint.txt \
+            --end-date "${{ steps.end.outputs.end_date }}" \
+            --output forward-combined-checkpoint.json \
+            | tee forward-combined-checkpoint.txt
+          grep -q '^FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE$' forward-combined-checkpoint.txt
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Combined Forward checkpoint'
+            echo
+            echo "- end_date: ${{ steps.end.outputs.end_date }}"
+            echo '- manual only / no schedule'
+            echo '- V4 artifact-first / S03 frozen rule / DB read-only'
+            echo '- no promotion / Production change / LINE / BUY'
+            echo
+            if [ -f forward-combined-checkpoint.json ]; then
+              jq '{end_date,v4_formal:{resolved_formal_days,top2,review_gate},s03_m2:{coverage,overall,risk,review_gate},safety}' forward-combined-checkpoint.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forward-combined-manual-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-inventory.json
+            v4-provider-selected-forward-settlement.json
+            v4-provider-selected-forward-settlement.txt
+            s03-m2-forward-checkpoint.txt
+            forward-combined-checkpoint.json
+            forward-combined-checkpoint.txt
+          retention-days: 90
+          if-no-files-found: warn
