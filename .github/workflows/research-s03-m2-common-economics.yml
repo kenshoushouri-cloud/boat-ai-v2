@@ -19,6 +19,8 @@ jobs:
       RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
       RAILWAY_ENVIRONMENT: 'production'
       RAILWAY_DB_SERVICE: 'postgres-recovery'
+      S03_FORWARD_START: '2026-09-13'
+      S03_FORWARD_END: '2026-09-26'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,7 +39,7 @@ jobs:
           assert ''.join(('railway',' variable',' list')) not in w
           PY
       - run: npm install --global @railway/cli
-      - name: Run exact S03 M2 common parity
+      - name: Run exact settled S03 M2 common parity through 2026-09-26
         run: |
           set -euo pipefail
           railway run \
