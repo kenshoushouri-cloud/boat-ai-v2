@@ -123,6 +123,49 @@ def evaluate_v5_milestone(x: V5MilestoneInput) -> dict[str, Any]:
     }
 
 
+def evaluate_v5_core_progress(
+    *,
+    as_of: date,
+    v4_resolved_formal_days: int,
+    s03_m2_evaluated: int,
+    evidence_contract_clean: bool = True,
+) -> dict[str, Any]:
+    """Core-only progress for routine combined checkpoints.
+
+    Optional-layer counts are intentionally not inferred here.
+    """
+    result = evaluate_v5_milestone(
+        V5MilestoneInput(
+            as_of=as_of,
+            v4_resolved_formal_days=v4_resolved_formal_days,
+            s03_m2_evaluated=s03_m2_evaluated,
+            day_strength_future_resolved_days=0,
+            day_strength_keep_days=0,
+            day_strength_skip_days=0,
+            evidence_contract_clean=evidence_contract_clean,
+        )
+    )
+    return {
+        "contract": result["contract"],
+        "target_freeze_date": result["target_freeze_date"],
+        "status": result["status"],
+        "core_evidence_ready": result["core_evidence_ready"],
+        "core_checks": result["core_checks"],
+        "remaining": {
+            "v4_resolved_formal_days": result["remaining"][
+                "v4_resolved_formal_days"
+            ],
+            "s03_m2_evaluated": result["remaining"]["s03_m2_evaluated"],
+        },
+        "optional_layers_not_evaluated_here": [
+            "day_strength",
+            "f_count",
+        ],
+        "production_activation_allowed": False,
+        "purchase_action": False,
+    }
+
+
 def current_baseline() -> dict[str, Any]:
     # Before natural 2026-09-27 settlement.
     return evaluate_v5_milestone(
