@@ -1,5 +1,36 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 21:18 JST
+
+- main: `d33460822cecf7bc6f92b68b8ba153343da57bad`
+- #425 manual V4 provider-selected checkpoint: merged
+- #426 manual S03_M2 checkpoint: merged
+- #427 frozen review-gate helper: merged
+- Railway dispatcher deployment: SUCCESS
+- staged/pending: none
+- fallback Cron: 08:25 JST unchanged
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Current review baseline:
+- V4 formal: 6 resolved days -> 4 remaining to 10-day review
+- S03_M2: 53 evaluated -> 47 remaining to 100-review
+- day-strength future evidence: 0; starts 2026-09-28
+
+Nightly results:
+- Production Cron 23:30 JST
+- recent observed starts 23:30:14..23:34:01
+- recent completion roughly 23:38..23:42
+- safe manual refresh target: after 23:45 JST
+- no automation/schedule added
+
+Next:
+- after natural 9/27 results, run #425/#426 manual checkpoints with end_date=2026-09-27;
+- update counts from actual outputs only;
+- no retune / Production change.
+
+`MANUAL_CHECKPOINTS_READY / REVIEW_GATES_READY / WAIT_927_NIGHTLY / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-27 20:12 JST
 
 - main: `19cb1f0cff51509bbb39346b499af33f7280ecf7`
