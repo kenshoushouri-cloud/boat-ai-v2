@@ -48,7 +48,7 @@ def score(entries,ticket):
     a,b,c=ls
     return W[0]*z[a]+W[1]*z[b]+W[2]*z[c]
 def summ(rows):
-    rr=[r for r in rows if r.get("hit") is not None and r.get("return_yen") is not None]
+    rr=[r for r in rows if str(r.get("evaluation_status") or "")=="evaluated" and r.get("hit") is not None and r.get("return_yen") is not None]
     inv=len(rr)*100
     gross=sum(si(r.get("return_yen")) if bool(r.get("hit")) else 0 for r in rr)
     hits=sum(int(bool(r.get("hit"))) for r in rr)
@@ -66,7 +66,7 @@ def main():
     with psycopg.connect(db,row_factory=dict_row,autocommit=False) as conn:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
-            cur.execute("""select s.race_id,s.race_date,s.ticket,s.snapshot_at,s.hit,s.return_yen,
+            cur.execute("""select s.race_id,s.race_date,s.ticket,s.snapshot_at,s.hit,s.return_yen,s.evaluation_status,
                                   r.deadline_at
                              from v2_candidate_filter_shadow s
                              join v2_races r on r.race_id=s.race_id
