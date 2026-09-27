@@ -33,6 +33,9 @@ permissions:
 
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+  RAILWAY_ENVIRONMENT: 'production'
+  RAILWAY_DB_SERVICE: 'postgres-recovery'
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
   PYTHONPATH: .
 
@@ -84,6 +87,10 @@ jobs:
           assert "grep -q '^CANDIDATE_V4_AVAILABILITY_GATE_ELIGIBLE=true$' candidate-discovery-v4-availability-gate.txt" in workflow
           assert "steps.availability_gate.outcome == 'success'" in workflow
           assert 'CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1' in workflow
+          assert ('railway'+' variable'+' list') not in workflow
+          assert ('railway-vars'+'.json') not in workflow
+          assert workflow.count('railway run') >= 2
+          assert 'RAILWAY_DB_SERVICE' in workflow
           PY
 
   freeze:
@@ -119,25 +126,6 @@ jobs:
           fi
           echo "CANDIDATE_V4_DATE=$target_date" >> "$GITHUB_ENV"
           echo "CANDIDATE_V4_RESOLVED_TARGET_DATE=$target_date"
-      - name: Load database URL
-        run: |
-          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          data=json.loads(Path('railway-vars.json').read_text())
-          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
-          if isinstance(data,list):
-              for item in data:
-                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
-                      value=item.get('value')
-                      break
-          if not value:
-              raise SystemExit('DATABASE_PUBLIC_URL not found')
-          print(f'::add-mask::{value}')
-          with open(os.environ['GITHUB_ENV'],'a') as fh:
-              fh.write(f'DATABASE_URL={value}\n')
-          PY
       - name: Capture pre-freeze official availability raw
         id: availability_capture
         continue-on-error: true
@@ -145,7 +133,12 @@ jobs:
           CANDIDATE_V4_AVAILABILITY_OUTPUT_DIR: candidate-discovery-v4-availability-raw
           CANDIDATE_V4_AVAILABILITY_REQUEST_OUTPUT: candidate-discovery-v4-availability-capture-request.json
         run: |
-          python -u research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py | tee candidate-discovery-v4-availability-capture.txt
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py' \
+            | tee candidate-discovery-v4-availability-capture.txt
           grep -q '^CANDIDATE_V4_AVAILABILITY_CAPTURE_PURCHASE_ACTION=false$' candidate-discovery-v4-availability-capture.txt
           grep -q '^CANDIDATE_V4_AVAILABILITY_CAPTURE_RESULT=PASS_PRE_FREEZE_RAW_CAPTURE$' candidate-discovery-v4-availability-capture.txt
       - name: Upload pre-freeze availability raw evidence
@@ -169,7 +162,12 @@ jobs:
           CANDIDATE_V4_RAW_OUTPUT: candidate-discovery-v4-main-feed.raw.json
           CANDIDATE_V4_PROSPECTIVE_OUTPUT: candidate-discovery-v4-prospective-freeze.json
         run: |
-          python -u research/candidate_discovery_v4_prospective_freeze_pg.py | tee candidate-discovery-v4-prospective-freeze.txt
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/candidate_discovery_v4_prospective_freeze_pg.py' \
+            | tee candidate-discovery-v4-prospective-freeze.txt
           grep -q '^CANDIDATE_V4_PROSPECTIVE_EVIDENCE_ELIGIBLE=true$' candidate-discovery-v4-prospective-freeze.txt
           grep -q '^CANDIDATE_V4_PROSPECTIVE_PURCHASE_ACTION=false$' candidate-discovery-v4-prospective-freeze.txt
           grep -q '^CANDIDATE_V4_PROSPECTIVE_PROMOTION_ALLOWED=0$' candidate-discovery-v4-prospective-freeze.txt
