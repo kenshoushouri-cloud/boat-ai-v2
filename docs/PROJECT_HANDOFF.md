@@ -1,11 +1,11 @@
 # boat-ai-v2 Project Handoff
 
-## LATEST OVERRIDE — 2026-09-27 16:17 JST
+## LATEST OVERRIDE — 2026-09-27 16:24 JST
 
 **このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
 
 ### Live source / Production
-- GitHub main at latest read-only check: `997b7cce30e1ce5c5a04905f9a22a95236930c6b`
+- GitHub main at latest read-only check: `dac9314f17035c424f5455ff604432150a276e13` (docs-only PR #393 merge)
 - Railway Production staged changes: none
 - V4 fallback dispatcher: SUCCESS, Cron `25 23 * * *` UTC
 - Production model / selector / threshold / candidate / stake unchanged
@@ -53,6 +53,21 @@ Draft / mergeable / final contract CI SUCCESS.
 - minimum interpretation gate: 200 finalized core races, >=30 F-positive predicted heads, >=100 F-zero
 - future coefficient preregistration only if F-zero head accuracy exceeds F-positive by >=5.0pt and direction agrees in >=3/4 chronological quarters
 - passing diagnostic would still not authorize Production promotion
+
+### PR #398 — hash-bound F-count companion artifact DESIGN ONLY
+Draft / mergeable / all CI SUCCESS.
+- head `f55403cfa33e9ad6fc27d69872927711c4856af0`
+- pure in-memory contract only; no DB/network/Railway access
+- F-count evidence stays in a separate companion artifact rather than modifying formal V4 evidence
+- companion binds to the existing formal V4 canonical-core SHA256
+- exact six race IDs / daily ranks / predicted heads must match the formal V4 freeze
+- capture timing contract: target day, >=08:15 JST, >=formal freeze time, and < every core deadline
+- exactly six non-negative integer F counts per race
+- tests prove research-only metadata does not alter the formal V4 canonical-core hash
+- no capture / no upload / no persistence / no schedule / no coefficient
+
+Frozen gate:
+`FCOUNT_COMPANION_HASH_BOUND / FORMAL_V4_CORE_IMMUTABLE / PURE_CONTRACT_GREEN / NO_CAPTURE / NO_PERSISTENCE / EXPLICIT_APPROVAL_REQUIRED_FOR_ACTIVATION / NO_PRODUCTION_CHANGE / PURCHASE_FALSE`
 
 ### Current approval boundary
 **Next scientific step requires explicit approval** because it would activate prospective Forward persistence/collection for F-count snapshots.
