@@ -1,0 +1,27 @@
+name: Research V4 Manual Checkpoint Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_formal_artifact_inventory.py'
+      - 'research/v4_formal_artifact_settlement_pg.py'
+      - 'tests/test_v4_provider_selected_manual_checkpoint.py'
+      - '.github/workflows/research-v4-provider-selected-forward-checkpoint-manual.yml'
+      - '.github/workflows/research-v4-provider-checkpoint-manual-contract.yml'
+      - 'docs/V4_PROVIDER_SELECTED_MANUAL_CHECKPOINT_20260927.md'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=. pytest -q tests/test_v4_provider_selected_manual_checkpoint.py
