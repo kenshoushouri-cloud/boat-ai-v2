@@ -68,6 +68,11 @@ TOP1 is not profitable at this checkpoint:
 - profit -630 JPY
 - ROI 80.3125%
 
+Ticket-order attribution is descriptive only:
+- core_order=1: 32 bets / 4 hits / ROI 80.3125% / -630 JPY
+- core_order=2: 32 bets / 6 hits / ROI 262.5000% / +5,200 JPY
+- this does **not** authorize a ticket2-only policy; the frozen formal contract remains TOP2.
+
 Predicted-head accuracy is computed only on official-result races; void races are excluded from its denominator. The corrected checkpoint uses 32 official races.
 
 ## Frozen future review
@@ -78,6 +83,14 @@ Review the unchanged formal TOP2 stream at:
 - 10 economically resolved formal days;
 - 20 economically resolved formal days;
 - 30 economically resolved formal days.
+
+Provider-selected checkpoint implementation:
+- enumerate all prospective-freeze workflow runs first;
+- apply the frozen formal-capture arbiter with zero DB/result/payout/odds reads;
+- materialize only the selected immutable artifacts;
+- validate archive/core hashes;
+- only then open the read-only result query.
+This removes manual artifact-ID selection from future checkpoint refreshes.
 
 At every checkpoint report:
 - formal available / unavailable dates;
