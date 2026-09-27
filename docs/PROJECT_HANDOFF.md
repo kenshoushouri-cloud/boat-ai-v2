@@ -1,5 +1,61 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-27 POST-PR401
+
+**このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
+
+### Live source / Production
+- GitHub main at latest read-only check: `a255aa3a5d17cef953685f801b447ca6c80db28a` (docs-only PR #399 merge)
+- Railway Production staged changes: none
+- V4 fallback dispatcher latest deployment: SUCCESS
+- dispatcher Cron: `25 23 * * *` UTC
+- Production model / selector / threshold / candidate / stake unchanged
+- `purchase_action=false`
+
+### F-count evidence chain
+- #394: `recent_form` empty in all 413,820 canonical-period entry rows -> reject / fail closed.
+- #395: unused numeric entry fields broadly present; no strong historical row-level 08:15 capture timestamp.
+- #396 canonical input-only audit:
+  - F count full-six 100%
+  - within-race variation 57.0741%
+  - F>0 rows 15.0826%
+  - L count within-race variation only 0.8221%
+  - no outcomes read
+- #397: prospective F-count head-error diagnostic preregistered; pure contract CI SUCCESS; no collection/persistence.
+- #398: separate hash-bound F-count companion artifact contract; all CI SUCCESS; formal V4 canonical core remains immutable.
+- #400: stacked pure row adapter on #398; all CI SUCCESS.
+  - exact 36 `race_id/lane/f_count` rows only
+  - exact formal six races / lanes 1..6
+  - duplicates/extra races/missing lanes/non-integer or negative F counts rejected
+  - outcome-like row fields rejected
+  - formal canonical-core SHA256 verified unchanged before/after
+  - no DB/network/file I/O and no persistence
+- #401: existing formal V4 prospective-freeze DB-route hardening Draft; all CI SUCCESS.
+  - proposed removal of Railway variable enumeration
+  - proposed non-enumerating `railway run` route against fixed `postgres-recovery`
+  - schedule `16 23 * * *` UTC unchanged
+  - 08:15 cutoff / model / selector / tickets / availability guard unchanged
+  - PR safety job SUCCESS; live freeze job SKIPPED on PR event
+  - **not merged** because it changes the live scheduled Forward evidence route
+
+### Current approval boundary
+No F-count live capture has been started.
+
+Explicit approval is still required before:
+1. merging/activating a live Forward-route change such as #401;
+2. adding or enabling F-count companion capture/persistence/scheduling;
+3. writing a Forward table/artifact stream;
+4. using future F-count snapshots for settled result evaluation.
+
+Until approval:
+- do not run historical F-count coefficient searches;
+- do not alter formal V4 selector/rank/tickets;
+- do not merge #401 solely from a generic "進めて下さい";
+- do not enable F-count persistence.
+
+Safe completed state:
+`FCOUNT_INPUT_READY / PROSPECTIVE_DIAGNOSTIC_PREREGISTERED / COMPANION_HASH_CONTRACT_GREEN / PURE_ROW_ADAPTER_GREEN / NON_ENUMERATING_ROUTE_DRAFT_GREEN / LIVE_FCOUNT_CAPTURE_NOT_APPROVED / PRODUCTION_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 16:24 JST
 
 **このsectionを最新の引き継ぎ情報として扱うこと。下の古いoverrideは履歴。再開時は必ずlive再取得する。**
