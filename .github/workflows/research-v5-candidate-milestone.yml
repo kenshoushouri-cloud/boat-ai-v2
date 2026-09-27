@@ -1,0 +1,39 @@
+name: Research V5 Candidate Milestone
+
+on:
+  pull_request:
+    paths:
+      - 'research/v5_candidate_milestone.py'
+      - 'tests/test_v5_candidate_milestone.py'
+      - 'docs/V5_RESEARCH_CANDIDATE_MILESTONE_20261015.md'
+      - '.github/workflows/research-v5-candidate-milestone.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - name: Verify pure milestone contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v5_candidate_milestone.py').read_text(encoding='utf-8').lower()
+          for token in (
+              'psycopg','database_url','railway','requests','urllib','subprocess',
+              'insert into','update v2_','delete from','send_line'
+          ):
+              assert token not in t, token
+          assert 'production_activation_allowed' in t
+          assert 'purchase_action' in t
+          PY
+      - run: PYTHONPATH=. pytest -q tests/test_v5_candidate_milestone.py
+      - run: PYTHONPATH=. python -u research/v5_candidate_milestone.py
