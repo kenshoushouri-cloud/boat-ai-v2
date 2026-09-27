@@ -9,7 +9,7 @@ from research.v5_candidate_milestone import (
 
 def test_current_baseline_is_collecting():
     x = current_baseline()
-    assert x["status"] == "COLLECTING_EVIDENCE"
+    assert x["status"] == "COLLECTING_CORE_EVIDENCE"
     assert x["remaining"]["v4_resolved_formal_days"] == 14
     assert x["remaining"]["s03_m2_evaluated"] == 47
     assert x["remaining"]["day_strength_future_resolved_days"] == 10
@@ -29,12 +29,13 @@ def test_freeze_review_needs_all_preregistered_evidence_gates():
             evidence_contract_clean=True,
         )
     )
-    assert x["status"] == "V5_RESEARCH_CANDIDATE_FREEZE_REVIEW_READY"
-    assert x["evidence_ready"] is True
+    assert x["status"] == "V5_CORE_FREEZE_REVIEW_READY"
+    assert x["core_evidence_ready"] is True
+    assert x["optional_layers"]["day_strength"]["admission_ready"] is True
     assert x["automatic_model_change_allowed"] is False
 
 
-def test_no_single_track_can_make_candidate_ready():
+def test_optional_day_strength_cannot_block_core_freeze():
     x = evaluate_v5_milestone(
         V5MilestoneInput(
             as_of=date(2026, 10, 15),
@@ -46,7 +47,9 @@ def test_no_single_track_can_make_candidate_ready():
             evidence_contract_clean=True,
         )
     )
-    assert x["evidence_ready"] is False
+    assert x["core_evidence_ready"] is True
+    assert x["status"] == "V5_CORE_FREEZE_REVIEW_READY"
+    assert x["optional_layers"]["day_strength"]["admission_ready"] is False
     assert x["remaining"]["day_strength_skip_days"] == 3
 
 
@@ -62,4 +65,4 @@ def test_unclean_evidence_fails_closed():
             evidence_contract_clean=False,
         )
     )
-    assert x["evidence_ready"] is False
+    assert x["core_evidence_ready"] is False
