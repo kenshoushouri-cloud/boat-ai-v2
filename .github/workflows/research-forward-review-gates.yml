@@ -1,0 +1,37 @@
+name: Research Forward Review Gates
+
+on:
+  pull_request:
+    paths:
+      - 'research/forward_review_gates.py'
+      - 'tests/test_forward_review_gates.py'
+      - 'docs/FORWARD_REVIEW_GATES_20260927.md'
+      - '.github/workflows/research-forward-review-gates.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pure no-action contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/forward_review_gates.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','requests','urllib','subprocess','railway','github','insert into','update v2_','delete from','send_line'):
+              assert token not in t, token
+          assert 'promotion_allowed' in t
+          assert 'production_change' in t
+          PY
+      - run: python -m pip install pytest
+      - run: PYTHONPATH=. pytest -q tests/test_forward_review_gates.py
+      - run: PYTHONPATH=. python -u research/forward_review_gates.py
