@@ -203,6 +203,36 @@ def summarize(rows: list[dict[str, Any]], points: int) -> dict[str, Any]:
     }
 
 
+def summarize_ticket_order(rows: list[dict[str, Any]], order: int) -> dict[str, Any]:
+    if order not in (1, 2):
+        raise ValueError("order must be 1 or 2")
+    settled = [r for r in rows if r["official"]]
+    investment = len(settled) * UNIT_YEN
+    key = f"ticket{order}"
+    gross = 0
+    hits = 0
+    payouts: list[int] = []
+    for r in settled:
+        if r["actual_ticket"] == r[key]:
+            hits += 1
+            payout = int(r["payout_yen"])
+            gross += payout
+            payouts.append(payout)
+    payouts.sort(reverse=True)
+    return {
+        "ticket_order": order,
+        "settled_races": len(settled),
+        "bets": len(settled),
+        "hits": hits,
+        "investment_yen": investment,
+        "return_yen": gross,
+        "profit_yen": gross - investment,
+        "roi_pct": round(gross / investment * 100.0, 4) if investment else None,
+        "largest_hit_yen": payouts[0] if payouts else 0,
+        "largest_hit_share_pct": round(payouts[0] / gross * 100.0, 4) if payouts and gross else 0.0,
+    }
+
+
 def top2_day_bootstrap(day_rows: list[dict[str, Any]]) -> dict[str, Any]:
     complete = [d for d in day_rows if d["complete"]]
     if not complete:
@@ -311,6 +341,8 @@ def main() -> None:
     complete_rows = [r for r in settled_rows if r["date"] in complete_dates]
     overall_top1 = summarize(complete_rows, 1)
     overall_top2 = summarize(complete_rows, 2)
+    ticket1_only = summarize_ticket_order(complete_rows, 1)
+    ticket2_only = summarize_ticket_order(complete_rows, 2)
     head_n = sum(int(r["official"]) for r in complete_rows)
     head_hits = sum(int(r["official"] and r["head_lane"] == r["actual_head_lane"]) for r in complete_rows)
 
@@ -395,6 +427,11 @@ def main() -> None:
             "profitable_days_top1": sum(int(x["complete"] and x["top1"]["profit_yen"] > 0) for x in by_day),
             "profitable_days_top2": sum(int(x["complete"] and x["top2"]["profit_yen"] > 0) for x in by_day),
         },
+        "ticket_order_attribution": {
+            "ticket1": ticket1_only,
+            "ticket2": ticket2_only,
+            "interpretation": "descriptive attribution only; no order-specific policy change is authorized",
+        },
         "robustness": robustness,
         "void_races": [
             {"date": r["date"], "race_id": r["race_id"]}
@@ -425,6 +462,7 @@ def main() -> None:
 
     print("V4_FORMAL_SETTLEMENT_DAYS=" + json.dumps(by_day, sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_COMPLETE=" + json.dumps(out["complete_day_only"], sort_keys=True), flush=True)
+    print("V4_FORMAL_SETTLEMENT_TICKET_ORDER=" + json.dumps(out["ticket_order_attribution"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_ROBUSTNESS=" + json.dumps(robustness, sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_VOID=" + json.dumps(out["void_races"], sort_keys=True), flush=True)
     print("V4_FORMAL_SETTLEMENT_PENDING=" + json.dumps(out["pending_or_invalid_races"], sort_keys=True), flush=True)
