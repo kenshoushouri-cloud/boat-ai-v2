@@ -1,5 +1,38 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-27 19:10 JST
+
+- main: `a50afa2f166da498b25f03f09383be14ab78b044`
+- Railway Production staged changes/pending work: none
+- dispatcher Cron remains `25 23 * * *` UTC (08:25 JST)
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+New safe research:
+- #411 future-only day-strength shadow: all CI SUCCESS
+  - starts 2026-09-28
+  - mean formal TOP6 `race_score`
+  - compare to prior-7 formal-day median
+  - shadow label only; no Production action
+- #412 fallback timing: all CI SUCCESS
+  - 08:20 JST is the only frozen candidate passing cutoff/primary/worst-headroom criteria
+  - projected worst feed headroom ~6m21s
+  - **not applied**
+  - current Cron remains 08:25 JST
+- #413 F-count current-artifact compatibility: all CI SUCCESS
+  - exact 2026-09-27 formal artifact accepted by #400/#398 using synthetic 36-row sentinel input
+  - formal core hash remains `8907e244...8d3`
+  - no real F-count read or persistence
+  - live F-count remains unapproved
+
+Next:
+- refresh #409 after natural 9/27 results load;
+- evaluate #411 only on 9/28+ future formal days;
+- continue S03 to 100;
+- any fallback Cron change or F-count activation requires explicit approval.
+
+`SHADOW_PREREG_GREEN / 0820_TIMING_CANDIDATE_ONLY / FCOUNT_COMPAT_GREEN / NO_PROD_CHANGE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-27 18:36 JST
 
 - main: `1d40d83b4cb0a2ecbf21a8555ea06d23a7ca1d6f`
