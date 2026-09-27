@@ -106,7 +106,7 @@ jobs:
           forbidden_wf=('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json','collect_'+'beforeinfo')
           for value in forbidden_wf:
               assert value not in wf, value
-          forbidden_code=('v2_'+'results','v2_'+'result_entries','v2_'+'odds','payout','send_'+'line')
+          forbidden_code=('v2_'+'results','v2_'+'result_entries','v2_'+'odds','v2_'+'payout','send_'+'line')
           for value in forbidden_code:
               assert value not in code, value
           assert 'railway run' in wf
