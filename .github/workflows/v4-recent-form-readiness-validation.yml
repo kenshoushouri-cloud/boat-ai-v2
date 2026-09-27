@@ -35,7 +35,7 @@ jobs:
               'v2_'+'results',
               'v2_'+'result_entries',
               'v2_'+'odds',
-              'payout',
+              'v2_'+'payout',
               'send_'+'line',
               'insert into',
               'update v2_',
