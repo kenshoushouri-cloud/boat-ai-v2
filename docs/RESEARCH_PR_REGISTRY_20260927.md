@@ -143,13 +143,17 @@ Frozen:
 
 ## Tier B — active infrastructure / safety research
 
-### #412 — fallback timing margin
-Current role: **Production-change proposal preparation only**.
+### #412 — fallback timing margin / activated Production schedule
+Current role: **activated operational timing contract + rollback provenance**.
 
-- 08:20 JST is the frozen preferred candidate;
-- current Production Cron remains 08:25 JST;
-- activation is constrained to cronSchedule only;
-- explicit approval required before any Railway change.
+- user explicitly approved activation on 2026-09-28;
+- Production Cron changed from 08:25 JST to **08:20 JST**;
+- exact field changed: `cronSchedule` only;
+- activation deployment `2141e0fa-0897-4b2d-b5c7-94f2b03e571d`: SUCCESS;
+- source/build/startCommand/runtime/region/replica unchanged;
+- rollback remains 08:25 JST / `25 23 * * *`;
+- first live 08:20 cycle is target 2026-09-29;
+- #412 timing audit remains the decision provenance.
 
 ### #422 — common prospective Forward economics integrated
 Current role: **main-integrated common pure economic semantics**.
@@ -241,7 +245,7 @@ For ROI work:
 6. main-integrated #422/#423 common economics/validation suite.
 
 For operational safety:
-1. #412;
+1. #412 activated fallback timing + rollback provenance;
 2. #409 provider inventory/freeze contract.
 
 For F-count:

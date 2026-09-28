@@ -1,5 +1,33 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-28 21:43 JST
+
+- main before docs update: `f7115240122da782375affe6dcb3be1798081812`
+- explicit approval received for fallback Cron change
+- Production fallback Cron changed:
+  - before 08:25 JST / `25 23 * * *`
+  - now **08:20 JST / `20 23 * * *`**
+- only `cronSchedule` changed
+- activation deployment `2141e0fa-0897-4b2d-b5c7-94f2b03e571d`: **SUCCESS**
+- source/build/startCommand/runtime/region/replica unchanged
+- staged/unmerged config: none
+- rollback = restore `25 23 * * *`
+- first live 08:20 cycle: target 2026-09-29
+
+Reason:
+- GitHub natural schedule delivery remains severely late;
+- 9/28 natural run started ~10:37 JST;
+- old 08:25 fallback still succeeded but formal freeze reached 08:31:28;
+- #412 projected 08:20 worst feed headroom ~6m21s.
+
+Evidence counts unchanged before 9/28 settlement:
+- V4 7/20
+- S03 61/100
+- day-strength 1 day / KEEP 0 / SKIP 1
+
+Production V4 model/selector/TOP6/TOP2/stake unchanged.
+`purchase_action=false`.
+
 ## LATEST OVERRIDE — 2026-09-28 15:12 JST
 
 - main before docs update: `29571653276b6c31fc8321c81cfaf52c135cd090`
