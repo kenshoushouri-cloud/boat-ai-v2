@@ -1,5 +1,96 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-28 21:43 JST
+
+### Production fallback Cron moved to 08:20 JST with explicit approval
+- GitHub main before this docs update: `f7115240122da782375affe6dcb3be1798081812`
+- user explicitly approved the prepared #412 Railway Cron change
+- Railway project: `268a5b17-0712-440a-884d-27f7fa887a2d`
+- environment: production `5ffb02f6-5ec8-4268-9bda-8e30431ff625`
+- service: `candidate-discovery-v4-fallback-dispatcher`
+- service ID: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
+- Production model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+### Exact applied delta
+Before:
+- `cronSchedule = 25 23 * * *`
+- 08:25 JST
+
+After:
+- `cronSchedule = 20 23 * * *`
+- **08:20 JST**
+
+Only `cronSchedule` was changed.
+
+Pre/post config invariants:
+- source repo: `kenshoushouri-cloud/boat-ai-v2`
+- source branch: `main`
+- builder: `RAILPACK`
+- buildEnvironment: `V3`
+- startCommand: `python -u research/candidate_discovery_v4_fallback_dispatcher.py`
+- restartPolicyType: `NEVER`
+- runtime: `V2`
+- region: `us-west2`
+- replicas: 1
+- variable values were not read or displayed
+- unmerged/staged config: none
+
+### Activation deployment
+- deployment: `2141e0fa-0897-4b2d-b5c7-94f2b03e571d`
+- commit: `f7115240122da782375affe6dcb3be1798081812`
+- final status: **SUCCESS**
+- completed around 21:42 JST
+
+Post-change read-back:
+- Railway service Cron: `20 23 * * *`
+- service config invariants above unchanged
+- unmerged/staged config count: none
+
+Rollback:
+- `20 23 * * * -> 25 23 * * *`
+
+### Why 08:20
+This is the already-preregistered #412 candidate.
+
+Frozen timing audit:
+- 08:20 was the only candidate satisfying:
+  1. >=5 minutes after the 08:15 source cutoff;
+  2. >=4 minutes after nominal 08:16 primary;
+  3. projected worst observed schedule-to-freeze latency still leaves >=5 minutes before the earliest observed feed deadline.
+- projected worst feed headroom at 08:20: about **380.604 sec (~6m21s)**.
+
+Latest 2026-09-28 evidence strengthened the rationale:
+- natural GitHub schedule expected around 08:16 but started around 10:37 JST and failed closed;
+- old 08:25 fallback dispatched around 08:29:08;
+- formal freeze started 08:31:26 and completed 08:31:28;
+- the old fallback therefore succeeded but ran close to its 08:32 availability hard-stop.
+
+The 08:20 change does not fix GitHub schedule delivery latency.
+It increases fallback safety margin.
+
+### First live observation under 08:20
+The first natural Production fallback cycle using the new Cron will be the 2026-09-29 target-day cycle.
+
+Observe:
+- actual Railway dispatcher action time;
+- workflow_dispatch creation time;
+- formal freeze start/completion;
+- earliest feed deadline;
+- whether headroom improves as expected.
+
+Do not retune the V4 model from this operational change.
+
+### Current evidence state remains
+Before 9/28 settlement:
+- V4: 7 / 20 resolved formal days
+- S03_M2: 61 / 100 evaluated
+- day-strength: 1 future day / KEEP 0 / SKIP 1
+- 9/28 classification: SKIP_SHADOW
+- V5 core target: 2026-10-15
+
+`FALLBACK_CRON_0820_ACTIVE / ACTIVATION_DEPLOYMENT_SUCCESS / ONLY_CRON_CHANGED / FIRST_LIVE_CHECK_20260929 / PROD_MODEL_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-28 15:12 JST
 
 ### 2026-09-28 first future-only day-strength shadow is captured
