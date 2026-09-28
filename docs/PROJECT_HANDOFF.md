@@ -1,5 +1,86 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-28 15:12 JST
+
+### 2026-09-28 first future-only day-strength shadow is captured
+- main before this docs update: `29571653276b6c31fc8321c81cfaf52c135cd090`
+- Production remains V4
+- V5 core mandatory progress remains **V4 7/20, S03_M2 61/100** until 9/28 results settle
+- `purchase_action=false`
+
+### Valid 2026-09-28 formal artifact
+Natural schedule run:
+- run `36366680495`
+- started approximately 10:37 JST
+- availability hard-stop 08:32 JST
+- earliest frozen-feed deadline 10:02 JST
+- correctly failed closed because it was too late
+- do not use this failed scheduled run as formal evidence
+
+Valid fallback provider run:
+- workflow_dispatch run `36358843505`
+- success
+- artifact `10945160972`
+- artifact digest `sha256:34341de57e1090771692db425cbc1416d3dabe97f4d391feb244a6397958ed05`
+- prospective artifact SHA256 `1c080acc70d138f85466269b337892b9ad5eccd797d45d1158c6bcb3596345d1`
+- canonical core SHA256 `7fce9e849f66dca82b8ba4c358bc68a131e858c0749216ca7e21f68bb822a93f`
+- started 08:31:26 JST
+- completed 08:31:28 JST
+- earliest core/feed deadline 10:02 JST
+- prospective evidence eligible=true
+- availability gate `PASS_ACTIVE_CORE`
+- result/payout read=0
+- purchase_action=false
+
+### First day-strength classification
+Canonical one-off evidence:
+- PR #449, closed unmerged
+- run `36384993197`
+- job `108808405878`
+- result: `PASS_RESULT_BLIND`
+
+Frozen rule:
+- target day_strength = mean formal TOP6 race_score
+- reference = median immediately prior 7 FORMAL_AVAILABLE day strengths
+
+2026-09-28:
+- target strength: **0.93618881**
+- frozen reference: **0.93817204**
+- classification: **SKIP_SHADOW**
+- margin target-reference: **-0.00198323**
+- formal_action_changed=false
+- promotion_allowed=false
+- DB/result/payout/odds reads=0
+
+Optional day-strength progress:
+- future classified days: **1**
+- KEEP: **0**
+- SKIP: **1**
+
+Admission gate remains unchanged:
+- >=10 future resolved days
+- >=3 KEEP
+- >=3 SKIP
+
+This first SKIP is descriptive shadow evidence only. It does not cancel or alter the formal TOP6/TOP2 action.
+
+### V5 core status
+Mandatory counts remain unchanged until 9/28 settlement:
+- formal V4: **7 / 20**, remaining 13
+- S03_M2: **61 / 100**, remaining 39
+- status: `COLLECTING_CORE_EVIDENCE`
+- target core freeze review: 2026-10-15
+
+Next:
+- wait for natural 9/28 nightly settlement;
+- then run combined checkpoint for end_date=2026-09-28;
+- evaluate V4/S03/V5 progress without retuning;
+- separately record whether the first SKIP day would have been economically helpful only after results are officially available.
+
+No Production action follows automatically from that comparison.
+
+`928_FORMAL_FALLBACK_VALID / DAY_STRENGTH_1D_SKIP / V5_CORE_7_OF_20_61_OF_100 / WAIT_928_SETTLEMENT / PROD_UNCHANGED / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-28 01:12 JST
 
 ### 2026-09-27 natural settlement is complete
