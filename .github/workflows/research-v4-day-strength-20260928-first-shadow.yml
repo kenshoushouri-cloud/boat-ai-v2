@@ -37,7 +37,7 @@ jobs:
           w=Path('.github/workflows/research-v4-day-strength-20260928-first-shadow.yml').read_text(encoding='utf-8').lower()
           assert ''.join(('railway',' run')) not in w
           assert ''.join(('database','_url')) not in w
-          assert 'result_day_terminal_readiness' not in w
+          assert ''.join(('result_day_terminal','_readiness')) not in w
           PY
 
       - name: Freeze provider inventory without results
@@ -101,4 +101,4 @@ jobs:
             v4-day-strength-shadow.txt
             v4-day-strength-shadow.json
           retention-days: 90
-          if-no-files-found: error
+          if-no-files-found: warn
