@@ -1,5 +1,27 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-28 15:12 JST
+
+- main before docs update: `29571653276b6c31fc8321c81cfaf52c135cd090`
+- 9/28 valid formal source: fallback run `36358843505`
+- fallback completed 08:31:28 JST before earliest 10:02 deadline
+- natural schedule run at ~10:37 JST failed closed as too late
+- first future-only day-strength evidence: PASS_RESULT_BLIND
+- target strength **0.93618881**
+- reference **0.93817204**
+- classification **SKIP_SHADOW**
+- formal action unchanged
+- day-strength progress: 1 future day / KEEP 0 / SKIP 1
+
+V5 core mandatory counts are not advanced before settlement:
+- V4 7/20
+- S03 61/100
+- target 2026-10-15
+
+Next: after 9/28 nightly settlement, run combined checkpoint with no retune.
+
+`DAY_STRENGTH_FIRST_SKIP / FALLBACK_VALID / CORE_COUNTS_UNCHANGED / PROD_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-28 01:12 JST
 
 - main before docs update: `6e82ee37961c3e83f867be0773b8f0ac94d6842b`
