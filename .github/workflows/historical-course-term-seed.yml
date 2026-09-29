@@ -1,0 +1,114 @@
+name: Historical applied-term Course seed
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_course_term_seed_pg.py"
+      - "tests/test_historical_course_term_seed_pg.py"
+      - ".github/workflows/historical-course-term-seed.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - run: |
+          pytest -q tests/test_historical_course_term_seed_pg.py
+          python -m py_compile research/historical_course_term_seed_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_course_term_seed_pg.py").read_text(encoding="utf-8").lower()
+          assert "boatrace_official_k_applied_term_proxy" in p
+          assert "on conflict (racer_number,snapshot_date,course) do nothing" in p
+          assert "update v2_racer_course_stats_snapshots" not in p
+          assert "delete from" not in p
+          assert "production_v4_accepted_source" in p
+          print("PASS historical course seed safety")
+          PY
+
+  seed:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-course-term ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Parse term
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 3 or p[1] != "historical-course-term":
+              raise SystemExit("command: /railway historical-course-term 2025H2")
+          if p[2] not in {"2025H2","2026H1","2026H2"}:
+              raise SystemExit("unsupported term")
+          print("HIST_COURSE_TERM="+p[2])
+          PY
+      - name: Build and persist official K applied-term Course proxy
+        env:
+          CONFIRM_HISTORICAL_COURSE_DB_WRITE: "YES"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_COURSE_DB_WRITE="${CONFIRM_HISTORICAL_COURSE_DB_WRITE}"; exec python -u research/historical_course_term_seed_pg.py --term "${HIST_COURSE_TERM}"' \
+            | tee historical-course-term.txt
+          grep -q '^HIST_COURSE_RESULT=PASS$' historical-course-term.txt
+          grep -q '^HIST_COURSE_TARGET_OUTCOME_LEAKAGE=0$' historical-course-term.txt
+          grep -q '^HIST_COURSE_PRODUCTION_CONTRACT_CHANGED=0$' historical-course-term.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-course-term-${{ github.run_id }}
+          path: |
+            historical-course-term.txt
+            historical-applied-term-course-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical Course term: ${HIST_COURSE_TERM}"
+            if [ -f historical-course-term.txt ]; then
+              grep -E '^(HIST_COURSE_SUMMARY=|HIST_COURSE_RESULT=)' historical-course-term.txt || true
+            fi
+            echo
+            echo "Source: BOAT RACE official K files; fixed prior-term proxy; Production V4 contract unchanged."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
