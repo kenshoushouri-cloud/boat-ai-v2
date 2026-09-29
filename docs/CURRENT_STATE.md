@@ -1,5 +1,48 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-29 16:59 JST
+
+Current source of truth:
+- main: `aa9e9d3a1ad18d174be9b16a871eba5037990fe7`
+- Production fallback Cron: **08:25 JST** / `25 23 * * *`
+- latest dispatcher deployment `5b967767-0300-4795-a81b-213410610d90`: SUCCESS
+- pending/staged: none
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+9/29 incident:
+- 08:20 Cron activation hit old internal 08:25 checkpoint
+- log at 08:23:33 JST: `NOT_DUE / before_0825_checkpoint`
+- fallback did not dispatch
+- natural GitHub schedule started ~11:33 JST and failed closed
+- **9/29 formal prospective artifact unavailable**
+- no reconstruction/backfill
+- no day-strength label for 9/29
+
+Rollback:
+- Production restored to **08:25 JST**
+- rollback deployment SUCCESS
+- current read-back confirms 08:25
+
+#452:
+- Draft open
+- head `73dd7f593be1199edf32bb0710458548a6d2d32d`
+- all CI SUCCESS
+- aligns internal checkpoint to 08:20
+- **not merged**
+- explicit approval required before Production reactivation
+
+Settled through 9/28:
+- V4: **8 resolved days**, ROI **147.7273%**, profit **+4,200 JPY**
+- V4 9/28 single day: ROI 55.0%, -540 JPY
+- 9/28 preregistered SKIP_SHADOW would have avoided that loss; one-day descriptive only
+- S03_M2: **63 evaluated**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03 second half ROI **56.5625%**
+- V5 core: V4 **8/20**, S03 **63/100**
+- 9/29 does not count
+
+`PROD_0825_SAFE / PR452_GREEN_NOT_MERGED / 929_UNAVAILABLE / V5_8_OF_20_63_OF_100 / PROD_MODEL_UNCHANGED`
+
 ## LATEST OVERRIDE — 2026-09-29 16:45 JST
 
 - Production fallback Cron is **08:25 JST** after safe rollback.
