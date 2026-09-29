@@ -1,5 +1,168 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-29 16:59 JST
+
+### FINAL HANDOFF — fallback rollback safe / #452 green Draft / 2026-09-29 formal unavailable
+Treat this section as the current source of truth. Older override sections below are history.
+
+#### GitHub / Railway current state
+- GitHub main: `aa9e9d3a1ad18d174be9b16a871eba5037990fe7`
+- latest main commit: merge PR #454 `Docs: record fallback rollback and 9/28 refresh`
+- Railway project: `268a5b17-0712-440a-884d-27f7fa887a2d`
+- Production environment: `5ffb02f6-5ec8-4268-9bda-8e30431ff625`
+- fallback dispatcher service: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
+- current fallback Cron: **`25 23 * * *` = 08:25 JST**
+- latest dispatcher deployment: `5b967767-0300-4795-a81b-213410610d90`
+- latest dispatcher deployment status: **SUCCESS**
+- pending work: none
+- staged/unmerged config: none
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+#### 2026-09-29 fallback incident
+The explicitly approved 08:20 Cron activation exposed a code/config mismatch.
+
+Observed:
+- Railway Cron was changed to 08:20 JST;
+- dispatcher process reached decision at **08:23:33 JST**;
+- code returned:
+  `action=NOT_DUE reason=before_0825_checkpoint`;
+- no fallback `workflow_dispatch` was created.
+
+Root cause:
+- `research/candidate_discovery_v4_fallback_dispatcher.py` still had internal checkpoint **08:25**.
+
+Natural GitHub schedule was also unusable:
+- run `36513182505`
+- created approximately **11:33 JST**
+- availability hard-stop: 08:32 JST
+- earliest frozen-feed deadline: 08:44 JST
+- correctly failed closed.
+
+Result:
+- **2026-09-29 has no valid formal prospective V4 artifact**
+- do not reconstruct
+- do not backfill
+- do not create a 9/29 day-strength label
+- do not count 9/29 toward V4 resolved-day or optional day-strength gates
+
+#### Production rollback
+Rollback was applied immediately:
+- 08:20 -> **08:25 JST**
+- rollback deployment `26973382-903c-4d50-9a78-9c079d8c5577`: SUCCESS
+- later docs-triggered dispatcher deployment `5b967767-0300-4795-a81b-213410610d90`: SUCCESS
+- current Cron read-back remains **08:25 JST**
+
+This is the current safe Production state.
+
+#### Draft PR #452 — 08:20 code alignment
+Open Draft:
+- PR #452 `Fix: align fallback dispatcher checkpoint to 08:20 JST`
+- head: `73dd7f593be1199edf32bb0710458548a6d2d32d`
+- mergeable: true
+- all CI SUCCESS
+
+#452 changes:
+- internal dispatcher checkpoint 08:25 -> 08:20;
+- activation manifest aligned to 08:20;
+- tests prove:
+  - 08:19:59 => NOT_DUE / no GitHub call;
+  - exactly 08:20 => fallback dispatch permitted.
+
+**#452 is NOT merged.**
+
+A new explicit approval is required before:
+1. merging #452 if it will affect Production fallback behavior; and/or
+2. changing Production fallback Cron back to 08:20.
+
+Do not assume the previous approval authorizes this new code+Cron activation cycle.
+
+#### Latest settled economics — through 2026-09-28
+Canonical read-only refresh:
+- workflow run `36538181451`
+- job `109307018169`
+- artifact `11018808467`
+- digest `sha256:72eb6b5d309859f1b3ad82d886b2603c2006f59fb1af2365debbb97145cb6d21`
+
+Formal V4 TOP2:
+- resolved formal days: **8**
+- settled races: 44
+- head accuracy: **63.6364%**
+- 88 bets / 12 hits
+- investment: 8,800 JPY
+- return: 13,000 JPY
+- profit: **+4,200 JPY**
+- ROI: **147.7273%**
+- second chronological half ROI: **135.2083%**
+- leave-one-day worst ROI: **112.3684%**
+- leave-one-hit min ROI: **109.4186%**
+- bootstrap P(ROI>100%): **85.63%**
+- remaining to 10-day review: **2**
+
+2026-09-28 single day:
+- 12 bets / 1 hit
+- investment 1,200 JPY
+- return 660 JPY
+- profit **-540 JPY**
+- ROI **55.0%**
+- preregistered `SKIP_SHADOW` would have avoided this one-day loss
+- this is one-day descriptive evidence only; no promotion
+
+S03_M2:
+- evaluated: **63**
+- invalid: 1
+- pending: 0
+- hits: 4
+- investment: 6,300 JPY
+- return: 10,120 JPY
+- profit: **+3,820 JPY**
+- ROI: **160.6349%**
+- max DD: 2,000 JPY
+- max losing streak: 20
+- first half ROI: 268.0645%
+- second half ROI: **56.5625%**
+- bootstrap P(ROI>100%): **77.61%**
+- remaining to 100-review: **37**
+
+#### V5 core progress
+Target:
+- **2026-10-15 V5 core freeze review**
+
+Current mandatory progress:
+- V4: **8 / 20**, remaining 12
+- S03_M2: **63 / 100**, remaining 37
+- evidence contract: clean
+- status: `COLLECTING_CORE_EVIDENCE`
+
+2026-09-29 does not count because formal prospective evidence is unavailable.
+
+Optional day-strength:
+- resolved/classified future days: 1
+- KEEP: 0
+- SKIP: 1
+- 9/28 = `SKIP_SHADOW`
+- 9/29 = unavailable / no label
+
+#### Immediate next work
+Safe without new approval:
+1. continue read-only audits / CI / Draft work on #452;
+2. inspect dispatcher timing and add regression/safety tests;
+3. continue nightly settlement / combined read-only evidence;
+4. continue V5 milestone tracking;
+5. preserve 9/29 as unavailable without reconstruction.
+
+Requires explicit approval:
+- merge/activate #452 if Production behavior changes;
+- Production fallback Cron 08:25 -> 08:20 again;
+- F-count live capture/persistence/schedule;
+- Production DB writes/schema;
+- Production model/selector/threshold/candidate/stake changes;
+- LINE real-send;
+- purchase activation.
+
+Current gate:
+`PROD_FALLBACK_0825_SAFE / 929_FORMAL_UNAVAILABLE / PR452_GREEN_DRAFT_NOT_MERGED / V4_8_OF_20_ROI_147_73 / S03_63_OF_100_ROI_160_63 / V5_TARGET_20261015 / NO_RETUNE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-29 16:45 JST
 
 ### 2026-09-29 fallback incident: 08:20 activation rolled back safely
