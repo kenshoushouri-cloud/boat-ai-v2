@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from research.candidate_discovery_v4_fallback_dispatcher import (
+    CHECKPOINT,
     FallbackDispatchError,
     HttpResult,
     decide_dispatch,
@@ -40,7 +41,7 @@ class FakeTransport:
         raise AssertionError((method, path, body))
 
 
-def observed(hh=8, mm=25, ss=0):
+def observed(hh=8, mm=20, ss=0):
     return datetime(2026, 9, 21, hh, mm, ss, tzinfo=JST)
 
 
@@ -58,12 +59,36 @@ def test_before_checkpoint_never_calls_github():
     tx = FakeTransport()
     result = decide_dispatch(
         repo=REPO,
-        observed_at_jst=observed(8, 24, 59),
+        observed_at_jst=observed(8, 19, 59),
         transport=tx,
     )
     assert result.action == "NOT_DUE"
     assert result.should_dispatch is False
     assert tx.calls == []
+
+
+def test_exact_0820_checkpoint_can_dispatch():
+    tx = FakeTransport()
+    result = execute_dispatch(
+        repo=REPO,
+        observed_at_jst=observed(8, 20, 0),
+        transport=tx,
+    )
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.should_dispatch is True
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
+
+
+def test_observed_20260929_incident_time_can_dispatch():
+    tx = FakeTransport()
+    result = execute_dispatch(
+        repo=REPO,
+        observed_at_jst=datetime(2026, 9, 29, 8, 23, 33, tzinfo=JST),
+        transport=tx,
+    )
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.should_dispatch is True
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
 
 
 def test_valid_primary_artifact_forces_noop():
@@ -104,6 +129,21 @@ def test_successful_primary_without_artifact_does_not_suppress_fallback():
         "ref": "main",
         "inputs": {"target_date": "2026-09-21"},
     }
+
+
+def test_in_progress_primary_at_checkpoint_does_not_suppress_fallback():
+    primary = run(
+        run_id=105,
+        event="schedule",
+        created="2026-09-20T23:19:30Z",
+        status="in_progress",
+        conclusion=None,
+    )
+    tx = FakeTransport(runs=[primary])
+    result = execute_dispatch(repo=REPO, observed_at_jst=observed(8, 20, 0), transport=tx)
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.reason == "no_valid_primary_artifact_observable"
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
 
 
 def test_failed_or_late_primary_does_not_suppress_fallback():
@@ -174,8 +214,8 @@ def test_activation_manifest_is_minimal_and_permission_scoped():
     assert manifest["contract"] == "candidate_discovery_v4_fallback_activation_v1"
     assert manifest["source_repository"] == "kenshoushouri-cloud/boat-ai-v2"
     assert manifest["source_branch"] == "main"
-    assert manifest["cron_utc"] == "25 23 * * *"
-    assert manifest["cron_jst"] == "08:25"
+    assert manifest["cron_utc"] == "20 23 * * *"
+    assert manifest["cron_jst"] == "08:20"
     assert manifest["start_command"] == "python -u research/candidate_discovery_v4_fallback_dispatcher.py"
     assert manifest["required_environment_names"] == [
         "V4_FALLBACK_GITHUB_REPOSITORY",
@@ -190,6 +230,18 @@ def test_activation_manifest_is_minimal_and_permission_scoped():
     required_upper = " ".join(manifest["required_environment_names"]).upper()
     for forbidden in manifest["forbidden_environment_name_fragments"]:
         assert forbidden.upper() not in required_upper
+
+
+def test_manifest_cron_matches_dispatcher_checkpoint():
+    root = Path(__file__).resolve().parents[1]
+    import json
+
+    manifest = json.loads(
+        (root / "research" / "candidate_discovery_v4_fallback_activation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["cron_jst"] == CHECKPOINT.strftime("%H:%M")
 
 
 def test_dispatch_http_200_success_is_accepted():

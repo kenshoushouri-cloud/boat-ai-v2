@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Independent-scheduler dispatcher for the V4 08:25 JST fallback.
+"""Independent-scheduler dispatcher for the V4 08:20 JST fallback.
 
 Draft/research adapter only. Intended future topology:
-Railway Cron (08:25 JST) -> GitHub workflow_dispatch -> existing guarded V4
+Railway Cron (08:20 JST) -> GitHub workflow_dispatch -> existing guarded V4
 prospective-freeze workflow.
 
 This adapter never reads the Boat Production database and has no LINE/purchase
@@ -20,7 +20,7 @@ from typing import Any, Callable
 from urllib import error, parse, request
 
 JST = timezone(timedelta(hours=9))
-CHECKPOINT = time(8, 25)
+CHECKPOINT = time(8, 20)
 WORKFLOW_ID = "candidate-discovery-v4-prospective-freeze.yml"
 PRIMARY_EVENT = "schedule"
 FALLBACK_EVENT = "workflow_dispatch"
@@ -129,7 +129,7 @@ def decide_dispatch(
             action="NOT_DUE",
             should_dispatch=False,
             target_date=target,
-            reason="before_0825_checkpoint",
+            reason="before_0820_checkpoint",
         )
 
     workflow_ref = parse.quote(WORKFLOW_ID, safe="")

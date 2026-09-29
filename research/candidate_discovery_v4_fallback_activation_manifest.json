@@ -3,8 +3,8 @@
   "service_name": "candidate-discovery-v4-fallback-dispatcher",
   "source_repository": "kenshoushouri-cloud/boat-ai-v2",
   "source_branch": "main",
-  "cron_utc": "25 23 * * *",
-  "cron_jst": "08:25",
+  "cron_utc": "20 23 * * *",
+  "cron_jst": "08:20",
   "start_command": "python -u research/candidate_discovery_v4_fallback_dispatcher.py",
   "required_environment_names": [
     "V4_FALLBACK_GITHUB_REPOSITORY",
