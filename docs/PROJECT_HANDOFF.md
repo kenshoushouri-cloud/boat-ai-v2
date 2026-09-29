@@ -1,5 +1,119 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-29 16:45 JST
+
+### 2026-09-29 fallback incident: 08:20 activation rolled back safely
+- main before docs update: `ba71da8ae25b56b24942bb40df56dc1991f49505`
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Approved 08:20 Cron activation exposed an internal-code mismatch:
+- Railway Cron ran under 08:20 schedule;
+- dispatcher log at **08:23:33 JST**:
+  `action=NOT_DUE reason=before_0825_checkpoint`
+- root cause: `research/candidate_discovery_v4_fallback_dispatcher.py` still had `CHECKPOINT = 08:25`
+- therefore fallback did not create workflow_dispatch on 2026-09-29.
+
+Natural GitHub schedule also remained severely late:
+- run `36513182505`
+- created approximately 11:33:44 JST
+- availability hard-stop 08:32 JST
+- freeze started 11:33:56 JST
+- earliest frozen-feed deadline 08:44 JST
+- correctly failed closed.
+
+Result:
+- **2026-09-29 has no valid formal prospective V4 artifact**
+- do not reconstruct or backfill this date
+- no day-strength classification for 9/29
+
+### Production rollback complete
+Production fallback Cron restored to:
+- `25 23 * * *` = **08:25 JST**
+
+Rollback deployment:
+- `26973382-903c-4d50-9a78-9c079d8c5577`
+- status **SUCCESS**
+
+Current read-back:
+- fallback Cron 08:25 JST
+- pending/staged config none
+
+### 08:20 code fix prepared, not activated
+Draft PR #452:
+- changes internal dispatcher checkpoint 08:25 -> 08:20
+- updates activation manifest to 08:20
+- tests:
+  - 08:19:59 = NOT_DUE/no GitHub call
+  - exactly 08:20 = fallback dispatch permitted
+- all CI SUCCESS
+
+#452 is **not merged**.
+Reactivation of Production 08:20 remains explicit-approval only.
+
+### 2026-09-28 settlement refresh
+Canonical read-only run:
+- workflow run `36538181451`
+- job `109307018169`
+- artifact `11018808467`
+- digest `sha256:72eb6b5d309859f1b3ad82d886b2603c2006f59fb1af2365debbb97145cb6d21`
+
+Readiness:
+- 144/144 terminal
+- official 144
+- pending/missing 0
+
+Formal V4 TOP2 through 9/28:
+- resolved days: **8**
+- settled races: 44
+- head accuracy: **63.6364%**
+- 88 bets / 12 hits
+- investment 8,800 JPY
+- return 13,000 JPY
+- profit **+4,200 JPY**
+- ROI **147.7273%**
+- second chronological half ROI **135.2083%**
+- leave-one-day worst ROI **112.3684%**
+- leave-one-hit min ROI **109.4186%**
+- bootstrap P(ROI>100%) **85.63%**
+- remaining to 10-day review: **2**
+
+2026-09-28 single-day formal TOP2:
+- 12 bets / 1 hit
+- investment 1,200 JPY
+- return 660 JPY
+- profit **-540 JPY**
+- ROI **55.0%**
+
+The pre-result day-strength label for 9/28 was `SKIP_SHADOW`.
+For this one resolved day, SKIP would have avoided the -540 JPY formal loss.
+This is descriptive one-day evidence only; no promotion or rule change.
+
+S03_M2 through 9/28:
+- evaluated **63**
+- invalid 1 / pending 0
+- hits 4
+- investment 6,300 JPY
+- return 10,120 JPY
+- profit **+3,820 JPY**
+- ROI **160.6349%**
+- max DD 2,000 JPY
+- max losing streak 20
+- first half ROI 268.0645%
+- second half ROI **56.5625%**
+- bootstrap P(ROI>100%) **77.61%**
+- remaining to 100-review: **37**
+
+### V5 core progress
+- formal V4: **8 / 20**, remaining **12**
+- S03_M2: **63 / 100**, remaining **37**
+- target: 2026-10-15
+- status: `COLLECTING_CORE_EVIDENCE`
+
+9/29 is unavailable and does not count.
+
+`FALLBACK_ROLLBACK_0825 / 929_FORMAL_UNAVAILABLE / FIX_452_GREEN_NOT_MERGED / V4_8_OF_20_ROI_147_73 / S03_63_OF_100_ROI_160_63 / NO_RETUNE / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-28 21:43 JST
 
 ### Production fallback Cron moved to 08:20 JST with explicit approval
