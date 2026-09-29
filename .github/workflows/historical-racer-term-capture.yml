@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "research/historical_racer_term_capture.py"
+      - "research/historical_racer_term_probe.py"
       - "tests/test_historical_racer_term_capture.py"
       - ".github/workflows/historical-racer-term-capture.yml"
 
@@ -23,38 +24,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install pytest
+      - run: python -m pip install -r requirements.txt pytest
       - run: pytest -q tests/test_historical_racer_term_capture.py
       - name: Capture official racer term archives
         run: |
           python -u research/historical_racer_term_capture.py | tee racer-term-capture.log
           grep -q '^RACER_TERM_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' racer-term-capture.log
-          grep -q '^RACER_TERM_RESULT=PASS_ALL_THREE        with:
-          name: historical-racer-term-official-2025h2-2026h2
-          path: |
-            historical-racer-term-official
-            racer-term-capture.log
-            historical-racer-term-inspection.json
-            racer-term-structure.log
-          retention-days: 90
-          if-no-files-found: error
- racer-term-capture.log
+          grep -q '^RACER_TERM_RESULT=PASS_ALL_THREE$' racer-term-capture.log
       - name: Inspect official racer term record structure
         run: |
           python -u research/historical_racer_term_probe.py | tee racer-term-structure.log
-          grep -q '^RACER_TERM_STRUCTURE_RESULT=PASS        with:
-          name: historical-racer-term-official-2025h2-2026h2
-          path: |
-            historical-racer-term-official
-            racer-term-capture.log
-          retention-days: 90
-          if-no-files-found: error
- racer-term-structure.log
+          grep -q '^RACER_TERM_STRUCTURE_RESULT=PASS$' racer-term-structure.log
       - uses: actions/upload-artifact@v4
         with:
           name: historical-racer-term-official-2025h2-2026h2
           path: |
             historical-racer-term-official
             racer-term-capture.log
+            historical-racer-term-inspection.json
+            racer-term-structure.log
           retention-days: 90
           if-no-files-found: error
