@@ -131,6 +131,21 @@ def test_successful_primary_without_artifact_does_not_suppress_fallback():
     }
 
 
+def test_in_progress_primary_at_checkpoint_does_not_suppress_fallback():
+    primary = run(
+        run_id=105,
+        event="schedule",
+        created="2026-09-20T23:19:30Z",
+        status="in_progress",
+        conclusion=None,
+    )
+    tx = FakeTransport(runs=[primary])
+    result = execute_dispatch(repo=REPO, observed_at_jst=observed(8, 20, 0), transport=tx)
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.reason == "no_valid_primary_artifact_observable"
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
+
+
 def test_failed_or_late_primary_does_not_suppress_fallback():
     failed = run(
         run_id=103,
