@@ -1,5 +1,49 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-29 17:10 JST
+
+### SYSTEM PURPOSE / TIMELINE HANDOFF ADDED
+Treat this section and the linked handoff guide as the newest orientation layer.
+
+Read first:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260929.md`
+
+The new guide records:
+- the system-building objective;
+- Production V4 vs V5 research-candidate scope;
+- the 2026-10-15 V5 core target;
+- mandatory V4 20-day / S03 100-observation gates;
+- daily 08:15 / 08:16 / 08:25 / 08:32 / 23:30 operating timeline;
+- current settled economics;
+- the 2026-09-29 fallback incident;
+- current safe 08:25 rollback state;
+- Draft #452 08:20 code alignment status;
+- work priorities;
+- approval boundaries;
+- next-chat checklist.
+
+Current operational source of truth:
+- main immediately before this docs update: `0dfe3518ea2789a701ffad90da170bf2b7d9f798`
+- Railway fallback current Cron: **08:25 JST / `25 23 * * *`**
+- latest dispatcher deployment: `0cc94e40-71af-4cb6-85c0-19e60532ea2e` — SUCCESS
+- pending work: none
+- Draft #452: all-green, **not merged**
+- 2026-09-29 formal prospective artifact: **UNAVAILABLE**
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- `purchase_action=false`
+
+Current settled evidence through 2026-09-28:
+- V4: **8/20**, ROI **147.7273%**, profit **+4,200 JPY**
+- S03_M2: **63/100**, ROI **160.6349%**, profit **+3,820 JPY**
+- V5 core target: **2026-10-15**
+
+Do not reactivate 08:20 merely from the earlier approval.
+A fresh explicit approval is required for the #452 code+Cron activation cycle.
+
+`SYSTEM_HANDOFF_GUIDE_ADDED / PROD_0825_SAFE / PR452_NOT_MERGED / 929_UNAVAILABLE / V5_TARGET_20261015 / PURCHASE_FALSE`
+
 ## LATEST OVERRIDE — 2026-09-29 16:59 JST
 
 ### FINAL HANDOFF — fallback rollback safe / #452 green Draft / 2026-09-29 formal unavailable

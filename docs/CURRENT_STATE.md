@@ -1,5 +1,31 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-29 17:10 JST
+
+High-level handoff guide added:
+- `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260929.md`
+
+Current:
+- Production fallback: **08:25 JST**
+- latest dispatcher deployment: SUCCESS
+- Draft #452: green / not merged
+- 9/29 formal prospective evidence: unavailable / no reconstruction
+- settled V4: **8/20**, ROI 147.7273%, +4,200 JPY
+- settled S03_M2: **63/100**, ROI 160.6349%, +3,820 JPY
+- V5 target: **2026-10-15**
+- Production V4 model/selector/stake unchanged
+- `purchase_action=false`
+
+The handoff guide now contains:
+- system purpose;
+- daily timing;
+- V5 milestone;
+- current work priorities;
+- approval boundaries;
+- next-chat checklist.
+
+`READ_SYSTEM_PURPOSE_TIMELINE_HANDOFF / PROD_0825_SAFE / V5_8_OF_20_63_OF_100`
+
 ## LATEST OVERRIDE — 2026-09-29 16:59 JST
 
 Current source of truth:
