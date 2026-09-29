@@ -1,5 +1,30 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-29 17:13 JST
+
+### MASTER HANDOFF
+The authoritative consolidated handoff is now:
+`docs/HANDOFF_MASTER_20260929.md`
+
+Read it first, then re-fetch current GitHub main / open PR / CI / Railway Production before any work.
+
+At preparation time:
+- main: `0dfe3518ea2789a701ffad90da170bf2b7d9f798`
+- Production fallback Cron: **08:25 JST**
+- latest dispatcher deployment `0cc94e40-71af-4cb6-85c0-19e60532ea2e`: SUCCESS
+- pending/staged: none
+- #452: Draft / mergeable / all CI SUCCESS / not merged
+- 2026-09-29 formal evidence: UNAVAILABLE
+- V4: 8/20, ROI 147.7273%
+- S03_M2: 63/100, ROI 160.6349%
+- V5 core target: 2026-10-15
+- Production model/selector/stake unchanged
+- `purchase_action=false`
+
+Do not treat earlier overrides as current state.
+
+`READ_MASTER_HANDOFF_FIRST / REFRESH_LIVE_STATE / PROD_0825_SAFE / PR452_NOT_MERGED`
+
 ## LATEST OVERRIDE — 2026-09-29 16:59 JST
 
 ### FINAL HANDOFF — fallback rollback safe / #452 green Draft / 2026-09-29 formal unavailable
