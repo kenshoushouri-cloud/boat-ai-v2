@@ -5,6 +5,8 @@ on:
     paths:
       - "research/line_candidate_volume_diagnostic.py"
       - "tests/test_line_candidate_volume_diagnostic.py"
+      - "research/candidate_shadow_volume_pg.py"
+      - "tests/test_candidate_shadow_volume_pg.py"
       - ".github/workflows/line-candidate-volume-diagnostic.yml"
 
 permissions:
@@ -19,15 +21,23 @@ jobs:
         run: |
           python3 - <<'PY'
           import runpy
-          ns = runpy.run_path("tests/test_line_candidate_volume_diagnostic.py")
-          tests = [
-              (name, fn)
-              for name, fn in sorted(ns.items())
-              if name.startswith("test_") and callable(fn)
+
+          paths = [
+              "tests/test_line_candidate_volume_diagnostic.py",
+              "tests/test_candidate_shadow_volume_pg.py",
           ]
-          assert tests, "no diagnostic tests discovered"
-          for name, fn in tests:
-              fn()
-              print(f"PASS {name}")
-          print(f"PASS total={len(tests)}")
+          total = 0
+          for path in paths:
+              ns = runpy.run_path(path)
+              tests = [
+                  (name, fn)
+                  for name, fn in sorted(ns.items())
+                  if name.startswith("test_") and callable(fn)
+              ]
+              assert tests, f"no diagnostic tests discovered in {path}"
+              for name, fn in tests:
+                  fn()
+                  total += 1
+                  print(f"PASS {path}::{name}")
+          print(f"PASS total={total}")
           PY
