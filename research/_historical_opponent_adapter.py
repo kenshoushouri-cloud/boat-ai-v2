@@ -19,7 +19,7 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
 TRAIN_START = mod.TRAIN_START
-MIN_MATCHED_OPPONENTS = mod.MIN_MATCHED_OPPONENTS
+MIN_MATCHED_OPPONENTS = 4  # frozen V4 consumer threshold
 TARGET_DATE = mod.TARGET_DATE
 
 
