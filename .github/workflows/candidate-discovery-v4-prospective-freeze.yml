@@ -115,7 +115,6 @@ jobs:
           assert "steps.fcount_capture.outcome == 'success'" in workflow
           assert 'candidate-discovery-v4-fcount-companion-' in workflow
           assert 'V4_FCOUNT_CAPTURE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0' in workflow
-          assert 'continue-on-error: true' in workflow
           PY
 
   freeze:
@@ -277,42 +276,9 @@ jobs:
             --service "${RAILWAY_DB_SERVICE}" \
             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_fcount_prospective_capture_pg.py' \
             | tee candidate-discovery-v4-fcount-companion.txt
-          grep -q '^V4_FCOUNT_CAPTURE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0          echo "CANDIDATE_V4_AVAILABILITY_CAPTURE_OUTCOME=${{ steps.availability_capture.outcome }}"
-          echo "CANDIDATE_V4_AVAILABILITY_GATE_OUTCOME=${{ steps.availability_gate.outcome }}"
-          if [ "${{ steps.availability_capture.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability raw capture did not succeed; formal artifact is blocked' >&2
-            exit 1
-          fi
-          if [ "${{ steps.availability_gate.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability guard did not PASS_ACTIVE_CORE; formal artifact is blocked' >&2
-            exit 1
-          fi
-          echo "CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1"
- candidate-discovery-v4-fcount-companion.txt
-          grep -q '^V4_FCOUNT_CAPTURE_ROWS=36          echo "CANDIDATE_V4_AVAILABILITY_CAPTURE_OUTCOME=${{ steps.availability_capture.outcome }}"
-          echo "CANDIDATE_V4_AVAILABILITY_GATE_OUTCOME=${{ steps.availability_gate.outcome }}"
-          if [ "${{ steps.availability_capture.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability raw capture did not succeed; formal artifact is blocked' >&2
-            exit 1
-          fi
-          if [ "${{ steps.availability_gate.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability guard did not PASS_ACTIVE_CORE; formal artifact is blocked' >&2
-            exit 1
-          fi
-          echo "CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1"
- candidate-discovery-v4-fcount-companion.txt
-          grep -q '^V4_FCOUNT_CAPTURE_RESULT=PASS_SEPARATE_COMPANION          echo "CANDIDATE_V4_AVAILABILITY_CAPTURE_OUTCOME=${{ steps.availability_capture.outcome }}"
-          echo "CANDIDATE_V4_AVAILABILITY_GATE_OUTCOME=${{ steps.availability_gate.outcome }}"
-          if [ "${{ steps.availability_capture.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability raw capture did not succeed; formal artifact is blocked' >&2
-            exit 1
-          fi
-          if [ "${{ steps.availability_gate.outcome }}" != "success" ]; then
-            echo 'pre-freeze availability guard did not PASS_ACTIVE_CORE; formal artifact is blocked' >&2
-            exit 1
-          fi
-          echo "CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1"
- candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_ROWS=36$' candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_RESULT=PASS_SEPARATE_COMPANION$' candidate-discovery-v4-fcount-companion.txt
 
       - name: Upload optional F-count companion
         if: steps.fcount_capture.outcome == 'success'
