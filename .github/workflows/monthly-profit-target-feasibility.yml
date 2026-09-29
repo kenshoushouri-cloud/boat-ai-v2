@@ -5,6 +5,8 @@ on:
     paths:
       - "research/monthly_profit_target_feasibility.py"
       - "tests/test_monthly_profit_target_feasibility.py"
+      - "research/forward_combined_checkpoint.py"
+      - "tests/test_forward_combined_checkpoint.py"
       - "docs/MONTHLY_PROFIT_TARGET_FEASIBILITY_20260930.md"
       - ".github/workflows/monthly-profit-target-feasibility.yml"
 
@@ -27,7 +29,9 @@ jobs:
       - name: Run pure feasibility tests
         run: |
           python -m pip install pytest
-          pytest -q tests/test_monthly_profit_target_feasibility.py
+          pytest -q \
+            tests/test_monthly_profit_target_feasibility.py \
+            tests/test_forward_combined_checkpoint.py
           python research/monthly_profit_target_feasibility.py > monthly-profit-feasibility.json
           python - <<'PY'
           import json
