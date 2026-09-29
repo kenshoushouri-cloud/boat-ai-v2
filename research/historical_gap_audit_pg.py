@@ -29,7 +29,7 @@ def main()->None:
         with months as (
           select gs::date month_start,
                  (gs + interval '1 month - 1 day')::date month_end
-          from generate_series(date %s,date_trunc('month',date %s),interval '1 month') gs
+          from generate_series(%s::date,date_trunc('month',%s::date),interval '1 month') gs
         ),
         base as (
           select date_trunc('month',race_date)::date m,count(distinct race_id)::int n
