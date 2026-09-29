@@ -99,6 +99,83 @@ def evidence_scaling_gate(
     }
 
 
+def build_checkpoint_target(
+    *,
+    v4_resolved_days: int,
+    v4_roi_pct: float,
+    s03_evaluated: int,
+    s03_second_half_roi_pct: float,
+) -> dict:
+    """Compact monthly target block for the routine combined checkpoint.
+
+    The V4 projection uses the frozen formal volume (6 races/day x TOP2).
+    It is descriptive only and never authorizes staking.
+    """
+    v4_roi = float(v4_roi_pct) / 100.0
+    s03_second = float(s03_second_half_roi_pct) / 100.0
+    v4_scenario = MonthlyScenario(
+        days=PLANNING_DAYS_PER_MONTH,
+        races_per_day=6,
+        tickets_per_race=2,
+        stake_per_ticket_jpy=BASE_TICKET_STAKE_JPY,
+        roi=v4_roi,
+    )
+    required_roi = {}
+    for races_per_day in (1, 2, 3):
+        required_roi[str(races_per_day)] = (
+            required_roi_for_target(
+                target_profit_jpy=TARGET_MONTHLY_PROFIT_JPY,
+                days=PLANNING_DAYS_PER_MONTH,
+                races_per_day=races_per_day,
+                tickets_per_race=2,
+                stake_per_ticket_jpy=BASE_TICKET_STAKE_JPY,
+            )
+            * 100.0
+        )
+
+    v4_gate = evidence_scaling_gate(
+        observed_units=int(v4_resolved_days),
+        required_units=20,
+        conservative_roi=v4_roi,
+    )
+    # Overall V4 ROI is not a sufficient conservative metric, so even when
+    # sample-ready this live block cannot authorize stake review by itself.
+    v4_gate["overall_roi_only"] = True
+    v4_gate["stake_scaling_review_allowed"] = False
+
+    s03_gate = evidence_scaling_gate(
+        observed_units=int(s03_evaluated),
+        required_units=100,
+        conservative_roi=s03_second,
+    )
+
+    return {
+        "contract": "MONTHLY_PROFIT_TARGET_CHECKPOINT_V1",
+        "target_monthly_profit_jpy": TARGET_MONTHLY_PROFIT_JPY,
+        "base_ticket_stake_jpy": BASE_TICKET_STAKE_JPY,
+        "planning_days_per_month": PLANNING_DAYS_PER_MONTH,
+        "required_roi_pct_at_100_jpy_for_1_to_3_races_per_day": required_roi,
+        "v4_formal_top2": {
+            "resolved_days": int(v4_resolved_days),
+            "observed_roi_pct": float(v4_roi_pct),
+            "formal_races_per_day": 6,
+            "tickets_per_race": 2,
+            "projected_monthly_investment_jpy_at_100": v4_scenario.investment_jpy,
+            "projected_monthly_profit_jpy_at_observed_roi": v4_scenario.profit_jpy,
+            "gap_to_target_jpy": TARGET_MONTHLY_PROFIT_JPY - v4_scenario.profit_jpy,
+            "evidence_gate": v4_gate,
+        },
+        "s03_m2": {
+            "evaluated_observations": int(s03_evaluated),
+            "second_half_roi_pct": float(s03_second_half_roi_pct),
+            "evidence_gate": s03_gate,
+        },
+        "stake_change_authorized": False,
+        "selection_retune_for_profit_target_allowed": False,
+        "purchase_action": False,
+    }
+
+
 def build_reference_report() -> dict:
     """Freeze the 2026-09-30 planning checkpoint using already-recorded metrics."""
 
