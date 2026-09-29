@@ -78,6 +78,18 @@ def test_exact_0820_checkpoint_can_dispatch():
     assert sum(call[0] == "POST" for call in tx.calls) == 1
 
 
+def test_observed_20260929_incident_time_can_dispatch():
+    tx = FakeTransport()
+    result = execute_dispatch(
+        repo=REPO,
+        observed_at_jst=datetime(2026, 9, 29, 8, 23, 33, tzinfo=JST),
+        transport=tx,
+    )
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.should_dispatch is True
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
+
+
 def test_valid_primary_artifact_forces_noop():
     primary = run(
         run_id=101,
