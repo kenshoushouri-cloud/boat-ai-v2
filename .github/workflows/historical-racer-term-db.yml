@@ -1,0 +1,73 @@
+name: Historical racer term DB reconstruction
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_racer_term_reconstruction_pg.py"
+      - "tests/test_historical_racer_term_reconstruction.py"
+      - ".github/workflows/historical-racer-term-db.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  load:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      RAILWAY_DB_SERVICE: "postgres-recovery"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - run: pytest -q tests/test_historical_racer_term_reconstruction.py
+      - name: Load official term files into dedicated historical table
+        run: |
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_racer_term_reconstruction_pg.py' \
+            2>&1 | tee historical-racer-term-db.log
+          grep -q '^RACER_TERM_CANONICAL_OVERWRITE=0 RESULT_READ=0 ODDS_READ=0 LINE=0 BUY=0$' historical-racer-term-db.log
+          grep -q '^RACER_TERM_DB_RESULT=PASS$' historical-racer-term-db.log
+      - name: Read back term counts
+        run: |
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; python - <<"PY"
+          import json,os,psycopg
+          from psycopg.rows import dict_row
+          with psycopg.connect(os.environ["DATABASE_URL"],row_factory=dict_row,autocommit=False) as conn:
+            with conn.cursor() as c:
+              c.execute("set transaction read only")
+              c.execute("""select term,count(*) rows,
+                          count(*) filter(where racer_class is not null) class_n,
+                          count(*) filter(where national_win_rate is not null) nwr_n,
+                          count(*) filter(where national_place2_rate is not null) n2_n,
+                          count(*) filter(where avg_st is not null) avgst_n
+                          from v2_historical_racer_term_reconstruction
+                          group by term order by term""")
+              print("RACER_TERM_DB_COVERAGE="+json.dumps([dict(x) for x in c.fetchall()],sort_keys=True))
+            conn.rollback()
+          PY' 2>&1 | tee historical-racer-term-coverage.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-racer-term-db-reconstruction
+          path: |
+            historical-racer-term-db.log
+            historical-racer-term-coverage.log
+          retention-days: 90
