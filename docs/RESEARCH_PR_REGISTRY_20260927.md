@@ -143,17 +143,17 @@ Frozen:
 
 ## Tier B — active infrastructure / safety research
 
-### #412 — fallback timing margin / activated Production schedule
-Current role: **activated operational timing contract + rollback provenance**.
+### #412 / #452 — fallback timing activation, rollback, and 08:20 code fix
+Current role: **rollback provenance + pending corrected activation path**.
 
-- user explicitly approved activation on 2026-09-28;
-- Production Cron changed from 08:25 JST to **08:20 JST**;
-- exact field changed: `cronSchedule` only;
-- activation deployment `2141e0fa-0897-4b2d-b5c7-94f2b03e571d`: SUCCESS;
-- source/build/startCommand/runtime/region/replica unchanged;
-- rollback remains 08:25 JST / `25 23 * * *`;
-- first live 08:20 cycle is target 2026-09-29;
-- #412 timing audit remains the decision provenance.
+- 2026-09-28 08:20 Cron activation was explicitly approved;
+- first live cycle on 2026-09-29 exposed old internal `CHECKPOINT=08:25`;
+- dispatcher returned `NOT_DUE before_0825_checkpoint`;
+- Production was rolled back to **08:25 JST**;
+- rollback deployment `26973382-903c-4d50-9a78-9c079d8c5577`: SUCCESS;
+- #452 aligns internal checkpoint/tests/manifest to 08:20;
+- #452 all CI SUCCESS but is not merged;
+- future 08:20 reactivation remains explicit-approval only.
 
 ### #422 — common prospective Forward economics integrated
 Current role: **main-integrated common pure economic semantics**.

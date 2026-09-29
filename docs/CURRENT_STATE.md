@@ -1,5 +1,26 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-29 16:45 JST
+
+- Production fallback Cron is **08:25 JST** after safe rollback.
+- rollback deployment `26973382-903c-4d50-9a78-9c079d8c5577`: SUCCESS
+- reason: 08:20 Cron hit old internal `before_0825_checkpoint` guard
+- #452 fixes internal checkpoint to 08:20 and is all-green Draft, **not merged**
+- 2026-09-29 formal prospective artifact: **UNAVAILABLE**
+- no reconstruction/backfill
+- natural GitHub schedule started ~11:33 JST and failed closed
+
+2026-09-28 settled evidence:
+- V4: **8 resolved days**, ROI **147.7273%**, profit **+4,200 JPY**
+- 9/28 single day: ROI **55.0%**, profit **-540 JPY**
+- preregistered 9/28 `SKIP_SHADOW` would have avoided that one-day loss
+- S03_M2: **63 evaluated**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03 second half ROI **56.5625%**
+- V5 core: V4 **8/20**, S03 **63/100**
+
+Production V4 model/selector/stake unchanged.
+`purchase_action=false`.
+
 ## LATEST OVERRIDE — 2026-09-28 21:43 JST
 
 - main before docs update: `f7115240122da782375affe6dcb3be1798081812`
