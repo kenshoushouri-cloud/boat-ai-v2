@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from research.historical_entry_feature_backfill_pg import (
+    TEXT_DB_FIELDS,
     build_missing_patch,
     _date_range,
 )
@@ -47,3 +48,7 @@ def test_range_is_inclusive():
         "2025-07-02",
         "2025-07-03",
     ]
+
+
+def test_motor_and_boat_numbers_are_text_db_fields():
+    assert TEXT_DB_FIELDS == {"motor_no", "boat_no"}
