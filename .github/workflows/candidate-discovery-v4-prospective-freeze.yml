@@ -82,6 +82,14 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
+          capture=Path('research/v4_fcount_prospective_capture_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in capture
+          assert 'future_approved_select' in capture
+          assert 'insert into' not in capture
+          assert 'update v2_' not in capture
+          assert 'delete from' not in capture
+          for forbidden in ('v2_results', 'v2_odds', 'payout_yen', 'return_yen', 'finish_order'):
+              assert forbidden not in capture
           assert "cron: '16 23 * * *'" in workflow
           assert "PYTHONPATH: ." in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
