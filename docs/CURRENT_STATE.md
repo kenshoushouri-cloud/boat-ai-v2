@@ -1,5 +1,67 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 00:55 JST
+
+Current source of truth:
+- main before this override: `33333a6952043071297a34a617da17075be07146`
+- PR #452 fallback internal 08:20 fix: **merged**
+- PR #460 future-only F-count companion capture: **merged / active for future successful formal freezes**
+- Railway fallback Cron: **08:20 JST / `20 23 * * *`**
+- latest successful fallback dispatcher deployment on current main: `f7dd7219-5ecf-4976-ba40-85d51957bfea` — **SUCCESS**
+- an additional same-main Railway redeploy `8c14f309-99f3-4332-a487-511225f03104` was still DEPLOYING at this read-back; staged config: none
+- 2026-09-29 formal V4 remains **UNAVAILABLE**; no reconstruction/backfill
+- settled V4 through 2026-09-28: **8/20**, ROI **147.7273%**, profit **+4,200 JPY**
+- settled S03_M2 through 2026-09-28: **63/100**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03_M2 second-half ROI: **56.5625%**
+- V5 core target: **2026-10-15**
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- automatic purchase disabled / `purchase_action=false`
+
+### Monthly profit target is now explicit
+
+Operational planning target:
+- **monthly net profit +50,000 JPY**
+
+The target is a scaling objective, not a selector-retuning objective.
+
+At 100 JPY/ticket, 30 days/month, TOP2:
+- 1 notified race/day -> monthly investment 6,000 JPY -> required ROI **933.33%**
+- 2/day -> 12,000 JPY -> required ROI **516.67%**
+- 3/day -> 18,000 JPY -> required ROI **377.78%**
+
+Current V4 formal 6R/day x TOP2, if the present overall ROI 147.7273% persisted for 30 days at 100 JPY/ticket:
+- monthly investment: 36,000 JPY
+- descriptive projected profit: about **+17,182 JPY**
+- still below the +50,000 JPY target
+
+Therefore:
+1. prove prospective edge first;
+2. measure natural high-quality notification volume;
+3. review conservative ROI / drawdown / losing streak;
+4. only then consider a separately approved stake scale.
+
+PR #461 adds this feasibility gate to the routine combined V5 checkpoint.
+It explicitly keeps:
+- threshold relaxation for profit/volume: forbidden;
+- stake change authorization: false;
+- Production change: false;
+- `purchase_action=false`.
+
+### F-count activation
+
+F-count collection is future-only and separate from the formal V4 artifact:
+- only after a valid formal V4 freeze;
+- exact formal six races x lanes 1..6 = 36 rows;
+- PostgreSQL READ ONLY;
+- only `race_id,lane,f_count`;
+- no result/payout/odds read;
+- companion failure cannot invalidate the formal V4 day;
+- no historical F-count backfill or coefficient search;
+- no model/LINE/stake/purchase change.
+
+`FALLBACK_0820_CODE_AND_CRON_ALIGNED / FCOUNT_FUTURE_CAPTURE_ACTIVE / MONTHLY_PLUS_50000_GATE_ADDED / V4_8_OF_20 / S03_63_OF_100 / NO_RETUNE / NO_STAKE_CHANGE / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-29 17:10 JST
 
 High-level handoff guide added:
