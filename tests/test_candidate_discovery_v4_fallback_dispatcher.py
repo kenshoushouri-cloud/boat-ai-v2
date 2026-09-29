@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from research.candidate_discovery_v4_fallback_dispatcher import (
+    CHECKPOINT,
     FallbackDispatchError,
     HttpResult,
     decide_dispatch,
@@ -214,6 +215,18 @@ def test_activation_manifest_is_minimal_and_permission_scoped():
     required_upper = " ".join(manifest["required_environment_names"]).upper()
     for forbidden in manifest["forbidden_environment_name_fragments"]:
         assert forbidden.upper() not in required_upper
+
+
+def test_manifest_cron_matches_dispatcher_checkpoint():
+    root = Path(__file__).resolve().parents[1]
+    import json
+
+    manifest = json.loads(
+        (root / "research" / "candidate_discovery_v4_fallback_activation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["cron_jst"] == CHECKPOINT.strftime("%H:%M")
 
 
 def test_dispatch_http_200_success_is_accepted():
