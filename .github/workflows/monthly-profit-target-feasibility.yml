@@ -1,0 +1,41 @@
+name: Monthly profit target feasibility
+
+on:
+  pull_request:
+    paths:
+      - "research/monthly_profit_target_feasibility.py"
+      - "tests/test_monthly_profit_target_feasibility.py"
+      - "docs/MONTHLY_PROFIT_TARGET_FEASIBILITY_20260930.md"
+      - ".github/workflows/monthly-profit-target-feasibility.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pure-math:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run pure feasibility tests
+        run: |
+          python -m pip install pytest
+          pytest -q tests/test_monthly_profit_target_feasibility.py
+          python research/monthly_profit_target_feasibility.py > monthly-profit-feasibility.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("monthly-profit-feasibility.json").read_text(encoding="utf-8"))
+          assert p["contract"]=="MONTHLY_PROFIT_TARGET_FEASIBILITY_V1"
+          assert p["target_monthly_profit_jpy"]==50000
+          assert p["policy"]["monthly_profit_target_is_selection_tuning_target"] is False
+          assert p["policy"]["threshold_relaxation_for_volume_or_profit_allowed"] is False
+          assert p["policy"]["stake_change_authorized"] is False
+          assert p["policy"]["purchase_action"] is False
+          assert p["policy"]["production_behavior_changed"] is False
+          print("PASS monthly profit feasibility guard")
+          PY
