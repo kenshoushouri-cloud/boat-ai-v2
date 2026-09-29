@@ -12,7 +12,7 @@ Treat this section as the newest source of truth. Older override sections below 
 - fallback service: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
 - fallback Cron read-back: **`20 23 * * *` = 08:20 JST**
 - latest successful current-main deploy: `f7dd7219-5ecf-4976-ba40-85d51957bfea` — **SUCCESS**
-- extra same-main redeploy `8c14f309-99f3-4332-a487-511225f03104`: DEPLOYING at last read-back
+- latest same-main redeploy `8c14f309-99f3-4332-a487-511225f03104`: **SUCCESS**
 - staged config: none
 - 9/29 formal prospective V4: **UNAVAILABLE**, immutable; no reconstruction/backfill
 
