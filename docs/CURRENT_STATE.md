@@ -1,5 +1,25 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-29 17:13 JST
+
+Authoritative consolidated handoff:
+`docs/HANDOFF_MASTER_20260929.md`
+
+Current preparation snapshot:
+- main `0dfe3518ea2789a701ffad90da170bf2b7d9f798`
+- fallback Cron **08:25 JST**
+- dispatcher SUCCESS
+- staged/pending none
+- #452 green Draft, not merged
+- 9/29 formal unavailable; no reconstruction
+- V4 **8/20**, ROI **147.7273%**
+- S03 **63/100**, ROI **160.6349%**
+- V5 target **2026-10-15**
+- Production model/selector/stake unchanged
+- purchase false
+
+Always re-fetch live state before acting.
+
 ## LATEST OVERRIDE — 2026-09-29 16:59 JST
 
 Current source of truth:
