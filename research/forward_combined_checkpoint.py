@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from research.forward_review_gates import s03_m2_gate, v4_formal_gate
+from research.monthly_profit_target_feasibility import build_checkpoint_target
 from research.v5_candidate_milestone import evaluate_v5_core_progress
 
 
@@ -42,6 +43,20 @@ def build_scorecard(v4: dict[str, Any], s03_text: str, *, end_date: str) -> dict
         s03_m2_evaluated=evaluated,
         evidence_contract_clean=True,
     )
+    s03_second = (
+        (s03_halves.get("second") or {}).get("roi_pct")
+        if isinstance(s03_halves.get("second"), dict)
+        else None
+    )
+    if s03_second is None:
+        raise ValueError("S03 second-half ROI required for monthly target checkpoint")
+    v4_roi_pct = float(v4_top2.get("roi_pct") or 0.0)
+    monthly_target = build_checkpoint_target(
+        v4_resolved_days=v4_days,
+        v4_roi_pct=v4_roi_pct,
+        s03_evaluated=evaluated,
+        s03_second_half_roi_pct=float(s03_second),
+    )
     return {
         "contract": "forward_combined_manual_checkpoint_v1",
         "end_date": end_date,
@@ -63,6 +78,7 @@ def build_scorecard(v4: dict[str, Any], s03_text: str, *, end_date: str) -> dict
             "review_gate": s03_m2_gate(evaluated),
         },
         "v5_core_milestone": v5_core,
+        "monthly_profit_target": monthly_target,
         "safety": {
             "read_only_inputs": True,
             "promotion_allowed": False,
@@ -93,6 +109,7 @@ def main() -> None:
     print("FORWARD_COMBINED_V4_GATE=" + json.dumps(out["v4_formal"]["review_gate"], sort_keys=True))
     print("FORWARD_COMBINED_S03_GATE=" + json.dumps(out["s03_m2"]["review_gate"], sort_keys=True))
     print("FORWARD_COMBINED_V5_CORE=" + json.dumps(out["v5_core_milestone"], sort_keys=True))
+    print("FORWARD_COMBINED_MONTHLY_PROFIT_TARGET=" + json.dumps(out["monthly_profit_target"], sort_keys=True))
     print("FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE")
 
 
