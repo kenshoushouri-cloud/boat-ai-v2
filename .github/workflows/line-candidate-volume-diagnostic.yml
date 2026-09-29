@@ -1,0 +1,33 @@
+name: LINE candidate volume diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "research/line_candidate_volume_diagnostic.py"
+      - "tests/test_line_candidate_volume_diagnostic.py"
+      - ".github/workflows/line-candidate-volume-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pure-diagnostic-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pure diagnostic tests
+        run: |
+          python3 - <<'PY'
+          import runpy
+          ns = runpy.run_path("tests/test_line_candidate_volume_diagnostic.py")
+          tests = [
+              (name, fn)
+              for name, fn in sorted(ns.items())
+              if name.startswith("test_") and callable(fn)
+          ]
+          assert tests, "no diagnostic tests discovered"
+          for name, fn in tests:
+              fn()
+              print(f"PASS {name}")
+          print(f"PASS total={len(tests)}")
+          PY
