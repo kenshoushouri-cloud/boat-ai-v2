@@ -1,0 +1,116 @@
+name: Historical Opponent Pressure replay
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_opponent_pressure_replay_pg.py"
+      - "research/_historical_opponent_adapter.py"
+      - "tests/test_historical_opponent_pressure_replay_pg.py"
+      - ".github/workflows/historical-opponent-pressure-replay.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - run: |
+          pytest -q tests/test_historical_opponent_pressure_replay_pg.py
+          python -m py_compile \
+            research/historical_opponent_pressure_replay_pg.py \
+            research/_historical_opponent_adapter.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_opponent_pressure_replay_pg.py").read_text(encoding="utf-8").lower()
+          assert "historical_model_version = 102" in p
+          assert "on conflict (race_id) do nothing" in p
+          assert "update v2_opponent_pressure_shadow_v2" not in p
+          assert "delete from" not in p
+          assert "target_outcome_read" in p
+          print("PASS historical opponent replay safety")
+          PY
+
+  replay:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-opponent-replay ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Parse date range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-opponent-replay":
+              raise SystemExit("command: /railway historical-opponent-replay YYYY-MM-DD YYYY-MM-DD")
+          print("HIST_OPP_START_DATE="+p[2])
+          print("HIST_OPP_END_DATE="+p[3])
+          PY
+      - name: Replay prior-only Opponent Pressure
+        env:
+          CONFIRM_HISTORICAL_OPPONENT_DB_WRITE: "YES"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_OPPONENT_DB_WRITE="${CONFIRM_HISTORICAL_OPPONENT_DB_WRITE}"; exec python -u research/historical_opponent_pressure_replay_pg.py --start-date "${HIST_OPP_START_DATE}" --end-date "${HIST_OPP_END_DATE}"' \
+            | tee historical-opponent-replay.txt
+          grep -q '^HIST_OPP_RESULT=PASS$' historical-opponent-replay.txt
+          grep -q '^HIST_OPP_TARGET_OUTCOME_READ=0$' historical-opponent-replay.txt
+          grep -q '^HIST_OPP_PRODUCTION_ACCEPTED_MODEL=0$' historical-opponent-replay.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-opponent-replay-${{ github.run_id }}
+          path: |
+            historical-opponent-replay.txt
+            historical-opponent-replay-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical Opponent replay: ${HIST_OPP_START_DATE} .. ${HIST_OPP_END_DATE}"
+            if [ -f historical-opponent-replay.txt ]; then
+              grep -E '^(HIST_OPP_TOTALS=|HIST_OPP_RESULT=)' historical-opponent-replay.txt || true
+            fi
+            echo
+            echo "Historical model_version=102; target outcomes not read; existing/prospective rows preserved."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
