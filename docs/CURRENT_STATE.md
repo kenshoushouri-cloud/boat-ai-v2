@@ -8,7 +8,7 @@ Current source of truth:
 - PR #460 future-only F-count companion capture: **merged / active for future successful formal freezes**
 - Railway fallback Cron: **08:20 JST / `20 23 * * *`**
 - latest successful fallback dispatcher deployment on current main: `f7dd7219-5ecf-4976-ba40-85d51957bfea` — **SUCCESS**
-- an additional same-main Railway redeploy `8c14f309-99f3-4332-a487-511225f03104` was still DEPLOYING at this read-back; staged config: none
+- latest same-main Railway redeploy `8c14f309-99f3-4332-a487-511225f03104`: **SUCCESS**; staged config: none
 - 2026-09-29 formal V4 remains **UNAVAILABLE**; no reconstruction/backfill
 - settled V4 through 2026-09-28: **8/20**, ROI **147.7273%**, profit **+4,200 JPY**
 - settled S03_M2 through 2026-09-28: **63/100**, ROI **160.6349%**, profit **+3,820 JPY**
