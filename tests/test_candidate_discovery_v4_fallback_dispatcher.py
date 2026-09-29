@@ -40,7 +40,7 @@ class FakeTransport:
         raise AssertionError((method, path, body))
 
 
-def observed(hh=8, mm=25, ss=0):
+def observed(hh=8, mm=20, ss=0):
     return datetime(2026, 9, 21, hh, mm, ss, tzinfo=JST)
 
 
@@ -58,12 +58,24 @@ def test_before_checkpoint_never_calls_github():
     tx = FakeTransport()
     result = decide_dispatch(
         repo=REPO,
-        observed_at_jst=observed(8, 24, 59),
+        observed_at_jst=observed(8, 19, 59),
         transport=tx,
     )
     assert result.action == "NOT_DUE"
     assert result.should_dispatch is False
     assert tx.calls == []
+
+
+def test_exact_0820_checkpoint_can_dispatch():
+    tx = FakeTransport()
+    result = execute_dispatch(
+        repo=REPO,
+        observed_at_jst=observed(8, 20, 0),
+        transport=tx,
+    )
+    assert result.action == "DISPATCH_FALLBACK"
+    assert result.should_dispatch is True
+    assert sum(call[0] == "POST" for call in tx.calls) == 1
 
 
 def test_valid_primary_artifact_forces_noop():
@@ -174,8 +186,8 @@ def test_activation_manifest_is_minimal_and_permission_scoped():
     assert manifest["contract"] == "candidate_discovery_v4_fallback_activation_v1"
     assert manifest["source_repository"] == "kenshoushouri-cloud/boat-ai-v2"
     assert manifest["source_branch"] == "main"
-    assert manifest["cron_utc"] == "25 23 * * *"
-    assert manifest["cron_jst"] == "08:25"
+    assert manifest["cron_utc"] == "20 23 * * *"
+    assert manifest["cron_jst"] == "08:20"
     assert manifest["start_command"] == "python -u research/candidate_discovery_v4_fallback_dispatcher.py"
     assert manifest["required_environment_names"] == [
         "V4_FALLBACK_GITHUB_REPOSITORY",
