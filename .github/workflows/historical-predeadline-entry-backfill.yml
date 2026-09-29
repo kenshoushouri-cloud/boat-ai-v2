@@ -1,0 +1,143 @@
+name: Historical predeadline entry backfill
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_entry_feature_backfill_pg.py"
+      - "research/historical_entry_feature_coverage_pg.py"
+      - "tests/test_historical_entry_feature_backfill_pg.py"
+      - "docs/HISTORICAL_DATA_ACQUISITION_20260930.md"
+      - ".github/workflows/historical-predeadline-entry-backfill.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pure safety tests
+        run: |
+          python -m pip install -r requirements.txt pytest
+          pytest -q tests/test_historical_entry_feature_backfill_pg.py
+          python -m py_compile             research/historical_entry_feature_backfill_pg.py             research/historical_entry_feature_coverage_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_entry_feature_backfill_pg.py").read_text(encoding="utf-8").lower()
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          assert "payout" in p  # appears only in explicit no-read contract text
+          assert "insert into v2_race_entries" not in p
+          assert "confirm_historical_entry_db_write" in p
+          assert "fill_missing_only" in p
+          print("PASS historical backfill safety")
+          PY
+
+  backfill:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-entry-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse and validate requested date range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          parts=os.environ["COMMENT_BODY"].strip().split()
+          if len(parts) != 4:
+              raise SystemExit("command: /railway historical-entry-backfill YYYY-MM-DD YYYY-MM-DD")
+          _, command, start, end = parts
+          if command != "historical-entry-backfill":
+              raise SystemExit("unexpected command")
+          a=date.fromisoformat(start); b=date.fromisoformat(end)
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 7:
+              raise SystemExit("maximum batch is 7 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print(f"HIST_START_DATE={start}")
+          print(f"HIST_END_DATE={end}")
+          PY
+
+      - name: Coverage before
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_entry_feature_coverage_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"'             | tee coverage-before.txt
+
+      - name: Backfill official archived racelist fields
+        env:
+          CONFIRM_HISTORICAL_ENTRY_DB_WRITE: "YES"
+          HIST_OFFICIAL_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_ENTRY_DB_WRITE="${CONFIRM_HISTORICAL_ENTRY_DB_WRITE}"; export HIST_OFFICIAL_SLEEP_SEC="${HIST_OFFICIAL_SLEEP_SEC}"; exec python -u research/historical_entry_feature_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"'             | tee historical-backfill.txt
+          grep -q '^HIST_ENTRY_RESULT=PASS$' historical-backfill.txt
+          grep -q '^HIST_ENTRY_RESULT_ODDS_PAYOUT_READ=0$' historical-backfill.txt
+          grep -q '^HIST_ENTRY_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-backfill.txt
+
+      - name: Coverage after
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_entry_feature_coverage_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"'             | tee coverage-after.txt
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-entry-backfill-${{ github.run_id }}
+          path: |
+            coverage-before.txt
+            historical-backfill.txt
+            historical-entry-backfill-manifest.json
+            coverage-after.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Historical entry backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-backfill.txt ]; then
+              grep -E '^(HIST_ENTRY_DAY=|HIST_ENTRY_TOTALS=|HIST_ENTRY_FILLABLE_BY_FIELD=|HIST_ENTRY_RESULT=)' historical-backfill.txt || true
+            fi
+            echo
+            echo "Source: BOAT RACE official archived racelist. Fill-missing-only. No result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
