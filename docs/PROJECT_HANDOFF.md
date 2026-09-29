@@ -1,5 +1,76 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 00:55 JST
+
+### MID-OCTOBER EXECUTION PATH / MONTHLY +50,000 JPY TARGET ADDED
+Treat this section as the newest source of truth. Older override sections below are history.
+
+#### GitHub / Railway
+- main before this override: `33333a6952043071297a34a617da17075be07146`
+- PR #452: merged — fallback dispatcher internal checkpoint aligned to **08:20 JST**
+- PR #460: merged — isolated future-only F-count companion capture activated
+- fallback service: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
+- fallback Cron read-back: **`20 23 * * *` = 08:20 JST**
+- latest successful current-main deploy: `f7dd7219-5ecf-4976-ba40-85d51957bfea` — **SUCCESS**
+- extra same-main redeploy `8c14f309-99f3-4332-a487-511225f03104`: DEPLOYING at last read-back
+- staged config: none
+- 9/29 formal prospective V4: **UNAVAILABLE**, immutable; no reconstruction/backfill
+
+#### Core evidence
+Through 2026-09-28:
+- V4 formal TOP2: **8/20 days**, ROI **147.7273%**, profit **+4,200 JPY**
+- S03_M2: **63/100 observations**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03 second-half ROI: **56.5625%**
+- V5 core target review: **2026-10-15**
+
+#### Monthly economics objective
+Operational planning target:
+- **+50,000 JPY net profit/month**
+
+Do not optimize the selector directly for this target.
+
+At 100 JPY/ticket and TOP2:
+- 1 race/day requires ROI 933.33% for +50,000/month
+- 2 races/day requires ROI 516.67%
+- 3 races/day requires ROI 377.78%
+
+At the current V4 formal 6R/day x TOP2 volume and ROI 147.7273%, the descriptive 30-day/100-JPY projection is about **+17,182 JPY**, not +50,000 JPY.
+
+This means the correct order is:
+1. complete prospective profitability evidence;
+2. confirm natural notification volume;
+3. use conservative economics, not headline ROI alone;
+4. define bankroll/DD constraints;
+5. only then make a separate Production stake proposal.
+
+PR #461 adds the +50,000 JPY feasibility block to `research/forward_combined_checkpoint.py`.
+Every routine combined checkpoint will expose the target gap while keeping:
+- selector retune for profit target: false;
+- stake change authorized: false;
+- purchase action: false.
+
+#### F-count
+Future-only companion evidence is now active:
+- valid formal freeze first;
+- exact 36 `race_id/lane/f_count` rows;
+- DB READ ONLY;
+- separate hash-bound artifact;
+- failure isolated from formal V4;
+- no historical backfill;
+- no coefficient search;
+- no Production model/selector/LINE/stake change.
+
+#### Immediate priorities
+1. Do not miss future V4 formal days; preserve 08:20 fallback operation.
+2. Continue frozen S03_M2 to 100 officially evaluated observations.
+3. Accumulate F-count prospectively without adding it to V5 core.
+4. Run monthly-profit feasibility on every combined checkpoint.
+5. Do not raise stake merely to force +50,000 JPY before evidence gates and risk limits are satisfied.
+6. Keep `purchase_action=false`.
+
+`MID_OCTOBER_PATH_ACTIVE / FALLBACK_0820_ALIGNED / FCOUNT_CAPTURE_ACTIVE / MONTHLY_PLUS_50000_SCALING_TARGET / V4_8_OF_20 / S03_63_OF_100 / PROD_MODEL_UNCHANGED / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-29 17:10 JST
 
 ### SYSTEM PURPOSE / TIMELINE HANDOFF ADDED
