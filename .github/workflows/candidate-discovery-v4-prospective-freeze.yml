@@ -7,6 +7,12 @@ on:
       - 'tests/test_candidate_discovery_v4_prospective_freeze.py'
       - '.github/scripts/candidate_discovery_v4_main_feed_pg.py'
       - 'research/candidate_discovery_v4_contract.py'
+      - 'research/v4_fcount_companion_contract.py'
+      - 'research/v4_fcount_companion_adapter.py'
+      - 'research/v4_fcount_prospective_capture_pg.py'
+      - 'research/v4_fcount_prospective_activation_manifest.py'
+      - 'tests/test_v4_fcount_companion_contract.py'
+      - 'tests/test_v4_fcount_companion_adapter.py'
       - 'research/candidate_discovery_v4_capture_arbiter.py'
       - 'research/candidate_discovery_v4_pre_freeze_availability_capture.py'
       - 'research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py'
@@ -61,15 +67,29 @@ jobs:
             research/candidate_discovery_v4_pre_freeze_availability_capture_pg.py \
             research/candidate_discovery_v4_availability_snapshot_binder.py \
             research/candidate_discovery_v4_availability_guard.py \
-            research/candidate_discovery_v4_availability_gate_runtime.py
+            research/candidate_discovery_v4_availability_gate_runtime.py \
+            research/v4_fcount_companion_contract.py \
+            research/v4_fcount_companion_adapter.py \
+            research/v4_fcount_prospective_capture_pg.py \
+            research/v4_fcount_prospective_activation_manifest.py
           python tests/test_candidate_discovery_v4_prospective_freeze.py
           pytest -q \
             tests/test_candidate_discovery_v4_availability_guard.py \
             tests/test_candidate_discovery_v4_availability_snapshot_binder.py \
-            tests/test_candidate_discovery_v4_availability_gate_runtime.py
+            tests/test_candidate_discovery_v4_availability_gate_runtime.py \
+            tests/test_v4_fcount_companion_contract.py \
+            tests/test_v4_fcount_companion_adapter.py
           python - <<'PY'
           from pathlib import Path
           workflow=Path('.github/workflows/candidate-discovery-v4-prospective-freeze.yml').read_text(encoding='utf-8')
+          capture=Path('research/v4_fcount_prospective_capture_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in capture
+          assert 'future_approved_select' in capture
+          assert 'insert into' not in capture
+          assert 'update v2_' not in capture
+          assert 'delete from' not in capture
+          for forbidden in ('v2_results', 'v2_odds', 'payout_yen', 'return_yen', 'finish_order'):
+              assert forbidden not in capture
           assert "cron: '16 23 * * *'" in workflow
           assert "PYTHONPATH: ." in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
@@ -89,8 +109,12 @@ jobs:
           assert 'CANDIDATE_V4_AVAILABILITY_GUARD_ENFORCED=1' in workflow
           assert ('railway'+' variable'+' list') not in workflow
           assert ('railway-vars'+'.json') not in workflow
-          assert workflow.count('railway run') >= 2
+          assert workflow.count('railway run') >= 3
           assert 'RAILWAY_DB_SERVICE' in workflow
+          assert 'V4_FCOUNT_CAPTURE_RESULT=PASS_SEPARATE_COMPANION' in workflow
+          assert "steps.fcount_capture.outcome == 'success'" in workflow
+          assert 'candidate-discovery-v4-fcount-companion-' in workflow
+          assert 'V4_FCOUNT_CAPTURE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0' in workflow
           PY
 
   freeze:
@@ -236,6 +260,45 @@ jobs:
             candidate-discovery-v4-prospective-freeze.txt
           retention-days: 90
           if-no-files-found: error
+
+      - name: Capture optional F-count companion
+        id: fcount_capture
+        if: steps.availability_gate.outcome == 'success'
+        continue-on-error: true
+        env:
+          V4_FCOUNT_FORMAL_ARTIFACT: candidate-discovery-v4-prospective-freeze.json
+          V4_FCOUNT_FORMAL_CORE_SHA256: candidate-discovery-v4-prospective-freeze.json.core.sha256
+          V4_FCOUNT_COMPANION_OUTPUT: candidate-discovery-v4-fcount-companion.json
+        run: |
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_fcount_prospective_capture_pg.py' \
+            | tee candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_ROWS=36$' candidate-discovery-v4-fcount-companion.txt
+          grep -q '^V4_FCOUNT_CAPTURE_RESULT=PASS_SEPARATE_COMPANION$' candidate-discovery-v4-fcount-companion.txt
+
+      - name: Upload optional F-count companion
+        if: steps.fcount_capture.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-discovery-v4-fcount-companion-${{ github.run_id }}
+          path: |
+            candidate-discovery-v4-fcount-companion.json
+            candidate-discovery-v4-fcount-companion.json.sha256
+            candidate-discovery-v4-fcount-companion.json.canonical.sha256
+            candidate-discovery-v4-fcount-companion.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Record F-count companion outcome
+        if: always()
+        run: |
+          echo "CANDIDATE_V4_FCOUNT_COMPANION_OUTCOME=${{ steps.fcount_capture.outcome }}"
+          echo "CANDIDATE_V4_FCOUNT_COMPANION_REQUIRED_FOR_FORMAL=0"
+          echo "CANDIDATE_V4_FCOUNT_COMPANION_PRODUCTION_BEHAVIOR_CHANGED=0"
 
       - name: Enforce availability guard
         if: always()
