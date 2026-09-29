@@ -61,6 +61,7 @@ SOURCE_FIELDS = (
 SOURCE_CONTRACT = "BOATRACE_OFFICIAL_RACELIST_ARCHIVE_PREDEADLINE_ASSUMED_V1"
 WRITE_CONFIRM = "YES"
 DEFAULT_SLEEP_SEC = 0.50
+TEXT_DB_FIELDS = {"motor_no", "boat_no"}
 
 
 def _is_missing(value: Any) -> bool:
@@ -153,8 +154,12 @@ def _update_missing_fields(
     params: list[Any] = []
     guards = []
     for field, value in patch.items():
-        sets.append(f"{field}=coalesce({field},%s)")
-        params.append(value)
+        if field in TEXT_DB_FIELDS:
+            sets.append(f"{field}=coalesce({field},%s::text)")
+            params.append(str(value))
+        else:
+            sets.append(f"{field}=coalesce({field},%s)")
+            params.append(value)
         guards.append(f"{field} is null")
     sets.append("updated_at=%s")
     params.append(datetime.now(JST).isoformat())
