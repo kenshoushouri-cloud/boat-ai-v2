@@ -31,6 +31,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt pytest
+      - run: npm install --global @railway/cli
       - run: pytest -q tests/test_historical_racer_term_reconstruction.py
       - name: Load official term files into dedicated historical table
         run: |
