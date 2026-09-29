@@ -27,5 +27,15 @@ def test_combined_scorecard_uses_frozen_review_gates():
     assert out["v5_core_milestone"]["remaining"]["v4_resolved_formal_days"] == 13
     assert out["v5_core_milestone"]["remaining"]["s03_m2_evaluated"] == 42
     assert out["v5_core_milestone"]["status"] == "COLLECTING_CORE_EVIDENCE"
+    target = out["monthly_profit_target"]
+    assert target["target_monthly_profit_jpy"] == 50000
+    assert round(target["required_roi_pct_at_100_jpy_for_1_to_3_races_per_day"]["1"], 2) == 933.33
+    assert round(target["required_roi_pct_at_100_jpy_for_1_to_3_races_per_day"]["2"], 2) == 516.67
+    assert round(target["required_roi_pct_at_100_jpy_for_1_to_3_races_per_day"]["3"], 2) == 377.78
+    assert target["v4_formal_top2"]["evidence_gate"]["stake_scaling_review_allowed"] is False
+    assert target["s03_m2"]["evidence_gate"]["stake_scaling_review_allowed"] is False
+    assert target["stake_change_authorized"] is False
+    assert target["selection_retune_for_profit_target_allowed"] is False
+    assert target["purchase_action"] is False
     assert out["safety"]["promotion_allowed"] is False
     assert out["safety"]["production_change"] is False
