@@ -27,7 +27,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-from . import _historical_opponent_adapter as adapter
+from research import _historical_opponent_adapter as adapter
 
 
 HISTORICAL_MODEL_VERSION = 102
