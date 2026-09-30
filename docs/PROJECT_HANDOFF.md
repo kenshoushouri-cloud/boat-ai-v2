@@ -32,6 +32,10 @@ Next batch already started:
 艇国:
 - #478 merged for pre-race historical-table cross-check;
 - #479 merged for strict prior-only dated motor-history reconstruction probe;
+- #481 merged with the reusable official B-file bridge and fixed-URL connectivity probe;
+- direct Railway-cloud connection to boatrace-db.net:443 timed out, matching GitHub-hosted runner behavior;
+- do not bypass this with proxies or multi-IP access;
+- test-beforeinfo-extra was restored to `python -u collect_candidate_filter_shadow_pg.py`, original watch patterns, and restore deployment `91402614-e57f-4552-874d-c3f55c7e32f5` succeeded;
 - access rule encoded: >=3 seconds, known URLs, sequential use;
 - do not source program/result/racer-term bulk data from 艇国 when BOAT RACE official downloads exist;
 - do not back-project present-day aggregate values;
