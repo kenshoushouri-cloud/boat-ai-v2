@@ -32,6 +32,9 @@ import repair_month_all_pg as official
 JST = official.JST
 
 TARGET_FIELDS = (
+    "racer_name",
+    "branch",
+    "origin",
     "f_count",
     "l_count",
     "avg_st",
@@ -61,7 +64,7 @@ SOURCE_FIELDS = (
 SOURCE_CONTRACT = "BOATRACE_OFFICIAL_RACELIST_ARCHIVE_PREDEADLINE_ASSUMED_V1"
 WRITE_CONFIRM = "YES"
 DEFAULT_SLEEP_SEC = 0.50
-TEXT_DB_FIELDS = {"motor_no", "boat_no"}
+TEXT_DB_FIELDS = {"racer_name", "branch", "origin", "motor_no", "boat_no"}
 
 
 def _is_missing(value: Any) -> bool:

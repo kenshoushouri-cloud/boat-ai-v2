@@ -50,5 +50,29 @@ def test_range_is_inclusive():
     ]
 
 
-def test_motor_and_boat_numbers_are_text_db_fields():
-    assert TEXT_DB_FIELDS == {"motor_no", "boat_no"}
+def test_text_db_fields_include_racer_metadata_and_numbers():
+    assert TEXT_DB_FIELDS == {
+        "racer_name",
+        "branch",
+        "origin",
+        "motor_no",
+        "boat_no",
+    }
+
+
+def test_missing_racer_metadata_is_fillable_but_existing_is_preserved():
+    patch = build_missing_patch(
+        {
+            "racer_name": None,
+            "branch": "",
+            "origin": "大阪",
+        },
+        {
+            "racer_name": "山田 太郎",
+            "branch": "大阪",
+            "origin": "兵庫",
+        },
+    )
+    assert patch["racer_name"] == "山田 太郎"
+    assert patch["branch"] == "大阪"
+    assert "origin" not in patch
