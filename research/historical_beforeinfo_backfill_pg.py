@@ -222,16 +222,17 @@ def _upsert_weather(
                 source=coalesce(v2_realtime_weather_snapshots.source,excluded.source),
                 snapshot_at=coalesce(v2_realtime_weather_snapshots.snapshot_at,excluded.snapshot_at),
                 raw=coalesce(v2_realtime_weather_snapshots.raw,excluded.raw),
-                updated_at=case
-                  when v2_realtime_weather_snapshots.weather is null
-                    or v2_realtime_weather_snapshots.temperature_c is null
-                    or v2_realtime_weather_snapshots.water_temperature_c is null
-                    or v2_realtime_weather_snapshots.wind_speed_m is null
-                    or v2_realtime_weather_snapshots.wind_direction is null
-                    or v2_realtime_weather_snapshots.wave_height_cm is null
-                  then now()
-                  else v2_realtime_weather_snapshots.updated_at
-                end
+                updated_at=now()
+            where
+                   (v2_realtime_weather_snapshots.weather is null and excluded.weather is not null)
+                or (v2_realtime_weather_snapshots.temperature_c is null and excluded.temperature_c is not null)
+                or (v2_realtime_weather_snapshots.water_temperature_c is null and excluded.water_temperature_c is not null)
+                or (v2_realtime_weather_snapshots.wind_speed_m is null and excluded.wind_speed_m is not null)
+                or (v2_realtime_weather_snapshots.wind_direction is null and excluded.wind_direction is not null)
+                or (v2_realtime_weather_snapshots.wave_height_cm is null and excluded.wave_height_cm is not null)
+                or (v2_realtime_weather_snapshots.source is null and excluded.source is not null)
+                or (v2_realtime_weather_snapshots.snapshot_at is null and excluded.snapshot_at is not null)
+                or (v2_realtime_weather_snapshots.raw is null and excluded.raw is not null)
             returning 1
             """,
             (
@@ -300,6 +301,18 @@ def _upsert_exhibition(
                     snapshot_at=coalesce(v2_realtime_exhibition_snapshots.snapshot_at,excluded.snapshot_at),
                     raw=coalesce(v2_realtime_exhibition_snapshots.raw,excluded.raw),
                     updated_at=now()
+                where
+                       (v2_realtime_exhibition_snapshots.exhibition_course is null and excluded.exhibition_course is not null)
+                    or (v2_realtime_exhibition_snapshots.exhibition_time is null and excluded.exhibition_time is not null)
+                    or (v2_realtime_exhibition_snapshots.exhibition_time_rank is null and excluded.exhibition_time_rank is not null)
+                    or (v2_realtime_exhibition_snapshots.exhibition_time_diff is null and excluded.exhibition_time_diff is not null)
+                    or (v2_realtime_exhibition_snapshots.start_timing is null and excluded.start_timing is not null)
+                    or (v2_realtime_exhibition_snapshots.start_timing_rank is null and excluded.start_timing_rank is not null)
+                    or (v2_realtime_exhibition_snapshots.start_timing_diff is null and excluded.start_timing_diff is not null)
+                    or (v2_realtime_exhibition_snapshots.tilt is null and excluded.tilt is not null)
+                    or (v2_realtime_exhibition_snapshots.source is null and excluded.source is not null)
+                    or (v2_realtime_exhibition_snapshots.snapshot_at is null and excluded.snapshot_at is not null)
+                    or (v2_realtime_exhibition_snapshots.raw is null and excluded.raw is not null)
                 returning 1
                 """,
                 (
@@ -371,8 +384,18 @@ def process_day(
         if not write_enabled:
             continue
 
+        weather_has_data = any(
+            weather.get(k) is not None
+            for k in (
+                "weather","temperature_c","water_temperature_c",
+                "wind_speed_m","wind_direction","wave_height_cm",
+            )
+        )
         try:
-            counts["weather_rows_touched"] += _upsert_weather(conn, race, weather)
+            if weather_has_data:
+                counts["weather_rows_touched"] += _upsert_weather(
+                    conn, race, weather
+                )
             counts["exhibition_rows_touched"] += _upsert_exhibition(
                 conn, race, exhibition
             )
