@@ -1,5 +1,50 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 09:50 JST
+
+### HISTORICAL DATA ACQUISITION EXPANDED
+Treat this as the newest historical-data policy. Older "no historical F-count backfill" statements are superseded.
+
+User direction:
+- acquire missing historical data aggressively;
+- use the pre-deadline value as historical truth;
+- use 艇国データバンク where useful.
+
+Accepted provenance:
+1. BOAT RACE official target-day pre-race program/racelist/B data;
+2. BOAT RACE official prior-only reconstruction using only events before the target deadline;
+3. 艇国 supplemental historical data when its historical cutoff is provable/reconstructable and its access rules are obeyed.
+
+Never use target-race outcomes while constructing historical features.
+
+Historical F-count:
+- official target-day F-count is now allowed as a historical predeadline input;
+- do not perform outcome-guided coefficient/threshold search merely because historical F-count is available;
+- prospective F-count companion evidence remains independently collected and separately labeled.
+
+艇国:
+- minimum 3-second automated access interval;
+- known URLs only, single IP, avoid repeated static assets;
+- do not substitute 艇国 for BOAT RACE official program/result/racer-term downloads;
+- use primarily for gap-fill/cross-check and dated motor/venue/course ledgers where an as-of cutoff can be established.
+
+Current execution:
+- official racelist backfill through 2025-08-11 confirmed;
+- 2025-08-12 onward batches running;
+- PR #474 merged: racer_name/branch/origin fill-missing-only added;
+- metadata-aware 2025-07-01..07-07 pilot running;
+- historical Course 2025H2 complete; 2026H1 running;
+- historical Opponent 2025-07/08 complete; 2025-09 retry after concurrent entry-write load settles;
+- PR #475 Draft tests official daily B-file parity for a lower-load bulk path.
+
+Historical evidence informs model research but does not count toward V4 20-day or S03_M2 100-observation prospective gates.
+
+Production prediction/selector/threshold/LINE/stake/purchase unchanged.
+`purchase_action=false`.
+
+`HISTORICAL_ACQUISITION_EXPANDED / PREDEADLINE_IS_TRUTH / OFFICIAL_FIRST / TEIKOKU_SUPPLEMENT / FCOUNT_HIST_ALLOWED_NO_OUTCOME_SEARCH / PROD_UNCHANGED`
+
+
 ## LATEST OVERRIDE — 2026-09-30 00:55 JST
 
 ### MID-OCTOBER EXECUTION PATH / MONTHLY +50,000 JPY TARGET ADDED

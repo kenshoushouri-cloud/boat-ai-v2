@@ -1,5 +1,52 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 09:50 JST
+
+Historical acquisition is now an active priority.
+
+Approved interpretation:
+- for historical backtests, the correct feature value is the value that would have been available before the target race deadline;
+- BOAT RACE official target-day pre-race program/racelist data are accepted as historical predeadline-by-nature inputs;
+- deterministic reconstruction is accepted only from events strictly before the target deadline;
+- target-race outcomes must never enter feature construction;
+- historical replay remains separate from prospective V4/S03 gate counts.
+
+Source order:
+1. BOAT RACE official program/racelist/B files;
+2. BOAT RACE official prior-only reconstruction;
+3. 艇国データバンク as a supplemental source under its published access rules.
+
+艇国 usage:
+- >=3 seconds between automated accesses;
+- known existing URLs only;
+- one IP;
+- no repeated static asset retrieval;
+- official BOAT RACE download remains preferred for program/result/racer-term categories;
+- present-day aggregate values are cross-check only unless a historical as-of cutoff can be proven;
+- dated motor histories may be used for prior-only reconstruction/cross-check.
+
+Historical F-count policy changed by explicit user direction:
+- target-day official racelist/B-file F-count may be acquired and used as historical predeadline input;
+- this does NOT authorize outcome-guided F-count coefficient search or Production model changes;
+- future prospective F-count companion capture remains active and separately labeled.
+
+Completed/active acquisition:
+- official entry/racelist numeric backfill confirmed through 2025-08-11;
+- additional 2025-08-12 onward entry batches are running;
+- racer_name / branch / origin were added to fill-missing-only official racelist backfill by merged PR #474;
+- 2025-07-01..07-07 metadata-aware pilot is running;
+- Course applied-term proxy 2025H2 completed;
+- Course 2026H1 acquisition is running;
+- Opponent prior-only replay completed for 2025-07 and 2025-08;
+- 2025-09 Opponent replay hit a statement timeout while concurrent entry writes were active; retry after entry I/O settles, without changing scoring logic;
+- PR #475 is testing one-day official daily B-file parity to reduce future HTTP load.
+
+Production V4 model/selector/threshold/LINE/stake remain unchanged.
+`purchase_action=false`.
+
+`HISTORICAL_BACKFILL_ACTIVE / PREDEADLINE_BY_NATURE_ACCEPTED / FCOUNT_HIST_INPUT_ALLOWED_NO_COEF_SEARCH / TEIKOKU_SUPPLEMENTAL / PROSPECTIVE_GATES_SEPARATE / PROD_UNCHANGED`
+
+
 ## LATEST OVERRIDE — 2026-09-30 00:55 JST
 
 Current source of truth:
