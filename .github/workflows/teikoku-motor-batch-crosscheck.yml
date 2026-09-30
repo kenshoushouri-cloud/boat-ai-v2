@@ -92,6 +92,8 @@ jobs:
           print("MOTOR_LIMIT="+str(limit))
           PY
       - name: Run read-only supplemental cross-check
+        id: live_batch
+        continue-on-error: true
         run: |
           set -euo pipefail
           railway run \
@@ -99,9 +101,67 @@ jobs:
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/teikoku_motor_batch_crosscheck_pg.py --target-date "${TARGET_DATE}" --limit "${MOTOR_LIMIT}"' \
-            | tee teikoku-motor-batch-crosscheck.txt
+            2>&1 | tee teikoku-motor-batch-crosscheck.txt
           grep -q '^TEIKOKU_MOTOR_BATCH_DB_WRITE=0 PROD_CHANGE=0 PURCHASE=0$' teikoku-motor-batch-crosscheck.txt
           grep -q '^TEIKOKU_MOTOR_BATCH_RESULT=PASS_READ_ONLY_CROSSCHECK$' teikoku-motor-batch-crosscheck.txt
+      - name: Require successful batch contract
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "TEIKOKU_LIVE_BATCH_OUTCOME=${{ steps.live_batch.outcome }}"
+          test -f teikoku-motor-batch-crosscheck.txt
+          grep -q '^TEIKOKU_MOTOR_BATCH_DB_WRITE=0 PROD_CHANGE=0 PURCHASE=0        with:
+          name: teikoku-motor-batch-crosscheck-${{ github.run_id }}
+          path: |
+            teikoku-motor-batch-crosscheck.json
+            teikoku-motor-batch-crosscheck.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "艇国 motor batch cross-check: ${TARGET_DATE}"
+            echo
+            if [ -f teikoku-motor-batch-crosscheck.txt ]; then
+              grep -E '^(TEIKOKU_MOTOR_BATCH_SUMMARY=|TEIKOKU_MOTOR_BATCH_DB_WRITE=|TEIKOKU_MOTOR_BATCH_RESULT=)' teikoku-motor-batch-crosscheck.txt || true
+              if ! grep -q '^TEIKOKU_MOTOR_BATCH_RESULT=' teikoku-motor-batch-crosscheck.txt; then
+                echo "Diagnostic tail:"
+                tail -n 20 teikoku-motor-batch-crosscheck.txt || true
+              fi
+            fi
+            echo
+            echo "READ ONLY; supplemental; >=3s access interval; present aggregate is not used as a historical value."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ teikoku-motor-batch-crosscheck.txt
+          grep -q '^TEIKOKU_MOTOR_BATCH_RESULT=PASS_READ_ONLY_CROSSCHECK        with:
+          name: teikoku-motor-batch-crosscheck-${{ github.run_id }}
+          path: |
+            teikoku-motor-batch-crosscheck.json
+            teikoku-motor-batch-crosscheck.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "艇国 motor batch cross-check: ${TARGET_DATE}"
+            echo
+            if [ -f teikoku-motor-batch-crosscheck.txt ]; then
+              grep -E '^(TEIKOKU_MOTOR_BATCH_SUMMARY=|TEIKOKU_MOTOR_BATCH_RESULT=)' teikoku-motor-batch-crosscheck.txt || true
+            fi
+            echo
+            echo "READ ONLY; supplemental; >=3s access interval; present aggregate is not used as a historical value."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ teikoku-motor-batch-crosscheck.txt
+          test "${{ steps.live_batch.outcome }}" = "success"
+
       - uses: actions/upload-artifact@v4
         with:
           name: teikoku-motor-batch-crosscheck-${{ github.run_id }}
