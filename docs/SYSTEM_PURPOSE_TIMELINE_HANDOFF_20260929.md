@@ -1,5 +1,12 @@
 # Boat AI — System Purpose, Operating Timeline, and Handoff
 
+> **SUPERSEDED FOR CURRENT OPERATIONS**
+>
+> この2026-09-29版は履歴として保持する。
+> 最新の完全版は **`docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`**。
+> 次チャットは必ず9/30版を優先して読む。
+
+
 ## Handoff baseline — 2026-09-29 17:10 JST
 
 This document is the high-level handoff for the current boat-racing AI project.
