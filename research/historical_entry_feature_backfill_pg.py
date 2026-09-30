@@ -52,6 +52,17 @@ TARGET_FIELDS = (
     "boat_place3_rate",
 )
 
+RESIDUAL_FIELDS = (
+    "origin",
+    "f_count",
+    "l_count",
+    "avg_st",
+    "national_place3_rate",
+    "local_place3_rate",
+    "motor_place3_rate",
+    "boat_place3_rate",
+)
+
 SOURCE_FIELDS = (
     "racer_number",
     "racer_name",
@@ -74,10 +85,12 @@ def _is_missing(value: Any) -> bool:
 def build_missing_patch(
     existing: Mapping[str, Any],
     parsed: Mapping[str, Any],
+    *,
+    fields: Iterable[str] = TARGET_FIELDS,
 ) -> Dict[str, Any]:
-    """Return only missing target fields that can be filled from parsed row."""
+    """Return only missing selected fields that can be filled from parsed row."""
     patch: Dict[str, Any] = {}
-    for field in TARGET_FIELDS:
+    for field in fields:
         if _is_missing(existing.get(field)) and not _is_missing(parsed.get(field)):
             patch[field] = parsed.get(field)
     return patch
@@ -134,11 +147,16 @@ def _entry_rows(
     return out
 
 
-def _missing_field_count(rows_by_lane: Mapping[int, Mapping[str, Any]]) -> int:
+def _missing_field_count(
+    rows_by_lane: Mapping[int, Mapping[str, Any]],
+    *,
+    fields: Iterable[str] = TARGET_FIELDS,
+) -> int:
+    selected = tuple(fields)
     return sum(
         1
         for row in rows_by_lane.values()
-        for field in TARGET_FIELDS
+        for field in selected
         if _is_missing(row.get(field))
     )
 
@@ -186,6 +204,7 @@ def process_day(
     *,
     write_enabled: bool,
     sleep_sec: float,
+    fields: Iterable[str] = TARGET_FIELDS,
 ) -> dict[str, Any]:
     races = _race_rows(conn, target_date)
     existing = _entry_rows(conn, [str(r["race_id"]) for r in races])
@@ -196,8 +215,9 @@ def process_day(
 
     summary["db_races"] = len(races)
     summary["existing_entry_rows"] = sum(len(x) for x in existing.values())
+    selected_fields = tuple(fields)
     summary["missing_values_before"] = sum(
-        _missing_field_count(x) for x in existing.values()
+        _missing_field_count(x, fields=selected_fields) for x in existing.values()
     )
 
     for race in races:
@@ -206,7 +226,7 @@ def process_day(
         if len(rows_by_lane) != 6:
             summary["skipped_non6_existing_entries"] += 1
             continue
-        if _missing_field_count(rows_by_lane) == 0:
+        if _missing_field_count(rows_by_lane, fields=selected_fields) == 0:
             summary["skipped_complete_races"] += 1
             continue
 
@@ -237,7 +257,11 @@ def process_day(
 
         summary["parsed_races"] += 1
         for lane in range(1, 7):
-            patch = build_missing_patch(rows_by_lane[lane], parsed[lane])
+            patch = build_missing_patch(
+                rows_by_lane[lane],
+                parsed[lane],
+                fields=selected_fields,
+            )
             if not patch:
                 continue
             summary["rows_with_patch"] += 1
@@ -274,6 +298,12 @@ def main() -> None:
     ap.add_argument("--start-date", default=os.getenv("HIST_START_DATE"))
     ap.add_argument("--end-date", default=os.getenv("HIST_END_DATE"))
     ap.add_argument(
+        "--profile",
+        choices=("all", "residual"),
+        default=os.getenv("HIST_ENTRY_PROFILE", "all"),
+        help="all fields, or residual fields not supplied by the official daily B table",
+    )
+    ap.add_argument(
         "--sleep-sec",
         type=float,
         default=float(os.getenv("HIST_OFFICIAL_SLEEP_SEC", str(DEFAULT_SLEEP_SEC))),
@@ -295,8 +325,14 @@ def main() -> None:
         == WRITE_CONFIRM
     )
     dates = _date_range(args.start_date, args.end_date)
+    selected_fields = TARGET_FIELDS if args.profile == "all" else RESIDUAL_FIELDS
 
     print(f"HIST_ENTRY_SOURCE_CONTRACT={SOURCE_CONTRACT}", flush=True)
+    print(f"HIST_ENTRY_PROFILE={args.profile}", flush=True)
+    print(
+        "HIST_ENTRY_SELECTED_FIELDS=" + ",".join(selected_fields),
+        flush=True,
+    )
     print(
         "HIST_ENTRY_TIMING_POLICY=historical_archived_racelist_values_treated_as_predeadline",
         flush=True,
@@ -317,6 +353,7 @@ def main() -> None:
                 target_date,
                 write_enabled=write_enabled,
                 sleep_sec=max(0.0, args.sleep_sec),
+                fields=selected_fields,
             )
             reports.append(report)
             s = report["summary"]
@@ -344,6 +381,8 @@ def main() -> None:
         "source_contract": SOURCE_CONTRACT,
         "start_date": args.start_date,
         "end_date": args.end_date,
+        "profile": args.profile,
+        "selected_fields": list(selected_fields),
         "historical_reconstruction": True,
         "prospective_evidence": False,
         "predeadline_interpretation": (
