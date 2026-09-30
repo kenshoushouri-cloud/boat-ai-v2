@@ -1,5 +1,59 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 11:51 JST
+
+Historical acquisition has moved from policy into successful Production data repair.
+
+Historical truth rule:
+- the value available before the target race deadline is the accepted historical feature value;
+- BOAT RACE official target-day pre-race data are primary;
+- target-race outcomes must never enter feature construction;
+- current aggregate values must not be pasted backward;
+- historical replay remains separate from prospective V4/S03 gate counts.
+
+Official daily B-file bulk path:
+- PR #480 merged;
+- PR #485 merged: long ranges up to 62 days are preserved in one serialized job and internally split into deterministic 14-day chunks;
+- PR #486 merged: monthly campaign executes B-file fill -> archived-racelist residual fill -> prior-only Opponent replay under one shared write lock;
+- 2026-01-15 and 2026-07-01 additional official-to-official parity checks both PASS;
+- raw official daily B files are parsed directly across all venues;
+- importer is fill-missing-only;
+- existing non-null values are never overwritten;
+- missing race/entry rows are not inserted;
+- result/odds/payout tables are not read.
+
+Completed Production backfill:
+- 2025-09-01..2025-09-07;
+- 936 complete races;
+- 5,616 parsed/existing entry rows;
+- 11,344 missing values were fillable;
+- 5,616 DB rows updated;
+- workflow result: PASS_FILL_MISSING_ONLY.
+
+Active next bulk batch:
+- 2025-09-08..2025-09-30;
+- run 36662632600;
+- same dry-run -> fill-missing-only write -> verification contract.
+
+艇国データバンク:
+- PR #478 merged: historical pre-race table cross-check;
+- PR #479 merged: dated prior-only motor-history probe;
+- PR #481 merged: generic owner-gated B-file bridge plus fixed-URL connectivity probe;
+- actual Railway-cloud fixed-URL probe also timed out connecting to boatrace-db.net:443;
+- no proxy/multi-IP/bypass was introduced;
+- temporary test service was restored to its original start command/watch patterns and restore deployment 91402614-e57f-4552-874d-c3f55c7e32f5 succeeded;
+- minimum automated access interval >=3 seconds;
+- known URLs only / no parallel asset scraping;
+- BOAT RACE official remains primary for program/result/racer-term downloads;
+- 艇国 is supplemental for gap-fill/cross-check and dated prior-only histories;
+- present-day aggregate values are cross-check only unless an historical cutoff is provable.
+
+Production model/selector/threshold/LINE/stake remain unchanged.
+`purchase_action=false`.
+
+`HISTORICAL_BFILE_BACKFILL_WRITING / 20250901_0907_PASS_11344_VALUES / 20250908_0930_ACTIVE / PREDEADLINE_IS_TRUTH / TEIKOKU_SUPPLEMENTAL / PROD_DECISION_UNCHANGED`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 Historical acquisition is now an active priority.
