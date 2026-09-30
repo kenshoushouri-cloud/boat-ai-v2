@@ -27,9 +27,9 @@ from research.official_bfile_raw_parser import group_complete_races, parse_b_byt
 
 FIELDS = (
     "racer_number",
-    "f_count",
-    "l_count",
-    "avg_st",
+    "racer_name",
+    "branch",
+    "racer_class",
     "national_win_rate",
     "national_place2_rate",
     "local_win_rate",
@@ -74,12 +74,14 @@ def download_txt(target: date, work: Path) -> Path:
 def norm(field: str, value: Any) -> Any:
     if value in (None, ""):
         return None
+    if field in {"racer_name", "branch"}:
+        return "".join(str(value).split())
     if field in {"motor_no", "boat_no"}:
         try:
             return str(int(value))
         except Exception:
             return str(value).strip()
-    if field in {"racer_number", "f_count", "l_count"}:
+    if field in {"racer_number", "racer_class"}:
         try:
             return int(value)
         except Exception:
@@ -156,7 +158,7 @@ def main() -> None:
             cur.execute(
                 """
                 select race_id,lane,
-                       racer_number,f_count,l_count,avg_st,
+                       racer_number,racer_name,branch,racer_class,
                        national_win_rate,national_place2_rate,
                        local_win_rate,local_place2_rate,
                        motor_no,motor_place2_rate,
