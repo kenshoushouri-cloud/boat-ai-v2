@@ -6,9 +6,12 @@ on:
       - "research/historical_matched_contract_readiness_pg.py"
       - "tests/test_historical_matched_contract_readiness_pg.py"
       - ".github/workflows/historical-matched-contract-readiness.yml"
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
 
 env:
   PYTHONPATH: .
@@ -19,6 +22,14 @@ env:
 
 jobs:
   audit:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway historical-matched-readiness'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -42,6 +53,8 @@ jobs:
               assert token not in p, token
           w=Path(".github/workflows/historical-matched-contract-readiness.yml").read_text(encoding="utf-8").lower()
           assert "pull_request:" in w
+          assert "issue_comment:" in w
+          assert "/railway historical-matched-readiness" in w
           assert "".join(("schedule", ":")) not in w
           assert "".join(("railway"," variable"," list")) not in w
           print("HIST_MATCHED_READINESS_STATIC=PASS")
@@ -70,6 +83,20 @@ jobs:
             echo
             grep '^HIST_MATCHED_READINESS_TOTAL=' historical-matched-contract-readiness.txt || true
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment Issue 42 summary
+        if: always() && github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo 'Historical matched-contract readiness: 2025-07-01 .. 2026-09-29'
+            echo
+            grep '^HIST_MATCHED_READINESS_TOTAL=' historical-matched-contract-readiness.txt || true
+            echo
+            echo 'READ ONLY; no result/odds/payout read; no prospective gate credit.'
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
