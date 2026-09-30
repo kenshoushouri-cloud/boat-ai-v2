@@ -105,7 +105,11 @@ def main() -> None:
     for raw in raw_lines:
         prefix = raw[:2].hex()
         sig[f"{prefix}:{len(raw)}"] += 1
-        if len(samples) < 24:
+        if len(samples) < 32:
+            try:
+                decoded = raw.decode("cp932", errors="replace")
+            except Exception:
+                decoded = ""
             samples.append({
                 "length": len(raw),
                 "prefix_hex": raw[:12].hex(),
@@ -113,6 +117,7 @@ def main() -> None:
                     chr(b) if 32 <= b <= 126 else "."
                     for b in raw[:24]
                 ),
+                "cp932": decoded,
             })
     print(
         "OFFICIAL_BFILE_RAW_SIGNATURE="
