@@ -1,5 +1,30 @@
 # boat-ai-v2 Current State
 
+## LATEST LIVE POINTER — 2026-09-30 14:46 JST
+
+**最新live差分:** `docs/LIVE_HANDOFF_20260930_1446.md`
+
+14:46 JST read-back:
+- main before this docs update: `861d05d051976c74707556b31a146cdc4ab2d649`
+- latest merge: PR #503 final 14:30 handoff
+- Railway fallback: 08:20 JST / latest deploy `3c8e6394-75d2-4c27-bea1-a6cc12a40cfd` SUCCESS / staged none
+- 9/30 fallback: 08:21:47 JST DISPATCH_FALLBACK
+- 9/30 formal artifact / availability / F-count final verification: next-chat P0
+- last documented settled prospective: V4 8/20; S03_M2 63/100
+- historical beforeinfo audit: 70,026 races / complete 7.45%; temperature/water_temperature major gap
+- run 36669671677: queued/pending, no jobs materialized at read-back
+- run 36669671807: backfill pending
+- #500/#498/#497/#459/#458: Draft / mergeable / current head CI green
+- historical acquisition active
+- monthly target +50,000 JPY
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+次回はsnapshotを現在値と仮定せず、current main / PR / Actions / Railway / 9/30 formal / settlementを再取得する。
+
+`READ_LIVE_HANDOFF_1446 / DO_NOT_ASSUME_STALE_STATE`
+
+
 ## LATEST LIVE POINTER — 2026-09-30 14:30 JST
 
 **最新差分:** `docs/LIVE_HANDOFF_20260930_1430.md`
