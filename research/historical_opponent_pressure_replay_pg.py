@@ -32,7 +32,7 @@ from research import _historical_opponent_adapter as adapter
 
 HISTORICAL_MODEL_VERSION = 102
 WRITE_CONFIRM = "YES"
-MAX_BATCH_DAYS = 31
+MAX_BATCH_DAYS = 7
 
 
 def date_range(start_date: str, end_date: str) -> list[date]:
