@@ -1,5 +1,16 @@
 # Boat AI Complete Handoff — 2026-09-30 14:14 JST
 
+> ## LIVE ADDENDUM — 2026-09-30 14:30 JST
+>
+> この完全版を読んだ後、必ず **`docs/LIVE_HANDOFF_20260930_1430.md`** を読む。
+> 14:30時点でmainはPR #501 complete handoffまで進み、Railway fallbackは08:20 JST・latest deploy SUCCESS。
+> historical long-beforeinfo / B-file bulk runはpending。
+> #500/#498/#497/#459/#458はread-back時点でDraft / mergeable / head CI green。
+> 次チャット開始時にはこれらを再取得してから続行する。
+>
+> **`docs/NEXT_CHAT_START_HERE.md`** が貼り付け用の開始文。
+
+
 この文書は、新競艇AI開発プロジェクトを**次のチャットでGitHubだけ確認すれば再開できる状態**にするための完全版引き継ぎです。
 
 > **最優先ルール**

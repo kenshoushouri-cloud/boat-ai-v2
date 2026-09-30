@@ -1,5 +1,25 @@
 # boat-ai-v2 Current State
 
+## LATEST LIVE POINTER — 2026-09-30 14:30 JST
+
+**最新差分:** `docs/LIVE_HANDOFF_20260930_1430.md`
+
+14:30 JST read-back:
+- main before this final docs update: `a74dcc1dcf509413ba047a1cd7e308dc41bbc5fb`
+- latest merge: PR #501 complete handoff
+- Railway fallback: 08:20 JST / latest deploy `c8512ff2-e4d9-4c52-a6ea-e459dcd504aa` SUCCESS / staged none
+- historical beforeinfo long run `36669671677`: pending
+- historical B-file bulk run `36669671807`: pending
+- #500/#498/#497/#459/#458: Draft / mergeable / CI green at current head
+- last documented settled prospective: V4 8/20; S03_M2 63/100
+- historical acquisition active
+- monthly target +50,000 JPY
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+次回はこの値をそのまま現在値と仮定せず、current main / PR / Actions / Railway / settlementを再取得する。
+
+
 ## LATEST OVERRIDE — 2026-09-30 14:14 JST
 
 ### COMPLETE HANDOFF REFRESH
