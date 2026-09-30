@@ -63,7 +63,7 @@ jobs:
       github.actor == github.repository_owner &&
       startsWith(github.event.comment.body, '/railway historical-bfile-backfill ')
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,8 +87,8 @@ jobs:
           a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
           if b < a:
               raise SystemExit("end before start")
-          if (b-a).days + 1 > 14:
-              raise SystemExit("maximum B-file batch is 14 days")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum B-file batch is 31 days")
           if a < date(2025,7,1):
               raise SystemExit("approved historical start is 2025-07-01")
           print("HIST_START_DATE="+p[2])
