@@ -35,6 +35,10 @@ Active next bulk batch:
 艇国データバンク:
 - PR #478 merged: historical pre-race table cross-check;
 - PR #479 merged: dated prior-only motor-history probe;
+- PR #481 merged: generic owner-gated B-file bridge plus fixed-URL connectivity probe;
+- actual Railway-cloud fixed-URL probe also timed out connecting to boatrace-db.net:443;
+- no proxy/multi-IP/bypass was introduced;
+- temporary test service was restored to its original start command/watch patterns and restore deployment 91402614-e57f-4552-874d-c3f55c7e32f5 succeeded;
 - minimum automated access interval >=3 seconds;
 - known URLs only / no parallel asset scraping;
 - BOAT RACE official remains primary for program/result/racer-term downloads;
