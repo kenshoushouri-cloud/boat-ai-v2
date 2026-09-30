@@ -49,13 +49,26 @@ def _read_text(path: Path) -> str:
     return raw.decode("cp932", errors="replace")
 
 
-def raw_structure(files: list[Any]) -> dict[str, Any]:
+def _resolve_downloaded_path(item: Any, cache_dir: Path) -> Path:
+    path = Path(item)
+    if path.exists():
+        return path
+    candidates = list(cache_dir.rglob(path.name))
+    if len(candidates) != 1:
+        raise FileNotFoundError(
+            f"cannot resolve downloaded B file {path.name!r} under {cache_dir}: "
+            f"{len(candidates)} candidates"
+        )
+    return candidates[0]
+
+
+def raw_structure(files: list[Any], cache_dir: Path) -> dict[str, Any]:
     per_file = []
     union = set()
     total_race_headers = 0
     total_program_markers = 0
     for item in files:
-        path = Path(item)
+        path = _resolve_downloaded_path(item, cache_dir)
         text = _read_text(path)
         compact = text.replace("　", "").replace(" ", "")
         venues = []
@@ -99,7 +112,7 @@ def main() -> None:
     if not files:
         raise RuntimeError(f"official B file unavailable: {target}")
 
-    structure = raw_structure(list(files))
+    structure = raw_structure(list(files), Path(args.cache_dir))
 
     parsed = ScheduleParser().parse(files)
     parsed_races = list(getattr(parsed, "races", []) or [])
