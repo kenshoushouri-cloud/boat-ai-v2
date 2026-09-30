@@ -1,0 +1,45 @@
+name: Official B-file 2026 parity check
+
+on:
+  push:
+    branches:
+      - "research/bfile-parity-2026-check-20260930"
+    paths:
+      - ".github/workflows/official-bfile-2026-parity-check.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  parity-2026:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
+      - name: Official-to-official parity 2026-01-15
+        run: |
+          python -u research/official_bfile_raw_parity_pg.py --date 2026-01-15 --work-dir .bfile-20260115 | tee parity-20260115.txt
+          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS$' parity-20260115.txt
+      - name: Official-to-official parity 2026-07-01
+        run: |
+          python -u research/official_bfile_raw_parity_pg.py --date 2026-07-01 --work-dir .bfile-20260701 | tee parity-20260701.txt
+          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS$' parity-20260701.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-bfile-2026-parity-${{ github.run_id }}
+          path: |
+            parity-20260115.txt
+            parity-20260701.txt
+          if-no-files-found: ignore
+          retention-days: 30
