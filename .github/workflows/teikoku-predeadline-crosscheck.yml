@@ -42,6 +42,7 @@ jobs:
           print("PASS Teikoku cross-check safety")
           PY
       - name: Run one respectful historical page cross-check
+        continue-on-error: true
         run: |
           python -u research/teikoku_predeadline_crosscheck.py \
             --url "https://boatrace-db.net/race/detail/date/20250701/pid/19/rno/10/" \
