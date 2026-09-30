@@ -1,5 +1,31 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST LIVE POINTER — 2026-09-30 14:46 JST
+
+次チャットは以下を最初に読む:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. **`docs/LIVE_HANDOFF_20260930_1446.md`**
+5. `docs/NEXT_CHAT_START_HERE.md`
+6. Issue #42 / current main / open PR / Actions / Railway Productionを再取得
+
+14:46 live read-back:
+- main before docs: `861d05d051976c74707556b31a146cdc4ab2d649`
+- fallback 08:20 JST
+- latest fallback deploy `3c8e6394-75d2-4c27-bea1-a6cc12a40cfd`: SUCCESS
+- staged/unmerged Railway config: none
+- 9/30 fallback dispatch observed 08:21:47 JST
+- 9/30 formal/F-count final verification is next-chat P0
+- beforeinfo complete coverage 7.45%; temperature/water_temperature acquisition remains priority
+- historical long-beforeinfo/B-file runs still pending
+- #500/#498/#497/#459/#458 are Draft / mergeable / current head CI green
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+`READ_LIVE_HANDOFF_1446 / REFETCH_BEFORE_ACTION`
+
+
 ## LATEST LIVE POINTER — 2026-09-30 14:30 JST
 
 PR #501の完全版引き継ぎに加えて、**最新read-back差分は `docs/LIVE_HANDOFF_20260930_1430.md` を必ず読むこと。**
