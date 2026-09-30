@@ -153,7 +153,14 @@ Latest storage snapshot at this handoff update:
 - measured database disk usage ≈ **4.95 GB**
 - do not delete historical rows, volumes, backups, or change plan/DB configuration without explicit approval
 
-Principle: **archive first, prove restore, then shrink hot storage; never delete first to save cost.**
+Railway Agent cost-control rule:
+- prefer deterministic Railway MCP reads such as status, service config, metrics, logs, and deployments for routine checks
+- do **not** use Railway Agent for ordinary read-only/status investigation when those tools can answer the question
+- use Railway Agent only when the normal Railway tools cannot obtain the required information and the expected value justifies its token cost
+- keep any unavoidable Agent request narrowly scoped and read-only unless a separately approved mutation is required
+- Railway Agent token charges consume the same plan included-usage pool as infrastructure usage, so minimizing Agent calls is part of the Railway cost-reduction plan
+
+Principle: **archive first, prove restore, then shrink hot storage; minimize paid Agent usage before changing infrastructure.**
 
 ## 9. Handoff maintenance rule
 
