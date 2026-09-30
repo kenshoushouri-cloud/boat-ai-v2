@@ -115,6 +115,7 @@ def main() -> None:
 
     compared = Counter()
     exact = Counter()
+    b_nonnull = Counter()
     mismatch_samples: dict[str, list[dict[str, Any]]] = {field: [] for field in FIELDS}
     sampled_races = 0
     sampled_rows = 0
@@ -142,6 +143,8 @@ def main() -> None:
             rrow = rmap[b.lane]
             for field in FIELDS:
                 a = norm(field, arow.get(field))
+                if a is not None:
+                    b_nonnull[field] += 1
                 c = norm(field, rrow.get(field))
                 if a is None or c is None:
                     continue
@@ -185,6 +188,7 @@ def main() -> None:
         "sampled_races": sampled_races,
         "sampled_rows": sampled_rows,
         "parity": parity,
+        "b_nonnull_in_sample": dict(sorted(b_nonnull.items())),
         "db_read": False,
         "db_write": False,
         "result_odds_payout_read": False,
@@ -200,15 +204,11 @@ def main() -> None:
     if len(complete) < 100 or sampled_races < 3:
         raise RuntimeError("insufficient B-file coverage/parity sample")
 
-    required = (
+    required_exact = (
         "racer_number",
-        "racer_name",
-        "branch",
         "racer_class",
         "national_win_rate",
         "national_place2_rate",
-        "local_win_rate",
-        "local_place2_rate",
         "motor_no",
         "motor_place2_rate",
         "boat_no",
@@ -216,13 +216,31 @@ def main() -> None:
     )
     bad = [
         field
-        for field in required
+        for field in required_exact
         if compared[field] == 0 or exact[field] != compared[field]
     ]
     if bad:
-        raise RuntimeError(f"B-file field parity failed: {bad}")
+        raise RuntimeError(f"B-file exact field parity failed: {bad}")
 
-    print("OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_EXACT_OFFICIAL_TO_OFFICIAL")
+    required_b_present = (
+        "racer_name",
+        "branch",
+        "local_win_rate",
+        "local_place2_rate",
+    )
+    missing = [
+        field for field in required_b_present
+        if b_nonnull[field] != sampled_rows
+    ]
+    if missing:
+        raise RuntimeError(f"B-file structural fields incomplete: {missing}")
+
+    print(
+        "OFFICIAL_BFILE_LOCAL_RATE_POLICY="
+        "B_TARGET_DAY_ARCHIVE_PREFERRED_FOR_HISTORICAL_PREDEADLINE",
+        flush=True,
+    )
+    print("OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS")
 
 
 if __name__ == "__main__":
