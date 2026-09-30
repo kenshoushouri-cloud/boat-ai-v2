@@ -1,5 +1,13 @@
 # Boat AI Complete Handoff — 2026-09-30 14:14 JST
 
+> ## LIVE ADDENDUM — 2026-09-30 14:58 JST
+>
+> 最新live差分は **`docs/LIVE_HANDOFF_20260930_1458.md`**。
+> 貼り付け用開始文は **`docs/NEXT_CHAT_START_HERE.md`**。
+> main pre-docs=`780d267...`、fallback 08:20、latest deploy `d424210d...` SUCCESS、stagedなし。
+> 次チャットで9/30 formal / availability / F-count / settlementを最優先確認する。
+
+
 > ## LIVE ADDENDUM — 2026-09-30 14:39 JST
 >
 > この完全版を読んだ後、必ず **`docs/LIVE_HANDOFF_20260930_1439.md`** を読む。
