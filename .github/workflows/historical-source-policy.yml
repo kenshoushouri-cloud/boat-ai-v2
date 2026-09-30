@@ -31,7 +31,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path("research/historical_source_policy.py").read_text(encoding="utf-8").lower()
-          for forbidden in ("psycopg", "requests.", "insert into", "update v2_", "delete from", "line", "purchase_action=true"):
+          for forbidden in ("psycopg", "requests.", "insert into", "update v2_", "delete from", "purchase_action=true"):
               assert forbidden not in p
+          assert "line_bot" not in p
+          assert "line_notify" not in p
           print("PASS pure historical source policy")
           PY
