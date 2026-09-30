@@ -1,5 +1,57 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 14:21 JST
+
+**Read the comprehensive handoff first:**
+- `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+
+Current operational source of truth at this checkpoint:
+- GitHub main before this docs update: `647a43e60d627938e55de4239af15265819659bd`
+- latest main: #496 long-range historical beforeinfo campaign
+- Railway fallback: **08:20 JST / `20 23 * * *`**
+- fallback latest deploy: `839be48f-af8f-4a53-8ba4-5b8abdc13f8a` — **SUCCESS**
+- staged Railway config: none
+- Production V4 model/selector/threshold/stake unchanged
+- `purchase_action=false`
+
+Settled evidence currently recorded through 2026-09-28:
+- V4 formal TOP2: **8/20**, ROI **147.7273%**, profit **+4,200 JPY**
+- S03_M2: **63/100**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03 second-half ROI: **56.5625%**
+- 2026-09-29 formal V4: **UNAVAILABLE**, never reconstruct/backfill/count
+- V5 core review target: **2026-10-15**
+
+Operational objectives:
+- roughly **1–3 quality notification races/day** when naturally available;
+- monthly planning target **+50,000 JPY net profit**;
+- prove edge first, then volume/risk, then stake scaling separately;
+- never loosen thresholds merely to create volume/profit.
+
+Data policy:
+- prospective F-count companion capture is active;
+- historical missing-data acquisition is active;
+- official target-day pre-race F-count is allowed as historical predeadline input;
+- historical target features must use only information available before target deadline;
+- historical reconstructed evidence remains separate from prospective gate counts;
+- current acquisition includes official racelist/B/beforeinfo/racer-term/prior-only Opponent and recent_form work;
+- external pre-race archives and 艇国 may supplement under the documented provenance/access rules.
+
+Important active/open work:
+- #500 July 2025 historical pre-race raw acquisition — 31/31 Race Cards/Recent Local, 31/31 Recent National days with 59-row shortfall; no DB import yet;
+- #498 prior-day official-K recent_form reconstruction;
+- #497 isolate historical beforeinfo write lane;
+- #459 LINE/candidate-volume near-miss diagnostic;
+- #458 unavailable-day V4-count regression;
+- older #405/#409/#412/#413 remain evidence/provenance research records.
+
+Before doing new work:
+1. read `PROJECT_HANDOFF.md`, this file, and `SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`;
+2. re-fetch main/open PRs/CI/Railway Production/current evidence;
+3. inspect issue #42 before starting duplicate historical campaigns.
+
+`READ_20260930_COMPREHENSIVE_HANDOFF / MAIN_647A43E / FALLBACK_0820_SUCCESS / V5_8_OF_20_63_OF_100_SETTLED_0928 / HISTORICAL_ACQUISITION_ACTIVE / MONTHLY_PLUS_50000 / PROD_UNCHANGED / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 Historical acquisition is now an active priority.
