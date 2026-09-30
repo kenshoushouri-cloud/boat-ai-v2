@@ -1,5 +1,48 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 14:39 JST
+
+### FINAL LIVE HANDOFF — READ THIS FIRST
+
+最新の完全引き継ぎ差分:
+
+- **`docs/LIVE_HANDOFF_20260930_1439.md`**
+- 貼り付け用次チャット開始文:
+  **`docs/NEXT_CHAT_START_HERE.md`**
+
+読む順番:
+
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. **`docs/LIVE_HANDOFF_20260930_1439.md`**
+5. **`docs/NEXT_CHAT_START_HERE.md`**
+6. Issue #42 latest comments
+7. current main / open PR / CI / Actions / Railway Production read-back
+
+14:39 JST read-back:
+- main before this docs refresh: `861d05d051976c74707556b31a146cdc4ab2d649`
+- latest merge: PR #503 final 14:30 handoff
+- Railway fallback Cron: **08:20 JST / `20 23 * * *`**
+- latest fallback deploy: `3c8e6394-75d2-4c27-bea1-a6cc12a40cfd` — **SUCCESS**
+- staged/unmerged Railway config: none
+- 9/30 08:21:47 JST fallback dispatch confirmed
+- last documented settled V4: **8/20**, ROI 147.7273%, +4,200 JPY
+- last documented settled S03_M2: **63/100**, ROI 160.6349%, +3,820 JPY
+- monthly net-profit target: **+50,000 JPY**
+- future F-count companion: active
+- historical missing-data acquisition: active
+- run `36669671677`: terminal completion unresolved at this read-back
+- run `36669671807`: backfill job pending
+- #500/#498/#497/#459/#458: open Draft; head CI green; current-main mergeability read-back false, so rebase/revalidate before merge
+- Production model/selector/stake unchanged
+- `purchase_action=false`
+
+この下の古いLATEST OVERRIDEは履歴として扱う。
+
+`FINAL_HANDOFF_1439 / MAIN_PRE_DOCS_861D05D / FALLBACK_0820_SUCCESS / HISTORICAL_ACQUISITION_ACTIVE / V5_TARGET_20261015 / MONTHLY_PLUS_50000 / PURCHASE_FALSE`
+
+
 ## LATEST LIVE POINTER — 2026-09-30 14:30 JST
 
 PR #501の完全版引き継ぎに加えて、**最新read-back差分は `docs/LIVE_HANDOFF_20260930_1430.md` を必ず読むこと。**
