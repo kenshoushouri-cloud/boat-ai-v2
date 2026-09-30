@@ -5,9 +5,6 @@ on:
     paths:
       - ".github/workflows/historical-beforeinfo-campaign.yml"
       - "research/historical_beforeinfo_backfill_pg.py"
-  issue_comment:
-    types: [created]
-
 permissions:
   contents: read
   issues: write
@@ -48,6 +45,7 @@ jobs:
           assert "max-parallel: 1" in w
           assert "maximum campaign is 500 days" in w
           assert "historical-beforeinfo-campaign" in w
+          assert "issue_comment:" not in w.split("permissions:",1)[0]
           print("PASS historical beforeinfo long-campaign safety")
           PY
 
