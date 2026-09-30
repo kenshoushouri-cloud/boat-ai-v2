@@ -1,5 +1,38 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 14:39 JST
+
+**最初に読むこと**
+
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. **`docs/LIVE_HANDOFF_20260930_1439.md`**
+5. **`docs/NEXT_CHAT_START_HERE.md`**
+
+Current read-back:
+- main before docs refresh: `861d05d051976c74707556b31a146cdc4ab2d649`
+- Railway fallback: **08:20 JST**
+- latest deployment: `3c8e6394-75d2-4c27-bea1-a6cc12a40cfd` — **SUCCESS**
+- staged config: none
+- 9/29 formal V4: permanently **UNAVAILABLE**
+- last documented settled V4: **8/20**, ROI **147.7273%**, +4,200 JPY
+- last documented settled S03_M2: **63/100**, ROI **160.6349%**, +3,820 JPY
+- S03 second-half ROI: **56.5625%**
+- monthly target: **+50,000 JPY**
+- F-count prospective companion: active
+- historical missing-data acquisition: active
+- long-beforeinfo run `36669671677`: terminal completion unresolved
+- B-file bulk run `36669671807`: backfill pending
+- #500/#498/#497/#459/#458: Draft / head CI green / rebase-revalidate required before merge
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+9/30 formal artifact / availability / F-count companion / nightly settlementは、次チャットでread-only再確認してからcountへ反映する。
+
+`READ_LIVE_HANDOFF_1439 / FALLBACK_0820_OK / V4_LAST_SETTLED_8_OF_20 / S03_LAST_SETTLED_63_OF_100 / MONTHLY_PLUS_50000 / PURCHASE_FALSE`
+
+
 ## LATEST LIVE POINTER — 2026-09-30 14:30 JST
 
 **最新差分:** `docs/LIVE_HANDOFF_20260930_1430.md`
