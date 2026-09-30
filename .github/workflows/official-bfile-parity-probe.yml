@@ -1,0 +1,58 @@
+name: Official B-file parity probe
+
+on:
+  pull_request:
+    paths:
+      - "research/official_bfile_parity_probe.py"
+      - ".github/workflows/official-bfile-parity-probe.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  probe:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install 'boatrace-lzh==0.1.0'
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
+
+      - name: Static safety
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/official_bfile_parity_probe.py").read_text(encoding="utf-8").lower()
+          assert '"db_read": false' in p
+          assert '"db_write": false' in p
+          assert "performanceparser" not in p
+          assert "insert into" not in p
+          assert "update v2_" not in p
+          assert "delete from" not in p
+          print("PASS B-file probe safety")
+          PY
+
+      - name: Run one-day official B-file structure probe
+        run: |
+          set -euo pipefail
+          python -u research/official_bfile_parity_probe.py --date 2025-07-01             | tee official-bfile-structure-probe.txt
+          grep -q '^OFFICIAL_BFILE_STRUCTURE_RESULT=PASS_READ_ONLY$' official-bfile-structure-probe.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-bfile-structure-probe-${{ github.run_id }}
+          path: |
+            official-bfile-structure-probe.json
+            official-bfile-structure-probe.txt
+          retention-days: 30
+          if-no-files-found: error
