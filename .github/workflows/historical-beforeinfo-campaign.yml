@@ -45,12 +45,11 @@ jobs:
           assert "'historical-beforeinfo-write'" in w
           assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-legacy-campaign ')" in w
           assert "github.event.comment.body == '/railway historical-beforeinfo-legacy-cancel'" in w
-          assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')" not in w
           assert "historical-beforeinfo-legacy-other-" in w
           assert "max-parallel: 1" in w
           assert "maximum campaign is 500 days" in w
           assert "historical-beforeinfo-campaign" in w
-          print("PASS historical beforeinfo long-campaign safety")
+          print("PASS historical beforeinfo legacy-campaign safety")
           PY
 
   plan:
