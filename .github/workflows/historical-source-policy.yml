@@ -1,0 +1,37 @@
+name: Historical source policy
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_source_policy.py"
+      - "tests/test_historical_source_policy.py"
+      - "docs/HISTORICAL_SOURCE_POLICY_20260930.md"
+      - ".github/workflows/historical-source-policy.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest
+      - run: pytest -q tests/test_historical_source_policy.py
+      - name: Guard no operational side effects
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_source_policy.py").read_text(encoding="utf-8").lower()
+          for forbidden in ("psycopg", "requests.", "insert into", "update v2_", "delete from", "line", "purchase_action=true"):
+              assert forbidden not in p
+          print("PASS pure historical source policy")
+          PY
