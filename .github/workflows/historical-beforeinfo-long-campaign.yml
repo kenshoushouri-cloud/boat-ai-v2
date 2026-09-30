@@ -14,7 +14,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ') && 'historical-beforeinfo-long-campaign' || format('historical-beforeinfo-long-other-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'issue_comment' && github.event.comment.body == '/railway historical-beforeinfo-campaign-drain' && 'historical-beforeinfo-long-campaign' || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-long-other-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -54,7 +54,9 @@ jobs:
           assert "CHUNK_DAYS=7" in text
           assert "max-parallel: 1" in text
           assert "HIST_BEFOREINFO_SLEEP_SEC=\"0.50\"" in text
-          assert "historical-beforeinfo-long-campaign" in text
+          assert "'historical-beforeinfo-write'" in text
+          assert "'historical-beforeinfo-long-campaign'" in text
+          assert "github.event.comment.body == '/railway historical-beforeinfo-campaign-drain'" in text
           assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')" in text
           assert "historical-beforeinfo-long-other-{0}" in text
           source=Path("research/historical_beforeinfo_backfill_pg.py").read_text(encoding="utf-8").lower()

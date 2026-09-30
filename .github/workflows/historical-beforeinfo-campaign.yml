@@ -1,4 +1,4 @@
-name: Historical beforeinfo long campaign
+name: Historical beforeinfo monthly legacy campaign
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-other-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-monthly-campaign ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-other-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -43,11 +43,11 @@ jobs:
           assert "v2_odds" not in p
           assert "fill_missing_only" in p
           assert "'historical-beforeinfo-write'" in w
-          assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')" in w
+          assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-monthly-campaign ')" in w
           assert "historical-beforeinfo-other-" in w
           assert "max-parallel: 1" in w
           assert "maximum campaign is 500 days" in w
-          assert "historical-beforeinfo-campaign" in w
+          assert "historical-beforeinfo-monthly-campaign" in w
           print("PASS historical beforeinfo long-campaign safety")
           PY
 
@@ -56,7 +56,7 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.number == 42 &&
       github.actor == github.repository_owner &&
-      startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-monthly-campaign ')
     runs-on: ubuntu-24.04
     outputs:
       chunks: ${{ steps.plan.outputs.chunks }}
@@ -72,8 +72,8 @@ jobs:
           from datetime import date, timedelta
 
           p=os.environ["COMMENT_BODY"].strip().split()
-          if len(p)!=4 or p[1]!="historical-beforeinfo-campaign":
-              raise SystemExit("command: /railway historical-beforeinfo-campaign YYYY-MM-DD YYYY-MM-DD")
+          if len(p)!=4 or p[1]!="historical-beforeinfo-monthly-campaign":
+              raise SystemExit("command: /railway historical-beforeinfo-monthly-campaign YYYY-MM-DD YYYY-MM-DD")
           a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
           if b<a:
               raise SystemExit("end before start")
