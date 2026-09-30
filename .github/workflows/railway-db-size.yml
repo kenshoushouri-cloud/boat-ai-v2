@@ -150,11 +150,11 @@ jobs:
                   (f'public.{table}',)
               ) or {}).get('bytes') or 0)
               total=int((fetch_one(f"select count(*)::bigint n from {table}") or {}).get('n') or 0)
-              if 'race_date' in cs:
-                  source=f"{table}.race_date"
+              if table == 'v2_races' and 'race_date' in cs:
+                  source="v2_races.race_date"
                   def count_hot(cutoff):
                       return int((fetch_one(
-                          f"select count(*)::bigint n from {table} where race_date >= %s",
+                          "select count(*)::bigint n from v2_races where race_date >= %s",
                           (cutoff,)
                       ) or {}).get('n') or 0)
               elif 'race_id' in cs:
@@ -162,6 +162,13 @@ jobs:
                   def count_hot(cutoff):
                       return int((fetch_one(
                           f"select count(*)::bigint n from {table} t join v2_races r on r.race_id=t.race_id where r.race_date >= %s",
+                          (cutoff,)
+                      ) or {}).get('n') or 0)
+              elif 'race_date' in cs:
+                  source=f"{table}.race_date"
+                  def count_hot(cutoff):
+                      return int((fetch_one(
+                          f"select count(*)::bigint n from {table} where race_date >= %s",
                           (cutoff,)
                       ) or {}).get('n') or 0)
               else:
