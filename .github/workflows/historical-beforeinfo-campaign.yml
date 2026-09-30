@@ -13,7 +13,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: ${{ github.event_name == 'issue_comment' && 'historical-beforeinfo-write' || format('historical-beforeinfo-pr-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-other-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -43,7 +43,8 @@ jobs:
           assert "v2_odds" not in p
           assert "fill_missing_only" in p
           assert "'historical-beforeinfo-write'" in w
-          assert "historical-beforeinfo-pr-" in w
+          assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')" in w
+          assert "historical-beforeinfo-other-" in w
           assert "max-parallel: 1" in w
           assert "maximum campaign is 500 days" in w
           assert "historical-beforeinfo-campaign" in w
