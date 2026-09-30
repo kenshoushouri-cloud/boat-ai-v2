@@ -1,0 +1,82 @@
+name: Historical matched-contract readiness
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_matched_contract_readiness_pg.py"
+      - "tests/test_historical_matched_contract_readiness_pg.py"
+      - ".github/workflows/historical-matched-contract-readiness.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Static safety and unit tests
+        run: |
+          set -euo pipefail
+          python -m py_compile research/historical_matched_contract_readiness_pg.py
+          python -m unittest -v tests.test_historical_matched_contract_readiness_pg
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_matched_contract_readiness_pg.py").read_text(encoding="utf-8").lower()
+          assert "set transaction read only" in p
+          for token in ("v2_results","v2_result_entries","v2_odds","insert into","update v2_","delete from"):
+              assert token not in p, token
+          w=Path(".github/workflows/historical-matched-contract-readiness.yml").read_text(encoding="utf-8").lower()
+          assert "pull_request:" in w
+          assert "".join(("schedule", ":")) not in w
+          assert "".join(("railway"," variable"," list")) not in w
+          print("HIST_MATCHED_READINESS_STATIC=PASS")
+          PY
+      - run: npm install --global @railway/cli
+      - name: Run Production read-only readiness audit
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-29 --output historical-matched-contract-readiness.json' \
+            2>&1 | tee historical-matched-contract-readiness.txt
+          grep -q '^HIST_MATCHED_READINESS_RESULT=PASS_READ_ONLY$' historical-matched-contract-readiness.txt
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Historical matched-contract input readiness'
+            echo
+            echo '- result-blind / outcome-free / odds-free / payout-free'
+            echo '- Production PostgreSQL read-only'
+            echo '- historical Course/Opponent remain reconstruction labels'
+            echo '- no prospective gate credit'
+            echo
+            grep '^HIST_MATCHED_READINESS_TOTAL=' historical-matched-contract-readiness.txt || true
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-matched-contract-readiness-${{ github.run_id }}
+          path: |
+            historical-matched-contract-readiness.json
+            historical-matched-contract-readiness.txt
+          retention-days: 90
+          if-no-files-found: error
