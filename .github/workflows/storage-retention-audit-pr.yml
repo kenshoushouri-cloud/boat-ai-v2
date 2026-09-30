@@ -1,0 +1,66 @@
+name: Storage retention audit PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'research/storage_retention_audit_pg.py'
+      - '.github/workflows/storage-retention-audit-pr.yml'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  audit:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install read-only dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Require Railway token
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Run read-only retention audit
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+            --environment "production" \
+            --service "postgres-recovery" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000 -c lock_timeout=5000"; exec python -u research/storage_retention_audit_pg.py' \
+            | tee storage-retention-audit.txt
+
+          grep -q '^STORAGE_RETENTION_AUDIT_READ_ONLY=1$' storage-retention-audit.txt
+          grep -q '^STORAGE_RETENTION_AUDIT_DB_WRITE=0$' storage-retention-audit.txt
+          grep -q '^STORAGE_RETENTION_AUDIT_PAYLOAD_VALUES_READ=0$' storage-retention-audit.txt
+          grep -q '^STORAGE_RETENTION_AUDIT_RESULT=PASS_READ_ONLY$' storage-retention-audit.txt
+
+      - name: Upload safe audit result
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-retention-audit-${{ github.run_id }}
+          path: storage-retention-audit.txt
+          retention-days: 7
+          if-no-files-found: error
