@@ -31,8 +31,8 @@ At startup on 2026-10-01, preserve the morning prospective path first. Do not in
 ## 3. Current GitHub read-back
 
 Current `main`:
-- `b26efcb87230f5925331c700b0b73c77b9fc5197`
-- merge PR #531, docs-only handoff refresh
+- `72733703cbe51f24b9bc55505159c241b4359335`
+- PR #526 merged after current-main reconciliation and CI 6/6 SUCCESS
 
 Historical runs:
 - `36667832406` = **completed / failure**
@@ -56,10 +56,12 @@ Old branch:
 - no unique changes remain; treat as superseded/inactive
 
 Beforeinfo routing:
-- #526 = open Draft, current-main based, mergeable=true, head `a779f5280a95e65f759ca957db30a4d3a97206fb`
-- #526 relevant CI = 6/6 SUCCESS
-- #528 and #529 = closed without merge
-- #526 merge changes operational workflow routing, so **explicit approval is required before merge**
+- #526 = **merged**
+- merge SHA / current main = `72733703cbe51f24b9bc55505159c241b4359335`
+- CI before merge = 6/6 SUCCESS
+- old duplicate pending beforeinfo runs were replaced by no-write drain / invalid-range replacements
+- existing active writers were not interrupted
+- #528 and #529 remain closed without merge
 
 9/30 combined checkpoint:
 - no terminal `Research Forward Combined Checkpoint Manual` run found in the latest 100 Actions runs
@@ -123,13 +125,37 @@ Never infer newer gate counts from settlement availability alone.
 
 1. Preserve and verify the 2026-10-01 morning prospective cycle.
 2. Continue read-only monitoring of `36667954064` and `36703692641`; do not add a beforeinfo command.
-3. Keep #526 Draft only until explicit merge approval.
-4. When a dispatch route is available, run the canonical 9/30 combined checkpoint exactly once, read-only, after checking no existing terminal run exists.
-5. After the morning prospective cycle, re-read the shared historical writer lane before any Opponent residual recovery.
-6. Recover only verified residual ranges; never rerun whole completed campaigns.
-7. Then proceed to recent_form, matched-readiness, and matched-contract backtest without outcome-guided tuning.
+3. When a dispatch route is available, run the canonical 9/30 combined checkpoint exactly once, read-only, after checking no existing terminal run exists.
+4. After the morning prospective cycle, re-read the shared historical writer lane before any Opponent residual recovery.
+5. Recover only verified residual ranges; never rerun whole completed campaigns.
+6. Then proceed to recent_form, matched-readiness, and matched-contract backtest without outcome-guided tuning.
 
-## 8. Handoff maintenance rule
+## 8. Post-stabilization Railway cost optimization
+
+User objective:
+- if real-world operation becomes sustainably profitable, keep the current ChatGPT plan in principle
+- reduce Railway cost after V5/backtest/operational-readiness work no longer needs the full historical dataset hot in Production
+
+Recommended migration path:
+1. Finish historical acquisition, matched-readiness, matched-contract backtest, and the V5 operational-readiness review first.
+2. Create a complete PostgreSQL `pg_dump` archive (prefer custom format) and, where practical, a separate historical archive.
+3. Store the archive outside Railway in durable S3-compatible/object storage.
+4. Verify archive integrity with checksums plus schema/table/row-count checks, then perform a real restore test into an isolated scratch PostgreSQL instance.
+5. Define the minimum Production hot-data retention needed for daily prediction, result settlement, monitoring, and near-term diagnostics.
+6. Create a new smaller Railway PostgreSQL/volume and restore only the required hot dataset; do not assume an existing large volume can be downsized in place.
+7. Switch Production only after read-only parity checks and explicit approval; keep the external historical archive restorable.
+8. After stable operation is confirmed and actual resource usage fits the lower-tier limits, review Railway plan reduction (target candidate: Hobby) rather than keeping PRO solely for historical storage.
+
+Latest storage snapshot at this handoff update:
+- Railway workspace plan = **PRO**
+- `postgres-recovery` is the only detected persistent volume-backed DB service
+- attached volume provisioned size = **20 GB**
+- measured database disk usage ≈ **4.95 GB**
+- do not delete historical rows, volumes, backups, or change plan/DB configuration without explicit approval
+
+Principle: **archive first, prove restore, then shrink hot storage; never delete first to save cost.**
+
+## 9. Handoff maintenance rule
 
 Do not append new `LATEST OVERRIDE` blocks to `PROJECT_HANDOFF.md` or `CURRENT_STATE.md`.
 
