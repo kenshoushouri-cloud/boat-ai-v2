@@ -55,23 +55,34 @@ def main() -> None:
     if not db:
         raise RuntimeError("DATABASE_URL required")
 
+    prefix = target.strftime("%Y%m%d")
+    next_prefix = (target.fromordinal(target.toordinal() + 1)).strftime("%Y%m%d")
+
     with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
             cur.execute("set local statement_timeout='60s'")
+            # race_id is date-prefixed and indexed in the Production schema.
+            # Use the same range pattern as realtime collectors instead of a
+            # race_date scan, which can time out during concurrent backfill I/O.
             cur.execute(
-                "select count(*)::int n from v2_races where race_date=%s",
-                (target,),
+                """
+                select count(*)::int n
+                  from v2_races
+                 where race_id >= %s
+                   and race_id < %s
+                """,
+                (prefix, next_prefix),
             )
             db_races = int(cur.fetchone()["n"])
             cur.execute(
                 """
                 select count(*)::int n
-                  from v2_race_entries e
-                  join v2_races r on r.race_id=e.race_id
-                 where r.race_date=%s
+                  from v2_race_entries
+                 where race_id >= %s
+                   and race_id < %s
                 """,
-                (target,),
+                (prefix, next_prefix),
             )
             db_entries = int(cur.fetchone()["n"])
         conn.rollback()
