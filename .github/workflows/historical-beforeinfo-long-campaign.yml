@@ -50,8 +50,8 @@ jobs:
           assert isinstance(y, dict) and "jobs" in y
           text=p.read_text(encoding="utf-8")
           assert "MAX_RANGE_DAYS=500" in text
-          assert "SEGMENT_DAYS=220" in text
-          assert "CHUNK_DAYS=31" in text
+          assert "SEGMENT_DAYS=14" in text
+          assert "CHUNK_DAYS=7" in text
           assert "max-parallel: 1" in text
           assert "HIST_BEFOREINFO_SLEEP_SEC=\"0.50\"" in text
           assert "historical-beforeinfo-long-campaign" in text
@@ -78,7 +78,7 @@ jobs:
       start_date: ${{ steps.plan.outputs.start_date }}
       end_date: ${{ steps.plan.outputs.end_date }}
     steps:
-      - name: Parse full range and build <=220-day segments
+      - name: Parse full range and build <=14-day segments
         id: plan
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -89,7 +89,7 @@ jobs:
           from datetime import date, timedelta
 
           MAX_RANGE_DAYS=500
-          SEGMENT_DAYS=220
+          SEGMENT_DAYS=14
 
           p=os.environ["COMMENT_BODY"].strip().split()
           if len(p) != 4 or p[1] != "historical-beforeinfo-campaign":
@@ -141,7 +141,7 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: npm install --global @railway/cli
 
-      - name: Build <=31-day runtime chunks
+      - name: Build <=7-day runtime chunks
         env:
           SEGMENT_START: ${{ matrix.segment.start }}
           SEGMENT_END: ${{ matrix.segment.end }}
@@ -150,7 +150,7 @@ jobs:
           python - <<'PY' > beforeinfo-chunks.txt
           import os
           from datetime import date, timedelta
-          CHUNK_DAYS=31
+          CHUNK_DAYS=7
           a=date.fromisoformat(os.environ["SEGMENT_START"])
           b=date.fromisoformat(os.environ["SEGMENT_END"])
           cur=a
