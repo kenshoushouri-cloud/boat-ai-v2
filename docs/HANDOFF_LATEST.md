@@ -1,27 +1,36 @@
 # Handoff Latest
 
-**Latest complete handoff:** `docs/LIVE_HANDOFF_20261001_0616.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261001_STARTUP_REFRESH.md`
 
-**Paste-ready next-chat guide:** `docs/NEXT_CHAT_START_HERE.md`
+Start every new chat in this order:
+1. `docs/HANDOFF_LATEST.md`
+2. the current compact handoff above, in full
+3. `docs/NEXT_CHAT_START_HERE.md`
+4. deep history only when needed
 
-古い `LATEST OVERRIDE` / `LIVE_HANDOFF_*` / `PROJECT_HANDOFF.md` / `CURRENT_STATE.md` は、最新handoffと矛盾する場合はhistorical/reference扱い。
-
-作業前に必ず再取得:
-- current GitHub main / Issue #42 latest
-- open Draft PR / CI / Actions
-- Railway Production
-- 10/1 prospective morning state
-- 9/30 V4+S03 combined checkpoint terminal evidence
-- historical beforeinfo / Opponent / shared writer state
+Before any action, re-fetch:
+- current GitHub main
+- Issue #42 latest relevant comments
+- open Draft PR / CI / active Actions
+- Railway Production fallback/status
+- Production PostgreSQL evidence needed for the task
 
 Source of Truth:
-- GitHub main = code
+- GitHub `main` = code
 - Railway PostgreSQL Production = data
 
-タイムアウト対策:
-- 一度に1〜2確認
-- 一つ一つ進める
-- 途中経過の長文表示は不要
-- Production-effect承認境界だけ止める
+Fixed:
+- 2026-09-29 formal V4 = permanently UNAVAILABLE
+- V5 gate = V4 >=20 resolved FORMAL_AVAILABLE days / S03_M2 >=100 official observations / clean evidence contract
+- historical reconstruction gives no prospective gate credit
+- monthly +50,000 JPY is a post-edge scaling target, not a selector target
+- `purchase_action=false`
+- do not enumerate Railway plaintext variables
 
-`LATEST_HANDOFF_20261001_0616_COMPACT / REFETCH_BEFORE_ACTION / ONE_BY_ONE / TODAY_PROSPECTIVE_FIRST / V5_20261015 / PURCHASE_FALSE`
+Handoff maintenance:
+- do not append cumulative `LATEST OVERRIDE` sections
+- before every handoff update, review the existing pointer/current compact handoff for duplicate, stale, or superseded text; consolidate or replace it instead of cumulative append, and keep the handoff compact so chat-context capacity is not consumed unnecessarily
+- keep one compact live handoff and this pointer
+- use Git history / dated deep-history docs for old detail
+
+`LATEST_COMPACT_HANDOFF / REFETCH_BEFORE_ACTION / ONE_OR_TWO_CHECKS / PURCHASE_FALSE`
