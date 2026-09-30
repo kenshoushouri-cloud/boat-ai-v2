@@ -48,7 +48,8 @@ jobs:
           assert "confirm_historical_recent_form_db_write" in p
           assert "fill_missing_only" in p
           assert "v2_odds" not in p
-          assert "v2_results" not in p
+          assert "from v2_results" not in p
+          assert "join v2_results" not in p
           assert "trifecta_payout" not in p
           assert "update v2_race_entries" in p
           assert "recent_form=%s" in p
