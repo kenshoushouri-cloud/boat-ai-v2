@@ -1,0 +1,100 @@
+name: Historical predeadline acquisition pilot
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_predeadline_pilot.py"
+      - "tests/test_historical_predeadline_pilot.py"
+      - "docs/HISTORICAL_PREDEADLINE_ACQUISITION_20260930.md"
+      - ".github/workflows/historical-predeadline-pilot.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Pure contract tests
+        run: |
+          python -m py_compile research/historical_predeadline_pilot.py
+          pytest -q tests/test_historical_predeadline_pilot.py
+      - name: Static safety
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_predeadline_pilot.py").read_text(encoding="utf-8").lower()
+          assert "database_url" not in p
+          assert "psycopg" not in p
+          assert "upsert" not in p
+          assert "insert into" not in p
+          assert "outcome_fields_used" in p
+          assert "prospective_evidence" in p
+          assert "max(3.0" in p
+          print("PASS historical predeadline pilot static safety")
+          PY
+
+  live-pilot:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Acquire bounded 2025-07-17 Omura pilot
+        run: |
+          set -euo pipefail
+          python -u research/historical_predeadline_pilot.py \
+            --date 2025-07-17 \
+            --venue 24 \
+            --race-start 1 \
+            --race-end 12 \
+            --min-interval-sec 3.2 \
+            --output-dir historical-predeadline-pilot \
+            | tee historical-predeadline-pilot.log
+          grep -q '^HIST_PREDEADLINE_PILOT_RESULT=PASS_RAW_ACQUISITION$' historical-predeadline-pilot.log
+      - name: Validate manifest
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("historical-predeadline-pilot/manifest.json").read_text(encoding="utf-8"))
+          assert p["contract"]=="HISTORICAL_PREDEADLINE_ACQUISITION_PILOT_V1"
+          assert p["target_date"]=="2025-07-17"
+          assert p["venue_code"]=="24"
+          assert len(p["races"])==12
+          assert p["historical_predeadline_assumption"] is True
+          assert p["prospective_evidence"] is False
+          assert p["outcome_fields_used"] is False
+          assert p["db_write"] is False
+          assert p["official_programme"]["bytes"] > 500
+          assert p["minimum_observed_teikoku_request_start_interval_sec"] >= 3.0
+          assert all(x["outcome_prefix_removed"] for x in p["races"])
+          assert all(x["http_status"]==200 for x in p["races"])
+          print("PASS pilot manifest")
+          PY
+      - name: Upload raw pilot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-predeadline-pilot-20250717-omura
+          path: |
+            historical-predeadline-pilot/
+            historical-predeadline-pilot.log
+          retention-days: 90
+          if-no-files-found: error
