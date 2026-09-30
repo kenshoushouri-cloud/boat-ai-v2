@@ -1,5 +1,96 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 14:14 JST
+
+### COMPLETE PROJECT HANDOFF — READ THIS FIRST
+
+This project now has a full current handoff:
+
+**`docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`**
+
+Read in this order:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. Issue #42 latest comments
+5. current main / open PR / CI / Actions / Railway Production read-back
+
+The 2026-09-30 complete handoff contains:
+- system construction purpose;
+- Production V4 frozen contract;
+- V5 core definition;
+- 2026-10-15 review target;
+- monthly +50,000 JPY economic objective;
+- 1–3 quality races/day interpretation;
+- daily 08:15 / 08:16 / 08:20 / 08:32 / 23:30 timeline;
+- 9/29 unavailable-day incident;
+- current 08:20 fallback state;
+- current V4/S03 prospective economics;
+- LINE candidate scarcity diagnosis;
+- future F-count companion policy;
+- updated historical F-count policy;
+- historical missing-data acquisition policy;
+- BOAT RACE / BoatraceCSV / 艇国 source precedence;
+- historical coverage audit;
+- July 2025 raw acquisition result;
+- recent_form prior-only reconstruction;
+- current high-priority open PRs;
+- active/pending acquisition workflows;
+- work priorities through mid-October;
+- approval/safety boundaries;
+- exact next-chat restart checklist.
+
+### Current operational read-back
+
+- GitHub main: `647a43e60d627938e55de4239af15265819659bd`
+- latest merge: PR #496 `Add long-range historical beforeinfo campaign`
+- Railway fallback service: `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
+- fallback Cron: **08:20 JST / `20 23 * * *`**
+- latest deployment: `839be48f-af8f-4a53-8ba4-5b8abdc13f8a` — **SUCCESS**
+- staged config: none
+- 9/30 fallback actually dispatched at 08:21:47 JST
+- Production V4 model/selector/TOP6/TOP2/stake unchanged
+- automatic purchase disabled / `purchase_action=false`
+
+### Last documented settled prospective checkpoint
+
+Through 2026-09-28:
+- V4 formal TOP2: **8/20**, ROI **147.7273%**, profit **+4,200 JPY**
+- S03_M2: **63/100**, ROI **160.6349%**, profit **+3,820 JPY**
+- S03 second-half ROI: **56.5625%**
+
+2026-09-29 V4 formal remains permanently unavailable.
+
+Do not assume these counts are still current when a new chat begins. Re-run/re-read the latest settlement/checkpoint first.
+
+### Historical acquisition status
+
+Historical missing-data acquisition is an active priority and is now user-approved under strict predeadline/provenance rules.
+
+At this checkpoint:
+- beforeinfo long campaign run `36669671677`: pending
+- B-file bulk backfill run `36669671807`: pending
+- PR #500 July 2025 raw pre-race acquisition: green and successful artifact
+- PR #498 prior-day recent_form: green Draft
+- PR #497 beforeinfo write-lane isolation: green Draft
+- Issue #42 is the execution/status bus
+
+Historical data may improve matched-contract backtests but never repairs a missing prospective formal day.
+
+### Immediate next-chat priorities
+
+1. Re-fetch current main / PR / CI / Railway.
+2. Check 9/30 formal artifact + F-count companion + settlement readiness.
+3. Refresh V4 and S03 counts/economics.
+4. Check Issue #42 campaign results before submitting duplicate historical jobs.
+5. Review #497 / #498 / #500 against current main.
+6. Continue acquisition and prepare matched-contract backtests.
+7. Keep monthly +50,000 JPY as a scaling objective, not a selector tuning target.
+8. Keep Production model/selector/stake/purchase unchanged unless separately approved.
+
+`COMPLETE_HANDOFF_20260930 / MAIN_647A43E / FALLBACK_0820_ALIGNED / HISTORICAL_ACQUISITION_ACTIVE / V5_TARGET_20261015 / MONTHLY_PLUS_50000 / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 ### HISTORICAL DATA ACQUISITION EXPANDED
