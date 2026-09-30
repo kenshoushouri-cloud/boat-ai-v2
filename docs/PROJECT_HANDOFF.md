@@ -12,6 +12,9 @@ User-approved historical truth:
 
 Official B-file path:
 - PR #480 merged to main;
+- PR #485 merged: approved long-range B acquisition is serialized and chunked internally;
+- PR #486 merged: one owner-gated monthly campaign performs official B fill, official racelist residual fill, then prior-only Opponent replay;
+- extra official-to-official parity passed on 2026-01-15 and 2026-07-01;
 - field-level parity validated against official archived racelist data;
 - bulk importer writes only missing values on existing `v2_race_entries`;
 - no overwrite, no INSERT, no result/odds/payout read.
