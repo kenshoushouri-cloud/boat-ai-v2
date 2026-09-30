@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from research.historical_entry_feature_backfill_pg import (
+    RESIDUAL_FIELDS,
     TEXT_DB_FIELDS,
     build_missing_patch,
     _date_range,
@@ -76,3 +77,35 @@ def test_missing_racer_metadata_is_fillable_but_existing_is_preserved():
     assert patch["racer_name"] == "山田 太郎"
     assert patch["branch"] == "大阪"
     assert "origin" not in patch
+
+
+def test_residual_profile_contains_only_fields_not_supplied_by_b_table():
+    assert RESIDUAL_FIELDS == (
+        "origin",
+        "f_count",
+        "l_count",
+        "avg_st",
+        "national_place3_rate",
+        "local_place3_rate",
+        "motor_place3_rate",
+        "boat_place3_rate",
+    )
+
+
+def test_residual_patch_ignores_bfile_fields():
+    patch = build_missing_patch(
+        {
+            "racer_name": None,
+            "national_win_rate": None,
+            "f_count": None,
+            "avg_st": None,
+        },
+        {
+            "racer_name": "山田 太郎",
+            "national_win_rate": 6.50,
+            "f_count": 1,
+            "avg_st": 0.15,
+        },
+        fields=RESIDUAL_FIELDS,
+    )
+    assert patch == {"f_count": 1, "avg_st": 0.15}
