@@ -25,13 +25,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - run: python -m pip install -r requirements.txt pytest
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
 
-      - name: Pure parser/backfill policy tests
+      - name: Pure parser and backfill-policy tests
         run: |
           pytest -q \
             tests/test_official_bfile_raw_parser.py \
@@ -41,8 +43,9 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path("research/official_bfile_raw_parity_pg.py").read_text(encoding="utf-8").lower()
-          importer=Path("research/historical_entry_bfile_backfill_pg.py").read_text(encoding="utf-8").lower()
+          p = Path("research/official_bfile_raw_parity_pg.py").read_text(encoding="utf-8").lower()
+          importer = Path("research/historical_entry_bfile_backfill_pg.py").read_text(encoding="utf-8").lower()
+
           assert '"db_read": false' in p
           assert '"db_write": false' in p
           assert "repair_month_all_pg" in p
@@ -51,6 +54,7 @@ jobs:
           assert "insert into" not in p
           assert "update v2_" not in p
           assert "delete from" not in p
+
           assert "confirm_historical_bfile_db_write" in importer
           assert "fill_missing_only" in importer
           assert "result_odds_payout_read" in importer
@@ -60,22 +64,12 @@ jobs:
           print("PASS raw B parity/backfill safety")
           PY
 
-      - name: Compare 2025-07-01 B file with official archived racelists
+      - name: Compare B file with official archived racelists
         run: |
           set -euo pipefail
           python -u research/official_bfile_raw_parity_pg.py --date 2025-07-01 \
             | tee official-bfile-raw-parity.txt
-          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: official-bfile-raw-parity-${{ github.run_id }}
-          path: |
-            official-bfile-raw-layout-parity.json
-            official-bfile-raw-parity.txt
-          retention-days: 30
-          if-no-files-found: error
- official-bfile-raw-parity.txt
+          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS$' official-bfile-raw-parity.txt
 
       - uses: actions/upload-artifact@v4
         with:
