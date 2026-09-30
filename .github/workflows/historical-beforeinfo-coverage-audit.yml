@@ -1,0 +1,105 @@
+name: Historical beforeinfo coverage audit
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_beforeinfo_coverage_pg.py"
+      - ".github/workflows/historical-beforeinfo-coverage-audit.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Static safety
+        run: |
+          python -m py_compile research/historical_beforeinfo_coverage_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_beforeinfo_coverage_pg.py").read_text(encoding="utf-8").lower()
+          assert "set transaction read only" in p
+          assert "insert into" not in p
+          assert " update " not in p
+          assert "delete from" not in p
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          print("PASS historical beforeinfo coverage safety")
+          PY
+
+  audit:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-audit ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p)!=4 or p[1]!="historical-beforeinfo-audit":
+              raise SystemExit("command: /railway historical-beforeinfo-audit YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b<a: raise SystemExit("end before start")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+      - name: Run Production read-only audit
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/historical_beforeinfo_coverage_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-coverage.txt
+          grep -q '^HIST_BEFOREINFO_COVERAGE_RESULT=PASS_READ_ONLY$' historical-beforeinfo-coverage.txt
+      - name: Comment summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical beforeinfo coverage audit: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-coverage.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_COVERAGE_MONTH=|HIST_BEFOREINFO_COVERAGE_TOTAL=|HIST_BEFOREINFO_COVERAGE_RESULT=)' historical-beforeinfo-coverage.txt || true
+            fi
+            echo
+            echo "READ ONLY; snapshot_label=historical; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
