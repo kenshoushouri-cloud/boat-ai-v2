@@ -45,7 +45,10 @@ Historical runs:
   - segment 2 cancelled
   - segment 3 `2026-09-14..2026-09-29` is actively filling beforeinfo
   - do not duplicate-trigger
-- `36703692641` = queued at run level on latest Actions read-back; re-read jobs before any cleanup action
+- `36703692641` = run-level read-back showed queued, but job-level read-back shows `2025-11-01..2025-11-30` **in_progress**
+  - 2025-08/09/10 jobs are cancelled
+  - later monthly jobs remain queued
+  - together with `36667954064`, this means two old-head beforeinfo writers are active; add no new beforeinfo trigger
 
 Old branch:
 - `ops/command-aware-historical-concurrency-20260930-v2`
@@ -87,6 +90,8 @@ Production PostgreSQL service:
 - `postgres-recovery`
 - id `aa4b9c32-f2bf-42c8-89b9-f5aac8d70fb3`
 - latest service deployment = SUCCESS
+- Railway-side log read-back confirms the database service is reachable and actively checkpointing
+- this connector has no direct SQL execution path, so exact readiness counts below remain the latest canonical read-only Issue #42 workflow evidence
 - no plaintext variable values were read
 
 ## 5. Latest Production-derived historical readiness evidence
@@ -117,7 +122,7 @@ Never infer newer gate counts from settlement availability alone.
 ## 7. Next safe sequence
 
 1. Preserve and verify the 2026-10-01 morning prospective cycle.
-2. Continue read-only monitoring of `36667954064`; do not add a beforeinfo command.
+2. Continue read-only monitoring of `36667954064` and `36703692641`; do not add a beforeinfo command.
 3. Keep #526 Draft only until explicit merge approval.
 4. When a dispatch route is available, run the canonical 9/30 combined checkpoint exactly once, read-only, after checking no existing terminal run exists.
 5. After the morning prospective cycle, re-read the shared historical writer lane before any Opponent residual recovery.
