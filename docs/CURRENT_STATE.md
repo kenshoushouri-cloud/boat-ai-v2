@@ -13,6 +13,9 @@ Historical truth rule:
 
 Official daily B-file bulk path:
 - PR #480 merged;
+- PR #485 merged: long ranges up to 62 days are preserved in one serialized job and internally split into deterministic 14-day chunks;
+- PR #486 merged: monthly campaign executes B-file fill -> archived-racelist residual fill -> prior-only Opponent replay under one shared write lock;
+- 2026-01-15 and 2026-07-01 additional official-to-official parity checks both PASS;
 - raw official daily B files are parsed directly across all venues;
 - importer is fill-missing-only;
 - existing non-null values are never overwritten;
