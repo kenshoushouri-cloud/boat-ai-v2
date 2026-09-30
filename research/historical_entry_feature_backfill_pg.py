@@ -63,6 +63,16 @@ RESIDUAL_FIELDS = (
     "boat_place3_rate",
 )
 
+MODEL_CRITICAL_RESIDUAL_FIELDS = (
+    "f_count",
+    "l_count",
+    "avg_st",
+    "national_place3_rate",
+    "local_place3_rate",
+    "motor_place3_rate",
+    "boat_place3_rate",
+)
+
 SOURCE_FIELDS = (
     "racer_number",
     "racer_name",
@@ -299,7 +309,7 @@ def main() -> None:
     ap.add_argument("--end-date", default=os.getenv("HIST_END_DATE"))
     ap.add_argument(
         "--profile",
-        choices=("all", "residual"),
+        choices=("all", "residual", "model_critical"),
         default=os.getenv("HIST_ENTRY_PROFILE", "all"),
         help="all fields, or residual fields not supplied by the official daily B table",
     )
@@ -325,7 +335,12 @@ def main() -> None:
         == WRITE_CONFIRM
     )
     dates = _date_range(args.start_date, args.end_date)
-    selected_fields = TARGET_FIELDS if args.profile == "all" else RESIDUAL_FIELDS
+    if args.profile == "all":
+        selected_fields = TARGET_FIELDS
+    elif args.profile == "residual":
+        selected_fields = RESIDUAL_FIELDS
+    else:
+        selected_fields = MODEL_CRITICAL_RESIDUAL_FIELDS
 
     print(f"HIST_ENTRY_SOURCE_CONTRACT={SOURCE_CONTRACT}", flush=True)
     print(f"HIST_ENTRY_PROFILE={args.profile}", flush=True)
