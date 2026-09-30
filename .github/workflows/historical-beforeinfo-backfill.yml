@@ -15,7 +15,7 @@ permissions:
 
 env:
   PYTHONPATH: .
-  RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_DB_SERVICE: "postgres-recovery"
@@ -81,10 +81,10 @@ jobs:
         run: |
           set -euo pipefail
           railway run \
-            --project "\${RAILWAY_PROJECT_ID}" \
-            --environment "\${RAILWAY_ENVIRONMENT}" \
-            --service "\${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "\${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; export HIST_BEFOREINFO_SLEEP_SEC="0.10"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date 2025-07-01 --end-date 2025-07-01 --output historical-beforeinfo-dry-run.json' \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; export HIST_BEFOREINFO_SLEEP_SEC="0.10"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date 2025-07-01 --end-date 2025-07-01 --output historical-beforeinfo-dry-run.json' \
             | tee historical-beforeinfo-dry-run.txt
           grep -q '^HIST_BEFOREINFO_WRITE_ENABLED=0$' historical-beforeinfo-dry-run.txt
           grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-dry-run.txt
@@ -113,7 +113,7 @@ jobs:
 
       - name: Parse range
         env:
-          COMMENT_BODY: \${{ github.event.comment.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           python - <<'PY' >> "$GITHUB_ENV"
           import os
@@ -139,10 +139,10 @@ jobs:
         run: |
           set -euo pipefail
           railway run \
-            --project "\${RAILWAY_PROJECT_ID}" \
-            --environment "\${RAILWAY_ENVIRONMENT}" \
-            --service "\${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "\${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "\${HIST_START_DATE}" --end-date "\${HIST_END_DATE}"' \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
             | tee historical-beforeinfo-backfill.txt
           grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
           grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
@@ -150,7 +150,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: historical-beforeinfo-backfill-\${{ github.run_id }}
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
           path: |
             historical-beforeinfo-backfill.txt
             historical-beforeinfo-backfill-manifest.json
@@ -160,10 +160,10 @@ jobs:
       - name: Comment sanitized summary
         if: always()
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "Historical official beforeinfo backfill: \${HIST_START_DATE} .. \${HIST_END_DATE}"
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
             echo
             if [ -f historical-beforeinfo-backfill.txt ]; then
               grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
@@ -171,4 +171,4 @@ jobs:
             echo
             echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
           } > reply.txt
-          gh issue comment 42 --repo "\${GITHUB_REPOSITORY}" --body-file reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
