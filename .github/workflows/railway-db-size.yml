@@ -102,6 +102,101 @@ jobs:
           set -euo pipefail
           python -u pg_db_size_check.py > railway-db-size.txt 2> railway-db-size-error.txt
 
+      - name: Estimate hot-retention footprint read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from db_pg import fetch_all, fetch_one
+
+          JST = timezone(timedelta(hours=9))
+          today = datetime.now(JST).date()
+          hot_windows = (30, 60, 90)
+          candidates = [
+              'v2_odds_trifecta',
+              'v2_realtime_odds_snapshots',
+              'v2_v24_motor2_forward_shadow',
+              'v2_result_entries',
+              'v2_realtime_racer_condition_snapshots',
+              'v2_realtime_weather_snapshots',
+              'v2_realtime_race_condition_snapshots',
+              'v2_race_entries',
+              'v2_realtime_exhibition_snapshots',
+              'v2_racer_course_stats_snapshots',
+              'v2_realtime_entry_snapshots',
+              'v2_results',
+              'v2_races',
+          ]
+
+          def exists(table):
+              r=fetch_one("select to_regclass(%s) is not null ok", (f'public.{table}',)) or {}
+              return bool(r.get('ok'))
+
+          def cols(table):
+              return {str(r['column_name']) for r in fetch_all(
+                  "select column_name from information_schema.columns where table_schema='public' and table_name=%s",
+                  (table,)
+              )}
+
+          rows=[]
+          for table in candidates:
+              if not exists(table):
+                  continue
+              cs=cols(table)
+              size=int((fetch_one(
+                  "select pg_total_relation_size(%s::regclass)::bigint bytes",
+                  (f'public.{table}',)
+              ) or {}).get('bytes') or 0)
+              total=int((fetch_one(f"select count(*)::bigint n from {table}") or {}).get('n') or 0)
+              if 'race_date' in cs:
+                  source=f"{table}.race_date"
+                  def count_hot(cutoff):
+                      return int((fetch_one(
+                          f"select count(*)::bigint n from {table} where race_date >= %s",
+                          (cutoff,)
+                      ) or {}).get('n') or 0)
+              elif 'race_id' in cs:
+                  source="join:v2_races.race_date"
+                  def count_hot(cutoff):
+                      return int((fetch_one(
+                          f"select count(*)::bigint n from {table} t join v2_races r on r.race_id=t.race_id where r.race_date >= %s",
+                          (cutoff,)
+                      ) or {}).get('n') or 0)
+              else:
+                  continue
+              rec={'table':table,'bytes':size,'rows':total,'source':source,'windows':{}}
+              for days in hot_windows:
+                  cutoff=today-timedelta(days=days)
+                  hot=count_hot(cutoff)
+                  old=max(0,total-hot)
+                  est_old=int(size*(old/total)) if total else 0
+                  rec['windows'][days]={'cutoff':str(cutoff),'hot':hot,'old':old,'est_old_bytes':est_old}
+              rows.append(rec)
+
+          rows.sort(key=lambda x:x['bytes'], reverse=True)
+          def mb(n): return n/1024/1024
+          lines=[
+              '### Hot-retention planning estimate',
+              '',
+              '> Read-only planning estimate. Reclaimable MB is proportional to row counts and is not a promise of physical disk shrinkage. No rows were read for result/odds/payout values and no rows/schema/settings were changed.',
+              '',
+              '| Table | Current MB | Keep 30d / est. archive MB | Keep 60d / est. archive MB | Keep 90d / est. archive MB | Date basis |',
+              '|---|---:|---:|---:|---:|---|',
+          ]
+          for x in rows:
+              cells=[]
+              for days in hot_windows:
+                  w=x['windows'][days]
+                  cells.append(f"{w['hot']:,} rows / {mb(w['est_old_bytes']):.0f} MB")
+              lines.append(f"| `{x['table']}` | {mb(x['bytes']):.0f} | {cells[0]} | {cells[1]} | {cells[2]} | {x['source']} |")
+          for days in hot_windows:
+              est=sum(x['windows'][days]['est_old_bytes'] for x in rows)
+              lines += ['', f'Estimated archive candidate across listed tables if retaining {days} days hot: **{mb(est):.0f} MB**.']
+          Path('railway-db-retention.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          PY
+
       - name: Build safe summary
         shell: bash
         run: |
@@ -147,9 +242,13 @@ jobs:
           if not rows:
               lines.append('| (not returned) | - |')
 
+          retention = Path('railway-db-retention.md')
+          if retention.exists():
+              lines += ['', *retention.read_text(encoding='utf-8').splitlines()]
+
           lines += [
               '',
-              'This operation only executed PostgreSQL size functions and table-size reads; no rows, schema, Variables, deployments, or Railway settings were changed.',
+              'This operation only executed PostgreSQL size/count reads; no rows, schema, Variables, deployments, or Railway settings were changed.',
           ]
 
           Path('railway-db-size-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
@@ -176,7 +275,8 @@ jobs:
             railway-vars.json \
             railway-vars-error.txt \
             railway-db-size.txt \
-            railway-db-size-error.txt
+            railway-db-size-error.txt \
+            railway-db-retention.md
 
       - name: Post result to control issue
         if: always()
