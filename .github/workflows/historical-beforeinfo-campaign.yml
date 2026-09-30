@@ -13,7 +13,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: ${{ github.event_name == 'issue_comment' && 'historical-production-write' || format('historical-beforeinfo-pr-{0}', github.run_id) }}
+  group: ${{ github.event_name == 'issue_comment' && 'historical-beforeinfo-write' || format('historical-beforeinfo-pr-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
