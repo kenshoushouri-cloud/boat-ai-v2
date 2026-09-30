@@ -1,0 +1,49 @@
+name: Teikoku historical pre-race cross-check
+
+on:
+  pull_request:
+    paths:
+      - "research/teikoku_predeadline_crosscheck.py"
+      - "tests/test_teikoku_predeadline_crosscheck.py"
+      - ".github/workflows/teikoku-predeadline-crosscheck.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  read-only-crosscheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Verify access and parser safety
+        run: |
+          pytest -q tests/test_teikoku_predeadline_crosscheck.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/teikoku_predeadline_crosscheck.py").read_text(encoding="utf-8").lower()
+          assert "min_interval_sec = 3.05" in p
+          assert "boatrace-db.net" in p
+          assert "crosscheck_only" in p
+          assert "insert into" not in p
+          assert "update v2_" not in p
+          assert "delete from" not in p
+          assert '"result_fields_parsed": false' not in p  # source code uses Python False
+          print("PASS Teikoku cross-check safety")
+          PY
+      - name: Run one respectful historical page cross-check
+        run: |
+          python -u research/teikoku_predeadline_crosscheck.py \
+            --url "https://boatrace-db.net/race/detail/date/20250701/pid/19/rno/10/" \
+            --expected-racers "3618,5231,4678,5138,5214,5255" \
+            | tee teikoku-crosscheck.txt
+          grep -q '^TEIKOKU_CROSSCHECK_RESULT=PASS_READ_ONLY$' teikoku-crosscheck.txt
