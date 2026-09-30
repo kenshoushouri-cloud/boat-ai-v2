@@ -39,3 +39,41 @@ def test_combined_scorecard_uses_frozen_review_gates():
     assert target["purchase_action"] is False
     assert out["safety"]["promotion_allowed"] is False
     assert out["safety"]["production_change"] is False
+
+
+def test_unavailable_end_date_does_not_increment_v4_formal_days():
+    v4 = {
+        "complete_day_count": 8,
+        "complete_day_dates": [
+            "2026-09-21",
+            "2026-09-22",
+            "2026-09-23",
+            "2026-09-24",
+            "2026-09-25",
+            "2026-09-26",
+            "2026-09-27",
+            "2026-09-28",
+        ],
+        "complete_day_only": {"top2": {"roi_pct": 147.7273}},
+        "robustness": {},
+        "void_races": [],
+        "pending_or_invalid_races": [],
+    }
+    s03 = "\n".join([
+        'S03_M2_COMMON_COVERAGE={"evaluated": 68, "invalid_result": 1, "pending": 0, "rows": 69}',
+        'S03_M2_COMMON_OVERALL={"evaluated": 68, "hits": 4, "roi_pct": 148.8235}',
+        'S03_M2_COMMON_RISK={"max_drawdown_yen": 2200, "max_losing_streak": 22}',
+        'S03_M2_COMMON_HALVES={"first": {"roi_pct": 250.0}, "second": {"roi_pct": 55.0}}',
+        'S03_M2_COMMON_BOOTSTRAP={"p_roi_gt_100_pct": 75.0}',
+    ])
+
+    out = build_scorecard(v4, s03, end_date="2026-09-29")
+
+    assert out["end_date"] == "2026-09-29"
+    assert out["v4_formal"]["resolved_formal_days"] == 8
+    assert out["v4_formal"]["complete_day_dates"][-1] == "2026-09-28"
+    assert out["v5_core_milestone"]["remaining"]["v4_resolved_formal_days"] == 12
+    assert out["s03_m2"]["overall"]["evaluated"] == 68
+    assert out["v5_core_milestone"]["remaining"]["s03_m2_evaluated"] == 32
+    assert out["safety"]["production_change"] is False
+    assert out["safety"]["promotion_allowed"] is False
