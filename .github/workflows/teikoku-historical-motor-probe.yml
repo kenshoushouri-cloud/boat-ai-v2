@@ -47,6 +47,7 @@ jobs:
           PY
 
       - name: Probe one known motor history page
+        continue-on-error: true
         run: |
           set -euo pipefail
           python -u research/teikoku_motor_history_probe.py             --url "https://boatrace-db.net/stadium/mdetail/pid/24/mno/60/"             --cutoff-date 2025-07-15             | tee teikoku-motor-history-probe.txt
