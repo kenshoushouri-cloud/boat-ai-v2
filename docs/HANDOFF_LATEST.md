@@ -29,6 +29,7 @@ Fixed:
 
 Handoff maintenance:
 - do not append cumulative `LATEST OVERRIDE` sections
+- before every handoff update, review the existing pointer/current compact handoff for duplicate, stale, or superseded text; consolidate or replace it instead of cumulative append, and keep the handoff compact so chat-context capacity is not consumed unnecessarily
 - keep one compact live handoff and this pointer
 - use Git history / dated deep-history docs for old detail
 
