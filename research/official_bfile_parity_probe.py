@@ -32,6 +32,23 @@ def _field_names(x: Any) -> list[str]:
     return []
 
 
+def _value(x: Any, name: str) -> Any:
+    if isinstance(x, dict):
+        return x.get(name)
+    return getattr(x, name, None)
+
+
+def _race_id(target: date, race: Any) -> str:
+    venue = str(_value(race, "venue_code") or "").zfill(2)
+    race_no = int(_value(race, "race_number") or 0)
+    if len(venue) != 2 or not venue.isdigit() or not (1 <= race_no <= 12):
+        raise ValueError(
+            "B-file race identity fields unavailable: "
+            f"fields={_field_names(race)} venue={venue!r} race_no={race_no!r}"
+        )
+    return f"{target:%Y%m%d}_{venue}_{race_no:02d}"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default="2025-07-01")
@@ -55,34 +72,32 @@ def main() -> None:
     if not db:
         raise RuntimeError("DATABASE_URL required")
 
-    prefix = target.strftime("%Y%m%d")
-    next_prefix = (target.fromordinal(target.toordinal() + 1)).strftime("%Y%m%d")
+    parsed_race_ids = [_race_id(target, race) for race in parsed_races]
+    if len(parsed_race_ids) != len(set(parsed_race_ids)):
+        raise RuntimeError("duplicate B-file race identities")
 
     with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
             cur.execute("set local statement_timeout='60s'")
-            # race_id is date-prefixed and indexed in the Production schema.
-            # Use the same range pattern as realtime collectors instead of a
-            # race_date scan, which can time out during concurrent backfill I/O.
+            # Probe only exact B-file race IDs. This avoids date/range scans on
+            # large Production tables while historical backfills are writing.
             cur.execute(
                 """
                 select count(*)::int n
                   from v2_races
-                 where race_id >= %s
-                   and race_id < %s
+                 where race_id=any(%s)
                 """,
-                (prefix, next_prefix),
+                (parsed_race_ids,),
             )
             db_races = int(cur.fetchone()["n"])
             cur.execute(
                 """
                 select count(*)::int n
                   from v2_race_entries
-                 where race_id >= %s
-                   and race_id < %s
+                 where race_id=any(%s)
                 """,
-                (prefix, next_prefix),
+                (parsed_race_ids,),
             )
             db_entries = int(cur.fetchone()["n"])
         conn.rollback()
