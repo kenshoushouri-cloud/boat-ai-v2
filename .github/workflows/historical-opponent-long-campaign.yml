@@ -1,0 +1,214 @@
+name: Historical Opponent long campaign
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-opponent-long-campaign.yml"
+      - "research/historical_opponent_pressure_replay_pg.py"
+      - "research/_historical_opponent_adapter.py"
+      - "tests/test_historical_opponent_pressure_replay_pg.py"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-opponent-campaign ') && 'historical-production-write' || format('historical-opponent-long-other-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest pyyaml
+      - name: Validate long Opponent campaign safety
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_historical_opponent_pressure_replay_pg.py
+          python -m py_compile             research/historical_opponent_pressure_replay_pg.py             research/_historical_opponent_adapter.py
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow=Path(".github/workflows/historical-opponent-long-campaign.yml")
+          text=workflow.read_text(encoding="utf-8")
+          parsed=yaml.safe_load(text)
+          assert isinstance(parsed, dict) and "jobs" in parsed
+          assert "MAX_RANGE_DAYS=500" in text
+          assert "SEGMENT_DAYS=70" in text
+          assert "CHUNK_DAYS=7" in text
+          assert "max-parallel: 1" in text
+          assert "cancel-in-progress: false" in text
+          assert "historical-production-write" in text
+          assert "startsWith(github.event.comment.body, '/railway historical-opponent-campaign ')" in text
+          assert "historical-opponent-long-other-{0}" in text
+          assert 'historical_opponent_pressure_replay_pg.py --start-date "$1" --end-date "$2" --output "$3"' in text
+
+          source=Path("research/historical_opponent_pressure_replay_pg.py").read_text(encoding="utf-8").lower()
+          assert "historical_model_version = 102" in source
+          assert "on conflict (race_id) do nothing" in source
+          assert "update v2_opponent_pressure_shadow_v2" not in source
+          assert "delete from" not in source
+          assert "target_outcome_read" in source
+          assert "max_batch_days = 7" in source
+          print("PASS historical Opponent long-campaign safety")
+          PY
+
+  plan:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-opponent-campaign ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      segments: ${{ steps.plan.outputs.segments }}
+      start_date: ${{ steps.plan.outputs.start_date }}
+      end_date: ${{ steps.plan.outputs.end_date }}
+    steps:
+      - name: Parse full range and build <=70-day segments
+        id: plan
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from datetime import date, timedelta
+
+          MAX_RANGE_DAYS=500
+          SEGMENT_DAYS=70
+
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-opponent-campaign":
+              raise SystemExit("command: /railway historical-opponent-campaign YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          days=(b-a).days+1
+          if days > MAX_RANGE_DAYS:
+              raise SystemExit(f"maximum campaign is {MAX_RANGE_DAYS} days")
+
+          segments=[]
+          cur=a
+          idx=1
+          while cur <= b:
+              end=min(cur+timedelta(days=SEGMENT_DAYS-1), b)
+              segments.append({
+                  "index": idx,
+                  "start": cur.isoformat(),
+                  "end": end.isoformat(),
+              })
+              idx += 1
+              cur=end+timedelta(days=1)
+
+          print("segments="+json.dumps(segments,separators=(",",":")))
+          print("start_date="+a.isoformat())
+          print("end_date="+b.isoformat())
+          PY
+
+  replay:
+    needs: plan
+    if: needs.plan.result == 'success'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        segment: ${{ fromJSON(needs.plan.outputs.segments) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Build <=7-day replay chunks
+        env:
+          SEGMENT_START: ${{ matrix.segment.start }}
+          SEGMENT_END: ${{ matrix.segment.end }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > opponent-chunks.txt
+          import os
+          from datetime import date, timedelta
+          CHUNK_DAYS=7
+          a=date.fromisoformat(os.environ["SEGMENT_START"])
+          b=date.fromisoformat(os.environ["SEGMENT_END"])
+          cur=a
+          while cur <= b:
+              end=min(cur+timedelta(days=CHUNK_DAYS-1), b)
+              print(cur.isoformat(), end.isoformat())
+              cur=end+timedelta(days=1)
+          PY
+          cat opponent-chunks.txt
+
+      - name: Replay prior-only Opponent Pressure in chunks
+        run: |
+          set -euo pipefail
+          : > historical-opponent-long-campaign.txt
+          while read -r chunk_start chunk_end; do
+            echo "HIST_OPP_CAMPAIGN_CHUNK=${chunk_start}..${chunk_end}" | tee -a historical-opponent-long-campaign.txt
+            manifest="historical-opponent-${chunk_start}-${chunk_end}.json"
+            railway run               --project "${RAILWAY_PROJECT_ID}"               --environment "${RAILWAY_ENVIRONMENT}"               --service "${RAILWAY_DB_SERVICE}"               bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_OPPONENT_DB_WRITE="YES"; exec python -u research/historical_opponent_pressure_replay_pg.py --start-date "$1" --end-date "$2" --output "$3"' bash "${chunk_start}" "${chunk_end}" "${manifest}"               2>&1 | tee -a historical-opponent-long-campaign.txt
+          done < opponent-chunks.txt
+
+          expected=$(wc -l < opponent-chunks.txt)
+          test "$(grep -c '^HIST_OPP_RESULT=PASS$' historical-opponent-long-campaign.txt)" -eq "$expected"
+          test "$(grep -c '^HIST_OPP_TARGET_OUTCOME_READ=0$' historical-opponent-long-campaign.txt)" -eq "$expected"
+          test "$(grep -c '^HIST_OPP_PRODUCTION_ACCEPTED_MODEL=0$' historical-opponent-long-campaign.txt)" -eq "$expected"
+          test "$(grep -c '^HIST_OPP_LINE=0 BUY=0 STAKE_CHANGE=0$' historical-opponent-long-campaign.txt)" -eq "$expected"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-opponent-campaign-s${{ matrix.segment.index }}-${{ github.run_id }}
+          path: |
+            opponent-chunks.txt
+            historical-opponent-long-campaign.txt
+            historical-opponent-*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Comment sanitized segment summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEGMENT_INDEX: ${{ matrix.segment.index }}
+          SEGMENT_START: ${{ matrix.segment.start }}
+          SEGMENT_END: ${{ matrix.segment.end }}
+        run: |
+          {
+            echo "Historical Opponent campaign segment ${SEGMENT_INDEX}: ${SEGMENT_START} .. ${SEGMENT_END}"
+            echo
+            if [ -f historical-opponent-long-campaign.txt ]; then
+              grep -E '^(HIST_OPP_CAMPAIGN_CHUNK=|HIST_OPP_TOTALS=|HIST_OPP_RESULT=)' historical-opponent-long-campaign.txt || true
+            fi
+            echo
+            echo "Historical model_version=102; strict prior-only; target outcomes not read; existing rows preserved; no Production model acceptance."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
