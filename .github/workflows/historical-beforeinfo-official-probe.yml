@@ -1,0 +1,54 @@
+name: Historical official beforeinfo probe
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_beforeinfo_probe.py"
+      - "tests/test_historical_beforeinfo_probe.py"
+      - ".github/workflows/historical-beforeinfo-official-probe.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Pure contract test
+        run: pytest -q tests/test_historical_beforeinfo_probe.py
+      - name: Static no-leakage guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_beforeinfo_probe.py").read_text(encoding="utf-8").lower()
+          assert '_official_url("beforeinfo"' in p
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          assert "psycopg" not in p
+          assert '"db_write": false' in p
+          print("PASS historical beforeinfo no-leakage guard")
+          PY
+      - name: Probe archived 2025-07-01 official beforeinfo
+        run: |
+          python -u research/historical_beforeinfo_probe.py \
+            --date 2025-07-01 --venue 21 --race-no 1 \
+            | tee historical-beforeinfo-probe.txt
+          grep -q '^HIST_BEFOREINFO_PROBE_RESULT=PASS_ARCHIVED_OFFICIAL$' historical-beforeinfo-probe.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-probe-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-probe.json
+            historical-beforeinfo-probe.txt
+          retention-days: 30
