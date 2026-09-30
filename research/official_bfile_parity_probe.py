@@ -1,25 +1,32 @@
 # -*- coding: utf-8 -*-
-"""Read-only parity probe for BOAT RACE official daily B-file schedule data.
+"""Read-only structural probe for BOAT RACE official daily B-file data.
 
-This is intentionally a probe, not an importer.
-It downloads one official daily schedule archive, parses it with the isolated
-boatrace-lzh research dependency, and compares row counts against Production DB
-in a READ ONLY transaction.
+Purpose:
+- verify the raw daily B archive structure before building a bulk importer;
+- detect whether multiple venue sections exist in the extracted official text;
+- compare raw structure with the third-party parser output.
 
-No result K file, odds, payout, LINE, stake, or DB write.
+No K/result file, odds, payout, DB read/write, LINE, stake, or purchase.
 """
 from __future__ import annotations
 
 import argparse
 import dataclasses
 import json
-import os
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+
+VENUE_NAMES = {
+    "01": "桐生", "02": "戸田", "03": "江戸川", "04": "平和島",
+    "05": "多摩川", "06": "浜名湖", "07": "蒲郡", "08": "常滑",
+    "09": "津", "10": "三国", "11": "びわこ", "12": "住之江",
+    "13": "尼崎", "14": "鳴門", "15": "丸亀", "16": "児島",
+    "17": "宮島", "18": "徳山", "19": "下関", "20": "若松",
+    "21": "芦屋", "22": "福岡", "23": "唐津", "24": "大村",
+}
 
 
 def _field_names(x: Any) -> list[str]:
@@ -32,21 +39,50 @@ def _field_names(x: Any) -> list[str]:
     return []
 
 
-def _value(x: Any, name: str) -> Any:
-    if isinstance(x, dict):
-        return x.get(name)
-    return getattr(x, name, None)
+def _read_text(path: Path) -> str:
+    raw = path.read_bytes()
+    for enc in ("cp932", "shift_jis", "utf-8"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("cp932", errors="replace")
 
 
-def _race_id(target: date, race: Any) -> str:
-    venue = str(_value(race, "venue_code") or "").zfill(2)
-    race_no = int(_value(race, "race_number") or 0)
-    if len(venue) != 2 or not venue.isdigit() or not (1 <= race_no <= 12):
-        raise ValueError(
-            "B-file race identity fields unavailable: "
-            f"fields={_field_names(race)} venue={venue!r} race_no={race_no!r}"
-        )
-    return f"{target:%Y%m%d}_{venue}_{race_no:02d}"
+def raw_structure(files: list[Any]) -> dict[str, Any]:
+    per_file = []
+    union = set()
+    total_race_headers = 0
+    total_program_markers = 0
+    for item in files:
+        path = Path(item)
+        text = _read_text(path)
+        compact = text.replace("　", "").replace(" ", "")
+        venues = []
+        for code, name in VENUE_NAMES.items():
+            if name in compact:
+                venues.append(code)
+                union.add(code)
+        race_headers = len(re.findall(r"(?m)^\s*(?:0?[1-9]|1[0-2])R\b", text))
+        program_markers = text.count("番組")
+        total_race_headers += race_headers
+        total_program_markers += program_markers
+        per_file.append({
+            "name": path.name,
+            "bytes": path.stat().st_size,
+            "venue_codes_detected": venues,
+            "venue_count": len(venues),
+            "race_header_count": race_headers,
+            "program_marker_count": program_markers,
+        })
+    return {
+        "extracted_file_count": len(files),
+        "venue_codes_detected": sorted(union),
+        "venue_count": len(union),
+        "race_header_count": total_race_headers,
+        "program_marker_count": total_program_markers,
+        "files": per_file,
+    }
 
 
 def main() -> None:
@@ -63,77 +99,56 @@ def main() -> None:
     if not files:
         raise RuntimeError(f"official B file unavailable: {target}")
 
+    structure = raw_structure(list(files))
+
     parsed = ScheduleParser().parse(files)
     parsed_races = list(getattr(parsed, "races", []) or [])
     parsed_racers = list(getattr(parsed, "racers", []) or [])
     parsed_entries = list(getattr(parsed, "entries", []) or [])
 
-    db = (os.getenv("DATABASE_URL") or "").strip()
-    if not db:
-        raise RuntimeError("DATABASE_URL required")
-
-    parsed_race_ids = [_race_id(target, race) for race in parsed_races]
-    if len(parsed_race_ids) != len(set(parsed_race_ids)):
-        raise RuntimeError("duplicate B-file race identities")
-
-    with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
-        with conn.cursor() as cur:
-            cur.execute("set transaction read only")
-            cur.execute("set local statement_timeout='60s'")
-            # Probe only exact B-file race IDs. This avoids date/range scans on
-            # large Production tables while historical backfills are writing.
-            cur.execute(
-                """
-                select count(*)::int n
-                  from v2_races
-                 where race_id=any(%s)
-                """,
-                (parsed_race_ids,),
-            )
-            db_races = int(cur.fetchone()["n"])
-        conn.rollback()
-
-    parsed_entry_shape_ok = (
-        len(parsed_entries) == len(parsed_races) * 6
-        if parsed_entries
-        else None
-    )
-
     payload = {
-        "contract": "OFFICIAL_BFILE_PARITY_PROBE_V1",
+        "contract": "OFFICIAL_BFILE_STRUCTURE_PROBE_V2",
         "target_date": target.isoformat(),
         "source": "BOATRACE_OFFICIAL_B_DAILY_LZH",
         "result_file_read": False,
         "odds_read": False,
         "payout_read": False,
+        "db_read": False,
         "db_write": False,
-        "parsed": {
+        "raw_structure": structure,
+        "third_party_parser": {
             "races": len(parsed_races),
             "racers": len(parsed_racers),
             "entries": len(parsed_entries),
             "race_fields": _field_names(parsed_races[0]) if parsed_races else [],
             "racer_fields": _field_names(parsed_racers[0]) if parsed_racers else [],
             "entry_fields": _field_names(parsed_entries[0]) if parsed_entries else [],
+            "entry_shape_6_per_race": (
+                len(parsed_entries) == len(parsed_races) * 6
+                if parsed_entries
+                else None
+            ),
         },
-        "database": {
-            "races": db_races,
-            "entries_query_skipped_due_to_production_load": True,
-        },
-        "race_count_match": len(parsed_races) == db_races,
-        "entry_shape_6_per_race_if_exposed": parsed_entry_shape_ok,
+        "parser_covers_all_detected_venues": (
+            len(parsed_races) >= structure["venue_count"] * 12
+            if structure["venue_count"]
+            else None
+        ),
         "production_change": False,
         "purchase_action": False,
     }
-    Path("official-bfile-parity-probe.json").write_text(
+    Path("official-bfile-structure-probe.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print("OFFICIAL_BFILE_PARITY=" + json.dumps(payload, ensure_ascii=False, sort_keys=True))
-    if not payload["race_count_match"]:
-        raise RuntimeError("B-file race count does not match DB; do not promote importer")
-    if payload["entry_shape_6_per_race_if_exposed"] is False:
-        raise RuntimeError("B-file exposed entry count is not six per race")
-    print("OFFICIAL_BFILE_PARITY_RESULT=PASS_READ_ONLY")
+    print("OFFICIAL_BFILE_STRUCTURE=" + json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+    if structure["venue_count"] < 1:
+        raise RuntimeError("no known venue marker detected in official B text")
+    if payload["third_party_parser"]["entry_shape_6_per_race"] is False:
+        raise RuntimeError("third-party parser does not expose six entries per parsed race")
+
+    print("OFFICIAL_BFILE_STRUCTURE_RESULT=PASS_READ_ONLY")
 
 
 if __name__ == "__main__":
