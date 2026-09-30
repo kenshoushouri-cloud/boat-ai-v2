@@ -1,5 +1,64 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 14:21 JST
+
+### COMPREHENSIVE HANDOFF UPDATED — READ THIS PATH FIRST
+
+The complete current system-purpose / schedule / economics / data-acquisition / work-priority handoff is:
+
+- **`docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`**
+
+Next session must read, in order:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. then re-fetch current main / open PRs / CI / Railway Production / current DB evidence before acting.
+
+Current checkpoint:
+- main before docs update: `647a43e60d627938e55de4239af15265819659bd`
+- latest main change: #496 long-range historical beforeinfo campaign
+- Railway fallback Cron: **08:20 JST**
+- latest fallback deploy: `839be48f-af8f-4a53-8ba4-5b8abdc13f8a` — **SUCCESS**
+- staged config: none
+- V4/S03 settled through 9/28: **8/20** and **63/100**
+- 9/29 formal V4: **UNAVAILABLE**
+- V5 core review target: **2026-10-15**
+- monthly economic target: **+50,000 JPY net/month**
+- practical notification context: roughly **1–3 high-quality races/day**
+- Production V4 model/selector/stake unchanged
+- `purchase_action=false`
+
+Major changes since the older 9/29 handoff:
+- #452 merged: fallback code checkpoint aligned to 08:20;
+- Railway fallback is now 08:20 and deployed successfully;
+- #460 merged: future-only F-count companion capture active;
+- #461 merged: monthly +50,000 JPY feasibility added to combined checkpoint;
+- historical missing-data acquisition is explicitly active;
+- official pre-race historical F-count is allowed under predeadline provenance;
+- #496 merged: long-range serialized historical beforeinfo campaign;
+- #500/#498/#497 are current important historical-data workstreams.
+
+Historical acquisition is intended to test whether old 2025-07 onward poor backtests were partly caused by incomplete/mismatched input coverage.
+It does not replace prospective evidence and must never use target-race outcomes as feature inputs.
+
+The comprehensive handoff also records:
+- system purpose;
+- frozen V4 contract;
+- 08:15/08:16/08:20/08:32/23:30 timeline;
+- 9/29 incident;
+- monthly profit arithmetic;
+- F-count rules;
+- historical source priority;
+- current acquisition status;
+- important open PRs;
+- LINE candidate-volume diagnosis;
+- matched-contract backtest plan;
+- approval/safety boundaries;
+- immediate next-session checklist.
+
+`COMPREHENSIVE_HANDOFF_20260930 / FALLBACK_0820_ALIGNED / FCOUNT_ACTIVE / HISTORICAL_ACQUISITION_ACTIVE / MONTHLY_PLUS_50000 / V5_TARGET_20261015 / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 ### HISTORICAL DATA ACQUISITION EXPANDED
