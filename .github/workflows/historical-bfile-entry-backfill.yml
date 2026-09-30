@@ -43,6 +43,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path("research/historical_entry_bfile_backfill_pg.py").read_text(encoding="utf-8").lower()
+          w=Path(".github/workflows/historical-bfile-entry-backfill.yml").read_text(encoding="utf-8")
           assert "boatrace_official_daily_b_predeadline_by_nature_v1" in p
           assert "confirm_historical_bfile_db_write" in p
           assert "fill_missing_only" in p
@@ -50,7 +51,11 @@ jobs:
           assert "v2_results" not in p
           assert "v2_odds" not in p
           assert "result_odds_payout_read" in p
-          print("PASS historical B-file bulk safety")
+          assert "MAX_RANGE_DAYS=62" in w
+          assert "CHUNK_DAYS=14" in w
+          assert "cancel-in-progress: false" in w
+          assert "historical-production-write" in w
+          print("PASS historical B-file bulk/range safety")
           PY
 
   backfill:
@@ -63,7 +68,7 @@ jobs:
       github.actor == github.repository_owner &&
       startsWith(github.event.comment.body, '/railway historical-bfile-backfill ')
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,26 +79,46 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: npm install --global @railway/cli
 
-      - name: Parse and validate range
+      - name: Parse range and build 14-day chunks
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           python - <<'PY' >> "$GITHUB_ENV"
           import os
-          from datetime import date
+          from datetime import date, timedelta
+
+          MAX_RANGE_DAYS=62
+          CHUNK_DAYS=14
+
           p=os.environ["COMMENT_BODY"].strip().split()
           if len(p) != 4 or p[1] != "historical-bfile-backfill":
               raise SystemExit("command: /railway historical-bfile-backfill YYYY-MM-DD YYYY-MM-DD")
           a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
           if b < a:
               raise SystemExit("end before start")
-          if (b-a).days + 1 > 14:
-              raise SystemExit("maximum B-file batch is 14 days")
+          days=(b-a).days + 1
+          if days > MAX_RANGE_DAYS:
+              raise SystemExit(f"maximum B-file range is {MAX_RANGE_DAYS} days")
           if a < date(2025,7,1):
               raise SystemExit("approved historical start is 2025-07-01")
+
+          chunks=[]
+          cur=a
+          while cur <= b:
+              end=min(cur + timedelta(days=CHUNK_DAYS-1), b)
+              chunks.append((cur,end))
+              cur=end + timedelta(days=1)
+
+          with open("bfile-chunks.txt","w",encoding="utf-8") as fp:
+              for start,end in chunks:
+                  fp.write(f"{start.isoformat()} {end.isoformat()}\n")
+
           print("HIST_START_DATE="+p[2])
           print("HIST_END_DATE="+p[3])
+          print("HIST_RANGE_DAYS="+str(days))
+          print("HIST_CHUNK_COUNT="+str(len(chunks)))
           PY
+          cat bfile-chunks.txt
 
       - name: Coverage before
         run: |
@@ -110,15 +135,24 @@ jobs:
           CONFIRM_HISTORICAL_BFILE_DB_WRITE: "YES"
         run: |
           set -euo pipefail
-          railway run \
-            --project "${RAILWAY_PROJECT_ID}" \
-            --environment "${RAILWAY_ENVIRONMENT}" \
-            --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BFILE_DB_WRITE="${CONFIRM_HISTORICAL_BFILE_DB_WRITE}"; exec python -u research/historical_entry_bfile_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
-            | tee historical-bfile-backfill.txt
-          grep -q '^HIST_BFILE_RESULT=PASS$' historical-bfile-backfill.txt
-          grep -q '^HIST_BFILE_RESULT_ODDS_PAYOUT_READ=0$' historical-bfile-backfill.txt
-          grep -q '^HIST_BFILE_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-bfile-backfill.txt
+          : > historical-bfile-backfill.txt
+          while read -r CHUNK_START CHUNK_END; do
+            echo "HIST_BFILE_CHUNK_BEGIN=${CHUNK_START}..${CHUNK_END}" | tee -a historical-bfile-backfill.txt
+            MANIFEST="historical-bfile-entry-backfill-manifest-${CHUNK_START}-${CHUNK_END}.json"
+            railway run \
+              --project "${RAILWAY_PROJECT_ID}" \
+              --environment "${RAILWAY_ENVIRONMENT}" \
+              --service "${RAILWAY_DB_SERVICE}" \
+              bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BFILE_DB_WRITE="YES"; exec python -u research/historical_entry_bfile_backfill_pg.py --start-date "$1" --end-date "$2" --output "$3"' bash "${CHUNK_START}" "${CHUNK_END}" "${MANIFEST}" \
+              | tee -a historical-bfile-backfill.txt
+            echo "HIST_BFILE_CHUNK_END=${CHUNK_START}..${CHUNK_END}" | tee -a historical-bfile-backfill.txt
+          done < bfile-chunks.txt
+
+          expected="$(wc -l < bfile-chunks.txt | tr -d ' ')"
+          actual="$(grep -c '^HIST_BFILE_RESULT=PASS$' historical-bfile-backfill.txt)"
+          test "${actual}" = "${expected}"
+          test "$(grep -c '^HIST_BFILE_RESULT_ODDS_PAYOUT_READ=0$' historical-bfile-backfill.txt)" = "${expected}"
+          test "$(grep -c '^HIST_BFILE_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-bfile-backfill.txt)" = "${expected}"
 
       - name: Coverage after
         run: |
@@ -134,9 +168,10 @@ jobs:
         with:
           name: historical-bfile-backfill-${{ github.run_id }}
           path: |
+            bfile-chunks.txt
             bfile-coverage-before.txt
             historical-bfile-backfill.txt
-            historical-bfile-entry-backfill-manifest.json
+            historical-bfile-entry-backfill-manifest-*.json
             bfile-coverage-after.txt
           retention-days: 90
           if-no-files-found: error
@@ -149,10 +184,15 @@ jobs:
           {
             echo "Historical official B-file backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
             echo
+            if [ -f bfile-chunks.txt ]; then
+              echo "Chunks:"
+              cat bfile-chunks.txt
+              echo
+            fi
             if [ -f historical-bfile-backfill.txt ]; then
-              grep -E '^(HIST_BFILE_DAY=|HIST_BFILE_TOTALS=|HIST_BFILE_RESULT=)' historical-bfile-backfill.txt || true
+              grep -E '^(HIST_BFILE_CHUNK_|HIST_BFILE_DAY=|HIST_BFILE_TOTALS=|HIST_BFILE_RESULT=)' historical-bfile-backfill.txt || true
             fi
             echo
-            echo "Official BOAT RACE daily B files. Fill-missing-only; no result/odds/payout read; no inserts/overwrites."
+            echo "Official BOAT RACE daily B files. Pre-deadline-by-nature; fill-missing-only; no result/odds/payout read; no inserts/overwrites."
           } > reply.txt
           gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
