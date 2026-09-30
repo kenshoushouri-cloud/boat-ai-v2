@@ -132,13 +132,10 @@ def main() -> None:
     args = ap.parse_args()
     target = date.fromisoformat(args.date)
 
-    from boatrace_lzh import LzhDownloader, ScheduleParser
+    from boatrace_lzh import ScheduleParser
 
-    dl = LzhDownloader(cache_dir=args.cache_dir, max_workers=1)
-    files = dl.download(target, "schedule")
-    if not files:
-        raise RuntimeError(f"official B file unavailable: {target}")
-
+    txt_path = download_official_b_txt(target, Path(args.cache_dir))
+    files = [str(txt_path)]
     structure = raw_structure(files)
 
     parsed = ScheduleParser().parse(files)
