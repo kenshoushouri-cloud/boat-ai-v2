@@ -55,12 +55,13 @@ jobs:
           assert "CHUNK_DAYS=14" in w
           assert "cancel-in-progress: false" in w
           assert "historical-production-write" in w
+          assert "historical-bfile-noncommand-" in w
           print("PASS historical B-file bulk/range safety")
           PY
 
   backfill:
     concurrency:
-      group: historical-production-write
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-bfile-backfill ') && 'historical-production-write' || format('historical-bfile-noncommand-{0}', github.run_id) }}
       cancel-in-progress: false
     if: >-
       github.event_name == 'issue_comment' &&
