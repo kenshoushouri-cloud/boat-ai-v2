@@ -29,3 +29,8 @@ def test_source_contract_is_explicitly_historical_predeadline_assumed():
     assert SOURCE_CONTRACT == (
         "BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1"
     )
+
+
+def test_historical_label_is_fixed():
+    from research.historical_beforeinfo_backfill_pg import SNAPSHOT_LABEL
+    assert SNAPSHOT_LABEL == "historical"
