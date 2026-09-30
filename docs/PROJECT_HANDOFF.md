@@ -1,5 +1,56 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST OVERRIDE — 2026-09-30 11:51 JST
+
+### HISTORICAL BACKFILL EXECUTION / TEIKOKU SUPPLEMENT CONFIRMED
+Treat this as the newest historical-data execution state.
+
+User-approved historical truth:
+- use the pre-deadline value for historical backtests;
+- aggressively acquire missing historical data;
+- use 艇国データバンク where useful without replacing official BOAT RACE bulk sources.
+
+Official B-file path:
+- PR #480 merged to main;
+- field-level parity validated against official archived racelist data;
+- bulk importer writes only missing values on existing `v2_race_entries`;
+- no overwrite, no INSERT, no result/odds/payout read.
+
+Completed batch:
+- 2025-09-01..09-07
+- complete races: 936
+- entry rows: 5,616
+- fillable missing values: 11,344
+- DB rows updated: 5,616
+- result: `PASS_FILL_MISSING_ONLY`
+
+Next batch already started:
+- 2025-09-08..09-30
+- GitHub Actions run: 36662632600
+- same safety contract.
+
+艇国:
+- #478 merged for pre-race historical-table cross-check;
+- #479 merged for strict prior-only dated motor-history reconstruction probe;
+- access rule encoded: >=3 seconds, known URLs, sequential use;
+- do not source program/result/racer-term bulk data from 艇国 when BOAT RACE official downloads exist;
+- do not back-project present-day aggregate values;
+- dated rows strictly before the target cutoff may be used for supplemental reconstruction after source-specific validation.
+
+Data-source order:
+1. BOAT RACE official daily B / archived racelist;
+2. official prior-only reconstruction;
+3. 艇国 supplemental prior-only / cross-check;
+4. unresolved fields remain missing rather than inferred from future information.
+
+Historical evidence can improve research/backtests but does not increment V4 20-day or S03_M2 100-observation prospective gates.
+
+Production model/selector/threshold/LINE/stake/purchase unchanged.
+`purchase_action=false`.
+
+`PREDEADLINE_HISTORICAL_TRUTH / OFFICIAL_BULK_FIRST / TEIKOKU_PRIOR_ONLY_SUPPLEMENT / BACKFILL_ACTIVE / NO_FUTURE_LEAKAGE / PROD_UNCHANGED`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 ### HISTORICAL DATA ACQUISITION EXPANDED
