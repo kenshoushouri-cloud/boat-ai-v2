@@ -92,7 +92,7 @@ jobs:
 
   backfill:
     concurrency:
-      group: historical-production-write
+      group: historical-beforeinfo-write
       cancel-in-progress: false
     if: >-
       github.event_name == 'issue_comment' &&
