@@ -1,5 +1,45 @@
 # boat-ai-v2 Current State
 
+## LATEST OVERRIDE — 2026-09-30 14:14 JST
+
+### COMPLETE HANDOFF REFRESH
+
+**最初に読むこと:**
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. **`docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`**
+
+9/29版は履歴。9/30完全版が最新の目的・日次タイムライン・10/15計画・月+50,000円目標・Prospective/Historical境界・historical acquisition・open PR・作業権限・再開チェックリストをまとめる。
+
+Current read-back at 2026-09-30 14:14 JST:
+- main: `647a43e60d627938e55de4239af15265819659bd`
+- latest main: merge PR #496 `Add long-range historical beforeinfo campaign`
+- Railway fallback Cron: **08:20 JST / `20 23 * * *`**
+- fallback latest deployment: `839be48f-af8f-4a53-8ba4-5b8abdc13f8a` — **SUCCESS**
+- Railway staged/unmerged config: none
+- 2026-09-30 fallback log: **08:21:47 JST DISPATCH_FALLBACK**, reason `no_valid_primary_artifact_observable`
+- 2026-09-29 formal V4: **UNAVAILABLE** forever; no reconstruction/count
+- last documented settled V4: **8/20**, ROI **147.7273%**, +4,200 JPY
+- last documented settled S03_M2: **63/100**, ROI **160.6349%**, +3,820 JPY, second half **56.5625%**
+- future F-count companion capture: active
+- historical missing-data acquisition: active / user-approved under provenance-safe rules
+- monthly net-profit target: **+50,000 JPY**
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+Historical acquisition:
+- official beforeinfo long campaign run `36669671677`: **pending** at this checkpoint
+- official B-file bulk backfill run `36669671807`: **pending** at this checkpoint
+- PR #500 July 2025 pre-race raw acquisition: SUCCESS / 31/31 Race Cards + Recent Local, 31/31 Recent National days
+- PR #498 prior-day official-K recent_form reconstruction: Draft / mergeable / CI green
+- PR #497 beforeinfo write-lane isolation: Draft / mergeable / CI green
+- historical reconstruction never increments V4/S03 prospective gates
+
+Do not use old `no historical F-count backfill` blanket rule. Current policy allows target-day official pre-race F-count as historical input, but still forbids outcome-guided coefficient search and never relabels it as prospective.
+
+`READ_20260930_COMPLETE_HANDOFF / MAIN_647A43E / FALLBACK_0820_OK / HISTORICAL_ACQUISITION_ACTIVE / MONTHLY_PLUS_50000 / PROD_UNCHANGED / PURCHASE_FALSE`
+
+
 ## LATEST OVERRIDE — 2026-09-30 09:50 JST
 
 Historical acquisition is now an active priority.
