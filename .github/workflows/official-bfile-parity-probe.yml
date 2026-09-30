@@ -27,6 +27,7 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m pip install 'boatrace-lzh==0.1.0'
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
+
       - name: Static safety
         run: |
           python - <<'PY'
@@ -40,25 +41,18 @@ jobs:
           assert "delete from" not in p
           print("PASS B-file probe safety")
           PY
+
       - name: Run one-day official B-file structure probe
         run: |
           set -euo pipefail
-          python -u research/official_bfile_parity_probe.py --date 2025-07-01 \
-            | tee official-bfile-structure-probe.txt
-          grep -q '^OFFICIAL_BFILE_STRUCTURE_RESULT=PASS_READ_ONLY      - uses: actions/upload-artifact@v4
+          python -u research/official_bfile_parity_probe.py --date 2025-07-01             | tee official-bfile-structure-probe.txt
+          grep -q '^OFFICIAL_BFILE_STRUCTURE_RESULT=PASS_READ_ONLY$' official-bfile-structure-probe.txt
+
+      - uses: actions/upload-artifact@v4
         with:
           name: official-bfile-structure-probe-${{ github.run_id }}
           path: |
             official-bfile-structure-probe.json
             official-bfile-structure-probe.txt
-          retention-days: 30
-          if-no-files-found: error
- official-bfile-structure-probe.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: official-bfile-parity-probe-${{ github.run_id }}
-          path: |
-            official-bfile-parity-probe.json
-            official-bfile-parity-probe.txt
           retention-days: 30
           if-no-files-found: error
