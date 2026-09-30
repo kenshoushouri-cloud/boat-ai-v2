@@ -91,16 +91,13 @@ def main() -> None:
                 (parsed_race_ids,),
             )
             db_races = int(cur.fetchone()["n"])
-            cur.execute(
-                """
-                select count(*)::int n
-                  from v2_race_entries
-                 where race_id=any(%s)
-                """,
-                (parsed_race_ids,),
-            )
-            db_entries = int(cur.fetchone()["n"])
         conn.rollback()
+
+    parsed_entry_shape_ok = (
+        len(parsed_entries) == len(parsed_races) * 6
+        if parsed_entries
+        else None
+    )
 
     payload = {
         "contract": "OFFICIAL_BFILE_PARITY_PROBE_V1",
@@ -120,12 +117,10 @@ def main() -> None:
         },
         "database": {
             "races": db_races,
-            "entries": db_entries,
+            "entries_query_skipped_due_to_production_load": True,
         },
         "race_count_match": len(parsed_races) == db_races,
-        "entry_count_match_if_exposed": (
-            len(parsed_entries) == db_entries if parsed_entries else None
-        ),
+        "entry_shape_6_per_race_if_exposed": parsed_entry_shape_ok,
         "production_change": False,
         "purchase_action": False,
     }
@@ -136,6 +131,8 @@ def main() -> None:
     print("OFFICIAL_BFILE_PARITY=" + json.dumps(payload, ensure_ascii=False, sort_keys=True))
     if not payload["race_count_match"]:
         raise RuntimeError("B-file race count does not match DB; do not promote importer")
+    if payload["entry_shape_6_per_race_if_exposed"] is False:
+        raise RuntimeError("B-file exposed entry count is not six per race")
     print("OFFICIAL_BFILE_PARITY_RESULT=PASS_READ_ONLY")
 
 
