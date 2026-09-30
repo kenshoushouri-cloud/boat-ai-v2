@@ -1,5 +1,25 @@
 # boat-ai-v2 Project Handoff
 
+## LATEST LIVE POINTER — 2026-09-30 14:58 JST
+
+Read first:
+1. `docs/PROJECT_HANDOFF.md`
+2. `docs/CURRENT_STATE.md`
+3. `docs/SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md`
+4. **`docs/LIVE_HANDOFF_20260930_1458.md`**
+5. `docs/NEXT_CHAT_START_HERE.md`
+
+Current snapshot:
+- main pre-docs `780d2676ed22cd1b43f0cfb859f8098dc1e8f245`
+- fallback 08:20 / deploy `d424210d-26d9-43fd-bd19-b16aefffa9e0` SUCCESS / staged none
+- 9/30 formal/F-count final verification next
+- historical acquisition active
+- Production model/selector/LINE/stake unchanged
+- `purchase_action=false`
+
+`FINAL_LIVE_HANDOFF_1458`
+
+
 ## LATEST OVERRIDE — 2026-09-30 14:39 JST
 
 ### FINAL LIVE HANDOFF — READ THIS FIRST

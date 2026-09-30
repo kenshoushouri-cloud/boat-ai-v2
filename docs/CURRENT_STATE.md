@@ -1,5 +1,25 @@
 # boat-ai-v2 Current State
 
+## LATEST LIVE POINTER — 2026-09-30 14:58 JST
+
+**Latest:** `docs/LIVE_HANDOFF_20260930_1458.md`
+
+- main pre-docs: `780d2676ed22cd1b43f0cfb859f8098dc1e8f245`
+- fallback 08:20 JST
+- latest deploy `d424210d-26d9-43fd-bd19-b16aefffa9e0` SUCCESS
+- staged none
+- 9/30 fallback dispatch confirmed
+- 9/30 formal/availability/F-count verify next
+- V4 last settled 8/20; S03 63/100
+- beforeinfo complete 7.45%; temperature/water_temperature major gap
+- historical long/B-file runs pending
+- #500/#498 mergeable; #497/#459/#458 rebase/revalidate required
+- monthly +50,000 JPY
+- Production unchanged / `purchase_action=false`
+
+`READ_LIVE_HANDOFF_1458 / REFETCH_BEFORE_ACTION`
+
+
 ## LATEST OVERRIDE — 2026-09-30 14:39 JST
 
 **最初に読むこと**
