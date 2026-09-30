@@ -1,0 +1,207 @@
+name: Historical acquisition campaign
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_entry_feature_backfill_pg.py"
+      - "tests/test_historical_entry_feature_backfill_pg.py"
+      - ".github/workflows/historical-acquisition-campaign.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Validate residual profile
+        run: |
+          pytest -q tests/test_historical_entry_feature_backfill_pg.py
+          python -m py_compile research/historical_entry_feature_backfill_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_entry_feature_backfill_pg.py").read_text(encoding="utf-8").lower()
+          assert 'choices=("all", "residual")' in p
+          assert "residual_fields" in p
+          assert "confirm_historical_entry_db_write" in p
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          print("PASS historical campaign safety")
+          PY
+
+  campaign:
+    concurrency:
+      group: historical-production-write
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-campaign ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse campaign range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-campaign":
+              raise SystemExit("command: /railway historical-campaign YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum campaign is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Coverage before
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_entry_feature_coverage_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee campaign-coverage-before.txt
+
+      - name: Phase 1 official daily B fill
+        env:
+          CONFIRM_HISTORICAL_BFILE_DB_WRITE: "YES"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BFILE_DB_WRITE="${CONFIRM_HISTORICAL_BFILE_DB_WRITE}"; exec python -u research/historical_entry_bfile_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --output campaign-bfile-manifest.json' \
+            | tee campaign-bfile.txt
+          grep -q '^HIST_BFILE_RESULT=PASS$' campaign-bfile.txt
+          grep -q '^HIST_BFILE_RESULT_ODDS_PAYOUT_READ=0$' campaign-bfile.txt
+
+      - name: Phase 2 archived racelist residual fill
+        env:
+          CONFIRM_HISTORICAL_ENTRY_DB_WRITE: "YES"
+          HIST_OFFICIAL_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_ENTRY_DB_WRITE="${CONFIRM_HISTORICAL_ENTRY_DB_WRITE}"; export HIST_OFFICIAL_SLEEP_SEC="${HIST_OFFICIAL_SLEEP_SEC}"; exec python -u research/historical_entry_feature_backfill_pg.py --profile residual --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --output campaign-residual-manifest.json' \
+            | tee campaign-residual.txt
+          grep -q '^HIST_ENTRY_PROFILE=residual$' campaign-residual.txt
+          grep -q '^HIST_ENTRY_RESULT=PASS$' campaign-residual.txt
+          grep -q '^HIST_ENTRY_RESULT_ODDS_PAYOUT_READ=0$' campaign-residual.txt
+
+      - name: Phase 3 prior-only Opponent replay in seven-day chunks
+        env:
+          CONFIRM_HISTORICAL_OPPONENT_DB_WRITE: "YES"
+        run: |
+          set -euo pipefail
+          python - <<'PY' > opponent-chunks.txt
+          import os
+          from datetime import date, timedelta
+          a=date.fromisoformat(os.environ["HIST_START_DATE"])
+          b=date.fromisoformat(os.environ["HIST_END_DATE"])
+          cur=a
+          while cur <= b:
+              end=min(cur+timedelta(days=6), b)
+              print(cur.isoformat(), end.isoformat())
+              cur=end+timedelta(days=1)
+          PY
+          : > campaign-opponent.txt
+          while read -r chunk_start chunk_end; do
+            echo "CAMPAIGN_OPP_CHUNK=${chunk_start}..${chunk_end}" | tee -a campaign-opponent.txt
+            railway run \
+              --project "${RAILWAY_PROJECT_ID}" \
+              --environment "${RAILWAY_ENVIRONMENT}" \
+              --service "${RAILWAY_DB_SERVICE}" \
+              bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_OPPONENT_DB_WRITE="YES"; exec python -u research/historical_opponent_pressure_replay_pg.py --start-date "'"${chunk_start}"'" --end-date "'"${chunk_end}"'" --output "campaign-opponent-'"$chunk_start"'-'"$chunk_end"'.json"' \
+              | tee -a campaign-opponent.txt
+          done < opponent-chunks.txt
+          expected=$(wc -l < opponent-chunks.txt)
+          actual=$(grep -c '^HIST_OPP_RESULT=PASS$' campaign-opponent.txt)
+          test "$actual" -eq "$expected"
+
+      - name: Coverage after
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_entry_feature_coverage_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee campaign-coverage-after.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-campaign-${{ github.run_id }}
+          path: |
+            campaign-coverage-before.txt
+            campaign-bfile.txt
+            campaign-bfile-manifest.json
+            campaign-residual.txt
+            campaign-residual-manifest.json
+            campaign-opponent.txt
+            campaign-opponent-*.json
+            campaign-coverage-after.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized campaign summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical acquisition campaign: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f campaign-bfile.txt ]; then
+              grep -E '^(HIST_BFILE_TOTALS=|HIST_BFILE_RESULT=)' campaign-bfile.txt || true
+            fi
+            if [ -f campaign-residual.txt ]; then
+              grep -E '^(HIST_ENTRY_PROFILE=|HIST_ENTRY_TOTALS=|HIST_ENTRY_FILLABLE_BY_FIELD=|HIST_ENTRY_RESULT=)' campaign-residual.txt || true
+            fi
+            if [ -f campaign-opponent.txt ]; then
+              grep -E '^(CAMPAIGN_OPP_CHUNK=|HIST_OPP_TOTALS=|HIST_OPP_RESULT=)' campaign-opponent.txt || true
+            fi
+            echo
+            echo "Official pre-race B + archived racelist residual + prior-only Opponent. No target-result feature construction; Production decision logic unchanged."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
