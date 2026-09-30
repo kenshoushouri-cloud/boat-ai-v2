@@ -72,9 +72,15 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_ENV"
           import os
+          from datetime import date
           p=os.environ["COMMENT_BODY"].strip().split()
           if len(p) != 4 or p[1] != "historical-opponent-replay":
               raise SystemExit("command: /railway historical-opponent-replay YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 7:
+              raise SystemExit("maximum Opponent replay batch is 7 days")
           print("HIST_OPP_START_DATE="+p[2])
           print("HIST_OPP_END_DATE="+p[3])
           PY
