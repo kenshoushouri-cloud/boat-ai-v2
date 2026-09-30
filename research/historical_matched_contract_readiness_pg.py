@@ -218,6 +218,7 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
             "v4_full_reconstructed_core": 0,
             "complete_beforeinfo": 0,
             "core_plus_beforeinfo": 0,
+            "recent_form_nonempty_rows": 0,
             "recent_form6": 0,
             "core_plus_recent_form": 0,
             "all_optional_inputs": 0,
@@ -261,6 +262,7 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
         m["v4_full_reconstructed_core"] += int(full_core)
         m["complete_beforeinfo"] += int(beforeinfo)
         m["core_plus_beforeinfo"] += int(full_core and beforeinfo)
+        m["recent_form_nonempty_rows"] += int(row["recent_n"])
         m["recent_form6"] += int(recent6)
         m["core_plus_recent_form"] += int(full_core and recent6)
         m["all_optional_inputs"] += int(full_core and beforeinfo and fcount6 and recent6)
