@@ -1,0 +1,90 @@
+name: Railway Postgres pre-Hobby manual backup
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+jobs:
+  backup:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway postgres-pre-hobby-backup CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Require project token and validate command surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway postgres pitr backup create --help >/dev/null
+
+      - name: Create one manual backup
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="pre-hobby-migration-20261001"
+          if railway postgres pitr backup create --service postgres-recovery --name "$name" >backup-output.txt 2>backup-error.txt; then
+            {
+              echo '## Railway Postgres pre-Hobby backup'
+              echo
+              echo '✅ Manual backup creation command completed successfully.'
+              echo
+              echo "Backup name: `$name`"
+              echo
+              echo "Created at UTC: `$(date -u +%FT%TZ)`"
+              echo
+              echo 'No restore, delete, resize, detach, DB row/schema change, Variable change, or service-config change was requested.'
+            } > backup-summary.md
+          else
+            {
+              echo '## Railway Postgres pre-Hobby backup'
+              echo
+              echo '❌ Manual backup creation command failed.'
+              echo
+              echo 'No destructive follow-up was attempted.'
+            } > backup-summary.md
+            exit 1
+          fi
+
+      - name: Build failure summary
+        if: failure()
+        shell: bash
+        run: |
+          if [ ! -f backup-summary.md ]; then
+            {
+              echo '## Railway Postgres pre-Hobby backup'
+              echo
+              echo '❌ Backup workflow failed before a confirmed backup was created.'
+              echo
+              echo 'No destructive follow-up was attempted.'
+            } > backup-summary.md
+          fi
+
+      - name: Remove raw CLI output
+        if: always()
+        run: rm -f backup-output.txt backup-error.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file backup-summary.md
