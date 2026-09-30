@@ -1,0 +1,64 @@
+name: Historical pre-race acquisition 2025-07
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_prerace_acquisition.py"
+      - "tests/test_historical_prerace_acquisition.py"
+      - "docs/HISTORICAL_PRERACE_ACQUISITION_202507.md"
+      - ".github/workflows/historical-prerace-acquisition-202507.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  acquire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pure tests
+        run: |
+          python -m pip install pytest
+          pytest -q tests/test_historical_prerace_acquisition.py
+      - name: Static safety
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_prerace_acquisition.py").read_text(encoding="utf-8").lower()
+          assert "psycopg" not in p
+          assert "database_url" not in p
+          for forbidden in ("v2_results","result/realtime","payout","odds"):
+              if forbidden in ("payout","odds"):
+                  # Allowed only in docstrings / explicit negative contract.
+                  continue
+              assert forbidden not in p
+          assert "max 31-day window" in p or "limited to 31 days" in p
+          print("PASS raw acquisition safety")
+          PY
+      - name: Acquire July 2025 pre-race archive
+        run: |
+          set -euo pipefail
+          python -u research/historical_prerace_acquisition.py \
+            --start-date 2025-07-01 \
+            --end-date 2025-07-31 \
+            --output-dir historical-prerace-202507 \
+            | tee historical-prerace-202507.log
+          grep -q '^HIST_PRERACE_RESULT=PASS_RAW_ARTIFACT_ONLY$' historical-prerace-202507.log
+      - name: Upload bounded raw artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-prerace-202507-${{ github.run_id }}
+          path: |
+            historical-prerace-202507/
+            historical-prerace-202507.log
+          retention-days: 30
+          if-no-files-found: error
