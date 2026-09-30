@@ -14,9 +14,12 @@ import argparse
 import dataclasses
 import json
 import re
+import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Any
+
+import requests
 
 
 VENUE_NAMES = {
@@ -49,26 +52,50 @@ def _read_text(path: Path) -> str:
     return raw.decode("cp932", errors="replace")
 
 
-def _resolve_downloaded_path(item: Any, cache_dir: Path) -> Path:
-    path = Path(item)
-    if path.exists():
-        return path
-    candidates = list(cache_dir.rglob(path.name))
-    if len(candidates) != 1:
+def official_b_url(target: date) -> str:
+    return (
+        "https://www1.mbrace.or.jp/od2/B/"
+        f"{target:%Y%m}/b{target:%y%m%d}.lzh"
+    )
+
+
+def download_official_b_txt(target: date, work_dir: Path) -> Path:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    url = official_b_url(target)
+    archive = work_dir / f"b{target:%y%m%d}.lzh"
+    response = requests.get(
+        url,
+        headers={"User-Agent": "boat-ai-v2-historical-research/1.0"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    archive.write_bytes(response.content)
+    subprocess.run(
+        ["7z", "x", "-y", f"-o{work_dir}", str(archive)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    wanted = f"B{target:%y%m%d}.TXT".lower()
+    matches = [
+        p for p in work_dir.rglob("*")
+        if p.is_file() and p.name.lower() == wanted
+    ]
+    if len(matches) != 1:
         raise FileNotFoundError(
-            f"cannot resolve downloaded B file {path.name!r} under {cache_dir}: "
-            f"{len(candidates)} candidates"
+            f"expected one extracted {wanted}, found {len(matches)}"
         )
-    return candidates[0]
+    return matches[0]
 
 
-def raw_structure(files: list[Any], cache_dir: Path) -> dict[str, Any]:
+def raw_structure(files: list[Any]) -> dict[str, Any]:
     per_file = []
     union = set()
     total_race_headers = 0
     total_program_markers = 0
     for item in files:
-        path = _resolve_downloaded_path(item, cache_dir)
+        path = Path(item)
         text = _read_text(path)
         compact = text.replace("　", "").replace(" ", "")
         venues = []
@@ -112,7 +139,7 @@ def main() -> None:
     if not files:
         raise RuntimeError(f"official B file unavailable: {target}")
 
-    structure = raw_structure(list(files), Path(args.cache_dir))
+    structure = raw_structure(files)
 
     parsed = ScheduleParser().parse(files)
     parsed_races = list(getattr(parsed, "races", []) or [])
