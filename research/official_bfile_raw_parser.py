@@ -1,17 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Raw BOAT RACE official daily B-file parser for historical pre-race inputs.
+"""Raw parser for BOAT RACE official daily B program files.
 
-The daily B archive is a pre-race program source. This parser intentionally
-extracts only entry/program fields and does not parse result or payout data.
+Validated raw 2025-07-01 structure:
+- venue section marker: NNBBGN (for example 24BBGN);
+- race header: Japanese human-readable line beginning １Ｒ .. １２Ｒ;
+- six 79-byte entry lines beginning 1 .. 6.
 
-B record layout is validated against the project's existing official archived
-racelist data before any importer is allowed to write PostgreSQL.
+The official B program table does not contain F/L or average ST.
+Those remain sourced from official archived racelist pages.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import date
+import re
+import unicodedata
 from typing import Any, Iterable
+
+
+CLASS_MAP = {"B2": 1, "B1": 2, "A2": 3, "A1": 4}
 
 
 @dataclass(frozen=True)
@@ -20,14 +27,13 @@ class BEntry:
     venue_code: str
     race_no: int
     lane: int
-    racer_number: int | None
+    racer_number: int
     racer_name: str | None
-    branch_code: str | None
     age: int | None
+    branch: str | None
     weight: float | None
-    f_count: int | None
-    l_count: int | None
-    avg_st: float | None
+    racer_class_text: str | None
+    racer_class: int | None
     national_win_rate: float | None
     national_place2_rate: float | None
     local_win_rate: float | None
@@ -57,14 +63,13 @@ def _ascii(raw: bytes, start: int, end: int) -> str:
 
 def _cp932(raw: bytes, start: int, end: int) -> str:
     try:
-        value = raw[start:end].decode("cp932", errors="replace").strip()
+        return raw[start:end].decode("cp932", errors="replace").replace("�", "").strip()
     except Exception:
         return ""
-    return value.replace("�", "").strip()
 
 
-def _int(raw: bytes, start: int, end: int) -> int | None:
-    text = _ascii(raw, start, end)
+def _int_text(value: str) -> int | None:
+    text = value.strip()
     if not text or not text.lstrip("+-").isdigit():
         return None
     try:
@@ -73,73 +78,46 @@ def _int(raw: bytes, start: int, end: int) -> int | None:
         return None
 
 
-def _scaled(
-    raw: bytes,
-    start: int,
-    end: int,
-    scale: float,
-) -> float | None:
-    value = _int(raw, start, end)
-    if value is None:
+def _float_text(value: str) -> float | None:
+    text = value.strip()
+    if not text:
         return None
-    return round(value * scale, 4)
-
-
-def _bounded_int(
-    raw: bytes,
-    start: int,
-    end: int,
-    low: int,
-    high: int,
-) -> int | None:
-    value = _int(raw, start, end)
-    if value is None or not low <= value <= high:
+    try:
+        return round(float(text), 4)
+    except Exception:
         return None
-    return value
 
 
-def _bounded_scaled(
-    raw: bytes,
-    start: int,
-    end: int,
-    scale: float,
-    low: float,
-    high: float,
-) -> float | None:
-    value = _scaled(raw, start, end, scale)
-    if value is None or not low <= value <= high:
-        return None
-    return value
+def _bounded_int(raw: bytes, start: int, end: int, low: int, high: int) -> int | None:
+    value = _int_text(_ascii(raw, start, end))
+    return value if value is not None and low <= value <= high else None
 
 
-def parse_b_entry(
+def _bounded_float(raw: bytes, start: int, end: int, low: float, high: float) -> float | None:
+    value = _float_text(_ascii(raw, start, end))
+    return value if value is not None and low <= value <= high else None
+
+
+def parse_entry_line(
     raw: bytes,
     *,
     race_date: str,
     venue_code: str,
     race_no: int,
 ) -> BEntry | None:
-    """Parse one B1..B6 record using the validated-candidate byte layout.
-
-    The offsets intentionally remain isolated here so live parity can validate
-    every useful metric before any historical importer is promoted.
-    """
-    if len(raw) < 59:
-        return None
-    try:
-        rtype = raw[:2].decode("ascii")
-    except Exception:
-        return None
-    if len(rtype) != 2 or rtype[0] != "B" or rtype[1] not in "123456":
+    """Parse one validated 79-byte human-readable entry line."""
+    raw = raw.rstrip(b"\r")
+    if len(raw) != 79 or raw[:1] not in b"123456" or raw[1:2] != b" ":
         return None
 
-    lane = int(rtype[1])
-    racer_number = _bounded_int(raw, 2, 7, 1000, 99999)
+    lane = int(chr(raw[0]))
+    racer_number = _bounded_int(raw, 2, 6, 1000, 9999)
     if racer_number is None:
         return None
 
-    name = _cp932(raw, 7, 15) or None
-    branch = _ascii(raw, 15, 16) or None
+    racer_class_text = _ascii(raw, 22, 24) or None
+    if racer_class_text not in CLASS_MAP:
+        racer_class_text = None
 
     return BEntry(
         race_date=race_date,
@@ -147,79 +125,83 @@ def parse_b_entry(
         race_no=int(race_no),
         lane=lane,
         racer_number=racer_number,
-        racer_name=name,
-        branch_code=branch,
-        age=_bounded_int(raw, 16, 18, 15, 99),
-        weight=_bounded_scaled(raw, 18, 21, 0.1, 30.0, 100.0),
-        f_count=_bounded_int(raw, 21, 23, 0, 20),
-        l_count=_bounded_int(raw, 23, 25, 0, 20),
-        avg_st=_bounded_scaled(raw, 25, 29, 0.01, 0.0, 1.5),
-        national_win_rate=_bounded_scaled(raw, 29, 33, 0.01, 0.0, 10.0),
-        national_place2_rate=_bounded_scaled(raw, 33, 37, 0.01, 0.0, 100.0),
-        local_win_rate=_bounded_scaled(raw, 37, 41, 0.01, 0.0, 10.0),
-        local_place2_rate=_bounded_scaled(raw, 41, 45, 0.01, 0.0, 100.0),
-        motor_no=_bounded_int(raw, 45, 48, 1, 999),
-        motor_place2_rate=_bounded_scaled(raw, 48, 52, 0.01, 0.0, 100.0),
-        boat_no=_bounded_int(raw, 52, 55, 1, 999),
-        boat_place2_rate=_bounded_scaled(raw, 55, 59, 0.01, 0.0, 100.0),
+        racer_name=_cp932(raw, 6, 14) or None,
+        age=_bounded_int(raw, 14, 16, 15, 99),
+        branch=_cp932(raw, 16, 20) or None,
+        weight=_bounded_float(raw, 20, 22, 30.0, 100.0),
+        racer_class_text=racer_class_text,
+        racer_class=CLASS_MAP.get(racer_class_text or ""),
+        national_win_rate=_bounded_float(raw, 25, 29, 0.0, 10.0),
+        national_place2_rate=_bounded_float(raw, 30, 35, 0.0, 100.0),
+        local_win_rate=_bounded_float(raw, 36, 40, 0.0, 10.0),
+        local_place2_rate=_bounded_float(raw, 41, 46, 0.0, 100.0),
+        motor_no=_bounded_int(raw, 47, 49, 1, 99),
+        motor_place2_rate=_bounded_float(raw, 50, 55, 0.0, 100.0),
+        boat_no=_bounded_int(raw, 56, 58, 1, 99),
+        boat_place2_rate=_bounded_float(raw, 59, 64, 0.0, 100.0),
     )
 
 
+def _race_number_from_header(raw: bytes) -> int | None:
+    try:
+        text = raw.decode("cp932", errors="replace")
+    except Exception:
+        return None
+    text = unicodedata.normalize("NFKC", text).strip()
+    match = re.match(r"^(\d{1,2})R\b", text, flags=re.I)
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if 1 <= value <= 12 else None
+
+
 def parse_b_bytes(raw_bytes: bytes, target_date: date) -> list[BEntry]:
-    """Parse all BB/BH/B1..B6 records from a multi-venue daily B file."""
+    """Parse all venue/race/entry rows from one official daily B TXT."""
     entries: list[BEntry] = []
-    venue_code = ""
+    venue_code: str | None = None
     race_no: int | None = None
 
     for raw in raw_bytes.splitlines():
         raw = raw.rstrip(b"\r")
-        if len(raw) < 2:
-            continue
-        try:
-            rtype = raw[:2].decode("ascii")
-        except Exception:
+        if not raw:
             continue
 
-        if rtype == "BB":
-            venue = _ascii(raw, 2, 4)
-            if venue.isdigit() and 1 <= int(venue) <= 24:
-                venue_code = venue.zfill(2)
-            race_no = None
+        if len(raw) == 6:
+            try:
+                marker = raw.decode("ascii")
+            except Exception:
+                marker = ""
+            match = re.fullmatch(r"(\d{2})BBGN", marker)
+            if match and 1 <= int(match.group(1)) <= 24:
+                venue_code = match.group(1)
+                race_no = None
+                continue
+
+        header_race = _race_number_from_header(raw)
+        if header_race is not None:
+            race_no = header_race
             continue
 
-        if rtype == "BH":
-            venue = _ascii(raw, 2, 4)
-            if venue.isdigit() and 1 <= int(venue) <= 24:
-                venue_code = venue.zfill(2)
-            rno = _int(raw, 4, 6)
-            race_no = rno if rno is not None and 1 <= rno <= 12 else None
+        if venue_code is None or race_no is None:
             continue
-
-        if (
-            len(rtype) == 2
-            and rtype[0] == "B"
-            and rtype[1] in "123456"
-            and venue_code
-            and race_no is not None
-        ):
-            item = parse_b_entry(
-                raw,
-                race_date=target_date.isoformat(),
-                venue_code=venue_code,
-                race_no=race_no,
-            )
-            if item is not None:
-                entries.append(item)
+        item = parse_entry_line(
+            raw,
+            race_date=target_date.isoformat(),
+            venue_code=venue_code,
+            race_no=race_no,
+        )
+        if item is not None:
+            entries.append(item)
 
     return entries
 
 
 def group_complete_races(entries: Iterable[BEntry]) -> dict[str, list[BEntry]]:
-    out: dict[str, list[BEntry]] = {}
+    grouped: dict[str, list[BEntry]] = {}
     for entry in entries:
-        out.setdefault(entry.race_id, []).append(entry)
+        grouped.setdefault(entry.race_id, []).append(entry)
     return {
         race_id: sorted(rows, key=lambda x: x.lane)
-        for race_id, rows in out.items()
-        if len(rows) == 6 and {x.lane for x in rows} == {1, 2, 3, 4, 5, 6}
+        for race_id, rows in grouped.items()
+        if len(rows) == 6 and {row.lane for row in rows} == {1, 2, 3, 4, 5, 6}
     }
