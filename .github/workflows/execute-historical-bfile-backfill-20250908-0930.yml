@@ -1,0 +1,119 @@
+name: Execute historical B-file backfill 2025-09-08 to 09-30
+
+on:
+  push:
+    branches:
+      - "research/execute-bfile-backfill-20250908-0930"
+    paths:
+      - ".github/workflows/execute-historical-bfile-backfill-20250908-0930.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Verify write safety contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_entry_bfile_backfill_pg.py").read_text(encoding="utf-8").lower()
+          assert "fill_missing_only_no_overwrite_no_insert" in p
+          assert "coalesce(" in p
+          assert "confirm_historical_bfile_db_write" in p
+          assert "insert into" not in p
+          for forbidden in ("v2_results","v2_odds","payout_yen","trifecta_payout"):
+              assert forbidden not in p
+          print("PASS B-file backfill safety contract")
+          PY
+
+      - name: Dry run 2025-09-08 to 09-30
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_entry_bfile_backfill_pg.py --start-date 2025-09-08 --end-date 2025-09-30 --output historical-bfile-dryrun.json'             | tee historical-bfile-dryrun.txt
+          grep -q '^HIST_BFILE_WRITE_ENABLED=0$' historical-bfile-dryrun.txt
+          grep -q '^HIST_BFILE_RESULT=PASS$' historical-bfile-dryrun.txt
+
+      - name: Inspect dry run
+        id: inspect
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("historical-bfile-dryrun.json").read_text(encoding="utf-8"))
+          assert p["fill_missing_only"] is True
+          assert p["overwrite_existing_nonnull"] is False
+          assert p["insert_missing_entry_rows"] is False
+          assert p["result_odds_payout_read"] is False
+          assert p["write_enabled"] is False
+          parsed=int(p["totals"].get("parsed_rows",0))
+          complete=int(p["totals"].get("complete_races",0))
+          fillable=int(p["totals"].get("values_fillable",0))
+          assert parsed > 0
+          assert complete > 0
+          print(f"DRYRUN_PARSED_ROWS={parsed}")
+          print(f"DRYRUN_COMPLETE_RACES={complete}")
+          print(f"DRYRUN_FILLABLE_VALUES={fillable}")
+          with open("/tmp/fillable.txt","w",encoding="utf-8") as f:
+              f.write(str(fillable))
+          PY
+          echo "fillable=$(cat /tmp/fillable.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Write missing values only
+        if: steps.inspect.outputs.fillable != '0'
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BFILE_DB_WRITE=YES; exec python -u research/historical_entry_bfile_backfill_pg.py --start-date 2025-09-08 --end-date 2025-09-30 --output historical-bfile-write.json'             | tee historical-bfile-write.txt
+          grep -q '^HIST_BFILE_WRITE_ENABLED=1$' historical-bfile-write.txt
+          grep -q '^HIST_BFILE_RESULT=PASS$' historical-bfile-write.txt
+
+      - name: Verify write result
+        if: steps.inspect.outputs.fillable != '0'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("historical-bfile-write.json").read_text(encoding="utf-8"))
+          assert p["write_enabled"] is True
+          assert p["fill_missing_only"] is True
+          assert p["overwrite_existing_nonnull"] is False
+          assert p["insert_missing_entry_rows"] is False
+          updated=int(p["totals"].get("db_rows_updated",0))
+          fillable=int(p["totals"].get("values_fillable",0))
+          print(f"WRITE_FILLABLE_VALUES={fillable}")
+          print(f"WRITE_DB_ROWS_UPDATED={updated}")
+          print("HISTORICAL_BFILE_BATCH_RESULT=PASS_FILL_MISSING_ONLY")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-bfile-backfill-20250908-0930-${{ github.run_id }}
+          path: |
+            historical-bfile-dryrun.json
+            historical-bfile-dryrun.txt
+            historical-bfile-write.json
+            historical-bfile-write.txt
+          if-no-files-found: ignore
+          retention-days: 30
