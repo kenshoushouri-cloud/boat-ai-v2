@@ -59,6 +59,9 @@ jobs:
           assert 'snapshot_label = "historical"' in p
           assert "coalesce(v2_realtime_weather_snapshots.weather,excluded.weather)" in p
           assert "coalesce(v2_realtime_exhibition_snapshots.exhibition_time,excluded.exhibition_time)" in p
+          w=Path(".github/workflows/historical-beforeinfo-backfill.yml").read_text(encoding="utf-8")
+          assert "historical-beforeinfo-backfill-noncommand-" in w
+          assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')" in w
           print("PASS historical beforeinfo backfill safety")
           PY
 
@@ -92,7 +95,7 @@ jobs:
 
   backfill:
     concurrency:
-      group: historical-beforeinfo-write
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
       cancel-in-progress: false
     if: >-
       github.event_name == 'issue_comment' &&
