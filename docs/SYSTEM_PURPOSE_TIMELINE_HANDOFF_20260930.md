@@ -1,5 +1,15 @@
 # Boat AI Complete Handoff — 2026-09-30 14:14 JST
 
+> ## LIVE ADDENDUM — 2026-09-30 14:46 JST
+>
+> この完全版を読んだ後、必ず **`docs/LIVE_HANDOFF_20260930_1446.md`** を読む。
+> 14:46 read-backではfallbackは08:20 JST、latest deploy SUCCESS、stagedなし。
+> 9/30 fallback dispatchは08:21:47 JSTに確認済み。formal artifact / availability / F-count final statusは次チャット最優先確認。
+> Historical beforeinfo coverageは70,026 races中complete 7.45%で、temperature/water_temperatureが大きな不足。
+> #500/#498/#497/#459/#458はcurrent head CI green。
+> `docs/NEXT_CHAT_START_HERE.md` が貼り付け用開始文。
+
+
 > ## LIVE ADDENDUM — 2026-09-30 14:30 JST
 >
 > この完全版を読んだ後、必ず **`docs/LIVE_HANDOFF_20260930_1430.md`** を読む。
