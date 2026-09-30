@@ -1,0 +1,63 @@
+name: Teikoku historical motor probe
+
+on:
+  pull_request:
+    paths:
+      - "research/teikoku_motor_history_probe.py"
+      - "tests/test_teikoku_motor_history_probe.py"
+      - ".github/workflows/teikoku-historical-motor-probe.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  probe:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+
+      - name: Pure parser and policy tests
+        run: pytest -q tests/test_teikoku_motor_history_probe.py
+
+      - name: Static safety
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/teikoku_motor_history_probe.py").read_text(encoding="utf-8").lower()
+          assert "min_access_interval_sec = 3.0" in p
+          assert "known_motor_url_re" in p
+          assert '"db_write": false' in p
+          assert '"future_rows_used": false' in p
+          assert '"aggregate_values_used_as_historical_snapshot": false' in p
+          assert "insert into" not in p
+          assert "update v2_" not in p
+          assert "delete from" not in p
+          print("PASS Teikoku probe safety")
+          PY
+
+      - name: Probe one known motor history page
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python -u research/teikoku_motor_history_probe.py             --url "https://boatrace-db.net/stadium/mdetail/pid/24/mno/60/"             --cutoff-date 2025-07-15             | tee teikoku-motor-history-probe.txt
+          grep -q '^TEIKOKU_MOTOR_PROBE_RESULT=PASS_PRIOR_ONLY_STRUCTURE$' teikoku-motor-history-probe.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teikoku-motor-history-probe-${{ github.run_id }}
+          path: |
+            teikoku-motor-history-probe.json
+            teikoku-motor-history-probe.txt
+          retention-days: 30
+          if-no-files-found: error
