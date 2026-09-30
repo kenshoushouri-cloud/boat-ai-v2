@@ -138,7 +138,8 @@ def main() -> None:
     files = [str(txt_path)]
     structure = raw_structure(files)
 
-    parsed = ScheduleParser().parse(files)
+    parser_files = {txt_path.name: _read_text(txt_path)}
+    parsed = ScheduleParser().parse(parser_files)
     parsed_races = list(getattr(parsed, "races", []) or [])
     parsed_racers = list(getattr(parsed, "racers", []) or [])
     parsed_entries = list(getattr(parsed, "entries", []) or [])
