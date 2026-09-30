@@ -120,29 +120,45 @@ def _load_prior_history(
     with conn.cursor() as cur:
         cur.execute(
             """
-            select re.race_id,
-                   r.race_date,
-                   coalesce(r.venue_id,r.venue_code) as venue_id,
-                   r.race_no,
-                   re.lane,
-                   re.racer_number,
-                   re.start_course,
-                   re.start_timing,
-                   re.finish_position,
-                   re.finish_status,
-                   re.motor_no,
-                   re.boat_no
-              from v2_result_entries re
-              join v2_races r on r.race_id=re.race_id
-             where r.race_date < %s
-               and re.source='official_k_file'
-               and re.racer_number is not null
-             order by r.race_date asc,
-                      r.deadline_at asc nulls last,
-                      r.race_no asc,
-                      re.lane asc
+            with ranked as (
+                select re.race_id,
+                       r.race_date,
+                       coalesce(r.venue_id,r.venue_code) as venue_id,
+                       r.race_no,
+                       r.deadline_at,
+                       re.lane,
+                       re.racer_number,
+                       re.start_course,
+                       re.start_timing,
+                       re.finish_position,
+                       re.finish_status,
+                       re.motor_no,
+                       re.boat_no,
+                       row_number() over (
+                           partition by re.racer_number
+                           order by r.race_date desc,
+                                    r.deadline_at desc nulls last,
+                                    r.race_no desc,
+                                    re.lane desc
+                       ) as rn
+                  from v2_result_entries re
+                  join v2_races r on r.race_id=re.race_id
+                 where r.race_date < %s
+                   and re.source='official_k_file'
+                   and re.racer_number is not null
+            )
+            select race_id,race_date,venue_id,race_no,lane,racer_number,
+                   start_course,start_timing,finish_position,finish_status,
+                   motor_no,boat_no
+              from ranked
+             where rn <= %s
+             order by racer_number asc,
+                      race_date asc,
+                      deadline_at asc nulls last,
+                      race_no asc,
+                      lane asc
             """,
-            (start_date,),
+            (start_date, MAX_HISTORY),
         )
         append_result_rows(histories, cur.fetchall())
     return histories
