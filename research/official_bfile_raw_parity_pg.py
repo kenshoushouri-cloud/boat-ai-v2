@@ -1,27 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Read-only live parity audit for raw official B-file byte offsets.
+"""Official-to-official parity audit for raw daily B-file byte layout.
 
-Downloads exactly one BOAT RACE official daily B archive, parses all entry
-records with our isolated raw parser, then compares those pre-race fields with
-existing official-racelist-backed Production entry rows by exact race_id.
+Downloads one BOAT RACE official daily B archive, parses it with the isolated
+raw parser, and compares selected races against BOAT RACE official archived
+racelist pages for the same target date.
 
-No DB writes. No results/odds/payout reads. No Production behavior change.
+No PostgreSQL access. No results, odds, or payout data.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-import psycopg
 import requests
-from psycopg.rows import dict_row
 
+import repair_month_all_pg as official
 from research.official_bfile_raw_parser import group_complete_races, parse_b_bytes
 
 
@@ -38,6 +36,15 @@ FIELDS = (
     "motor_place2_rate",
     "boat_no",
     "boat_place2_rate",
+)
+
+SAMPLE_RACES = (
+    ("24", 1),
+    ("24", 6),
+    ("24", 12),
+    ("05", 1),
+    ("20", 6),
+    ("23", 12),
 )
 
 
@@ -98,111 +105,58 @@ def main() -> None:
     ap.add_argument("--work-dir", default=".bfile-raw-parity")
     args = ap.parse_args()
     target = date.fromisoformat(args.date)
+    target_iso = target.isoformat()
 
     path = download_txt(target, Path(args.work_dir))
-    raw_bytes = path.read_bytes()
-    raw_lines = [x.rstrip(b"\r") for x in raw_bytes.splitlines() if x.strip()]
-    sig = Counter()
-    samples = []
-    for raw in raw_lines:
-        prefix = raw[:2].hex()
-        sig[f"{prefix}:{len(raw)}"] += 1
-        if len(samples) < 32:
-            try:
-                decoded = raw.decode("cp932", errors="replace")
-            except Exception:
-                decoded = ""
-            samples.append({
-                "length": len(raw),
-                "prefix_hex": raw[:12].hex(),
-                "ascii_head": "".join(
-                    chr(b) if 32 <= b <= 126 else "."
-                    for b in raw[:24]
-                ),
-                "cp932": decoded,
-            })
-    print(
-        "OFFICIAL_BFILE_RAW_SIGNATURE="
-        + json.dumps({
-            "line_count": len(raw_lines),
-            "top_signatures": sig.most_common(30),
-            "samples": samples,
-        }, ensure_ascii=False, sort_keys=True),
-        flush=True,
-    )
-    parsed_rows = parse_b_bytes(raw_bytes, target)
+    parsed_rows = parse_b_bytes(path.read_bytes(), target)
     complete = group_complete_races(parsed_rows)
-    candidate_rows = [
-        row
-        for race_id in sorted(complete)
-        for row in complete[race_id]
-    ]
-    ids = sorted(complete)
-
-    if not ids:
-        print(
-            "OFFICIAL_BFILE_RAW_PARITY_RESULT=FORMAT_DISCOVERY_REQUIRED",
-            flush=True,
-        )
-        return
-
-    db = (os.getenv("DATABASE_URL") or "").strip()
-    if not db:
-        raise RuntimeError("DATABASE_URL required")
-
-    db_rows: dict[tuple[str, int], dict[str, Any]] = {}
-    with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
-        with conn.cursor() as cur:
-            cur.execute("set transaction read only")
-            cur.execute("set local statement_timeout='60s'")
-            cur.execute(
-                """
-                select race_id,lane,
-                       racer_number,racer_name,branch,racer_class,
-                       national_win_rate,national_place2_rate,
-                       local_win_rate,local_place2_rate,
-                       motor_no,motor_place2_rate,
-                       boat_no,boat_place2_rate
-                  from v2_race_entries
-                 where race_id=any(%s)
-                 order by race_id,lane
-                """,
-                (ids,),
-            )
-            for row in cur.fetchall():
-                item = dict(row)
-                db_rows[(str(item["race_id"]), int(item["lane"]))] = item
-        conn.rollback()
+    if not complete:
+        raise RuntimeError("raw B parser produced no complete races")
 
     compared = Counter()
     exact = Counter()
-    mismatches: dict[str, list[dict[str, Any]]] = {f: [] for f in FIELDS}
-    rows_with_db = 0
+    mismatch_samples: dict[str, list[dict[str, Any]]] = {field: [] for field in FIELDS}
+    sampled_races = 0
+    sampled_rows = 0
 
-    for parsed in candidate_rows:
-        key = (parsed.race_id, parsed.lane)
-        dbrow = db_rows.get(key)
-        if dbrow is None:
+    for venue, race_no in SAMPLE_RACES:
+        race_id = f"{target:%Y%m%d}_{venue}_{race_no:02d}"
+        brows = complete.get(race_id)
+        if brows is None:
+            # A venue may not be racing on the target day.
             continue
-        rows_with_db += 1
-        pd = parsed.to_dict()
-        for field in FIELDS:
-            a = norm(field, pd.get(field))
-            b = norm(field, dbrow.get(field))
-            if a is None or b is None:
-                continue
-            compared[field] += 1
-            if a == b:
-                exact[field] += 1
-            elif len(mismatches[field]) < 8:
-                mismatches[field].append(
-                    {
-                        "race_id": parsed.race_id,
-                        "lane": parsed.lane,
-                        "b_file": a,
-                        "db_official_racelist": b,
-                    }
-                )
+
+        url = official._official_url("racelist", target_iso, venue, race_no)
+        html = official._fetch(url)
+        if not html:
+            raise RuntimeError(f"official racelist unavailable: {race_id}")
+        rrows = official.parse_entries(html, race_id)
+        rmap = {int(row["lane"]): row for row in rrows}
+        if set(rmap) != {1, 2, 3, 4, 5, 6}:
+            raise RuntimeError(f"official racelist parse non6: {race_id}")
+
+        sampled_races += 1
+        sampled_rows += 6
+        for b in brows:
+            arow = b.to_dict()
+            rrow = rmap[b.lane]
+            for field in FIELDS:
+                a = norm(field, arow.get(field))
+                c = norm(field, rrow.get(field))
+                if a is None or c is None:
+                    continue
+                compared[field] += 1
+                if a == c:
+                    exact[field] += 1
+                elif len(mismatch_samples[field]) < 8:
+                    mismatch_samples[field].append(
+                        {
+                            "race_id": race_id,
+                            "lane": b.lane,
+                            "b_file": a,
+                            "racelist": c,
+                        }
+                    )
 
     parity = {
         field: {
@@ -213,22 +167,25 @@ def main() -> None:
                 if compared[field]
                 else None
             ),
-            "mismatch_samples": mismatches[field],
+            "mismatch_samples": mismatch_samples[field],
         }
         for field in FIELDS
     }
 
     payload = {
-        "contract": "OFFICIAL_BFILE_RAW_LAYOUT_PARITY_V1",
-        "target_date": target.isoformat(),
-        "source": "BOATRACE_OFFICIAL_B_DAILY_LZH",
+        "contract": "OFFICIAL_BFILE_RAW_OFFICIAL_PARITY_V2",
+        "target_date": target_iso,
+        "source_a": "BOATRACE_OFFICIAL_B_DAILY_LZH",
+        "source_b": "BOATRACE_OFFICIAL_ARCHIVED_RACELIST",
         "parsed_entry_rows": len(parsed_rows),
         "complete_races": len(complete),
-        "complete_race_entry_rows": len(candidate_rows),
-        "rows_with_db_reference": rows_with_db,
-        "distinct_venues": sorted({row.venue_code for row in candidate_rows}),
+        "distinct_venues": sorted(
+            {row.venue_code for rows in complete.values() for row in rows}
+        ),
+        "sampled_races": sampled_races,
+        "sampled_rows": sampled_rows,
         "parity": parity,
-        "db_read_only": True,
+        "db_read": False,
         "db_write": False,
         "result_odds_payout_read": False,
         "production_change": False,
@@ -239,7 +196,33 @@ def main() -> None:
         encoding="utf-8",
     )
     print("OFFICIAL_BFILE_RAW_PARITY=" + json.dumps(payload, ensure_ascii=False, sort_keys=True))
-    print("OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_DIAGNOSTIC_ONLY")
+
+    if len(complete) < 100 or sampled_races < 3:
+        raise RuntimeError("insufficient B-file coverage/parity sample")
+
+    required = (
+        "racer_number",
+        "racer_name",
+        "branch",
+        "racer_class",
+        "national_win_rate",
+        "national_place2_rate",
+        "local_win_rate",
+        "local_place2_rate",
+        "motor_no",
+        "motor_place2_rate",
+        "boat_no",
+        "boat_place2_rate",
+    )
+    bad = [
+        field
+        for field in required
+        if compared[field] == 0 or exact[field] != compared[field]
+    ]
+    if bad:
+        raise RuntimeError(f"B-file field parity failed: {bad}")
+
+    print("OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_EXACT_OFFICIAL_TO_OFFICIAL")
 
 
 if __name__ == "__main__":
