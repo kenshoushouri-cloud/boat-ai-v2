@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from research.historical_entry_feature_backfill_pg import (
+    MODEL_CRITICAL_RESIDUAL_FIELDS,
     RESIDUAL_FIELDS,
     TEXT_DB_FIELDS,
     build_missing_patch,
@@ -109,3 +110,33 @@ def test_residual_patch_ignores_bfile_fields():
         fields=RESIDUAL_FIELDS,
     )
     assert patch == {"f_count": 1, "avg_st": 0.15}
+
+
+def test_model_critical_residual_excludes_identity_origin():
+    assert MODEL_CRITICAL_RESIDUAL_FIELDS == (
+        "f_count",
+        "l_count",
+        "avg_st",
+        "national_place3_rate",
+        "local_place3_rate",
+        "motor_place3_rate",
+        "boat_place3_rate",
+    )
+    assert "origin" not in MODEL_CRITICAL_RESIDUAL_FIELDS
+
+
+def test_model_critical_patch_does_not_spend_http_work_on_identity_only_gap():
+    patch = build_missing_patch(
+        {
+            "origin": None,
+            "f_count": 0,
+            "avg_st": 0.15,
+        },
+        {
+            "origin": "大阪",
+            "f_count": 1,
+            "avg_st": 0.16,
+        },
+        fields=MODEL_CRITICAL_RESIDUAL_FIELDS,
+    )
+    assert patch == {}
