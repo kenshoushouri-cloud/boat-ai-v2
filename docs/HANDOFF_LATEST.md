@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Latest complete handoff:** `docs/LIVE_HANDOFF_20260930_2355.md`
+**Latest complete handoff:** `docs/LIVE_HANDOFF_20260930_2351.md`
 
 **Paste-ready next-chat guide:** `docs/NEXT_CHAT_START_HERE.md`
 
@@ -18,4 +18,4 @@ Source of Truth:
 - Railway PostgreSQL Production = data
 
 Current handoff tag:
-`LATEST_HANDOFF_20260930_2355_COMPACT_FINAL / REFETCH_BEFORE_ACTION / ONE_BY_ONE / V5_20261015 / PURCHASE_FALSE`
+`LATEST_HANDOFF_20260930_2351_FINAL_REFINED / REFETCH_BEFORE_ACTION / ONE_BY_ONE / V5_20261015 / PURCHASE_FALSE`
