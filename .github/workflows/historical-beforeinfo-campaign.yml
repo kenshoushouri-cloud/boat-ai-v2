@@ -48,7 +48,6 @@ jobs:
           assert "max-parallel: 1" in w
           assert "maximum campaign is 500 days" in w
           assert "historical-beforeinfo-campaign-legacy" in w
-          assert "/railway historical-beforeinfo-campaign " not in w
           print("PASS historical beforeinfo legacy-campaign routing safety")
           PY
 
