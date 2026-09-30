@@ -1,0 +1,1 @@
+One-shot source trigger to redeploy test-beforeinfo-extra with its restored original start command after the Teikoku connectivity probe.
