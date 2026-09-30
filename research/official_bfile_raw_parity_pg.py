@@ -98,7 +98,32 @@ def main() -> None:
     target = date.fromisoformat(args.date)
 
     path = download_txt(target, Path(args.work_dir))
-    parsed_rows = parse_b_bytes(path.read_bytes(), target)
+    raw_bytes = path.read_bytes()
+    raw_lines = [x.rstrip(b"\r") for x in raw_bytes.splitlines() if x.strip()]
+    sig = Counter()
+    samples = []
+    for raw in raw_lines:
+        prefix = raw[:2].hex()
+        sig[f"{prefix}:{len(raw)}"] += 1
+        if len(samples) < 24:
+            samples.append({
+                "length": len(raw),
+                "prefix_hex": raw[:12].hex(),
+                "ascii_head": "".join(
+                    chr(b) if 32 <= b <= 126 else "."
+                    for b in raw[:24]
+                ),
+            })
+    print(
+        "OFFICIAL_BFILE_RAW_SIGNATURE="
+        + json.dumps({
+            "line_count": len(raw_lines),
+            "top_signatures": sig.most_common(30),
+            "samples": samples,
+        }, ensure_ascii=False, sort_keys=True),
+        flush=True,
+    )
+    parsed_rows = parse_b_bytes(raw_bytes, target)
     complete = group_complete_races(parsed_rows)
     candidate_rows = [
         row
@@ -108,7 +133,11 @@ def main() -> None:
     ids = sorted(complete)
 
     if not ids:
-        raise RuntimeError("raw B parser produced no complete races")
+        print(
+            "OFFICIAL_BFILE_RAW_PARITY_RESULT=FORMAT_DISCOVERY_REQUIRED",
+            flush=True,
+        )
+        return
 
     db = (os.getenv("DATABASE_URL") or "").strip()
     if not db:
