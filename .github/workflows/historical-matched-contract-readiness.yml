@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile research/historical_matched_contract_readiness_pg.py
-          python -m pytest -q tests/test_historical_matched_contract_readiness_pg.py
+          python -m unittest -v tests.test_historical_matched_contract_readiness_pg
           python - <<'PY'
           from pathlib import Path
           p=Path("research/historical_matched_contract_readiness_pg.py").read_text(encoding="utf-8").lower()
