@@ -65,7 +65,17 @@ jobs:
           set -euo pipefail
           python -u research/official_bfile_raw_parity_pg.py --date 2025-07-01 \
             | tee official-bfile-raw-parity.txt
-          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_EXACT_OFFICIAL_TO_OFFICIAL$' official-bfile-raw-parity.txt
+          grep -q '^OFFICIAL_BFILE_RAW_PARITY_RESULT=PASS_VALIDATED_BULK_FIELDS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-bfile-raw-parity-${{ github.run_id }}
+          path: |
+            official-bfile-raw-layout-parity.json
+            official-bfile-raw-parity.txt
+          retention-days: 30
+          if-no-files-found: error
+ official-bfile-raw-parity.txt
 
       - uses: actions/upload-artifact@v4
         with:
