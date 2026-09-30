@@ -37,7 +37,8 @@ jobs:
           assert "insert into" not in p
           assert "update v2_" not in p
           assert "delete from" not in p
-          assert '"result_fields_parsed": false' not in p  # source code uses Python False
+          assert '"result_fields_parsed": false' in p
+          assert '"payout_fields_parsed": false' in p
           print("PASS Teikoku cross-check safety")
           PY
       - name: Run one respectful historical page cross-check
