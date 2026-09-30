@@ -1,0 +1,177 @@
+name: Historical beforeinfo long campaign
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-beforeinfo-campaign.yml"
+      - "research/historical_beforeinfo_backfill_pg.py"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: historical-production-write
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Static safety
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_beforeinfo_backfill_pg.py").read_text(encoding="utf-8").lower()
+          w=Path(".github/workflows/historical-beforeinfo-campaign.yml").read_text(encoding="utf-8")
+          assert "confirm_historical_beforeinfo_db_write" in p
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          assert "fill_missing_only" in p
+          assert "group: historical-production-write" in w
+          assert "max-parallel: 1" in w
+          assert "maximum campaign is 500 days" in w
+          assert "historical-beforeinfo-campaign" in w
+          print("PASS historical beforeinfo long-campaign safety")
+          PY
+
+  plan:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-campaign ')
+    runs-on: ubuntu-24.04
+    outputs:
+      chunks: ${{ steps.plan.outputs.chunks }}
+      start_date: ${{ steps.plan.outputs.start_date }}
+      end_date: ${{ steps.plan.outputs.end_date }}
+    steps:
+      - id: plan
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import calendar, json, os
+          from datetime import date, timedelta
+
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p)!=4 or p[1]!="historical-beforeinfo-campaign":
+              raise SystemExit("command: /railway historical-beforeinfo-campaign YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b<a:
+              raise SystemExit("end before start")
+          if a<date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          days=(b-a).days+1
+          if days>500:
+              raise SystemExit("maximum campaign is 500 days")
+
+          chunks=[]
+          cur=a
+          while cur<=b:
+              month_end=date(cur.year,cur.month,calendar.monthrange(cur.year,cur.month)[1])
+              end=min(month_end,b)
+              chunks.append({
+                  "start":cur.isoformat(),
+                  "end":end.isoformat(),
+                  "key":f"{cur.isoformat()}_{end.isoformat()}",
+              })
+              cur=end+timedelta(days=1)
+
+          print("chunks="+json.dumps(chunks,separators=(",",":")))
+          print("start_date="+a.isoformat())
+          print("end_date="+b.isoformat())
+          PY
+
+  backfill:
+    needs: plan
+    if: needs.plan.result == 'success'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        chunk: ${{ fromJSON(needs.plan.outputs.chunks) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Backfill official archived beforeinfo chunk
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+          CHUNK_START: ${{ matrix.chunk.start }}
+          CHUNK_END: ${{ matrix.chunk.end }}
+          CHUNK_KEY: ${{ matrix.chunk.key }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "$1" --end-date "$2" --output "$3"' bash "${CHUNK_START}" "${CHUNK_END}" "beforeinfo-${CHUNK_KEY}.json" \
+            2>&1 | tee "beforeinfo-${CHUNK_KEY}.txt"
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' "beforeinfo-${CHUNK_KEY}.txt"
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' "beforeinfo-${CHUNK_KEY}.txt"
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' "beforeinfo-${CHUNK_KEY}.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beforeinfo-chunk-${{ matrix.chunk.key }}
+          path: |
+            beforeinfo-${{ matrix.chunk.key }}.txt
+            beforeinfo-${{ matrix.chunk.key }}.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  summary:
+    needs: [plan, backfill]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: beforeinfo-chunk-*
+          merge-multiple: true
+          path: campaign-results
+      - name: Comment sanitized campaign summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          START_DATE: ${{ needs.plan.outputs.start_date }}
+          END_DATE: ${{ needs.plan.outputs.end_date }}
+          BACKFILL_RESULT: ${{ needs.backfill.result }}
+        run: |
+          {
+            echo "Historical beforeinfo campaign: ${START_DATE} .. ${END_DATE}"
+            echo "matrix result: ${BACKFILL_RESULT}"
+            echo
+            if compgen -G "campaign-results/*.txt" > /dev/null; then
+              grep -hE '^(HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' campaign-results/*.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-by-nature; fill-missing-only; serialized campaign; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
