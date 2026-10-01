@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_TWO_ORPHANS_DELETED.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_HOBBY_ACTIVE.md`
 
 Read only:
 1. this pointer
@@ -11,16 +11,14 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 
 Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
-- cutover / smoke / rollback / first resumed Production run = PASS
-- active schedules resumed against candidate-v4
-- fresh encrypted recovery archive + isolated restore = PASS
-- `Postgres` service deleted; 50GB volume pending deletion
-- `Postgres-AbWo` service deleted; 50GB volume pending deletion
-- `postgres-recovery` 20GB remains the final oversized blocker
-- next = final live preflight + delete `postgres-recovery` service/volume under existing explicit cleanup approval
-- after that = Hobby compatibility check -> Pro→Hobby
-- do not touch candidate-v4 / history archive / escrow key / active writers / TOTO
+- migration / restore / oversized cleanup = complete
+- Railway Active Plan = Hobby
+- boat-v2-postgres post-Hobby smoke = PASS
+- TOTO post-Hobby smoke = PASS
+- first unambiguous post-Hobby scheduled run at 08:30 JST = PASS
+- next = read-only candidate-v4 storage safety check
+- protect candidate-v4 / history archive / escrow key / active writers / TOTO
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / TWO_50GB_ORPHANS_DELETED / RECOVERY_20GB_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / HOBBY_ACTIVE / STORAGE_SAFETY_NEXT / PURCHASE_FALSE`
