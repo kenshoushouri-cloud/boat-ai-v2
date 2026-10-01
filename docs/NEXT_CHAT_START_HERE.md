@@ -13,39 +13,38 @@ Paste the block below into a new chat.
 
 読むのは次の3点だけです。
 1. `docs/HANDOFF_LATEST.md`
-2. そこから指定されている current compact handoff を全文
+2. そこから指定された current compact handoff を全文
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、dated purpose/timeline handoff は履歴です。特定の過去判断が必要な場合だけ参照してください。
+古い handoff は履歴扱いです。その後、handoff内のSHA・run・件数を固定値とせず、一度に1作業だけlive再取得してください。
 
-その後、handoff内のSHA・run・件数を固定値とせず、**一度に1作業だけ** live で再取得してください。最初に current `main`、次にその1作業に必要な GitHub / Issue #42 / Railway / PostgreSQL evidence だけを確認してください。
-
-固定ルール:
-- GitHub `main` = code Source of Truth
-- Railway PostgreSQL Production = data Source of Truth
-- 2026-09-29 formal V4 = permanently UNAVAILABLE
-- V5 gate = V4 >=20 resolved FORMAL_AVAILABLE days / S03_M2 >=100 official observations / clean evidence contract
-- historical reconstructionはprospective gateへ加算しない
-- `purchase_action=false`
-- Railway plaintext Variablesを列挙しない / `list_variables`を呼ばない
+固定:
+- GitHub `main` = code SoT
+- Railway `postgres-recovery` = Production data SoT
+- FULL_HISTORY_PINNED
+- V4/V5/backtest/historical collectionを保護
+- Railway plaintext Variablesを列挙しない / `list_variables`禁止
 - Railway Agentは通常MCPで取得不能な場合だけ
-- destructive/high-impact操作は対象を明示して個別承認を取る
+- Production behavior/cutover/delete/resize/plan changeは明示承認が必要
+- `purchase_action=false`
 
 現在:
-- backup + encrypted restore/parity-verified archive secured
-- retention policy = **FULL_HISTORY_PINNED**
-- isolated 5 GB candidate = `postgres-hobby-fullhistory-candidate-v3`
-- ENOSPC診断で不足indexを特定
-- `ux_v2_venues_venue_id` はcandidate-only repair済み
-- 残るblockerは `ux_v2_odds_trifecta_race_ticket`
-- **次の1作業 = 5 GB制約内でremaining indexをcandidate-onlyで解決し、その後exact parityを再確認**
-- parity承認前にProduction切替・historical DELETE・volume削除/resize・plan変更をしない
+- 10月2日中のPro -> Hobby移行完了が目標。10月3日はbilling renewal boundary
+- candidate-v4は5 GB上でcurrent snapshotをコンパクト復元済み
+- latest direct footprint: DB約3.597 GB / WAL約0.537 GB / Railway disk約4.34 GB
+- odds unique indexは存在
+- latest current parity差はschemaではなく、Production継続書込みによる8テーブル合計572行
+- refresh workflowのpsql meta-command誤判定はmainで修正済み
+- `postgres-recovery` 20 GBは縮小せず、verified cutoverまで保持
+- cleanupはstagedのみ。2FA Applyはまだしない
+- **次の1作業 = final cutover preflightとして、最終同期時に止めるwriter serviceをread-onlyで確定**
+- その後、明示承認を得て短時間freeze -> v4 final refresh -> zero-delta parity -> cutover
 
 タイムアウト対策:
-- GitHub Actions全件一覧、Issue全コメント、巨大logなどをまとめて取得しない
-- 必要なrun / page / resourceだけを限定取得する
-- 途中経過は短く、1作業完了ごとに結果だけ報告する
+- Actions全件、Issue全コメント、巨大logを取得しない
+- specific run/page/resourceだけ
+- 1作業ごとに短く結果報告
 
-`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / AVOID_BULK_OUTPUT / FULL_HISTORY_PINNED / 5GB_CANDIDATE / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / FULL_HISTORY_PINNED / PROTECT_BACKTEST / 5GB_V4 / FINAL_SYNC_BEFORE_CUTOVER / PURCHASE_FALSE`
 
 ---
