@@ -1,0 +1,110 @@
+name: Railway 5GB candidate v4 odds index repair
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  odds-index:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-v4-index-repair-odds CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Create missing odds unique index on isolated candidate v4
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > repair.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET statement_timeout = '15min';
+          SET maintenance_work_mem = '8GB';
+          SET max_parallel_maintenance_workers = 0;
+
+          SELECT 'PRE_INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'PRE_DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'PRE_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+
+          CREATE UNIQUE INDEX IF NOT EXISTS ux_v2_odds_trifecta_race_ticket
+            ON public.v2_odds_trifecta USING btree (race_id, ticket)
+            WITH (fillfactor = 100);
+
+          ALTER INDEX public.ux_v2_odds_trifecta_race_ticket RESET (fillfactor);
+          CHECKPOINT;
+
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'INDEX_BYTES|' || COALESCE(pg_relation_size(to_regclass('public.ux_v2_odds_trifecta_race_ticket')),0);
+          SELECT 'INDEX_VALID|' || COALESCE(i.indisvalid::text,'false')
+          FROM pg_index i
+          WHERE i.indexrelid = to_regclass('public.ux_v2_odds_trifecta_race_ticket');
+          SELECT 'INDEX_READY|' || COALESCE(i.indisready::text,'false')
+          FROM pg_index i
+          WHERE i.indexrelid = to_regclass('public.ux_v2_odds_trifecta_race_ticket');
+          SELECT 'INDEX_RELOPTIONS|' || COALESCE(c.reloptions::text,'')
+          FROM pg_class c
+          WHERE c.oid = to_regclass('public.ux_v2_odds_trifecta_race_ticket');
+          SELECT 'INDEX_DEF|' || pg_get_indexdef(to_regclass('public.ux_v2_odds_trifecta_race_ticket'));
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < repair.sql > repair.out
+
+          grep -E '^(PRE_INDEX_PRESENT|PRE_DB_BYTES|PRE_WAL_BYTES|INDEX_PRESENT|INDEX_BYTES|INDEX_VALID|INDEX_READY|INDEX_RELOPTIONS|INDEX_DEF|DB_BYTES|WAL_BYTES)\|' repair.out > repair.sanitized
+          test -s repair.sanitized
+          grep -qx 'PRE_INDEX_PRESENT|false' repair.sanitized
+          grep -qx 'INDEX_PRESENT|true' repair.sanitized
+          grep -qx 'INDEX_VALID|true' repair.sanitized
+          grep -qx 'INDEX_READY|true' repair.sanitized
+          grep -qx 'INDEX_RELOPTIONS|' repair.sanitized
+          grep -Fqx 'INDEX_DEF|CREATE UNIQUE INDEX ux_v2_odds_trifecta_race_ticket ON public.v2_odds_trifecta USING btree (race_id, ticket)' repair.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB candidate v4 odds-index repair'
+            echo
+            if [ -s repair.sanitized ]; then
+              echo 'Candidate-v4-only odds index build returned verification output.'
+              echo
+              cat repair.sanitized
+            else
+              echo 'Candidate-v4 odds index repair failed before sanitized verification.'
+            fi
+            echo
+            echo 'Target was postgres-hobby-fullhistory-candidate-v4 only. Production and historical/backtest collection were not targeted. No cutover, historical delete, volume resize/delete, plan change, or purchase action was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
