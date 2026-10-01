@@ -1,0 +1,97 @@
+name: Railway candidate v4 WAL recycle finalize
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  recycle:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-wal-recycle-finalize CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Recycle WAL toward 512MB ceiling
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          {
+            cat <<'SQL'
+          \set ON_ERROR_STOP on
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'MAX_WAL_SIZE|' || setting || '|' || COALESCE(unit,'')
+          FROM pg_settings WHERE name='max_wal_size';
+          SELECT 'ARCHIVE_MODE|' || setting FROM pg_settings WHERE name='archive_mode';
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+          SELECT 'WAL_BYTES_BEFORE|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SQL
+
+            for i in $(seq 1 32); do
+              echo "SELECT pg_switch_wal();"
+              echo "CHECKPOINT;"
+              if [ $((i % 4)) -eq 0 ]; then
+                echo "SELECT 'WAL_BYTES_R${i}|' || COALESCE(sum(size),0) FROM pg_ls_waldir();"
+              fi
+            done
+
+            cat <<'SQL'
+          SELECT 'WAL_BYTES_AFTER|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SQL
+          } > recycle-final.sql
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < recycle-final.sql > recycle-final.out
+
+          grep -E '^(MAX_WAL_SIZE|ARCHIVE_MODE|REPLICATION_SLOTS|WAL_BYTES_BEFORE|WAL_BYTES_R(4|8|12|16|20|24|28|32)|WAL_BYTES_AFTER|DB_BYTES)\|' recycle-final.out > recycle-final.sanitized
+          test -s recycle-final.sanitized
+          grep -qx 'MAX_WAL_SIZE|512|MB' recycle-final.sanitized
+          grep -qx 'ARCHIVE_MODE|off' recycle-final.sanitized
+          grep -qx 'REPLICATION_SLOTS|0' recycle-final.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 WAL recycle finalize'
+            echo
+            if [ -s recycle-final.sanitized ]; then
+              cat recycle-final.sanitized
+            else
+              echo 'FAIL: no sanitized WAL verification produced.'
+            fi
+            echo
+            echo 'Candidate-v4 only. No application rows/schema, Production/postgres-recovery, historical data, volume size, service plan, or purchase action were changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
