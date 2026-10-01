@@ -1,0 +1,91 @@
+name: Railway cleanup target volume state read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway cleanup-target-volume-state-readonly'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query target volume state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.request
+          target="postgres-volume-0I4P"
+          q="""
+          query {
+            projectToken {
+              project {
+                volumes(first: 100) {
+                  edges {
+                    node {
+                      name
+                      volumeInstances(first: 100) {
+                        edges {
+                          node {
+                            deletedAt
+                            isPendingDeletion
+                            state
+                            sizeMB
+                            currentSizeMB
+                            serviceId
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+          req=urllib.request.Request(
+              "https://backboard.railway.com/graphql/v2",
+              data=json.dumps({"query":q}).encode(),
+              headers={
+                "Project-Access-Token":os.environ["RAILWAY_TOKEN"],
+                "Content-Type":"application/json",
+                "User-Agent":"boat-ai-cleanup-volume-state-readonly"
+              },
+              method="POST"
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              d=json.loads(resp.read().decode())
+          found=[]
+          vols=((((d.get("data") or {}).get("projectToken") or {}).get("project") or {}).get("volumes") or {}).get("edges") or []
+          for e in vols:
+              v=(e or {}).get("node") or {}
+              if v.get("name")!=target: continue
+              for ie in ((v.get("volumeInstances") or {}).get("edges") or []):
+                n=(ie or {}).get("node") or {}
+                found.append(n)
+          with open("summary.md","w") as f:
+              f.write("## Cleanup target volume state read-only\n\n")
+              f.write(f"TARGET={target}\n\n")
+              if not found:
+                  f.write("FOUND=0\n")
+              else:
+                  f.write(f"FOUND={len(found)}\n")
+                  for i,n in enumerate(found,1):
+                      f.write(f"- instance {i}: deletedAt={n.get('deletedAt')} | pending={n.get('isPendingDeletion')} | state={n.get('state')} | sizeMB={n.get('sizeMB')} | currentSizeMB={n.get('currentSizeMB')} | serviceAttached={'YES' if n.get('serviceId') else 'NO'}\n")
+              f.write("\nREAD_ONLY=1 / DELETE=0 / RESIZE=0\n")
+          PY
+      - name: Post
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
