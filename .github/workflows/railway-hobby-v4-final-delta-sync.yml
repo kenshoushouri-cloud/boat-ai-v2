@@ -1,0 +1,339 @@
+name: Railway candidate v4 final delta sync
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_BRIDGE_ISSUE: "42"
+  SOURCE_SERVICE: "postgres-recovery"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  SYNC_DATE: "2026-10-01"
+
+jobs:
+  final-delta-sync:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-final-delta-sync CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<3.4"
+          npm install --global @railway/cli
+
+      - name: Write atomic delta sync helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/final_delta_sync.py <<'PY'
+          import csv
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          import psycopg
+          from psycopg import sql
+
+          DATE = os.environ["SYNC_DATE"]
+          LIMIT = 5_000_000_000
+          ROOT = Path("delta-sync")
+          ROOT.mkdir(exist_ok=True)
+
+          TABLES = [
+              "v2_candidate_filter_shadow",
+              "v2_exhibition_shadow_decisions",
+              "v2_line_notifications",
+              "v2_odds_trifecta",
+              "v2_realtime_decisions",
+              "v2_realtime_entry_snapshots",
+              "v2_realtime_exhibition_snapshots",
+              "v2_realtime_odds_snapshots",
+              "v2_realtime_race_condition_snapshots",
+              "v2_realtime_racer_condition_snapshots",
+              "v2_realtime_weather_snapshots",
+              "v2_v24_motor2_forward_shadow",
+          ]
+
+          def db_url():
+              value = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+              if not value:
+                  raise RuntimeError("database_url_unavailable")
+              return value
+
+          def public_counts(conn):
+              names = [r[0] for r in conn.execute("""
+                  SELECT tablename FROM pg_tables
+                  WHERE schemaname='public'
+                  ORDER BY tablename
+              """).fetchall()]
+              out = {}
+              for name in names:
+                  q = sql.SQL("SELECT count(*) FROM public.{}").format(sql.Identifier(name))
+                  out[name] = int(conn.execute(q).fetchone()[0])
+              return out
+
+          def columns(conn, table):
+              return [r[0] for r in conn.execute("""
+                  SELECT column_name
+                  FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name=%s
+                  ORDER BY ordinal_position
+              """, (table,)).fetchall()]
+
+          def sha256(path):
+              h = hashlib.sha256()
+              with open(path, "rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          def source_capture():
+              conn = psycopg.connect(db_url(), autocommit=True)
+              try:
+                  conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                  counts = public_counts(conn)
+                  if len(counts) != 39:
+                      raise RuntimeError(f"unexpected_public_table_count_{len(counts)}")
+
+                  manifest = {
+                      "sync_date": DATE,
+                      "all_counts": counts,
+                      "tables": {},
+                  }
+
+                  for table in TABLES:
+                      cols = columns(conn, table)
+                      if not cols or "race_id" not in cols:
+                          raise RuntimeError(f"invalid_table_contract_{table}")
+                      path = ROOT / f"{table}.csv"
+                      order = sql.SQL("x.id") if "id" in cols else sql.SQL("x.race_id")
+                      query = sql.SQL("""
+                          COPY (
+                            SELECT x.*
+                            FROM public.{table} x
+                            JOIN public.v2_races r ON r.race_id=x.race_id
+                            WHERE r.race_date=%s
+                            ORDER BY {order}
+                          ) TO STDOUT WITH (FORMAT CSV, NULL '\\N')
+                      """).format(table=sql.Identifier(table), order=order)
+                      with path.open("wb") as f:
+                          with conn.cursor().copy(query, (DATE,)) as cp:
+                              for data in cp:
+                                  f.write(data)
+                      row_count = int(conn.execute(
+                          sql.SQL("""
+                            SELECT count(*)
+                            FROM public.{table} x
+                            JOIN public.v2_races r ON r.race_id=x.race_id
+                            WHERE r.race_date=%s
+                          """).format(table=sql.Identifier(table)),
+                          (DATE,),
+                      ).fetchone()[0])
+                      manifest["tables"][table] = {
+                          "columns": cols,
+                          "rows": row_count,
+                          "sha256": sha256(path),
+                          "bytes": path.stat().st_size,
+                      }
+
+                  (ROOT / "manifest.json").write_text(
+                      json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+                      encoding="utf-8",
+                  )
+                  conn.execute("ROLLBACK")
+                  print("SOURCE_CAPTURE=PASS")
+                  print("SOURCE_PUBLIC_TABLES=39")
+                  print("SOURCE_TARGET_ROWS=" + str(sum(v["rows"] for v in manifest["tables"].values())))
+              finally:
+                  conn.close()
+
+          def apply_target():
+              manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
+              if manifest["sync_date"] != DATE:
+                  raise RuntimeError("manifest_date_mismatch")
+
+              conn = psycopg.connect(db_url(), autocommit=False)
+              try:
+                  conn.execute("SET statement_timeout = '20min'")
+                  conn.execute("SET lock_timeout = '30s'")
+
+                  before = public_counts(conn)
+                  if set(before) != set(manifest["all_counts"]):
+                      raise RuntimeError("public_table_set_mismatch")
+
+                  for name, expected in manifest["all_counts"].items():
+                      if name not in TABLES and before[name] != expected:
+                          raise RuntimeError(f"non_target_count_mismatch_{name}")
+
+                  before_target = {t: before[t] for t in TABLES}
+
+                  for table in TABLES:
+                      meta = manifest["tables"][table]
+                      cols = columns(conn, table)
+                      if cols != meta["columns"]:
+                          raise RuntimeError(f"column_contract_mismatch_{table}")
+                      path = ROOT / f"{table}.csv"
+                      if sha256(path) != meta["sha256"]:
+                          raise RuntimeError(f"source_file_sha_mismatch_{table}")
+
+                      delete_q = sql.SQL("""
+                          DELETE FROM public.{table} x
+                          USING public.v2_races r
+                          WHERE r.race_id=x.race_id
+                            AND r.race_date=%s
+                      """).format(table=sql.Identifier(table))
+                      conn.execute(delete_q, (DATE,))
+
+                      copy_q = sql.SQL("COPY public.{table} ({cols}) FROM STDIN WITH (FORMAT CSV, NULL '\\N')").format(
+                          table=sql.Identifier(table),
+                          cols=sql.SQL(",").join(map(sql.Identifier, cols)),
+                      )
+                      with path.open("rb") as f:
+                          with conn.cursor().copy(copy_q) as cp:
+                              while True:
+                                  chunk = f.read(1024 * 1024)
+                                  if not chunk:
+                                      break
+                                  cp.write(chunk)
+
+                      for col in cols:
+                          seq = conn.execute(
+                              "SELECT pg_get_serial_sequence(%s,%s)",
+                              (f"public.{table}", col),
+                          ).fetchone()[0]
+                          if seq:
+                              maxv = conn.execute(
+                                  sql.SQL("SELECT max({}) FROM public.{}").format(
+                                      sql.Identifier(col), sql.Identifier(table)
+                                  )
+                              ).fetchone()[0]
+                              if maxv is not None:
+                                  conn.execute("SELECT setval(%s::regclass,%s,true)", (seq, int(maxv)))
+
+                  after = public_counts(conn)
+                  mismatches = {
+                      name: (manifest["all_counts"][name], after[name])
+                      for name in manifest["all_counts"]
+                      if after[name] != manifest["all_counts"][name]
+                  }
+                  if mismatches:
+                      raise RuntimeError("post_sync_count_mismatch_" + ",".join(sorted(mismatches)))
+
+                  idx = conn.execute("""
+                      SELECT i.indisvalid, i.indisready
+                      FROM pg_index i
+                      WHERE i.indexrelid=to_regclass('public.ux_v2_odds_trifecta_race_ticket')
+                  """).fetchone()
+                  if idx != (True, True):
+                      raise RuntimeError("required_odds_index_not_valid_ready")
+
+                  db_bytes = int(conn.execute("SELECT pg_database_size(current_database())").fetchone()[0])
+                  if db_bytes >= LIMIT:
+                      raise RuntimeError("candidate_exceeds_5gb_before_commit")
+
+                  conn.commit()
+                  print("FINAL_DELTA_SYNC=PASS")
+                  print("SYNC_DATE=" + DATE)
+                  print("PUBLIC_TABLE_COUNTS_EQUAL=39/39")
+                  print("REQUIRED_ODDS_INDEX_VALID_READY=true")
+                  print("CANDIDATE_DB_BYTES=" + str(db_bytes))
+                  print("CANDIDATE_HEADROOM_BYTES=" + str(LIMIT - db_bytes))
+                  for table in TABLES:
+                      print(
+                          "SYNCED|" + table
+                          + "|BEFORE_TOTAL=" + str(before_target[table])
+                          + "|SOURCE_TOTAL=" + str(manifest["all_counts"][table])
+                          + "|DATE_ROWS=" + str(manifest["tables"][table]["rows"])
+                      )
+                  print("SOURCE_WRITE=0")
+                  print("CUTOVER=0")
+                  print("WRITER_RETARGET=0")
+                  print("PLAN_CHANGE=0")
+              except Exception:
+                  conn.rollback()
+                  raise
+              finally:
+                  conn.close()
+
+          mode = sys.argv[1]
+          if mode == "source":
+              source_capture()
+          elif mode == "target":
+              apply_target()
+          else:
+              raise SystemExit("mode must be source or target")
+          PY
+
+      - name: Capture frozen source delta read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$SOURCE_SERVICE"             python3 /tmp/final_delta_sync.py source > source.sanitized
+          grep -E '^(SOURCE_CAPTURE|SOURCE_PUBLIC_TABLES|SOURCE_TARGET_ROWS)=' source.sanitized
+          test -s delta-sync/manifest.json
+
+      - name: Apply atomic delta to candidate v4
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$TARGET_SERVICE"             python3 /tmp/final_delta_sync.py target > target.sanitized
+          grep -q '^FINAL_DELTA_SYNC=PASS$' target.sanitized
+          grep -q '^PUBLIC_TABLE_COUNTS_EQUAL=39/39$' target.sanitized
+          grep -q '^REQUIRED_ODDS_INDEX_VALID_READY=true$' target.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 final delta sync'
+            echo
+            if [ -s target.sanitized ] && grep -q '^FINAL_DELTA_SYNC=PASS$' target.sanitized; then
+              echo 'PASS: frozen-source 2026-10-01 delta was atomically synchronized into candidate-v4.'
+              echo
+              echo '~~~text'
+              cat source.sanitized
+              cat target.sanitized
+              echo '~~~'
+              echo
+              echo 'Candidate mutation was transaction-guarded; source remained read-only.'
+            else
+              echo 'FAIL: final delta sync was not established. Candidate transaction was rolled back if the apply step failed.'
+            fi
+            echo
+            echo 'No cutover, writer retarget, source mutation, delete outside the candidate transaction, volume resize/delete, or plan change was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
