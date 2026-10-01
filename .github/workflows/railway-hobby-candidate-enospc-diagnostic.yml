@@ -62,6 +62,13 @@ jobs:
           SELECT 'DB_BYTES|' || pg_database_size(current_database());
 
           SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'SETTING|max_wal_size|' || current_setting('max_wal_size');
+          SELECT 'SETTING|min_wal_size|' || current_setting('min_wal_size');
+          SELECT 'SETTING|wal_keep_size|' || current_setting('wal_keep_size');
+          SELECT 'SETTING|checkpoint_timeout|' || current_setting('checkpoint_timeout');
+          SELECT 'SETTING|checkpoint_completion_target|' || current_setting('checkpoint_completion_target');
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+          SELECT 'STREAMING_REPLICAS|' || count(*) FROM pg_stat_replication;
 
 
           SELECT 'SETTING|min_wal_size|' || current_setting('min_wal_size');
