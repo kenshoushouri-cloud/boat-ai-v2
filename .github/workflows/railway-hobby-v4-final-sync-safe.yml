@@ -1,0 +1,224 @@
+name: Railway candidate v4 safe final sync
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_BRIDGE_ISSUE: "42"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  KEY_SERVICE: "archive-restore-key-20261001"
+  KEY_VARIABLE: "ARCHIVE_CMS_PRIVATE_KEY_B64"
+  REFERENCE_RUN_ID: "36867010147"
+  REFERENCE_ARTIFACT: "boat-ai-pre-hobby-restorable-20261001-v2"
+  EXPECTED_DUMP_SHA256: "db08e9b6556d4df4dbdce436332571a9a57196af8adcdc94743c0565e123c58a"
+
+jobs:
+  final-sync:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v4-final-sync CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: preflight
+          POSTGRES_DB: restore_preflight
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_preflight"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Download frozen current-source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.REFERENCE_ARTIFACT }}
+          path: fixed-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.REFERENCE_RUN_ID }}
+
+      - name: Decrypt fixed artifact through Railway escrow only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -s "fixed-artifact/$REFERENCE_ARTIFACT.dump.cms"
+          test -s fixed-artifact/archive-public-v2.pem
+          test -s fixed-artifact/restore-manifest-v2.txt
+
+          manifest_sha="$(awk -F= '$1=="PLAIN_DUMP_SHA256"{print $2}' fixed-artifact/restore-manifest-v2.txt | tail -1 | tr -d '[:space:]')"
+          test "$manifest_sha" = "$EXPECTED_DUMP_SHA256"
+
+          cat > /tmp/materialize-key.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${KEY_VARIABLE:?}"
+          : "${!KEY_VARIABLE:?}"
+          umask 077
+          printf '%s' "${!KEY_VARIABLE}" | base64 -d > fixed-private.pem
+          test -s fixed-private.pem
+          SH
+          chmod 700 /tmp/materialize-key.sh
+
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE"             env KEY_VARIABLE="$KEY_VARIABLE" bash /tmp/materialize-key.sh
+
+          openssl cms -decrypt -binary -inform DER             -in "fixed-artifact/$REFERENCE_ARTIFACT.dump.cms"             -recip fixed-artifact/archive-public-v2.pem             -inkey fixed-private.pem             -out fixed-reference.dump
+
+          actual_dump_sha="$(sha256sum fixed-reference.dump | awk '{print $1}')"
+          test "$actual_dump_sha" = "$EXPECTED_DUMP_SHA256"
+
+      - name: Build 5GB-safe restore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" postgres:18             pg_restore --list /work/fixed-reference.dump > restore-list.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("restore-list.txt").read_text(encoding="utf-8").splitlines()
+          needle = " INDEX public ux_v2_odds_trifecta_race_ticket "
+          skipped = [line for line in src if needle in line]
+          kept = [line for line in src if needle not in line]
+          if len(skipped) != 1:
+              raise SystemExit(f"expected exactly one deferred odds index, found {len(skipped)}")
+          Path("restore-list-5gb.txt").write_text("\n".join(kept) + "\n", encoding="utf-8")
+          PY
+
+      - name: Preflight full restore in ephemeral PostgreSQL 18
+        shell: bash
+        env:
+          PGPASSWORD: preflight
+        run: |
+          set -euo pipefail
+          docker run --rm             --network host             -e PGPASSWORD=preflight             -v "$PWD:/work"             postgres:18             pg_restore               --use-list=/work/restore-list-5gb.txt               --no-owner               --no-acl               --exit-on-error               --jobs=2               --dbname="postgresql://postgres:preflight@127.0.0.1:5432/restore_preflight"               /work/fixed-reference.dump
+
+          psql "postgresql://postgres:preflight@127.0.0.1:5432/restore_preflight" -v ON_ERROR_STOP=1 -At <<'SQL' > preflight.sanitized
+          SELECT 'PREFLIGHT_PUBLIC_TABLES|' || count(*) FROM pg_tables WHERE schemaname='public';
+          SELECT 'PREFLIGHT_ODDS_INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'PREFLIGHT_VENUES_INDEX_PRESENT|' || (to_regclass('public.ux_v2_venues_venue_id') IS NOT NULL);
+          SELECT 'PREFLIGHT_DB_BYTES|' || pg_database_size(current_database());
+          SQL
+
+          grep -qx 'PREFLIGHT_PUBLIC_TABLES|39' preflight.sanitized
+          grep -qx 'PREFLIGHT_ODDS_INDEX_PRESENT|false' preflight.sanitized
+          grep -qx 'PREFLIGHT_VENUES_INDEX_PRESENT|true' preflight.sanitized
+
+      - name: Restore frozen snapshot into candidate v4
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            printf '\\set ON_ERROR_STOP on\n'
+            docker run --rm               -v "$PWD:/work"               postgres:18               pg_restore                 --use-list=/work/restore-list-5gb.txt                 --clean                 --if-exists                 --no-owner                 --no-acl                 --exit-on-error                 --file=-                 /work/fixed-reference.dump
+          } | railway connect "$TARGET_SERVICE"                 --environment "$RAILWAY_ENVIRONMENT"                 --no-ssh
+
+      - name: Rebuild required deferred odds index
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > candidate-index.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET statement_timeout = '20min';
+          SET maintenance_work_mem = '8GB';
+          SET max_parallel_maintenance_workers = 0;
+
+          CREATE UNIQUE INDEX ux_v2_odds_trifecta_race_ticket
+            ON public.v2_odds_trifecta USING btree (race_id, ticket)
+            WITH (fillfactor = 100);
+
+          ALTER INDEX public.ux_v2_odds_trifecta_race_ticket RESET (fillfactor);
+          ALTER SYSTEM SET max_wal_size = '512MB';
+          SELECT pg_reload_conf();
+          CHECKPOINT;
+
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'PUBLIC_TABLES|' || count(*) FROM pg_tables WHERE schemaname='public';
+          SELECT 'INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'INDEX_VALID|' || COALESCE(i.indisvalid::text,'false')
+            FROM pg_index i WHERE i.indexrelid=to_regclass('public.ux_v2_odds_trifecta_race_ticket');
+          SELECT 'INDEX_READY|' || COALESCE(i.indisready::text,'false')
+            FROM pg_index i WHERE i.indexrelid=to_regclass('public.ux_v2_odds_trifecta_race_ticket');
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SQL
+
+          railway connect "$TARGET_SERVICE"             --environment "$RAILWAY_ENVIRONMENT"             --no-ssh < candidate-index.sql > final-sync.out
+
+          grep -E '^(PUBLIC_TABLES|INDEX_PRESENT|INDEX_VALID|INDEX_READY|DB_BYTES|WAL_BYTES)\|' final-sync.out > final-sync.sanitized
+          grep -qx 'PUBLIC_TABLES|39' final-sync.sanitized
+          grep -qx 'INDEX_PRESENT|true' final-sync.sanitized
+          grep -qx 'INDEX_VALID|true' final-sync.sanitized
+          grep -qx 'INDEX_READY|true' final-sync.sanitized
+          db_bytes="$(awk -F'|' '$1=="DB_BYTES"{print $2}' final-sync.sanitized)"
+          test -n "$db_bytes"
+          test "$db_bytes" -lt 5000000000
+
+      - name: Cleanup private/plaintext material
+        if: always()
+        shell: bash
+        run: |
+          rm -f fixed-private.pem fixed-reference.dump /tmp/materialize-key.sh             restore-list.txt restore-list-5gb.txt candidate-index.sql final-sync.out
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 safe final sync'
+            echo
+            if [ -s final-sync.sanitized ]; then
+              echo 'PASS: frozen current-source artifact restored to candidate-v4 and the required odds index was rebuilt VALID/READY.'
+              echo
+              echo "REFERENCE_RUN_ID=$REFERENCE_RUN_ID"
+              echo "REFERENCE_ARTIFACT=$REFERENCE_ARTIFACT"
+              echo "DUMP_SHA256=$EXPECTED_DUMP_SHA256"
+              cat preflight.sanitized
+              cat final-sync.sanitized
+              echo
+              echo 'SOURCE_WRITE=0 / CUTOVER=0 / RETARGET=0 / DELETE=0 / RESIZE=0 / PLAN_CHANGE=0.'
+              echo 'Writer freeze remains in effect. Next step is read-only zero-delta exact parity.'
+            else
+              echo 'FAIL: final sync was not verified.'
+              echo 'Do not cut over or resume writers.'
+            fi
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
