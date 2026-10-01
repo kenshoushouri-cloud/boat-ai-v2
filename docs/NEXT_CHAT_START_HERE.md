@@ -18,7 +18,7 @@ GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認して�
 
 古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、`SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` は履歴です。特定の過去判断が必要な場合だけ読んでください。
 
-その後、古いsnapshotを現在値と決めつけず、**作業は1つずつ**再取得して進めてください。最初に current main、その次に直近作業に必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
+その後、snapshotを現在値と決めつけず、**作業は1つずつ**再取得して進めてください。最初に current main、その次に直近作業に必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
 
 固定ルール:
 - GitHub main = code Source of Truth
@@ -33,14 +33,14 @@ GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認して�
 
 現在の優先順位:
 1. daily prospective evidenceを落とさない
-2. historical不足データ回収を重複triggerなしで継続
+2. run `36703692641` のhistorical beforeinfo writerを重複triggerなしで継続
 3. 10/03 billing boundaryに向けたPro -> Hobby準備
 4. pre-Hobby snapshotと暗号化logical archiveは確保済み
-5. **次の作業はProductionから隔離したrestore drill**
+5. **次の1作業はProductionから隔離したrestore drill**
 6. restore/parity前にhistorical DELETE・volume削除・Production切替・plan変更をしない
 7. 2026-10-15前後のV5 operational-readiness reviewへ進む
 
-タイムアウト回避のため、一度に複数作業を進めず、**1作業完了ごとに短く結果だけ報告**してください。途中経過の長文表示は不要です。
+タイムアウト回避のため、**一度に1作業だけ**進め、完了ごとに短く結果だけ報告してください。途中経過の長文表示は不要です。
 
 `READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
 
