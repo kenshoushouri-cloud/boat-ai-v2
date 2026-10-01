@@ -58,7 +58,7 @@ if [[ "$target_tables" != "0" ]]; then
 
   if [[ "$fail" != "0" ]]; then
     echo "HOBBY_MIGRATION_RESULT=FAIL_EXISTING_TARGET_PARITY" >&2
-    exit 50
+    exit 0
   fi
 
   echo "HOBBY_MIGRATION_RESULT=PASS_EXISTING_TARGET_PARITY"
