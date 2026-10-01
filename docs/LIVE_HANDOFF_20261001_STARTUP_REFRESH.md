@@ -47,9 +47,10 @@ Last verified prospective baseline:
 
 ## 3. Current GitHub / historical work
 
-Current `main`:
+Code/ops baseline immediately before this handoff refresh:
 - `d82ac1af1f1ef427a0dcb37a83d520e9799f9b92`
-- latest: `Fix pre-Hobby logical archive job indentation`
+- latest code/ops commit then: `Fix pre-Hobby logical archive job indentation`
+- handoff docs are committed on top of that baseline, so **always re-fetch live main** instead of treating this SHA as current
 
 Relevant current Draft:
 - PR #534 `Ops: add read-only Hobby retention sizing audit`
