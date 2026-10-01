@@ -14,7 +14,7 @@ env:
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_BRIDGE_ISSUE: "42"
   KEY_SERVICE: "archive-restore-key-20261001"
-  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
   ARCHIVE_PREFIX: "boat-ai-pre-hobby-restorable-20261001-v3-parity"
 
 concurrency:
