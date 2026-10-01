@@ -1,0 +1,116 @@
+name: Railway candidate v4 5GB headroom read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-headroom-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Read PostgreSQL storage metadata only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > inspect.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '60s';
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'PUBLIC_RELATION_BYTES|' || COALESCE(sum(pg_total_relation_size(format('%I.%I',schemaname,tablename)::regclass)),0)
+          FROM pg_tables WHERE schemaname='public';
+          SELECT 'PUBLIC_INDEX_BYTES|' || COALESCE(sum(pg_indexes_size(format('%I.%I',schemaname,tablename)::regclass)),0)
+          FROM pg_tables WHERE schemaname='public';
+          SELECT 'PUBLIC_TABLE_HEAP_BYTES|' || COALESCE(sum(pg_table_size(format('%I.%I',schemaname,tablename)::regclass)),0)
+          FROM pg_tables WHERE schemaname='public';
+
+          SELECT 'SETTING|max_wal_size|' || setting || '|' || unit FROM pg_settings WHERE name='max_wal_size';
+          SELECT 'SETTING|min_wal_size|' || setting || '|' || unit FROM pg_settings WHERE name='min_wal_size';
+          SELECT 'SETTING|wal_keep_size|' || setting || '|' || unit FROM pg_settings WHERE name='wal_keep_size';
+          SELECT 'SETTING|max_slot_wal_keep_size|' || setting || '|' || unit FROM pg_settings WHERE name='max_slot_wal_keep_size';
+          SELECT 'SETTING|wal_level|' || setting || '|' || unit FROM pg_settings WHERE name='wal_level';
+          SELECT 'SETTING|archive_mode|' || setting || '|' || unit FROM pg_settings WHERE name='archive_mode';
+
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+          SELECT 'ACTIVE_REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots WHERE active;
+
+          SELECT 'TOP_RELATION|' || schemaname || '.' || relname || '|' || total_bytes || '|' || table_bytes || '|' || index_bytes || '|' || n_live_tup || '|' || n_dead_tup
+          FROM (
+            SELECT
+              s.schemaname,
+              s.relname,
+              pg_total_relation_size(s.relid) AS total_bytes,
+              pg_table_size(s.relid) AS table_bytes,
+              pg_indexes_size(s.relid) AS index_bytes,
+              s.n_live_tup,
+              s.n_dead_tup
+            FROM pg_stat_user_tables s
+            WHERE s.schemaname='public'
+            ORDER BY pg_total_relation_size(s.relid) DESC
+            LIMIT 15
+          ) q;
+
+          SELECT 'TOP_INDEX|' || schemaname || '.' || indexrelname || '|' || pg_relation_size(indexrelid)
+          FROM pg_stat_user_indexes
+          WHERE schemaname='public'
+          ORDER BY pg_relation_size(indexrelid) DESC
+          LIMIT 15;
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < inspect.sql > inspect.out
+
+          grep -E '^(DB_BYTES|WAL_BYTES|PUBLIC_RELATION_BYTES|PUBLIC_INDEX_BYTES|PUBLIC_TABLE_HEAP_BYTES|SETTING|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|TOP_RELATION|TOP_INDEX)\|' inspect.out > inspect.sanitized
+          test -s inspect.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 5GB headroom read-only'
+            echo
+            if [ -s inspect.sanitized ]; then
+              cat inspect.sanitized
+            else
+              echo 'FAIL: no sanitized storage metadata produced.'
+            fi
+            echo
+            echo 'Read-only metadata only. No rows, schema, settings, Variables, deployment, volume, or plan were changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
