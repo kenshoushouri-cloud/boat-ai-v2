@@ -20,34 +20,30 @@ Paste the block below into a new chat.
 
 固定:
 - GitHub `main` = code SoT
-- Railway `postgres-recovery` = current data SoT
+- Railway `postgres-recovery` = current data SoT until explicit cutover
 - V4/V5/backtest/historical collectionを保護
-- 必要な過去データは、バックテスト＋一定期間の運用テストで保存方針が決まるまで保持
-- 不要と確認できた移行残骸・重複資源は削除可
+- TOTO `toto-ai-v1` は別プロジェクト。変更しない
+- Railway内で完結する履歴/バックテスト分離を優先
 - Railway plaintext Variablesを列挙しない / `list_variables`禁止
-- Railway Agentは通常MCPで実行不能な場合だけ
 - `purchase_action=false`
 - 1回に1作業、結果は短く
 
 現在:
-- 旧Hobby candidate / migration worker類の整理はApply済み。pending staged changesは空
-- `postgres-recovery`、candidate-v3/v4、historical/backfill/backtest/cron系は保護されSUCCESS
-- candidate-v4は固定artifactから再復旧済み
-- unsafeなv4 `current-refresh` は停止済み
-- latest v4 read-only: DB約3.282 GB / WAL約0.537 GB / public index約0.613 GB
-- 約303 MBの `ux_v2_odds_trifecta_race_ticket` は現在未作成
-- このindexは `(race_id,ticket)` 一意性とexact parityに必要なので、容量節約だけを理由に恒久削除しない
-- source `postgres-recovery` は直近4249 MB。収集継続中
-- `Postgres` / `Postgres-AbWo` は内容未確認のため削除していない
-- **次の1作業 = candidate-v4のread-only index-layout diagnosticを実行/確認し、真に重複・不要なindex候補だけを特定**
-- その後、必要index再構築 -> exact parity -> writer freeze/final sync -> zero-delta parity -> 明示承認後cutover
-- 10月2日中のPro -> Hobby完了が目標、10月3日がbilling renewal boundary
+- candidate-v4の必須odds unique indexは再構築済み、VALID/READY。再構築しない
+- candidate-v4観測: DB約3.585GB / WAL約0.537GB / actual disk約4.331GB
+- 新規 `postgres-history-archive`: PostgreSQL 18 + 5GB Volume、SUCCESS、空
+- データ移動・削除・writer切替は未実施
+- `/railway hobby-retention-finalize-readonly` を起動済み
+- **次の1作業 = 最新のretention audit結果だけを確認し、history archiveへ分離可能な候補を特定**
+- その後: archive設計 -> exact parity -> writer freeze -> final sync -> zero-delta parity -> writer retarget -> explicit cutover -> smoke -> oversized legacy resource確認 -> Pro→Hobby
+- `Postgres` / `Postgres-AbWo` は内容未確認。削除・resize禁止
+- 10月2日中のPro→Hobby完了が目標、10月3日がbilling renewal boundary
 
 タイムアウト対策:
 - Actions全件・Issue全コメント・巨大logを取らない
-- specific run/page/resourceだけ
+- specific run/comment/resourceだけ
 - 一度に1作業
 
-`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / PROTECT_HISTORY / 5GB_V4 / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RAILWAY_ONLY_ARCHIVE / 5GB_V4 / PROTECT_TOTO / PURCHASE_FALSE`
 
 ---
