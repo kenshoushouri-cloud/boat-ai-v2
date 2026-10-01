@@ -13,11 +13,13 @@ Current focus:
 - preserve daily prospective evidence
 - let historical writer `36703692641` continue; no duplicate trigger
 - prepare Pro -> Hobby for the 2026-10-03 billing boundary
-- Railway backup + restore-verified encrypted logical archive v2 are secured
-- isolated restore drill run `36810769041` = **SUCCESS**
-- restore-verified artifact = `boat-ai-pre-hobby-restorable-20261001-v2`; old artifact remains historical
-- **next single task = restored parity expansion for critical schema/table evidence**
-- no Production delete, cutover, volume cleanup, or plan downgrade before restored parity is accepted
+- Railway backup + current restore-verified encrypted archive are secured
+- current restore run `36811231115` = **SUCCESS**
+- current artifact id `11138759678`; dump SHA-256 = `493374319f2475d74da7ae50edb4709c5bb882ad14ce9bc5eab68d8843e80356`
+- restored parity expansion run `36812219830` = **SUCCESS**
+- full public schema parity passed; 10 additional critical tables passed source>=restore row-count evidence
+- **next single task = hot-retention finalization**
+- no Production delete, cutover, volume cleanup, or plan downgrade before the Hobby-compatible set and parity are accepted
 - V5 operational-readiness review target remains around 2026-10-15
 
 Fixed:
@@ -32,4 +34,4 @@ Fixed:
 
 Working style: **one task at a time; concise result only; replace stale text instead of appending.**
 
-`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / PARITY_BEFORE_DELETE / HOBBY_PREP / PURCHASE_FALSE`
+`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / PARITY_VERIFIED / HOBBY_PREP / PURCHASE_FALSE`
