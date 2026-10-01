@@ -55,7 +55,8 @@ jobs:
             COALESCE(c.relkind::text,'')
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE c.relfilenode = 71015;
+          WHERE c.relfilenode IN (71015, 125670)
+          ORDER BY c.relfilenode;
 
           SELECT 'DB_BYTES|' || pg_database_size(current_database());
 
