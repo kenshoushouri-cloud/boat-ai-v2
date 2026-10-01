@@ -1,0 +1,69 @@
+name: Railway cleanup volume list read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  ISSUE: "42"
+
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway cleanup-volume-list-readonly'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --global @railway/cli
+      - name: List volumes read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway volume list --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json > volumes.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("volumes.json").read_text())
+          rows=[]
+          def walk(x):
+              if isinstance(x,dict):
+                  yield x
+                  for v in x.values(): yield from walk(v)
+              elif isinstance(x,list):
+                  for v in x: yield from walk(v)
+          seen=set()
+          for o in walk(d):
+              name=o.get("name")
+              if not isinstance(name,str) or "volume" not in name.lower():
+                  continue
+              ident=o.get("id") or o.get("volumeInstanceId") or o.get("volumeId") or ""
+              key=(name,str(ident))
+              if key in seen: continue
+              seen.add(key)
+              size=o.get("sizeMB") or o.get("currentSizeMB") or o.get("size")
+              svc=o.get("serviceName") or o.get("service") or o.get("serviceId") or ""
+              rows.append((name,size,svc))
+          with open("summary.md","w") as f:
+              f.write("## Railway cleanup volume list read-only\n\n")
+              if not rows:
+                  f.write("No volumes parsed.\n")
+              else:
+                  for name,size,svc in sorted(rows):
+                      f.write(f"- {name} | size={size} | service={svc}\n")
+              f.write("\nREAD_ONLY=1 / DELETE=0 / RESIZE=0\n")
+          PY
+      - name: Post
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
