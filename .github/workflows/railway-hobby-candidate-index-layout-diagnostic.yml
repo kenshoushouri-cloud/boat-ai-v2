@@ -114,3 +114,232 @@ jobs:
             echo 'Candidate-v3 only. No index/table/row/config/volume/plan/cutover mutation was requested.'
           } > summary.md
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+
+  current-parity:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v3-current-parity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      SOURCE_SERVICE: "postgres-recovery"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install read-only tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<3.4"
+          npm install --global @railway/cli
+
+      - name: Write consistent read-only capture helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/current-parity-capture.py <<'PY'
+          import os
+          import runpy
+          import sys
+          from pathlib import Path
+
+          import psycopg
+
+          root = Path(sys.argv[1])
+          root.mkdir(parents=True, exist_ok=True)
+          contract = runpy.run_path("ops/hobby-fullhistory-candidate-worker/run.py")
+          capture = contract["capture"]
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          conn = psycopg.connect(url, autocommit=True)
+          try:
+              conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+              metadata_counts, db_bytes, evidence_sha = capture(conn, root)
+              conn.execute("ROLLBACK")
+          finally:
+              conn.close()
+
+          print("CAPTURE_EVIDENCE_SHA256=" + evidence_sha)
+          print("CAPTURE_DB_BYTES=" + str(db_bytes))
+          for key in sorted(metadata_counts):
+              print("CAPTURE_COUNT_" + key.upper().replace("-", "_") + "=" + str(metadata_counts[key]))
+          PY
+
+      - name: Capture source before read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$SOURCE_SERVICE" \
+            python3 /tmp/current-parity-capture.py source-before > source-before.capture
+          grep '^CAPTURE_' source-before.capture > source-before.capture.sanitized
+          test -s source-before/candidate-table-counts.tsv
+
+      - name: Capture candidate v3 read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$TARGET_SERVICE" \
+            python3 /tmp/current-parity-capture.py candidate > candidate.capture
+          grep '^CAPTURE_' candidate.capture > candidate.capture.sanitized
+          test -s candidate/candidate-table-counts.tsv
+
+      - name: Capture source after read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$SOURCE_SERVICE" \
+            python3 /tmp/current-parity-capture.py source-after > source-after.capture
+          grep '^CAPTURE_' source-after.capture > source-after.capture.sanitized
+          test -s source-after/candidate-table-counts.tsv
+
+      - name: Compare exact current parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > current-parity.sanitized
+          import hashlib
+          import runpy
+          from pathlib import Path
+
+          contract = runpy.run_path("ops/hobby-fullhistory-candidate-worker/run.py")
+          kinds = contract["KINDS"]
+          limit_bytes = int(contract["LIMIT_BYTES"])
+
+          def rows(root, kind):
+              return (Path(root) / f"candidate-{kind}.tsv").read_text(encoding="utf-8").splitlines()
+
+          def digest(root):
+              h = hashlib.sha256()
+              for kind in kinds:
+                  h.update((Path(root) / f"candidate-{kind}.tsv").read_bytes())
+              return h.hexdigest()
+
+          def cap(path, key):
+              for line in Path(path).read_text(encoding="utf-8").splitlines():
+                  if line.startswith(key + "="):
+                      return line.split("=", 1)[1]
+              raise RuntimeError(f"missing {key}")
+
+          before_sha = digest("source-before")
+          cand_sha = digest("candidate")
+          after_sha = digest("source-after")
+          cand_bytes = int(cap("candidate.capture.sanitized", "CAPTURE_DB_BYTES"))
+          before_bytes = int(cap("source-before.capture.sanitized", "CAPTURE_DB_BYTES"))
+          after_bytes = int(cap("source-after.capture.sanitized", "CAPTURE_DB_BYTES"))
+          headroom = limit_bytes - cand_bytes
+
+          source_stable = before_sha == after_sha
+          match_before = cand_sha == before_sha
+          match_after = cand_sha == after_sha
+
+          print(f"SOURCE_BEFORE_EVIDENCE_SHA256={before_sha}")
+          print(f"CANDIDATE_EVIDENCE_SHA256={cand_sha}")
+          print(f"SOURCE_AFTER_EVIDENCE_SHA256={after_sha}")
+          print("SOURCE_STABLE_DURING_AUDIT=" + ("true" if source_stable else "false"))
+          print("CANDIDATE_MATCHES_SOURCE_BEFORE=" + ("true" if match_before else "false"))
+          print("CANDIDATE_MATCHES_SOURCE_AFTER=" + ("true" if match_after else "false"))
+          print(f"SOURCE_BEFORE_DB_BYTES={before_bytes}")
+          print(f"SOURCE_AFTER_DB_BYTES={after_bytes}")
+          print(f"CANDIDATE_DB_BYTES={cand_bytes}")
+          print(f"CANDIDATE_HEADROOM_BYTES={headroom}")
+          print("UNDER_5GB=" + ("true" if cand_bytes < limit_bytes else "false"))
+
+          mismatch_kinds = []
+          for kind in kinds:
+              before = rows("source-before", kind)
+              cand = rows("candidate", kind)
+              after = rows("source-after", kind)
+              if before != cand or after != cand or before != after:
+                  mismatch_kinds.append(kind)
+                  bset, cset, aset = set(before), set(cand), set(after)
+                  print(
+                      f"MISMATCH_KIND={kind}|"
+                      f"SOURCE_BEFORE_ROWS={len(before)}|CANDIDATE_ROWS={len(cand)}|SOURCE_AFTER_ROWS={len(after)}|"
+                      f"BEFORE_ONLY_VS_CAND={len(bset-cset)}|CAND_ONLY_VS_BEFORE={len(cset-bset)}|"
+                      f"AFTER_ONLY_VS_CAND={len(aset-cset)}|CAND_ONLY_VS_AFTER={len(cset-aset)}"
+                  )
+                  if kind == "table-counts":
+                      by_name = {}
+                      for label, dataset in (("SOURCE_BEFORE", before), ("CANDIDATE", cand), ("SOURCE_AFTER", after)):
+                          for row in dataset:
+                              parts = row.split("\t")
+                              if len(parts) >= 2:
+                                  by_name.setdefault(parts[0], {})[label] = parts[1]
+                      for name in sorted(by_name):
+                          vals = by_name[name]
+                          if len(vals) != 3 or len(set(vals.values())) > 1:
+                              print(
+                                  "TABLE_COUNT_DIFF|" + name
+                                  + "|SOURCE_BEFORE=" + vals.get("SOURCE_BEFORE", "MISSING")
+                                  + "|CANDIDATE=" + vals.get("CANDIDATE", "MISSING")
+                                  + "|SOURCE_AFTER=" + vals.get("SOURCE_AFTER", "MISSING")
+                              )
+                  else:
+                      for row in sorted(bset - cset)[:3]:
+                          print("SOURCE_BEFORE_ONLY|" + kind + "|" + row)
+                      for row in sorted(cset - bset)[:3]:
+                          print("CANDIDATE_ONLY|" + kind + "|" + row)
+
+          print("MISMATCH_KINDS=" + (",".join(mismatch_kinds) if mismatch_kinds else "NONE"))
+          ok = source_stable and match_before and match_after and not mismatch_kinds and cand_bytes < limit_bytes
+          print("CURRENT_EXACT_PARITY=" + ("PASS" if ok else "FAIL"))
+          print("SOURCE_WRITE=0")
+          print("CANDIDATE_WRITE=0")
+          print("CUTOVER=0")
+          print("DELETE=0")
+          print("RESIZE=0")
+          print("PLAN_CHANGE=0")
+          print("PURCHASE_ACTION=false")
+          raise SystemExit(0 if ok else 1)
+          PY
+
+      - name: Post sanitized current parity result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB full-history candidate v3 current exact parity'
+            echo
+            if [ -s current-parity.sanitized ]; then
+              if grep -qx 'CURRENT_EXACT_PARITY=PASS' current-parity.sanitized; then
+                echo 'PASS: candidate-v3 exactly matches a stable current postgres-recovery reference.'
+              else
+                echo 'FAIL: current exact parity was not established.'
+              fi
+              echo
+              echo '~~~text'
+              cat current-parity.sanitized
+              echo '~~~'
+            else
+              echo 'FAIL: read-only parity audit did not produce sanitized comparison output.'
+            fi
+            echo
+            echo 'Read-only verification only. No source/candidate mutation, cutover, delete, resize, plan change, or purchase action was requested.'
+          } > current-parity-summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file current-parity-summary.md
+
