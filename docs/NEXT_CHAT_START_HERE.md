@@ -11,7 +11,7 @@ Paste the block below into a new chat.
 
 最初に GitHub repository `kenshoushouri-cloud/boat-ai-v2` を確認してください。
 
-読むのは次の3点だけで十分です。
+読むのは次の3点だけです。
 1. `docs/HANDOFF_LATEST.md`
 2. そこから指定された current compact handoff を全文
 3. `docs/NEXT_CHAT_START_HERE.md`
