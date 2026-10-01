@@ -36,20 +36,26 @@ Paste the block below into a new chat.
 2. historical writer `36703692641` を重複triggerなしで継続
 3. 2026-10-03 billing boundaryへ向けPro -> Hobby準備
 4. Railway backupとcurrent restore/parity-verified encrypted archiveは確保済み
-5. current run `36812386066` = SUCCESS / artifact id `11139857666`
+5. restore/parity run `36812386066` = SUCCESS / recovery artifact id `11139857666`
 6. exact parity = 39 public tables + schema metadata all PASS
-7. **次の1作業はhot-retention finalization**
-8. Hobby-compatible set/parity承認前にhistorical DELETE・Production切替・volume削除・plan変更をしない
-9. recovery完了後は `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
+7. retention finalization run `36813600010` = SUCCESS
+8. retention mode = **FULL_HISTORY_PINNED**
+9. **次の1作業はHobby-compatible 5 GB full-history DB/volume candidate**
+10. candidate parity承認前にhistorical DELETE・Production切替・volume削除・plan変更をしない
+11. recovery完了後は `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
 注意:
-- current artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`
+- current recovery artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`
 - current dump/restored SHA-256 = `87dea392d2667509c5040d3fd9bff85ffbbd2dc0d5dec974cba9f75a29e062ab`
-- run-scoped key variable name = `ARCHIVE_CMS_PRIVATE_KEY_B64_PARITY_36812386066`; valueは絶対に表示しない
+- retention policy = `ops/hobby-migration/RETENTION_POLICY_20261001.md`
+- fresh full restore baseline = 3,615,987,391 bytes
+- projected +14d = 4,034,454,006 bytes / planning headroom = 965,545,994 bytes
+- old 60d filtered candidateはcutover referenceに使わない
+- run-scoped key variable valuesは絶対に表示しない
 - v2 artifactsは履歴扱い。current recovery referenceとして使わない。
 
 タイムアウトとトーク容量対策のため、途中経過の長文表示は不要です。**1作業完了ごとに短く結果だけ報告**してください。
 
-`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / FULL_HISTORY_PINNED / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
 
 ---
