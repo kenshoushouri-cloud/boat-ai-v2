@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_ARCHIVE_RESTORE_PASS.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_TWO_ORPHANS_DELETED.md`
 
 Read only:
 1. this pointer
@@ -13,18 +13,14 @@ Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
 - cutover / smoke / rollback / first resumed Production run = PASS
 - active schedules resumed against candidate-v4
-- `Postgres` 50GB = verified logically empty
-- `Postgres-AbWo` 50GB = verified logically empty
-- fresh encrypted `postgres-recovery` archive + isolated restore = PASS
-- restore run `36934788763` = SUCCESS
-- oversized Hobby blockers ready for explicit cleanup approval:
-  - `Postgres` 50GB
-  - `Postgres-AbWo` 50GB
-  - `postgres-recovery` 20GB
-- next = explicit destructive cleanup approval; remove one at a time with live verification
-- do not delete candidate-v4 / archive / escrow-key / active writers / TOTO
-- do not change plan in same cleanup task
+- fresh encrypted recovery archive + isolated restore = PASS
+- `Postgres` service deleted; 50GB volume pending deletion
+- `Postgres-AbWo` service deleted; 50GB volume pending deletion
+- `postgres-recovery` 20GB remains the final oversized blocker
+- next = final live preflight + delete `postgres-recovery` service/volume under existing explicit cleanup approval
+- after that = Hobby compatibility check -> Pro→Hobby
+- do not touch candidate-v4 / history archive / escrow key / active writers / TOTO
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / ARCHIVE_RESTORE_PASS / EXPLICIT_DELETE_APPROVAL_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / TWO_50GB_ORPHANS_DELETED / RECOVERY_20GB_NEXT / PURCHASE_FALSE`
