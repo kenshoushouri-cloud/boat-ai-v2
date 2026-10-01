@@ -161,6 +161,16 @@ jobs:
           SELECT 'SOURCE_PUBLIC_INDEX_BYTES|' || COALESCE(sum(pg_indexes_size(c.oid)),0)
           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
+          SELECT 'SOURCE_INDEX|' || i.relname || '|' || pg_relation_size(i.oid)
+          FROM pg_class i
+          JOIN pg_namespace n ON n.oid = i.relnamespace
+          WHERE n.nspname = 'public' AND i.relkind = 'i'
+          ORDER BY pg_relation_size(i.oid) DESC
+          LIMIT 15;
+          SELECT 'SOURCE_FAILED_INDEX|' || i.relname || '|' || pg_relation_size(i.oid)
+          FROM pg_class i
+          JOIN pg_namespace n ON n.oid = i.relnamespace
+          WHERE n.nspname = 'public' AND i.relname = 'ux_v2_odds_trifecta_race_ticket';
 
           SELECT
             'SOURCE_INDEX|' || c.relname || '|' || pg_relation_size(c.oid) || '|' ||
