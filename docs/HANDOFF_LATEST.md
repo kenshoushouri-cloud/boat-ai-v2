@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_CUTOVER.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_SMOKE_PASS.md`
 
 Read only:
 1. this pointer
@@ -10,18 +10,19 @@ Read only:
 Do not load old handoffs by default. Re-fetch only live state needed for the next single task.
 
 Current:
-- `postgres-hobby-fullhistory-candidate-v4` = Production data SoT after explicit cutover
+- `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
 - `postgres-recovery` = protected rollback reference
 - final delta sync = PASS
-- zero-delta current exact parity = PASS
-- 13 scheduled DB writers retargeted/redeployed = SUCCESS
+- zero-delta exact parity = PASS
+- explicit cutover = DONE
+- cutover smoke = PASS
+- PRE / FINAL / learning DB target + path smoke = PASS
 - writers remain frozen
-- `test-beforeinfo-extra` retargeted but not manually triggered
-- next = cutover smoke test while frozen
-- no cleanup / resize / plan change yet
+- next = rollback verification only
+- no cleanup / resize / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
 - TOTO protected; `Postgres` / `Postgres-AbWo` unverified
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / CUTOVER_DONE / SMOKE_NEXT / WRITERS_FROZEN / ROLLBACK_PROTECTED / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / SMOKE_PASS / ROLLBACK_VERIFY_NEXT / WRITERS_FROZEN / PURCHASE_FALSE`
