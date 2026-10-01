@@ -1,0 +1,197 @@
+name: Railway candidate v4 index layout read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-index-layout-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Inspect v4 indexes read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > inspect.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          \pset tuples_only on
+          \pset format unaligned
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '60s';
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+
+          SELECT
+            'IDX|' ||
+            tbl.relname || '|' ||
+            idx.relname || '|' ||
+            pg_relation_size(idx.oid) || '|' ||
+            pi.indisunique || '|' ||
+            pi.indisprimary || '|' ||
+            pi.indisvalid || '|' ||
+            pi.indisready || '|' ||
+            COALESCE(st.idx_scan,0) || '|' ||
+            pg_get_indexdef(idx.oid)
+          FROM pg_class idx
+          JOIN pg_index pi ON pi.indexrelid = idx.oid
+          JOIN pg_class tbl ON tbl.oid = pi.indrelid
+          JOIN pg_namespace n ON n.oid = tbl.relnamespace
+          LEFT JOIN pg_stat_user_indexes st ON st.indexrelid = idx.oid
+          WHERE n.nspname = 'public'
+            AND idx.relkind = 'i'
+          ORDER BY pg_relation_size(idx.oid) DESC, tbl.relname, idx.relname
+          LIMIT 80;
+
+          WITH sig AS (
+            SELECT
+              pi.indrelid,
+              tbl.relname AS table_name,
+              pi.indexrelid,
+              idx.relname AS index_name,
+              pg_relation_size(idx.oid) AS bytes,
+              pi.indisunique,
+              pi.indisprimary,
+              pi.indnkeyatts,
+              pi.indnatts,
+              pi.indkey::text AS indkey,
+              pi.indclass::text AS indclass,
+              pi.indcollation::text AS indcollation,
+              pi.indoption::text AS indoption,
+              COALESCE(pg_get_expr(pi.indexprs, pi.indrelid),'') AS indexprs,
+              COALESCE(pg_get_expr(pi.indpred, pi.indrelid),'') AS indpred
+            FROM pg_index pi
+            JOIN pg_class idx ON idx.oid = pi.indexrelid
+            JOIN pg_class tbl ON tbl.oid = pi.indrelid
+            JOIN pg_namespace n ON n.oid = tbl.relnamespace
+            WHERE n.nspname='public'
+              AND idx.relkind='i'
+              AND pi.indisvalid
+              AND pi.indisready
+          ),
+          groups AS (
+            SELECT
+              table_name,
+              indisunique,
+              indisprimary,
+              indnkeyatts,
+              indnatts,
+              indkey,
+              indclass,
+              indcollation,
+              indoption,
+              indexprs,
+              indpred,
+              count(*) AS cnt,
+              string_agg(index_name || ':' || bytes::text, ',' ORDER BY bytes DESC, index_name) AS members
+            FROM sig
+            GROUP BY
+              table_name, indisunique, indisprimary, indnkeyatts, indnatts,
+              indkey, indclass, indcollation, indoption, indexprs, indpred
+            HAVING count(*) > 1
+          )
+          SELECT
+            'EXACT_DUP|' || table_name || '|' || cnt || '|' || members
+          FROM groups
+          ORDER BY table_name, members;
+
+          WITH sig AS (
+            SELECT
+              tbl.relname AS table_name,
+              idx.relname AS index_name,
+              pg_relation_size(idx.oid) AS bytes,
+              pi.indisunique,
+              pi.indisprimary,
+              pi.indnkeyatts,
+              pi.indnatts,
+              pi.indkey::text AS indkey,
+              pi.indclass::text AS indclass,
+              pi.indcollation::text AS indcollation,
+              pi.indoption::text AS indoption,
+              COALESCE(pg_get_expr(pi.indexprs, pi.indrelid),'') AS indexprs,
+              COALESCE(pg_get_expr(pi.indpred, pi.indrelid),'') AS indpred
+            FROM pg_index pi
+            JOIN pg_class idx ON idx.oid = pi.indexrelid
+            JOIN pg_class tbl ON tbl.oid = pi.indrelid
+            JOIN pg_namespace n ON n.oid = tbl.relnamespace
+            WHERE n.nspname='public'
+              AND idx.relkind='i'
+              AND pi.indisvalid
+              AND pi.indisready
+          )
+          SELECT
+            'SAME_KEYS|' ||
+            a.table_name || '|' ||
+            a.index_name || ':' || a.bytes || ':unique=' || a.indisunique || ':primary=' || a.indisprimary || '|' ||
+            b.index_name || ':' || b.bytes || ':unique=' || b.indisunique || ':primary=' || b.indisprimary
+          FROM sig a
+          JOIN sig b
+            ON a.table_name=b.table_name
+           AND a.index_name < b.index_name
+           AND a.indnkeyatts=b.indnkeyatts
+           AND a.indnatts=b.indnatts
+           AND a.indkey=b.indkey
+           AND a.indclass=b.indclass
+           AND a.indcollation=b.indcollation
+           AND a.indoption=b.indoption
+           AND a.indexprs=b.indexprs
+           AND a.indpred=b.indpred
+          ORDER BY GREATEST(a.bytes,b.bytes) DESC;
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < inspect.sql > inspect.out
+
+          grep -E '^(DB_BYTES|IDX|EXACT_DUP|SAME_KEYS)\|' inspect.out > inspect.sanitized
+          test -s inspect.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 index layout read-only'
+            echo
+            if [ -s inspect.sanitized ]; then
+              echo 'Read-only index metadata inspection completed.'
+              echo
+              echo '~~~text'
+              cat inspect.sanitized
+              echo '~~~'
+            else
+              echo 'FAIL: no sanitized index result was produced.'
+            fi
+            echo
+            echo 'candidate-v4 only. No index/table/row/schema/settings/Variables/volume/plan/cutover mutation was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
