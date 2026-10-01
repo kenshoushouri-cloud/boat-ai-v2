@@ -1,5 +1,5 @@
-# branch-deploy-trigger
 #!/usr/bin/env bash
+# branch-deploy-trigger-v2
 set -euo pipefail
 
 : "${SOURCE_DATABASE_URL:?SOURCE_DATABASE_URL is required}"
