@@ -1,4 +1,4 @@
-# Live Handoff — 2026-10-01 post-exact-parity (compact)
+# Live Handoff — 2026-10-01 post-retention-finalization (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
@@ -25,7 +25,7 @@ Daily:
 `08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> pre-deadline formal freeze -> 23:30 settlement`
 
 Milestones:
-- **2026-10-03 billing boundary:** Pro -> Hobby target; finish retention/resource/parity checks first
+- **2026-10-03 billing boundary:** Pro -> Hobby target; finish candidate/parity/resource checks first
 - **around 2026-10-15:** V5 core freeze / operational-readiness review target; not automatic go-live
 
 Last settled baseline snapshot:
@@ -38,31 +38,41 @@ Last settled baseline snapshot:
 ## 3. Current work
 
 Historical recovery:
-- writer `36703692641`: snapshot = **2026-01 in_progress**; later months queued
-- no duplicate normal beforeinfo trigger while this lane is occupied
+- writer `36703692641`: live API snapshot = **queued**; do not duplicate-trigger
 - after acquisition: `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
 Pro -> Hobby preparation:
 - current plan = **PRO**; Hobby volume limit = **5 GB**
 - Production DB = `postgres-recovery`
-- Production volume = configured **20 GB**; prior physical-used snapshot about **4.95 GB**
 - Railway backup `pre-hobby-migration-20261001` secured
 - restore-key escrow service = `archive-restore-key-20261001`
-- current restore/parity run = `36812386066` **SUCCESS**
-- current encrypted artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`, artifact id `11139857666`
-- run-scoped escrow key variable name = `ARCHIVE_CMS_PRIVATE_KEY_B64_PARITY_36812386066`; value must never be displayed
-- plain dump bytes = **302,561,247**
-- dump SHA-256 = restored dump SHA-256 = `87dea392d2667509c5040d3fd9bff85ffbbd2dc0d5dec974cba9f75a29e062ab`
-- restore-list entries = **272**; isolated restored DB bytes = **3,615,987,391**
+- restore/parity run `36812386066` = **SUCCESS**
+- current recovery artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`, artifact id `11139857666`
 - exact parity passed for **39 public tables / 771 columns / 289 constraints / 98 indexes / 24 sequences / 0 views / 0 triggers / 0 policies / 1 extension**
+- dump/restored SHA-256 = `87dea392d2667509c5040d3fd9bff85ffbbd2dc0d5dec974cba9f75a29e062ab`
 - source/restored evidence SHA-256 = `658bac46705b3006fdc0ee370e9370bf90a484bc2a8767d8cc29734ae0af603d`
 - `SOURCE_WRITE=0`; Production rows/schema unchanged; plaintext dump/private key not uploaded
-- v2 artifacts are historical only because shared-key rotation can invalidate their escrow binding; use the v3 run-scoped-key artifact above as current recovery reference
 
-**Next single task: hot-retention finalization for the Hobby-compatible data set.**
+Retention finalization:
+- run `36813600010` = **SUCCESS**
+- evidence artifact `hobby-retention-finalization-36813600010`, id `11139948972`
+- evidence SHA-256 = `671c9044250cd791061fe4c516a8263591a2dad83302a6c1f74a64b2c4f8273d`
+- policy = **FULL_HISTORY_PINNED**
+- source DB snapshot = **4,437,243,583 bytes**
+- fresh exact-parity full restore = **3,615,987,391 bytes**
+- estimated next-14-day growth = **418,466,615 bytes** (planning estimate)
+- projected fresh full restore +14d = **4,034,454,006 bytes**
+- planning headroom vs 5,000,000,000 bytes = **965,545,994 bytes**
+- deleting the five proposed hot-only tables to 60d/90d now would remove about **2,171/1,979 MiB**
+- labeled historical rows affected = **843,072 at 60d / 776,676 at 90d**
+- historical matched-contract path needs historical weather/exhibition back to 2025-07-01, so do not delete these rows yet
+- policy source: `ops/hobby-migration/RETENTION_POLICY_20261001.md`
+- old 60d filtered `postgres-hobby-candidate` is **not** a cutover reference
+
+**Next single task: create/prepare a Hobby-compatible 5 GB full-history DB/volume candidate, restore the current recovery reference into it, then verify read-only parity before any cutover.**
 
 Safe order:
-`restore drill DONE -> restored exact parity DONE -> hot-retention finalization -> Hobby-compatible DB/volume -> read-only parity -> explicit cutover approval -> stable cutover -> old-data/volume cleanup -> Pro->Hobby downgrade`
+`restore DONE -> exact parity DONE -> retention finalization DONE -> 5GB full-history candidate -> read-only parity -> explicit cutover approval -> stable cutover -> old-data/volume cleanup -> Pro->Hobby downgrade`
 
 Do not delete Production historical data first. PR #534 remains Draft/stale against current main; do not merge blindly.
 
@@ -74,4 +84,4 @@ Do not delete Production historical data first. PR #534 remains Draft/stale agai
 - reading order: `HANDOFF_LATEST.md -> this file -> NEXT_CHAT_START_HERE.md`
 - old `LIVE_HANDOFF_*`, `PROJECT_HANDOFF.md`, `CURRENT_STATE.md`, and dated purpose/timeline docs are history unless a specific past decision is needed
 
-`CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
+`CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / FULL_HISTORY_PINNED / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
