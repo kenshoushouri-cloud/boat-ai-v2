@@ -1,0 +1,73 @@
+name: Railway failed candidate WAL checkpoint probe
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
+
+jobs:
+  checkpoint-probe:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-v3-checkpoint CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Capture WAL before, checkpoint once, capture after
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > probe.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'WAL_BEFORE|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'WAL_AFTER|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SQL
+
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < probe.sql > probe.out
+          grep -E '^(WAL_BEFORE|WAL_AFTER|DB_BYTES)\|' probe.out > probe.sanitized
+          test -s probe.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Failed candidate v3 WAL checkpoint probe'
+            echo
+            if [ -s probe.sanitized ]; then
+              echo '```text'
+              cat probe.sanitized
+              echo '```'
+            else
+              echo 'Probe did not produce a sanitized result.'
+            fi
+            echo
+            echo 'Target: postgres-hobby-fullhistory-candidate-v3 only.'
+            echo 'No row/schema delete, restore, resize, cutover, plan change, or existing Production service change.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
