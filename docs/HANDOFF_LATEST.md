@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_SCHEDULES_RESUMED.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_PRE_RUN_HEALTH.md`
 
 Read only:
 1. this pointer
@@ -12,18 +12,16 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
 - `postgres-recovery` = verified rollback reference with preserved 20GB volume
-- final delta sync = PASS
-- zero-delta exact parity = PASS
-- explicit cutover = DONE
-- cutover smoke = PASS
-- rollback verification = PASS
+- cutover / smoke / rollback verification = PASS
 - 13 scheduled writers = original schedules resumed against candidate-v4
-- `test-beforeinfo-extra` remains manual/no cron
-- next = operational health observation
+- post-resume pre-run health baseline = PASS
+- candidate disk = 4.352188416 GB / 5 GB, flat at checkpoint
+- FAILED/CRASHED since resume = 0
+- next = verify first resumed scheduled Production run + post-run headroom
 - no cleanup / resize / history move / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
 - TOTO protected; `Postgres` / `Postgres-AbWo` unverified
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / SCHEDULES_RESUMED / HEALTH_OBSERVE_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / PRE_RUN_HEALTH_PASS / FIRST_RUN_VERIFY_NEXT / PURCHASE_FALSE`
