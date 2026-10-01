@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 from datetime import timedelta
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 
 TABLES = (
@@ -30,11 +30,17 @@ def main() -> None:
     if not url:
         raise SystemExit("DATABASE_URL is required")
 
-    conn = psycopg2.connect(url, connect_timeout=15, application_name="hobby_retention_readonly_audit")
-    conn.set_session(readonly=True, autocommit=False)
+    conn = psycopg.connect(
+        url,
+        connect_timeout=15,
+        application_name="hobby_retention_readonly_audit",
+        autocommit=False,
+        row_factory=dict_row,
+    )
 
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor() as cur:
+            cur.execute("set transaction read only")
             cur.execute("set local statement_timeout='45s'")
             cur.execute("set local lock_timeout='5s'")
             cur.execute("select current_setting('transaction_read_only') as ro")
