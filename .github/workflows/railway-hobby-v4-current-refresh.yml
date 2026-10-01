@@ -540,7 +540,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > candidate-index.sql <<'SQL'
-          \\set ON_ERROR_STOP on
+          \set ON_ERROR_STOP on
           SET statement_timeout = '20min';
           SET maintenance_work_mem = '8GB';
           SET max_parallel_maintenance_workers = 0;
@@ -554,8 +554,8 @@ jobs:
           SELECT pg_reload_conf();
           CHECKPOINT;
 
-          \\pset tuples_only on
-          \\pset format unaligned
+          \pset tuples_only on
+          \pset format unaligned
           SELECT 'INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
           SELECT 'INDEX_VALID|' || COALESCE(i.indisvalid::text,'false')
           FROM pg_index i WHERE i.indexrelid=to_regclass('public.ux_v2_odds_trifecta_race_ticket');
