@@ -1,0 +1,39 @@
+name: Railway cleanup service delete helper
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  ISSUE: "42"
+
+jobs:
+  help:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway cleanup-service-delete-help'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --global @railway/cli
+      - name: Capture help
+        run: |
+          set -euo pipefail
+          railway service delete --help > help.txt
+          sed -n '1,120p' help.txt > help-sanitized.txt
+      - name: Post
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo '## Railway service delete help'; echo; echo '\`\`\`text'; cat help-sanitized.txt; echo '\`\`\`'; } > body.md
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file body.md
