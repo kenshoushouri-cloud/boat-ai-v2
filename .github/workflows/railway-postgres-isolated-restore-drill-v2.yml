@@ -245,17 +245,17 @@ jobs:
             echo
             echo '✅ PASS: a fresh read-only Production logical dump was encrypted, the local private key was deleted, the archive was decrypted only through the escrowed Railway key, and the dump was restored into an isolated GitHub Actions PostgreSQL 18 service.'
             echo
-            echo "Artifact: `$ARCHIVE_NAME`"
-            echo "Plain dump bytes: `${{ steps.archive.outputs.dump_bytes }}`"
-            echo "Plain dump SHA-256: `${{ steps.archive.outputs.dump_sha }}`"
-            echo "Restored dump SHA-256: `${{ steps.decrypt.outputs.restored_sha }}`"
-            echo "Restore-list entries: `${{ steps.archive.outputs.list_entries }}`"
-            echo "Restored DB bytes: `${{ steps.verify.outputs.restored_db_bytes }}`"
-            echo "Public tables: `${{ steps.verify.outputs.public_tables }}`"
+            echo "Artifact: $ARCHIVE_NAME"
+            echo "Plain dump bytes: ${{ steps.archive.outputs.dump_bytes }}"
+            echo "Plain dump SHA-256: ${{ steps.archive.outputs.dump_sha }}"
+            echo "Restored dump SHA-256: ${{ steps.decrypt.outputs.restored_sha }}"
+            echo "Restore-list entries: ${{ steps.archive.outputs.list_entries }}"
+            echo "Restored DB bytes: ${{ steps.verify.outputs.restored_db_bytes }}"
+            echo "Public tables: ${{ steps.verify.outputs.public_tables }}"
             echo
             echo 'Base-table exact row-count parity passed for v2_races, v2_race_entries, v2_results, and v2_result_entries.'
             echo
-            echo "Key escrow service: `$KEY_SERVICE` (variable value never printed or uploaded)."
+            echo "Key escrow service: $KEY_SERVICE (variable value never printed or uploaded)."
             echo
             echo 'SOURCE_WRITE=0 / Production rows and schema unchanged / restore target was local and isolated.'
             echo
