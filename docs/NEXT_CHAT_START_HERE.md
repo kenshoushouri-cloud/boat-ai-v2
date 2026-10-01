@@ -9,16 +9,16 @@ Paste the block below into a new chat.
 
 新競艇AI開発プロジェクトNo.2の続きです。
 
-最初に GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認してください。
+最初に GitHub repository `kenshoushouri-cloud/boat-ai-v2` を確認してください。
 
 読むのは次の3点だけです。
 1. `docs/HANDOFF_LATEST.md`
 2. そこから指定されている current compact handoff を全文
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、dated purpose/timeline handoff は履歴です。特定の過去判断を確認する必要がある場合だけ参照してください。
+古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、dated purpose/timeline handoff は履歴です。特定の過去判断が必要な場合だけ参照してください。
 
-その後、handoff内のSHA・run・件数を固定値とせず、**一度に1作業だけ**liveで再取得してください。最初に current `main`、次にその1作業に必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
+その後、handoff内のSHA・run・件数を固定値とせず、**一度に1作業だけ** live で再取得してください。最初に current `main`、次にその1作業に必要な GitHub / Issue #42 / Railway / PostgreSQL evidence だけを確認してください。
 
 固定ルール:
 - GitHub `main` = code Source of Truth
@@ -31,31 +31,21 @@ Paste the block below into a new chat.
 - Railway Agentは通常MCPで取得不能な場合だけ
 - destructive/high-impact操作は対象を明示して個別承認を取る
 
-現在の優先順位:
-1. daily prospective evidenceを落とさない
-2. historical writer `36703692641` を重複triggerなしで継続
-3. 2026-10-03 billing boundaryへ向けPro -> Hobby準備
-4. Railway backupとcurrent restore/parity-verified encrypted archiveは確保済み
-5. restore/parity run `36812386066` = SUCCESS / recovery artifact id `11139857666`
-6. exact parity = 39 public tables + schema metadata all PASS
-7. retention finalization run `36813600010` = SUCCESS
-8. retention mode = **FULL_HISTORY_PINNED**
-9. **次の1作業はHobby-compatible 5 GB full-history DB/volume candidate**
-10. candidate parity承認前にhistorical DELETE・Production切替・volume削除・plan変更をしない
-11. recovery完了後は `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
+現在:
+- backup + encrypted restore/parity-verified archive secured
+- retention policy = **FULL_HISTORY_PINNED**
+- isolated 5 GB candidate = `postgres-hobby-fullhistory-candidate-v3`
+- ENOSPC診断で不足indexを特定
+- `ux_v2_venues_venue_id` はcandidate-only repair済み
+- 残るblockerは `ux_v2_odds_trifecta_race_ticket`
+- **次の1作業 = 5 GB制約内でremaining indexをcandidate-onlyで解決し、その後exact parityを再確認**
+- parity承認前にProduction切替・historical DELETE・volume削除/resize・plan変更をしない
 
-注意:
-- current recovery artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`
-- current dump/restored SHA-256 = `87dea392d2667509c5040d3fd9bff85ffbbd2dc0d5dec974cba9f75a29e062ab`
-- retention policy = `ops/hobby-migration/RETENTION_POLICY_20261001.md`
-- fresh full restore baseline = 3,615,987,391 bytes
-- projected +14d = 4,034,454,006 bytes / planning headroom = 965,545,994 bytes
-- old 60d filtered candidateはcutover referenceに使わない
-- run-scoped key variable valuesは絶対に表示しない
-- v2 artifactsは履歴扱い。current recovery referenceとして使わない。
+タイムアウト対策:
+- GitHub Actions全件一覧、Issue全コメント、巨大logなどをまとめて取得しない
+- 必要なrun / page / resourceだけを限定取得する
+- 途中経過は短く、1作業完了ごとに結果だけ報告する
 
-タイムアウトとトーク容量対策のため、途中経過の長文表示は不要です。**1作業完了ごとに短く結果だけ報告**してください。
-
-`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / FULL_HISTORY_PINNED / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / AVOID_BULK_OUTPUT / FULL_HISTORY_PINNED / 5GB_CANDIDATE / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
 
 ---
