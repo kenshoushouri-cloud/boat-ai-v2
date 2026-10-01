@@ -1,41 +1,33 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261001_STARTUP_REFRESH.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261001_POST_CLEANUP.md`
 
 Read only:
 1. this pointer
 2. the current compact handoff above, in full
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-Do not load old handoffs by default. Re-fetch only live state required for the next single task.
+Do not load old handoffs by default. Re-fetch only live state needed for the next single task.
 
 Current focus:
-- preserve daily prospective evidence
-- do not duplicate-trigger historical writer `36703692641`
-- prepare Pro -> Hobby for the 2026-10-03 billing boundary
-- backup + encrypted restore/parity-verified archive secured
-- retention policy = **FULL_HISTORY_PINNED**
-- current isolated 5 GB candidate = `postgres-hobby-fullhistory-candidate-v3`
-- candidate ENOSPC diagnostic found two missing indexes
-- `ux_v2_venues_venue_id` repair = **DONE**
-- remaining blocker = `ux_v2_odds_trifecta_race_ticket` under 5 GB constraint
-- **next single task = candidate-only remaining-index resolution, then exact parity**
-- no Production cutover/delete/resize/plan change before parity acceptance
-- V5 operational-readiness review target remains around 2026-10-15
+- protect `postgres-recovery`, V4/V5 evidence, historical collection, and backtests
+- 5 GB candidate = `postgres-hobby-fullhistory-candidate-v4`
+- obsolete Hobby migration resources were cleaned up; pending staged changes are empty
+- unsafe v4 current-refresh is disabled
+- fixed-artifact restore has succeeded; current v4 is compact but the ~303 MB odds unique index is intentionally absent
+- do not omit that index permanently; first look for truly redundant/duplicate indexes
+- **next single task = run/read candidate-v4 read-only index-layout diagnostic**
+- no cutover until required index, exact parity, final writer freeze/sync, and explicit approval
+- target Pro -> Hobby completion = 2026-10-02; billing boundary = 2026-10-03
 
 Fixed:
-- GitHub `main` = code Source of Truth
-- Railway PostgreSQL Production = data Source of Truth
-- 2026-09-29 formal V4 permanently UNAVAILABLE
-- V5 gate = V4 >=20 resolved `FORMAL_AVAILABLE` days / S03_M2 >=100 official observations / clean evidence contract
-- historical reconstruction gives no prospective gate credit
+- GitHub `main` = code SoT
+- `postgres-recovery` = current data SoT
+- needed historical/backtest data stays until testing determines external-archive policy
+- unnecessary resources/data may be deleted only after dependency review
 - `purchase_action=false`
-- never enumerate Railway plaintext Variables
-- Railway Agent only when normal MCP cannot answer
+- never enumerate Railway plaintext Variables / never call `list_variables`
+- Railway Agent only when normal MCP cannot perform the task
+- one task at a time / avoid bulk output
 
-Timeout discipline:
-- one task at a time
-- concise result only
-- avoid broad GitHub Actions/log/comment fetches; query only specific run/page/resource
-
-`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / AVOID_BULK_OUTPUT / FULL_HISTORY_PINNED / 5GB_CANDIDATE / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / ONE_TASK_AT_A_TIME / PROTECT_HISTORY / 5GB_V4 / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
