@@ -112,7 +112,7 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < diagnostic.sql > diagnostic.out
 
-          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
+          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|WAL_BYTES|SETTING|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
           cat > source-size.sql <<'SQL'
@@ -149,7 +149,7 @@ jobs:
           railway connect "$SOURCE_SERVICE" \
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < source-size.sql > source-size.out
-          grep -E '^SOURCE_(DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES)\|' source-size.out > source-size.sanitized
+          grep -E '^(SOURCE_(DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES)|SOURCE_SETTING)\|' source-size.out > source-size.sanitized
           test -s source-size.sanitized
 
       - name: Post sanitized result
