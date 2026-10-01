@@ -1,0 +1,93 @@
+name: Railway candidate v4 WAL headroom tune
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  tune:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-wal-headroom-512 CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Reduce candidate-v4 WAL retention ceiling only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > tune.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'BEFORE_MAX_WAL_SIZE|' || setting || '|' || unit
+          FROM pg_settings WHERE name='max_wal_size';
+          SELECT 'BEFORE_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+
+          ALTER SYSTEM SET max_wal_size = '512MB';
+          SELECT pg_reload_conf();
+          CHECKPOINT;
+          SELECT pg_sleep(2);
+          CHECKPOINT;
+
+          SELECT 'AFTER_MAX_WAL_SIZE|' || setting || '|' || unit
+          FROM pg_settings WHERE name='max_wal_size';
+          SELECT 'AFTER_MIN_WAL_SIZE|' || setting || '|' || unit
+          FROM pg_settings WHERE name='min_wal_size';
+          SELECT 'AFTER_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < tune.sql > tune.out
+
+          grep -E '^(BEFORE_MAX_WAL_SIZE|BEFORE_WAL_BYTES|REPLICATION_SLOTS|AFTER_MAX_WAL_SIZE|AFTER_MIN_WAL_SIZE|AFTER_WAL_BYTES|DB_BYTES)\|' tune.out > tune.sanitized
+          test -s tune.sanitized
+          grep -qx 'REPLICATION_SLOTS|0' tune.sanitized
+          grep -qx 'AFTER_MAX_WAL_SIZE|512|MB' tune.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 WAL headroom tune'
+            echo
+            if [ -s tune.sanitized ]; then
+              cat tune.sanitized
+            else
+              echo 'FAIL: no sanitized verification produced.'
+            fi
+            echo
+            echo 'Target was candidate-v4 only. No Production/postgres-recovery rows, historical data, schema, volume size, service plan, or purchase action were changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
