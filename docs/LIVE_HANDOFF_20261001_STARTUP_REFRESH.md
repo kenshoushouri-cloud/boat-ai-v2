@@ -1,4 +1,4 @@
-# Live Handoff — 2026-10-01 12:08 JST (compact)
+# Live Handoff — 2026-10-01 post-restore-drill (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
@@ -25,10 +25,10 @@ Daily:
 `08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> pre-deadline formal freeze -> 23:30 settlement`
 
 Milestones:
-- **2026-10-03 billing boundary:** Pro -> Hobby target; downgrade takes effect at the next billing cycle, so finish restore/parity/resource checks first
+- **2026-10-03 billing boundary:** Pro -> Hobby target; finish restore/parity/resource checks first
 - **around 2026-10-15:** V5 core freeze / operational-readiness review target; not automatic go-live
 
-Last settled baseline:
+Last settled baseline snapshot:
 - V4 = **8/20** through 2026-09-28
 - S03_M2 = **63/100**
 - 2026-10-01 fallback freeze run `36790563118` = **SUCCESS**, prospective evidence eligible
@@ -38,27 +38,32 @@ Last settled baseline:
 ## 3. Current work
 
 Historical recovery:
-- writer `36703692641`: **2026-01 in_progress**; 2026-02..09 queued
+- writer `36703692641`: snapshot = **2026-01 in_progress**; later months queued
 - no duplicate normal beforeinfo trigger while this lane is occupied
 - after acquisition: `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
 Pro -> Hobby preparation:
 - current plan = **PRO**; Hobby volume limit = **5 GB**
 - Production DB = `postgres-recovery`
-- current volume = configured **20 GB**, physical used about **4.95 GB**
-- logical DB about **4,221 MB**
-- read-only retention estimates: archive candidate about **3,261 MB / 30d hot**, **2,693 MB / 60d hot**, **2,343 MB / 90d hot**; planning estimates only
+- Production volume = configured **20 GB**; previous physical-used snapshot about **4.95 GB**
 - Railway backup `pre-hobby-migration-20261001` secured
-- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` secured
-- plain dump bytes = **301,856,594**; SHA-256 = `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
-- `pg_restore --list` validation passed; Production rows/schema unchanged
+- old encrypted artifact `boat-ai-pre-hobby-20261001` retained as historical evidence
+- restore-key escrow service `archive-restore-key-20261001` created with no application source
+- isolated restore drill run `36810769041` = **SUCCESS**
+- restore-verified artifact = `boat-ai-pre-hobby-restorable-20261001-v2` (artifact id `11138584090`)
+- v2 plain dump bytes = **302,477,263**
+- v2 dump SHA-256 = restored dump SHA-256 = `0476d7020032b7c42e2a1bbf98c037cfbd1743644fe975f2c213b79bb96b76ff`
+- restore-list entries = **272**
+- isolated restored DB bytes = **3,615,758,015**; public tables = **39**
+- exact row-count parity passed for `v2_races`, `v2_race_entries`, `v2_results`, `v2_result_entries`
+- `SOURCE_WRITE=0`; Production rows/schema unchanged; private key and plaintext dump were not uploaded
 
-**Next single task: isolated restore drill of the encrypted logical archive.**
+**Next single task: restored parity expansion for critical schema/table evidence.**
 
 Safe order:
-`restore drill -> restored parity -> hot-retention finalization -> Hobby-compatible DB/volume -> read-only parity -> explicit cutover approval -> stable cutover -> old-data/volume cleanup -> Pro->Hobby downgrade`
+`restore drill DONE -> restored parity expansion -> hot-retention finalization -> Hobby-compatible DB/volume -> read-only parity -> explicit cutover approval -> stable cutover -> old-data/volume cleanup -> Pro->Hobby downgrade`
 
-Do not delete Production historical data first. PR #534 is Draft and stale against current main; do not merge blindly.
+Do not delete Production historical data first. PR #534 remains Draft/stale against current main; do not merge blindly.
 
 ## 4. Handoff / operating discipline
 
@@ -68,4 +73,4 @@ Do not delete Production historical data first. PR #534 is Draft and stale again
 - reading order: `HANDOFF_LATEST.md -> this file -> NEXT_CHAT_START_HERE.md`
 - old `LIVE_HANDOFF_*`, `PROJECT_HANDOFF.md`, `CURRENT_STATE.md`, and dated purpose/timeline docs are history unless a specific past decision is needed
 
-`CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
+`CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / PARITY_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
