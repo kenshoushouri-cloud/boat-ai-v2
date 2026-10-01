@@ -46,9 +46,9 @@ jobs:
           import os
           import psycopg
 
-          url = os.environ.get("DATABASE_URL")
+          url = os.environ.get("DATABASE_PUBLIC_URL")
           if not url:
-              raise SystemExit("DATABASE_URL missing")
+              raise SystemExit("DATABASE_PUBLIC_URL missing")
 
           conn = psycopg.connect(url, connect_timeout=15)
           try:
@@ -95,19 +95,13 @@ jobs:
           cat > /tmp/db_fingerprint.py <<'PY'
           import hashlib
           import os
-          import psycopg
+          from urllib.parse import urlsplit
 
           url = os.environ.get("DATABASE_URL")
           if not url:
               raise SystemExit("DATABASE_URL missing")
-          with psycopg.connect(url, connect_timeout=15) as conn:
-              with conn.cursor() as cur:
-                  cur.execute(
-                      "SELECT current_database(), inet_server_addr()::text, "
-                      "inet_server_port(), pg_postmaster_start_time()::text"
-                  )
-                  row = cur.fetchone()
-          payload = "|".join("" if x is None else str(x) for x in row)
+          p = urlsplit(url)
+          payload = f"{p.hostname or ''}|{p.port or 5432}|{p.path or ''}"
           print("SERVER_FINGERPRINT=" + hashlib.sha256(payload.encode()).hexdigest())
           PY
 
