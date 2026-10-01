@@ -1,0 +1,205 @@
+name: Railway candidate-v4 cutover smoke
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_BRIDGE_ISSUE: "42"
+  DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  smoke:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-cutover-smoke'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install smoke dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install 'psycopg[binary]>=3.2,<4'
+          npm install --global @railway/cli
+
+      - name: Create safe smoke helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/db_tx_smoke.py <<'PY'
+          import os
+          import psycopg
+
+          url = os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("DATABASE_URL missing")
+
+          conn = psycopg.connect(url, connect_timeout=15)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("SELECT 1")
+                  assert cur.fetchone()[0] == 1
+                  cur.execute("SHOW transaction_read_only")
+                  read_only = cur.fetchone()[0]
+                  if str(read_only).lower() not in {"off", "false"}:
+                      raise RuntimeError("candidate is read-only")
+
+                  cur.execute("CREATE TEMP TABLE cutover_smoke_temp (v integer) ON COMMIT DROP")
+                  cur.execute("INSERT INTO cutover_smoke_temp(v) VALUES (42)")
+                  cur.execute("SELECT v FROM cutover_smoke_temp")
+                  assert cur.fetchone()[0] == 42
+              conn.rollback()
+
+              with conn.cursor() as cur:
+                  cur.execute(
+                      """
+                      SELECT i.indisvalid, i.indisready
+                      FROM pg_index i
+                      JOIN pg_class c ON c.oid=i.indexrelid
+                      WHERE c.relname='ux_v2_odds_trifecta_race_ticket'
+                      """
+                  )
+                  row = cur.fetchone()
+                  if row != (True, True):
+                      raise RuntimeError("required odds index not valid/ready")
+                  cur.execute("SELECT pg_database_size(current_database())")
+                  db_bytes = int(cur.fetchone()[0])
+              conn.rollback()
+          finally:
+              conn.close()
+
+          print("DB_READ=PASS")
+          print("DB_TEMP_WRITE_ROLLBACK=PASS")
+          print("DB_WRITABLE=PASS")
+          print("ODDS_INDEX_VALID_READY=PASS")
+          print(f"DB_BYTES={db_bytes}")
+          print("PERSISTENT_SMOKE_WRITE=0")
+          PY
+
+          cat > /tmp/db_fingerprint.py <<'PY'
+          import hashlib
+          import os
+          import psycopg
+
+          url = os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("DATABASE_URL missing")
+          with psycopg.connect(url, connect_timeout=15) as conn:
+              with conn.cursor() as cur:
+                  cur.execute(
+                      "SELECT current_database(), inet_server_addr()::text, "
+                      "inet_server_port(), pg_postmaster_start_time()::text"
+                  )
+                  row = cur.fetchone()
+          payload = "|".join("" if x is None else str(x) for x in row)
+          print("SERVER_FINGERPRINT=" + hashlib.sha256(payload.encode()).hexdigest())
+          PY
+
+      - name: Candidate DB read and rollback-write smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${DB_SERVICE}"             python /tmp/db_tx_smoke.py | tee db-smoke.txt
+          grep -q '^DB_READ=PASS$' db-smoke.txt
+          grep -q '^DB_TEMP_WRITE_ROLLBACK=PASS$' db-smoke.txt
+          grep -q '^DB_WRITABLE=PASS$' db-smoke.txt
+          grep -q '^ODDS_INDEX_VALID_READY=PASS$' db-smoke.txt
+          grep -q '^PERSISTENT_SMOKE_WRITE=0$' db-smoke.txt
+
+      - name: Verify PRE FINAL learning resolve to candidate-v4
+        shell: bash
+        run: |
+          set -euo pipefail
+          fp() {
+            service="$1"
+            railway run               --project "${RAILWAY_PROJECT_ID}"               --environment "${RAILWAY_ENVIRONMENT}"               --service "$service"               python /tmp/db_fingerprint.py               | grep '^SERVER_FINGERPRINT=' | tail -n1 | cut -d= -f2
+          }
+          CANDIDATE_FP="$(fp "${DB_SERVICE}")"
+          PRE_FP="$(fp "cron-window-morning")"
+          FINAL_FP="$(fp "cron-final-check")"
+          LEARNING_FP="$(fp "cron-learning-all")"
+          test -n "$CANDIDATE_FP"
+          test "$PRE_FP" = "$CANDIDATE_FP"
+          test "$FINAL_FP" = "$CANDIDATE_FP"
+          test "$LEARNING_FP" = "$CANDIDATE_FP"
+          {
+            echo "PRE_DB_TARGET_MATCH=PASS"
+            echo "FINAL_DB_TARGET_MATCH=PASS"
+            echo "LEARNING_DB_TARGET_MATCH=PASS"
+          } | tee target-match.txt
+
+      - name: PRE path side-effect-free smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "cron-window-morning"             env WINDOW_RUN_ODDS=0 WINDOW_RUN_MOTOR2_SHADOW=0 WINDOW_RUN_PRE=0             python -u run_window_pipeline_pg.py | tee pre-smoke.txt
+          grep -q '^DATABASE_URL=OK$' pre-smoke.txt
+          grep -q '^=== window pipeline finished ===$' pre-smoke.txt
+
+      - name: FINAL entry path compile and DB-env smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "cron-final-check"             python -c 'import os,py_compile; assert os.getenv("DATABASE_URL"); py_compile.compile("run_final_pg.py",doraise=True); py_compile.compile("v25_final_realtime_pipeline_pg.py",doraise=True); print("FINAL_PATH_SMOKE=PASS")'             | tee final-smoke.txt
+          grep -q '^FINAL_PATH_SMOKE=PASS$' final-smoke.txt
+
+      - name: Learning entry path disabled smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "cron-learning-all"             env LEARNING_ALL_ENABLED=0             python -u run_learning_all_realtime_pg.py | tee learning-smoke.txt
+          grep -q '^LEARNING_ALL_ENABLED=0: skip$' learning-smoke.txt
+
+      - name: Build sanitized result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Candidate-v4 cutover smoke"
+            echo
+            if grep -q '^DB_READ=PASS$' db-smoke.txt 2>/dev/null               && grep -q '^DB_TEMP_WRITE_ROLLBACK=PASS$' db-smoke.txt 2>/dev/null               && grep -q '^ODDS_INDEX_VALID_READY=PASS$' db-smoke.txt 2>/dev/null               && grep -q '^PRE_DB_TARGET_MATCH=PASS$' target-match.txt 2>/dev/null               && grep -q '^FINAL_DB_TARGET_MATCH=PASS$' target-match.txt 2>/dev/null               && grep -q '^LEARNING_DB_TARGET_MATCH=PASS$' target-match.txt 2>/dev/null               && grep -q '^=== window pipeline finished ===$' pre-smoke.txt 2>/dev/null               && grep -q '^FINAL_PATH_SMOKE=PASS$' final-smoke.txt 2>/dev/null               && grep -q '^LEARNING_ALL_ENABLED=0: skip$' learning-smoke.txt 2>/dev/null; then
+              echo "PASS: candidate-v4 cutover smoke completed."
+              echo
+              grep -E '^(DB_READ|DB_TEMP_WRITE_ROLLBACK|DB_WRITABLE|ODDS_INDEX_VALID_READY|DB_BYTES|PERSISTENT_SMOKE_WRITE)=' db-smoke.txt || true
+              cat target-match.txt
+              echo "PRE_PATH_SMOKE=PASS"
+              echo "FINAL_PATH_SMOKE=PASS"
+              echo "LEARNING_PATH_SMOKE=PASS"
+              echo "SCHEDULE_RESUME=0"
+              echo "DELETE=0"
+              echo "RESIZE=0"
+              echo "PLAN_CHANGE=0"
+              echo "PURCHASE_ACTION=false"
+              echo "CUTOVER_SMOKE=PASS"
+            else
+              echo "FAIL: candidate-v4 cutover smoke did not fully pass."
+              echo "CUTOVER_SMOKE=FAIL"
+              echo "SCHEDULE_RESUME=0"
+              echo "PURCHASE_ACTION=false"
+            fi
+          } > smoke-summary.md
+          cat smoke-summary.md
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "${GITHUB_REPOSITORY}" --body-file smoke-summary.md
