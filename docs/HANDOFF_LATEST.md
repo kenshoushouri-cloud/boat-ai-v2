@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_ROLLBACK_PASS.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_SCHEDULES_RESUMED.md`
 
 Read only:
 1. this pointer
@@ -17,12 +17,13 @@ Current:
 - explicit cutover = DONE
 - cutover smoke = PASS
 - rollback verification = PASS
-- writers remain frozen
-- next = restore/resume original writer schedules against candidate-v4
+- 13 scheduled writers = original schedules resumed against candidate-v4
+- `test-beforeinfo-extra` remains manual/no cron
+- next = operational health observation
 - no cleanup / resize / history move / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
 - TOTO protected; `Postgres` / `Postgres-AbWo` unverified
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / ROLLBACK_PASS / RESUME_SCHEDULES_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / SCHEDULES_RESUMED / HEALTH_OBSERVE_NEXT / PURCHASE_FALSE`
