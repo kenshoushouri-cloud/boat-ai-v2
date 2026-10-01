@@ -1,0 +1,116 @@
+name: Railway 5GB candidate index layout diagnostic
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-index-layout-diagnostic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Inspect candidate index layout read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > diagnostic.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          \pset fieldsep '|'
+          SET default_transaction_read_only = on;
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+
+          SELECT
+            'IDX|' ||
+            idx.relname || '|' ||
+            tbl.relname || '|' ||
+            pg_relation_size(idx.oid) || '|' ||
+            COALESCE(con.conname,'') || '|' ||
+            COALESCE(con.contype::text,'') || '|' ||
+            pg_get_indexdef(idx.oid)
+          FROM pg_class idx
+          JOIN pg_index pi ON pi.indexrelid = idx.oid
+          JOIN pg_class tbl ON tbl.oid = pi.indrelid
+          JOIN pg_namespace n ON n.oid = tbl.relnamespace
+          LEFT JOIN pg_constraint con ON con.conindid = idx.oid
+          WHERE n.nspname = 'public'
+            AND idx.relkind = 'i'
+          ORDER BY pg_relation_size(idx.oid) DESC, idx.relname
+          LIMIT 20;
+
+          SELECT
+            'ODDS_IDX|' ||
+            idx.relname || '|' ||
+            pg_relation_size(idx.oid) || '|' ||
+            COALESCE(con.conname,'') || '|' ||
+            COALESCE(con.contype::text,'') || '|' ||
+            pg_get_indexdef(idx.oid)
+          FROM pg_class idx
+          JOIN pg_index pi ON pi.indexrelid = idx.oid
+          JOIN pg_class tbl ON tbl.oid = pi.indrelid
+          JOIN pg_namespace n ON n.oid = tbl.relnamespace
+          LEFT JOIN pg_constraint con ON con.conindid = idx.oid
+          WHERE n.nspname = 'public'
+            AND tbl.relname = 'v2_odds_trifecta'
+            AND idx.relkind = 'i'
+          ORDER BY pg_relation_size(idx.oid) DESC, idx.relname;
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < diagnostic.sql > diagnostic.out
+
+          grep -E '^(DB_BYTES|WAL_BYTES|IDX|ODDS_IDX)\|' diagnostic.out > diagnostic.sanitized
+          test -s diagnostic.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB candidate index layout diagnostic'
+            echo
+            if [ -s diagnostic.sanitized ]; then
+              echo 'Read-only candidate metadata query completed.'
+              echo
+              echo '```text'
+              cat diagnostic.sanitized
+              echo '```'
+            else
+              echo 'Diagnostic did not produce a sanitized result.'
+            fi
+            echo
+            echo 'Candidate-v3 only. No index/table/row/config/volume/plan/cutover mutation was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
