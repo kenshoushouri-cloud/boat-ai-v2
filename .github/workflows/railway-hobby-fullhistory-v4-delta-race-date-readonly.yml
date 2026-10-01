@@ -1,0 +1,157 @@
+name: Railway candidate v4 race-date delta read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-recovery"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  PARITY_DATE: "2026-10-01"
+
+jobs:
+  delta-race-date:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v4-delta-race-date'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Build read-only race-date SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          tables = [
+              "v2_candidate_filter_shadow",
+              "v2_exhibition_shadow_decisions",
+              "v2_line_notifications",
+              "v2_odds_trifecta",
+              "v2_realtime_decisions",
+              "v2_realtime_entry_snapshots",
+              "v2_realtime_exhibition_snapshots",
+              "v2_realtime_odds_snapshots",
+              "v2_realtime_race_condition_snapshots",
+              "v2_realtime_racer_condition_snapshots",
+              "v2_realtime_weather_snapshots",
+              "v2_v24_motor2_forward_shadow",
+          ]
+          date="2026-10-01"
+          lines=[
+              r"\pset tuples_only on",
+              r"\pset format unaligned",
+              "SET default_transaction_read_only = on;",
+              "SET statement_timeout = '180s';",
+          ]
+          for t in tables:
+              lines.append(
+                  "SELECT 'RACE_DATE_COUNT|" + t + "|' || "
+                  "count(*) || '|' || "
+                  "count(*) FILTER (WHERE r.race_date < DATE '" + date + "') || '|' || "
+                  "count(*) FILTER (WHERE r.race_date = DATE '" + date + "') || '|' || "
+                  "count(*) FILTER (WHERE r.race_date > DATE '" + date + "') || '|' || "
+                  "count(*) FILTER (WHERE r.race_id IS NULL) "
+                  "FROM public." + t + " x LEFT JOIN public.v2_races r ON r.race_id=x.race_id;"
+              )
+          Path("delta-race-date.sql").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Capture source read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$SOURCE_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < delta-race-date.sql > source.out
+          grep '^RACE_DATE_COUNT|' source.out > source.sanitized
+          test "$(wc -l < source.sanitized)" -eq 12
+
+      - name: Capture candidate v4 read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < delta-race-date.sql > candidate.out
+          grep '^RACE_DATE_COUNT|' candidate.out > candidate.sanitized
+          test "$(wc -l < candidate.sanitized)" -eq 12
+
+      - name: Compare race-date buckets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > result.sanitized
+          from pathlib import Path
+          def load(path):
+              out={}
+              for line in Path(path).read_text(encoding="utf-8").splitlines():
+                  p=line.split("|")
+                  if len(p)==7 and p[0]=="RACE_DATE_COUNT":
+                      out[p[1]]=dict(total=int(p[2]),past=int(p[3]),today=int(p[4]),future=int(p[5]),unmatched=int(p[6]))
+              return out
+          s=load("source.sanitized"); c=load("candidate.sanitized")
+          past_equal=True; future_equal=True; unmatched_equal=True; candidate_not_ahead=True
+          for t in sorted(s):
+              a=s[t]; b=c[t]
+              dp=a["past"]-b["past"]; dt=a["today"]-b["today"]; df=a["future"]-b["future"]; du=a["unmatched"]-b["unmatched"]
+              past_equal &= dp==0
+              future_equal &= df==0
+              unmatched_equal &= du==0
+              candidate_not_ahead &= (a["total"]-b["total"])>=0
+              print(
+                f"RACE_DATE_DIFF|{t}|SOURCE_TOTAL={a['total']}|CANDIDATE_TOTAL={b['total']}|TOTAL_DELTA={a['total']-b['total']}"
+                f"|PAST_DELTA={dp}|TODAY_DELTA={dt}|FUTURE_DELTA={df}|UNMATCHED_DELTA={du}"
+              )
+          print("PAST_EQUAL_ALL="+("true" if past_equal else "false"))
+          print("FUTURE_EQUAL_ALL="+("true" if future_equal else "false"))
+          print("UNMATCHED_EQUAL_ALL="+("true" if unmatched_equal else "false"))
+          print("CANDIDATE_NOT_AHEAD_ALL="+("true" if candidate_not_ahead else "false"))
+          print("DELTA_TODAY_ONLY="+("true" if past_equal and future_equal and unmatched_equal and candidate_not_ahead else "false"))
+          print("SOURCE_WRITE=0")
+          print("CANDIDATE_WRITE=0")
+          print("DELETE=0")
+          print("CUTOVER=0")
+          PY
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Full-history v4 race-date delta diagnostic'
+            echo
+            if [ -s result.sanitized ]; then
+              echo 'Read-only comparison via v2_races.race_date completed.'
+              echo
+              echo '~~~text'
+              cat result.sanitized
+              echo '~~~'
+            else
+              echo 'Diagnostic did not produce sanitized output.'
+            fi
+            echo
+            echo 'No source/candidate mutation, delete, cutover, resize, plan change, or purchase action was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
