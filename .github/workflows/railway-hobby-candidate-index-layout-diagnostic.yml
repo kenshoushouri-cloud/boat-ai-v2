@@ -482,3 +482,177 @@ jobs:
           } > delta-key-layout-summary.md
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file delta-key-layout-summary.md
 
+  delta-date-diagnostic:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v3-delta-date-diagnostic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_SERVICE: "postgres-recovery"
+      PARITY_DATE: "2026-10-01"
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Build read-only date-count SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tables = [
+              "v2_candidate_filter_shadow",
+              "v2_exhibition_shadow_decisions",
+              "v2_odds_trifecta",
+              "v2_realtime_entry_snapshots",
+              "v2_realtime_exhibition_snapshots",
+              "v2_realtime_odds_snapshots",
+              "v2_realtime_race_condition_snapshots",
+              "v2_realtime_racer_condition_snapshots",
+              "v2_realtime_weather_snapshots",
+              "v2_v24_motor2_forward_shadow",
+          ]
+          date = "2026-10-01"
+          lines = [
+              r"\pset tuples_only on",
+              r"\pset format unaligned",
+              "SET default_transaction_read_only = on;",
+              "SET statement_timeout = '120s';",
+          ]
+          for table in tables:
+              lines.append(
+                  "SELECT 'DATECOUNT|" + table + "|' || "
+                  "count(*) FILTER (WHERE race_date < DATE '" + date + "') || '|' || "
+                  "count(*) FILTER (WHERE race_date = DATE '" + date + "') || '|' || "
+                  "count(*) FILTER (WHERE race_date > DATE '" + date + "') || '|' || "
+                  "COALESCE(max(race_date)::text,'') "
+                  "FROM public." + table + ";"
+              )
+          Path("delta-date.sql").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Capture source date counts read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$SOURCE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < delta-date.sql > source-date.out
+          grep '^DATECOUNT|' source-date.out > source-date.sanitized
+          test "$(wc -l < source-date.sanitized)" -eq 10
+
+      - name: Capture candidate date counts read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < delta-date.sql > candidate-date.out
+          grep '^DATECOUNT|' candidate-date.out > candidate-date.sanitized
+          test "$(wc -l < candidate-date.sanitized)" -eq 10
+
+      - name: Compare date buckets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > delta-date-result.sanitized
+          from pathlib import Path
+
+          def load(path):
+              out = {}
+              for line in Path(path).read_text(encoding="utf-8").splitlines():
+                  parts = line.split("|")
+                  if len(parts) != 6 or parts[0] != "DATECOUNT":
+                      continue
+                  out[parts[1]] = {
+                      "past": int(parts[2]),
+                      "today": int(parts[3]),
+                      "future": int(parts[4]),
+                      "max_date": parts[5],
+                  }
+              return out
+
+          src = load("source-date.sanitized")
+          cand = load("candidate-date.sanitized")
+          names = sorted(src)
+
+          past_equal = True
+          future_equal = True
+          today_nonnegative = True
+          today_delta_sum = 0
+
+          for name in names:
+              s = src[name]
+              c = cand[name]
+              if s["past"] != c["past"]:
+                  past_equal = False
+              if s["future"] != c["future"]:
+                  future_equal = False
+              delta = s["today"] - c["today"]
+              if delta < 0:
+                  today_nonnegative = False
+              today_delta_sum += delta
+              print(
+                  "DATE_DIFF|" + name
+                  + "|PAST_SOURCE=" + str(s["past"])
+                  + "|PAST_CANDIDATE=" + str(c["past"])
+                  + "|TODAY_SOURCE=" + str(s["today"])
+                  + "|TODAY_CANDIDATE=" + str(c["today"])
+                  + "|TODAY_DELTA=" + str(delta)
+                  + "|FUTURE_SOURCE=" + str(s["future"])
+                  + "|FUTURE_CANDIDATE=" + str(c["future"])
+                  + "|SOURCE_MAX_DATE=" + s["max_date"]
+                  + "|CANDIDATE_MAX_DATE=" + c["max_date"]
+              )
+
+          print("PAST_EQUAL_ALL=" + ("true" if past_equal else "false"))
+          print("FUTURE_EQUAL_ALL=" + ("true" if future_equal else "false"))
+          print("TODAY_SOURCE_NOT_BEHIND_ALL=" + ("true" if today_nonnegative else "false"))
+          print("TODAY_DELTA_SUM=" + str(today_delta_sum))
+          safe = past_equal and future_equal and today_nonnegative
+          print("DELTA_IS_DATE_LOCALIZED=" + ("true" if safe else "false"))
+          print("SOURCE_WRITE=0")
+          print("CANDIDATE_WRITE=0")
+          print("DELETE=0")
+          print("CUTOVER=0")
+          PY
+
+      - name: Post sanitized date diagnostic
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Full-history v3 date-localized delta diagnostic'
+            echo
+            if [ -s delta-date-result.sanitized ]; then
+              echo 'Read-only source/candidate date-bucket comparison completed.'
+              echo
+              echo '~~~text'
+              cat delta-date-result.sanitized
+              echo '~~~'
+            else
+              echo 'Diagnostic did not produce sanitized comparison output.'
+            fi
+            echo
+            echo 'No source/candidate mutation, delete, cutover, resize, or plan change was requested.'
+          } > delta-date-summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file delta-date-summary.md
+
