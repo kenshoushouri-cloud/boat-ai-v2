@@ -1,175 +1,149 @@
-# Live Handoff — 2026-10-01 startup refresh (compact)
+# Live Handoff — 2026-10-01 09:10 JST (compact)
 
 Status: **CURRENT COMPACT HANDOFF**
 
 Repository: `kenshoushouri-cloud/boat-ai-v2`
 
-This file replaces long cumulative handoff chains. Re-fetch live state before acting; SHA/run/deploy/coverage values below are snapshots, not permanent facts.
+This is the only mutable handoff. Re-fetch live state before acting; SHA/run/deploy/count values below are snapshots.
 
-## 1. Non-negotiable contract
+## 1. System purpose / fixed contract
 
-- GitHub `main` = code Source of Truth.
-- Railway PostgreSQL Production = data Source of Truth.
-- Use only information available before each race deadline; no target-race outcome leakage or hindsight reconstruction.
-- 2026-09-29 formal V4 is permanently **UNAVAILABLE**. Never reconstruct or count it.
-- V5 core gate stays:
-  - V4 >= 20 resolved `FORMAL_AVAILABLE` days
-  - S03_M2 >= 100 officially evaluated observations
-  - evidence contract clean
-- Historical reconstruction never receives prospective gate credit.
-- Monthly net-profit +50,000 JPY is a later scaling objective; never loosen selector/thresholds to force volume or revenue.
-- `purchase_action=false`.
-- Production V4 model/selector/stake/LINE/purchase and Railway Production config require explicit approval before change.
-- Do not enumerate Railway plaintext variables; do not call `list_variables`.
+Goal: build a reproducible positive-expectation boat-race selection system using only information available before each race deadline, without result leakage, hindsight reconstruction, or outcome-guided tuning.
 
-## 2. Daily priority — JST
+Source of Truth:
+- GitHub `main` = code
+- Railway PostgreSQL Production = data
 
-`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> 08:32 availability hard-stop -> before-deadline formal freeze -> 23:30 nightly settlement`
+Fixed:
+- 2026-09-29 formal V4 = permanently **UNAVAILABLE**
+- V5 gate = V4 >=20 resolved `FORMAL_AVAILABLE` days + S03_M2 >=100 officially evaluated observations + clean evidence contract
+- historical reconstruction gives **zero prospective gate credit**
+- monthly net-profit +50,000 JPY is a later scaling objective, not a selector/threshold target
+- `purchase_action=false`
+- Production model/selector/stake/LINE/purchase and Railway Production mutations require explicit approval
+- never enumerate Railway plaintext variables; do not call `list_variables`
 
-At startup on 2026-10-01, preserve the morning prospective path first. Do not introduce Production behavior changes before the morning cycle.
+## 2. Timeline / priority
 
-## 3. Current GitHub read-back
+Daily prospective priority:
+`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> runtime-derived availability hard-stop -> pre-deadline freeze -> 23:30 settlement`
+
+Milestones:
+- **2026-10-03 billing boundary:** prepare a safe Pro -> Hobby downgrade only if archive/restore/parity and Hobby resource limits are proven; do not force the date by deleting first
+- **2026-10-15 around:** V5 core freeze / operational-readiness review target; not an automatic go-live date
+
+Last verified prospective baseline:
+- V4 = **8/20** through 2026-09-28
+- S03_M2 = **63/100**
+- 2026-09-29 = permanently unavailable
+- 2026-10-01 fallback formal freeze run `36790563118` = **SUCCESS**
+  - pre-freeze availability capture PASS
+  - prospective evidence eligible=true
+  - availability guard `PASS_ACTIVE_CORE`
+  - immutable freeze uploaded
+  - F-count companion PASS
+  - `purchase_action=false`
+- 10/1 is not a resolved V4 day until nightly settlement/terminal canonical evidence exists
+
+## 3. Current GitHub / historical work
 
 Current `main`:
-- `72733703cbe51f24b9bc55505159c241b4359335`
-- PR #526 merged after current-main reconciliation and CI 6/6 SUCCESS
+- `d82ac1af1f1ef427a0dcb37a83d520e9799f9b92`
+- latest: `Fix pre-Hobby logical archive job indentation`
 
-Historical runs:
-- `36667832406` = **completed / failure**
-  - Phase 1 B-file = SUCCESS
-  - Phase 2 archived-racelist residual = SUCCESS
-  - Phase 3 prior-only Opponent replay = FAILURE
-  - do not restart the full campaign; recover only verified residuals later
-- `36667954064` = **in_progress**
-  - segment 1 cancelled
-  - segment 2 cancelled
-  - segment 3 `2026-09-14..2026-09-29` is actively filling beforeinfo
-  - do not duplicate-trigger
-- `36703692641` = run-level read-back showed queued, but job-level read-back shows `2025-11-01..2025-11-30` **in_progress**
-  - 2025-08/09/10 jobs are cancelled
-  - later monthly jobs remain queued
-  - together with `36667954064`, this means two old-head beforeinfo writers are active; add no new beforeinfo trigger
+Relevant current Draft:
+- PR #534 `Ops: add read-only Hobby retention sizing audit`
+- head `887007ea45f4d565403b1626f337ede4d69d4682`
+- mergeable=true; latest exact-head relevant CI is green
+- do not merge blindly; re-fetch current main/head first
 
-Old branch:
-- `ops/command-aware-historical-concurrency-20260930-v2`
-- exists, but compare against current main = **ahead 0 / behind 44**
-- no unique changes remain; treat as superseded/inactive
+Historical beforeinfo:
+- run `36703692641`: job-level `2025-12-01..2025-12-31` still **in_progress**; 2026-01..09 jobs queued; earlier 2025-08..11 jobs cancelled
+- run `36783707390`: legacy monthly replacement remains pending/no jobs
+- do not add another normal beforeinfo trigger while writer lane is occupied
 
-Beforeinfo routing:
-- #526 = **merged**
-- merge SHA / current main = `72733703cbe51f24b9bc55505159c241b4359335`
-- CI before merge = 6/6 SUCCESS
-- old duplicate pending beforeinfo runs were replaced by no-write drain / invalid-range replacements
-- existing active writers were not interrupted
-- #528 and #529 remain closed without merge
+Latest matched-readiness evidence:
+- races/exact6/fcount6/motor6 = 70,026
+- opponent_replay = 56,599
+- reconstructed full core = 47,431 / 67.73%
+- complete_beforeinfo = 14,705
+- core_plus_beforeinfo = 7,936 / 11.33%
+- recent_form6 = 0
+- historical/read-only only; no prospective gate credit
 
-9/30 combined checkpoint:
-- no terminal `Research Forward Combined Checkpoint Manual` run found in the latest 100 Actions runs
-- therefore do **not** advance V4/S03 gates from the last verified baseline yet
+## 4. Railway / Hobby migration state
 
-## 4. Railway Production read-back
+Railway:
+- workspace plan = **PRO**
+- billing boundary shown by user = **10/03**
+- Pro -> Hobby downgrade takes effect at the next billing cycle
+- Hobby volume size limit = **5 GB**
+- routine checks must use normal Railway MCP first; Railway Agent only when ordinary tools cannot answer
 
-Project:
-- `boat-v2-postgres`
-- project id `268a5b17-0712-440a-884d-27f7fa887a2d`
-- Production env `5ffb02f6-5ec8-4268-9bda-8e30431ff625`
+Production DB:
+- service = `postgres-recovery`
+- current volume used ≈ **4.95 GB**
+- configured volume = **20 GB**
+- latest logical DB size = **4,221 MB**
 
-Fallback:
-- service `candidate-discovery-v4-fallback-dispatcher`
-- id `84010f63-8e5a-4ad3-8718-bdad3dd9c436`
-- source = repo `kenshoushouri-cloud/boat-ai-v2`, branch `main`
-- Cron = `20 23 * * *` = 08:20 JST
-- start = `python -u research/candidate_discovery_v4_fallback_dispatcher.py`
-- latest deploy `b44a67be-d9f0-4572-8ef6-5768dcf6d586` = **SUCCESS**
-- deploy commit = current main `b26efcb...`
-- service staged config = null
+Largest relations:
+- `v2_odds_trifecta` ≈ 1,831 MB
+- `v2_realtime_odds_snapshots` ≈ 721 MB
+- `v2_v24_motor2_forward_shadow` ≈ 269 MB
+- `v2_result_entries` ≈ 223 MB
 
-Production environment read-back:
-- `stagedChanges=null`
-- one empty-change pending EnvironmentPatch metadata entry was observed; do not accept/deploy it blindly. Re-read before any Production action.
+Read-only retention estimate across listed large tables:
+- keep 30d hot -> archive candidate ≈ **3,261 MB**
+- keep 60d hot -> archive candidate ≈ **2,693 MB**
+- keep 90d hot -> archive candidate ≈ **2,343 MB**
 
-Production PostgreSQL service:
-- `postgres-recovery`
-- id `aa4b9c32-f2bf-42c8-89b9-f5aac8d70fb3`
-- latest service deployment = SUCCESS
-- Railway-side log read-back confirms the database service is reachable and actively checkpointing
-- this connector has no direct SQL execution path, so exact readiness counts below remain the latest canonical read-only Issue #42 workflow evidence
-- no plaintext variable values were read
+These are row-proportional planning estimates, not promises of physical disk shrinkage.
 
-## 5. Latest Production-derived historical readiness evidence
+Recovery evidence already secured:
+- Railway snapshot `pre-hobby-migration-20261001` exists
+- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` exists
+- plaintext dump bytes = 301,856,594
+- SHA-256 = `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
+- `pg_restore --list` validation passed; 272 entries
+- plaintext dump was not uploaded to the public repository
+- no Production rows/schema were changed by archive creation
 
-Latest Issue #42 read-only matched-readiness result:
-- races / exact6 / fcount6 = **70,026**
-- v4_base6 = **67,735**
-- motor6 = **70,026**
-- course_proxy6 = **58,287**
-- opponent_replay = **56,599**
-- reconstructed full core = **47,431 / 67.73%**
-- complete_beforeinfo = **14,705**
-- core_plus_beforeinfo = **7,936 / 11.33%**
-- recent_form6 = **0**
-- all_optional_inputs = **0**
+## 5. Safe migration sequence
 
-This evidence is historical/read-only and gives **zero prospective gate credit**.
+Do **not** delete old rows first.
 
-## 6. Last verified prospective baseline
+Next sequence:
+1. Re-fetch main / PR #534 / writer lane / DB size.
+2. Verify the encrypted logical archive artifact and recovery metadata.
+3. Perform an **isolated restore drill** and verify schema/table/row-count integrity.
+4. Finish dependency audit for hot retention; 60 days is a working candidate, not yet a delete boundary.
+5. Build/restore a smaller Hobby-compatible DB/volume from the verified archive/hot dataset.
+6. Run read-only parity checks against Production.
+7. Only after explicit approval: Production cutover, old-data/old-volume cleanup, and plan downgrade.
+8. Keep external/restorable historical archive for future backtests.
 
-Until a terminal 9/30 combined checkpoint is verified:
-- V4 = **8/20** through 2026-09-28
-- S03_M2 = **63/100** through the last verified checkpoint
-- 2026-09-29 remains permanently unavailable
+Principle: **archive first -> prove restore -> prove parity -> cut over -> only then clean up/downgrade.**
 
-Never infer newer gate counts from settlement availability alone.
+## 6. Safety / working style
 
-## 7. Next safe sequence
+User request:
+- work **one task at a time** to avoid timeouts
+- do not flood chat with intermediate progress; report concise completion/result
 
-1. Preserve and verify the 2026-10-01 morning prospective cycle.
-2. Continue read-only monitoring of `36667954064` and `36703692641`; do not add a beforeinfo command.
-3. When a dispatch route is available, run the canonical 9/30 combined checkpoint exactly once, read-only, after checking no existing terminal run exists.
-4. After the morning prospective cycle, re-read the shared historical writer lane before any Opponent residual recovery.
-5. Recover only verified residual ranges; never rerun whole completed campaigns.
-6. Then proceed to recent_form, matched-readiness, and matched-contract backtest without outcome-guided tuning.
+Approval boundary:
+- read-only audit, research/backtest, evidence collection, Draft PR, CI, compact docs may continue
+- destructive/high-impact actions require the exact target to be stated and individually approved:
+  - Production DB DELETE/schema/VACUUM
+  - volume detach/delete/replace
+  - Production service/Cron/Variables/config changes
+  - Production model/selector/stake/LINE/purchase changes
+  - actual Production cutover / plan change
+- never use historical reconstruction to repair a prospective unavailable day
 
-## 8. Post-stabilization Railway cost optimization
+## 7. Immediate next task
 
-User objective:
-- if real-world operation becomes sustainably profitable, keep the current ChatGPT plan in principle
-- reduce Railway cost after V5/backtest/operational-readiness work no longer needs the full historical dataset hot in Production
+**Restore drill preparation / execution for the encrypted pre-Hobby logical archive, isolated from Production.**
 
-Recommended migration path:
-1. Finish historical acquisition, matched-readiness, matched-contract backtest, and the V5 operational-readiness review first.
-2. Create a complete PostgreSQL `pg_dump` archive (prefer custom format) and, where practical, a separate historical archive.
-3. Store the archive outside Railway in durable S3-compatible/object storage.
-4. Verify archive integrity with checksums plus schema/table/row-count checks, then perform a real restore test into an isolated scratch PostgreSQL instance.
-5. Define the minimum Production hot-data retention needed for daily prediction, result settlement, monitoring, and near-term diagnostics.
-6. Create a new smaller Railway PostgreSQL/volume and restore only the required hot dataset; do not assume an existing large volume can be downsized in place.
-7. Switch Production only after read-only parity checks and explicit approval; keep the external historical archive restorable.
-8. After stable operation is confirmed and actual resource usage fits the lower-tier limits, review Railway plan reduction (target candidate: Hobby) rather than keeping PRO solely for historical storage.
+Before starting, re-fetch current main and ensure no newer completed restore drill already exists.
 
-Latest storage snapshot at this handoff update:
-- Railway workspace plan = **PRO**
-- `postgres-recovery` is the only detected persistent volume-backed DB service
-- attached volume provisioned size = **20 GB**
-- measured database disk usage ≈ **4.95 GB**
-- do not delete historical rows, volumes, backups, or change plan/DB configuration without explicit approval
-
-Railway Agent cost-control rule:
-- prefer deterministic Railway MCP reads such as status, service config, metrics, logs, and deployments for routine checks
-- do **not** use Railway Agent for ordinary read-only/status investigation when those tools can answer the question
-- use Railway Agent only when the normal Railway tools cannot obtain the required information and the expected value justifies its token cost
-- keep any unavoidable Agent request narrowly scoped and read-only unless a separately approved mutation is required
-- Railway Agent token charges consume the same plan included-usage pool as infrastructure usage, so minimizing Agent calls is part of the Railway cost-reduction plan
-
-Principle: **archive first, prove restore, then shrink hot storage; minimize paid Agent usage before changing infrastructure.**
-
-## 9. Handoff maintenance rule
-
-Do not append new `LATEST OVERRIDE` blocks to `PROJECT_HANDOFF.md` or `CURRENT_STATE.md`.
-
-Use:
-1. `docs/HANDOFF_LATEST.md` as the tiny pointer.
-2. One current compact `LIVE_HANDOFF_*.md` as the working handoff.
-3. `docs/NEXT_CHAT_START_HERE.md` as the paste-ready startup note.
-4. Git history / dated deep-history documents only when historical detail is required.
-
-`CURRENT_COMPACT_HANDOFF / REFETCH_BEFORE_ACTION / ONE_OR_TWO_CHECKS / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
+`CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`

@@ -9,42 +9,37 @@ Paste this into a new chat:
 
 新競艇AI開発プロジェクトNo.2の続きです。
 
-GitHub repository `kenshoushouri-cloud/boat-ai-v2` を確認してください。
+GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認してください。
 
-最初に:
+最初に次の順で読んでください。
 1. `docs/HANDOFF_LATEST.md`
-2. そこからリンクされた **current compact handoffを全文**
-3. 必要な場合だけ deep-history 文書
+2. そこから指定された current compact handoff を全文
+3. `docs/NEXT_CHAT_START_HERE.md`
+4. deep-history文書は必要な場合だけ
 
-その後、古い値を現在値と決めつけず、read-onlyで一度に1〜2確認ずつ再取得してください:
-- current main
-- Issue #42 latest relevant comments
-- open Draft PR / CI
-- active/queued Actions
-- Railway Production fallback/status
-- current taskに必要なProduction PostgreSQL evidence
+その後、古いsnapshotを現在値と決めつけず、**作業は1つずつ**read-onlyで再取得してください。最初に current main と latest commit、その次に現在の作業に必要な Issue #42 / PR / Actions / Railway Production / PostgreSQL evidence だけを確認してください。
 
-Source of Truth:
-- GitHub main = code
-- Railway PostgreSQL Production = data
-
-固定:
-- 2026-09-29 formal V4は永久UNAVAILABLE。復活・再構築・formal day加算禁止
-- V5 gate = V4 >=20 resolved FORMAL_AVAILABLE days / S03_M2 >=100 officially evaluated observations / evidence contract clean
+重要方針:
+- GitHub main = code Source of Truth
+- Railway PostgreSQL Production = data Source of Truth
+- 2026-09-29 formal V4は永久UNAVAILABLE
+- V5 gateは V4 >=20 resolved FORMAL_AVAILABLE days / S03_M2 >=100 official observations / evidence contract clean
 - historical reconstructionはprospective gateへ加算しない
-- 月間純利益 +50,000円はprospective edge確認後のscaling目標。selector/thresholdを利益・通知数のために緩めない
 - `purchase_action=false`
-- Production model/selector/stake/LINE/purchase、Railway Production変更は明示承認が必要
-- Railway plaintext variable値を列挙しない
+- Railway plaintext Variablesを列挙しない、`list_variables`を呼ばない
+- Railway Agentは通常MCPで取得できない場合だけ使う
+- destructive/high-impact操作は対象を明示して個別承認を取る
 
-read-only監査、research/backtest/Forward、safe evidence、Draft PR、CI、docs更新は確認なしで継続してください。明示承認が必要な操作だけ止めて確認してください。
+現在の優先順位:
+1. daily prospective evidenceを落とさない
+2. historical不足データ回収を重複triggerなしで継続
+3. 10/03 billing boundaryに向けてPro -> Hobby移行準備
+4. pre-Hobby archiveは確保済みなので、**次はProductionから隔離したrestore drill**
+5. restore/parity確認前にhistorical DELETE・volume削除・Production切替をしない
+6. 2026-10-15前後のV5 operational-readiness reviewへ進む
 
-タイムアウト対策:
-- 一度に1〜2確認
-- 一つ一つ進める
-- 途中経過は短く
-- handoffに古いsnapshotを追記し続けない
+タイムアウト対策として、一度に複数作業を進めず、**1作業完了ごとに短く結果だけ報告**してください。途中経過の長文表示は不要です。
 
-`READ_HANDOFF_LATEST / REFETCH_BEFORE_ACTION / ONE_OR_TWO_CHECKS / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
 
 ---
