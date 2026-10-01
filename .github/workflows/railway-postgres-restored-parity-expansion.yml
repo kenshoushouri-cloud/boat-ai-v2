@@ -65,6 +65,19 @@ jobs:
           python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<3.4"
           railway variable set --help >/dev/null
           railway run --help >/dev/null
+          railway connect --help >/dev/null
+
+          mkdir -p "$PWD/.railway-bin"
+          cat > "$PWD/.railway-bin/psql" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm -i --network host \
+            -v "$PWD:/work" -w /work \
+            -e PGPASSWORD -e PGUSER -e PGDATABASE -e PGHOST -e PGPORT -e PGSSLMODE \
+            postgres:18 psql "$@"
+          SH
+          chmod 700 "$PWD/.railway-bin/psql"
+          echo "$PWD/.railway-bin" >> "$GITHUB_PATH"
 
       - name: Create run-scoped archive key escrow
         id: key
@@ -287,15 +300,41 @@ jobs:
               capture(conn, "restored")
               conn.close()
 
-          elif mode == "candidate":
-              url = os.environ["DATABASE_PUBLIC_URL"]
-              conn = psycopg.connect(url)
-              conn.execute("SET default_transaction_read_only = on")
-              capture(conn, "candidate")
-              db_bytes = conn.execute("SELECT pg_database_size(current_database())").fetchone()[0]
-              with open("candidate-db-bytes.txt", "w", encoding="utf-8") as f:
-                  f.write(str(db_bytes) + "\n")
-              conn.close()
+          elif mode == "candidate_sql":
+              def one_line(query):
+                  return " ".join(query.split())
+
+              table_names = []
+              with open("source-table-counts.tsv", "r", encoding="utf-8", newline="") as f:
+                  for row in csv.reader(f, delimiter="\t"):
+                      if row:
+                          table_names.append(row[0])
+
+              count_parts = []
+              for table_name in table_names:
+                  literal = table_name.replace("'", "''")
+                  ident = table_name.replace('"', '""')
+                  count_parts.append(
+                      f"SELECT '{literal}' AS table_name, count(*)::text AS row_count "
+                      f'FROM public."{ident}"'
+                  )
+
+              with open("candidate-capture.sql", "w", encoding="utf-8") as f:
+                  f.write("\\set ON_ERROR_STOP on\n")
+                  f.write(
+                      "\\copy (" + " UNION ALL ".join(count_parts) +
+                      " ORDER BY table_name) TO 'candidate-table-counts.raw' "
+                      "WITH (FORMAT csv, DELIMITER E'\\t')\n"
+                  )
+                  for name, query in QUERIES.items():
+                      f.write(
+                          "\\copy (" + one_line(query) + ") TO 'candidate-" + name +
+                          ".raw' WITH (FORMAT csv, DELIMITER E'\\t')\n"
+                      )
+                  f.write(
+                      "\\copy (SELECT pg_database_size(current_database())::text) "
+                      "TO 'candidate-db-bytes.raw' WITH (FORMAT csv)\n"
+                  )
 
           else:
               raise SystemExit("unknown mode")
@@ -453,37 +492,55 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > restore-candidate.sh <<'SH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          : "${DATABASE_PUBLIC_URL:?}"
-          export TARGET_DATABASE_URL="$DATABASE_PUBLIC_URL"
-
-          docker run --rm \
-            -e TARGET_DATABASE_URL \
-            -v "$PWD:/work" \
-            postgres:18 \
-            bash -lc 'pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error --jobs=2 --dbname="$TARGET_DATABASE_URL" /work/restored.dump'
-          SH
-
-          chmod 700 restore-candidate.sh
-
-          railway run \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT" \
-            --service "$TARGET_SERVICE" \
-            bash ./restore-candidate.sh
+          {
+            printf '\\set ON_ERROR_STOP on\\n'
+            docker run --rm \
+              -v "$PWD:/work" \
+              postgres:18 \
+              pg_restore \
+                --clean \
+                --if-exists \
+                --no-owner \
+                --no-acl \
+                --exit-on-error \
+                --file=- \
+                /work/restored.dump
+          } | railway connect "$TARGET_SERVICE" \
+                --environment "$RAILWAY_ENVIRONMENT" \
+                --no-ssh
 
       - name: Capture 5GB candidate evidence read-only
         shell: bash
         run: |
           set -euo pipefail
 
-          railway run \
-            --project "$RAILWAY_PROJECT_ID" \
+          python3 parity_capture.py candidate_sql
+
+          railway connect "$TARGET_SERVICE" \
             --environment "$RAILWAY_ENVIRONMENT" \
-            --service "$TARGET_SERVICE" \
-            python3 parity_capture.py candidate
+            --no-ssh < candidate-capture.sql
+
+          python3 - <<'PY'
+          import csv
+          import glob
+          import os
+
+          for raw_path in glob.glob("candidate-*.raw"):
+              if raw_path == "candidate-db-bytes.raw":
+                  continue
+              out_path = raw_path[:-4] + ".tsv"
+              with open(raw_path, "r", encoding="utf-8", newline="") as src:
+                  rows = list(csv.reader(src, delimiter="\t"))
+              with open(out_path, "w", encoding="utf-8", newline="") as dst:
+                  writer = csv.writer(dst, delimiter="\t", lineterminator="\n")
+                  writer.writerows(rows)
+
+          with open("candidate-db-bytes.raw", "r", encoding="utf-8", newline="") as src:
+              row = next(csv.reader(src))
+              db_bytes = row[0]
+          with open("candidate-db-bytes.txt", "w", encoding="utf-8") as dst:
+              dst.write(db_bytes + "\n")
+          PY
 
           test -s candidate-table-counts.tsv
           test -s candidate-columns.tsv
@@ -670,7 +727,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f             archive-private-v3.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             decrypt-v3.sh             restore-candidate.sh             parity_capture.py             source-*.tsv             restored-*.tsv             candidate-*.tsv             candidate-db-bytes.txt
+          rm -f             archive-private-v3.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             decrypt-v3.sh             restore-candidate.sh             parity_capture.py             candidate-capture.sql             source-*.tsv             restored-*.tsv             candidate-*.tsv             candidate-*.raw             candidate-db-bytes.txt
 
       - name: Post sanitized result
         if: always()
