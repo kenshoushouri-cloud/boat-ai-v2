@@ -35,13 +35,14 @@ Paste the block below into a new chat.
 1. daily prospective evidenceを落とさない
 2. historical writer `36703692641` を重複triggerなしで継続
 3. 2026-10-03 billing boundaryへ向けPro -> Hobby準備
-4. Railway backupと暗号化logical archiveは確保済み
-5. **次の1作業はProductionから隔離したrestore drill**
-6. restore/parity前にhistorical DELETE・volume削除・Production切替・plan変更をしない
-7. recovery完了後は `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
+4. Railway backupとrestore-verified encrypted archive v2は確保済み
+5. isolated restore drill run `36810769041` はSUCCESS
+6. **次の1作業はrestored parity expansion（critical schema/table evidence）**
+7. restored parity承認前にhistorical DELETE・volume削除・Production切替・plan変更をしない
+8. recovery完了後は `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
 タイムアウトとトーク容量対策のため、途中経過の長文表示は不要です。**1作業完了ごとに短く結果だけ報告**してください。
 
-`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
+`READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / PARITY_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
 
 ---
