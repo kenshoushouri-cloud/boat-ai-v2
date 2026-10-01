@@ -88,3 +88,155 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file backup-summary.md
+
+logical-archive:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway postgres-pre-hobby-logical-archive CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      ARCHIVE_NAME: "boat-ai-pre-hobby-20261001"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Validate archive certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert="ops/hobby-migration/archive-public-cert-20261001.pem"
+          test -s "$cert"
+          openssl x509 -in "$cert" -noout -subject -fingerprint -sha256
+          test "$(sha256sum "$cert" | awk '{print $1}')" = "2b4442f9b38bb88cdedc1c6cf0fa40e3167701d909a09b08120529f9d4b620fc"
+
+      - name: Create full logical dump read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > dump-source.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "$DATABASE_PUBLIC_URL"
+          docker run --rm -e DATABASE_PUBLIC_URL -e PGOPTIONS='-c default_transaction_read_only=on' -v "$PWD:/work" postgres:18 bash -lc 'pg_dump "$DATABASE_PUBLIC_URL" --format=custom --no-owner --no-acl --file=/work/full-source.dump'
+          SH
+          chmod 700 dump-source.sh
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service postgres-recovery bash ./dump-source.sh
+          test -s full-source.dump
+
+      - name: Validate and fingerprint plaintext dump
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" postgres:18 pg_restore --list /work/full-source.dump > restore-list.txt
+          test -s restore-list.txt
+          dump_bytes="$(stat -c %s full-source.dump)"
+          dump_sha="$(sha256sum full-source.dump | awk '{print $1}')"
+          list_entries="$(grep -c '^[0-9]' restore-list.txt || true)"
+          {
+            echo "DUMP_BYTES=$dump_bytes"
+            echo "DUMP_SHA256=$dump_sha"
+            echo "RESTORE_LIST_ENTRIES=$list_entries"
+          } > archive-manifest.txt
+          echo "dump_bytes=$dump_bytes" >> "$GITHUB_OUTPUT"
+          echo "dump_sha=$dump_sha" >> "$GITHUB_OUTPUT"
+          echo "list_entries=$list_entries" >> "$GITHUB_OUTPUT"
+
+      - name: Encrypt dump with archive public certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl cms -encrypt -binary -aes256 -in full-source.dump -outform DER -out "$ARCHIVE_NAME.dump.cms" ops/hobby-migration/archive-public-cert-20261001.pem
+          test -s "$ARCHIVE_NAME.dump.cms"
+          encrypted_bytes="$(stat -c %s "$ARCHIVE_NAME.dump.cms")"
+          encrypted_sha="$(sha256sum "$ARCHIVE_NAME.dump.cms" | awk '{print $1}')"
+          {
+            echo "ENCRYPTED_BYTES=$encrypted_bytes"
+            echo "ENCRYPTED_SHA256=$encrypted_sha"
+            echo "CERT_SHA256=2b4442f9b38bb88cdedc1c6cf0fa40e3167701d909a09b08120529f9d4b620fc"
+            echo "ENCRYPTION=OpenSSL_CMS_AES256_RSA4096"
+            echo "SOURCE_WRITE=0"
+          } >> archive-manifest.txt
+
+      - name: Remove plaintext dump before artifact upload
+        shell: bash
+        run: rm -f full-source.dump restore-list.txt dump-source.sh
+
+      - name: Upload encrypted off-Railway archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: |
+            ${{ env.ARCHIVE_NAME }}.dump.cms
+            archive-manifest.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Build sanitized success summary
+        if: success()
+        shell: bash
+        env:
+          DUMP_BYTES: ${{ steps.validate.outputs.dump_bytes }}
+          DUMP_SHA: ${{ steps.validate.outputs.dump_sha }}
+          LIST_ENTRIES: ${{ steps.validate.outputs.list_entries }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Encrypted pre-Hobby logical archive'
+            echo
+            echo '✅ Full PostgreSQL logical dump was created read-only, validated with pg_restore --list, encrypted, and uploaded as a GitHub Actions artifact.'
+            echo
+            echo "Artifact: $ARCHIVE_NAME"
+            echo "Plain dump bytes: $DUMP_BYTES"
+            echo "Plain dump SHA-256: $DUMP_SHA"
+            echo "Restore-list entries: $LIST_ENTRIES"
+            echo
+            echo 'The repository is public, so the plaintext dump was never uploaded. Only the CMS-encrypted archive and non-secret manifest were uploaded.'
+            echo
+            echo 'SOURCE_WRITE=0 / Production rows and schema unchanged.'
+          } > logical-archive-summary.md
+
+      - name: Build sanitized failure summary
+        if: failure()
+        shell: bash
+        run: |
+          if [ ! -f logical-archive-summary.md ]; then
+            {
+              echo '## Encrypted pre-Hobby logical archive'
+              echo
+              echo '❌ Logical archive workflow failed.'
+              echo
+              echo 'No plaintext database dump was uploaded and no destructive follow-up was attempted.'
+            } > logical-archive-summary.md
+          fi
+
+      - name: Final plaintext cleanup
+        if: always()
+        shell: bash
+        run: rm -f full-source.dump restore-list.txt dump-source.sh
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file logical-archive-summary.md
+
