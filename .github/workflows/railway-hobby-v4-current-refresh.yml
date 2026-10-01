@@ -19,10 +19,9 @@ env:
 
 jobs:
   parity:
-    if: >-
-      github.event.issue.number == 42 &&
-      github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway hobby-v4-current-refresh CONFIRM'
+    # SAFETY HOLD 2026-10-01: disabled after partial --clean restores left candidate-v4 incomplete.
+    # Do not re-enable until the restore path is made atomic or a fresh disposable candidate is used.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
