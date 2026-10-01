@@ -39,14 +39,22 @@ jobs:
           cat > probe.sql <<'SQL'
           \pset tuples_only on
           \pset format unaligned
-          SELECT 'WAL_BEFORE|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'WAL_0|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
           CHECKPOINT;
-          SELECT 'WAL_AFTER|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'WAL_1|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'WAL_2|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'WAL_3|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'WAL_4|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'WAL_5|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
           SELECT 'DB_BYTES|' || pg_database_size(current_database());
           SQL
 
           railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < probe.sql > probe.out
-          grep -E '^(WAL_BEFORE|WAL_AFTER|DB_BYTES)\|' probe.out > probe.sanitized
+          grep -E '^(WAL_[0-5]|DB_BYTES)\|' probe.out > probe.sanitized
           test -s probe.sanitized
 
       - name: Post sanitized result
