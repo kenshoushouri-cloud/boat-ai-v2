@@ -343,3 +343,142 @@ jobs:
           } > current-parity-summary.md
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file current-parity-summary.md
 
+  delta-key-layout:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v3-delta-key-layout'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_SERVICE: "postgres-recovery"
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Inspect delta-table keys read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > delta-key-layout.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          \pset fieldsep '|'
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '120s';
+
+          SELECT
+            'CONSTRAINT|' ||
+            cls.relname || '|' ||
+            con.conname || '|' ||
+            con.contype::text || '|' ||
+            pg_get_constraintdef(con.oid, true)
+          FROM pg_constraint con
+          JOIN pg_class cls ON cls.oid = con.conrelid
+          JOIN pg_namespace n ON n.oid = cls.relnamespace
+          WHERE n.nspname = 'public'
+            AND cls.relname IN (
+              'v2_candidate_filter_shadow',
+              'v2_exhibition_shadow_decisions',
+              'v2_odds_trifecta',
+              'v2_realtime_entry_snapshots',
+              'v2_realtime_exhibition_snapshots',
+              'v2_realtime_odds_snapshots',
+              'v2_realtime_race_condition_snapshots',
+              'v2_realtime_racer_condition_snapshots',
+              'v2_realtime_weather_snapshots',
+              'v2_v24_motor2_forward_shadow'
+            )
+            AND con.contype IN ('p','u')
+          ORDER BY cls.relname, con.contype, con.conname;
+
+          SELECT
+            'UNIQUE_INDEX|' ||
+            tbl.relname || '|' ||
+            idx.relname || '|' ||
+            pg_get_indexdef(idx.oid)
+          FROM pg_index pi
+          JOIN pg_class idx ON idx.oid = pi.indexrelid
+          JOIN pg_class tbl ON tbl.oid = pi.indrelid
+          JOIN pg_namespace n ON n.oid = tbl.relnamespace
+          WHERE n.nspname = 'public'
+            AND tbl.relname IN (
+              'v2_candidate_filter_shadow',
+              'v2_exhibition_shadow_decisions',
+              'v2_odds_trifecta',
+              'v2_realtime_entry_snapshots',
+              'v2_realtime_exhibition_snapshots',
+              'v2_realtime_odds_snapshots',
+              'v2_realtime_race_condition_snapshots',
+              'v2_realtime_racer_condition_snapshots',
+              'v2_realtime_weather_snapshots',
+              'v2_v24_motor2_forward_shadow'
+            )
+            AND pi.indisunique
+          ORDER BY tbl.relname, idx.relname;
+
+          SELECT
+            'TEMPORAL_COLUMN|' ||
+            table_name || '|' ||
+            ordinal_position || '|' ||
+            column_name || '|' ||
+            data_type
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name IN (
+              'v2_candidate_filter_shadow',
+              'v2_exhibition_shadow_decisions',
+              'v2_odds_trifecta',
+              'v2_realtime_entry_snapshots',
+              'v2_realtime_exhibition_snapshots',
+              'v2_realtime_odds_snapshots',
+              'v2_realtime_race_condition_snapshots',
+              'v2_realtime_racer_condition_snapshots',
+              'v2_realtime_weather_snapshots',
+              'v2_v24_motor2_forward_shadow'
+            )
+            AND data_type IN ('date','timestamp without time zone','timestamp with time zone')
+          ORDER BY table_name, ordinal_position;
+          SQL
+
+          railway connect "$SOURCE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < delta-key-layout.sql > delta-key-layout.out
+
+          grep -E '^(CONSTRAINT|UNIQUE_INDEX|TEMPORAL_COLUMN)\|' delta-key-layout.out > delta-key-layout.sanitized
+          test -s delta-key-layout.sanitized
+
+      - name: Post sanitized key layout
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Full-history v3 delta key layout'
+            echo
+            if [ -s delta-key-layout.sanitized ]; then
+              echo 'Read-only source catalog query completed.'
+              echo
+              echo '~~~text'
+              cat delta-key-layout.sanitized
+              echo '~~~'
+            else
+              echo 'Diagnostic did not produce sanitized output.'
+            fi
+            echo
+            echo 'SOURCE_WRITE=0 / CANDIDATE_WRITE=0 / CUTOVER=0 / DELETE=0 / RESIZE=0 / PLAN_CHANGE=0.'
+          } > delta-key-layout-summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file delta-key-layout-summary.md
+
