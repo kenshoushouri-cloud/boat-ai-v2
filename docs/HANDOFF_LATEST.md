@@ -7,23 +7,20 @@ Read only:
 2. the current compact handoff above, in full
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-Do not load old handoffs by default. Re-fetch only the live state required for the next single task.
+Do not load old handoffs by default. Re-fetch only live state required for the next single task.
 
 Current focus:
 - preserve daily prospective evidence
-- historical writer `36703692641` remains occupied; do not duplicate-trigger
+- do not duplicate-trigger historical writer `36703692641`
 - prepare Pro -> Hobby for the 2026-10-03 billing boundary
-- Railway backup + current restore/parity-verified encrypted archive are secured
-- restore/parity run `36812386066` = **SUCCESS**
-- current recovery artifact id `11139857666`; artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`
-- exact parity passed for all 39 public table row counts plus schema metadata
-- hot-retention finalization run `36813600010` = **SUCCESS**
-- retention mode = **FULL_HISTORY_PINNED**
-- fresh full restore baseline = **3,615,987,391 bytes**; projected +14d = **4,034,454,006 bytes**
-- 5 GB planning headroom after projection = **965,545,994 bytes**
-- do not use the old 60d filtered candidate as a cutover reference
-- **next single task = Hobby-compatible 5 GB full-history DB/volume candidate**
-- no Production delete, cutover, volume cleanup, or plan downgrade before candidate parity is accepted
+- backup + encrypted restore/parity-verified archive secured
+- retention policy = **FULL_HISTORY_PINNED**
+- current isolated 5 GB candidate = `postgres-hobby-fullhistory-candidate-v3`
+- candidate ENOSPC diagnostic found two missing indexes
+- `ux_v2_venues_venue_id` repair = **DONE**
+- remaining blocker = `ux_v2_odds_trifecta_race_ticket` under 5 GB constraint
+- **next single task = candidate-only remaining-index resolution, then exact parity**
+- no Production cutover/delete/resize/plan change before parity acceptance
 - V5 operational-readiness review target remains around 2026-10-15
 
 Fixed:
@@ -36,6 +33,9 @@ Fixed:
 - never enumerate Railway plaintext Variables
 - Railway Agent only when normal MCP cannot answer
 
-Working style: **one task at a time; concise result only; replace stale text instead of appending.**
+Timeout discipline:
+- one task at a time
+- concise result only
+- avoid broad GitHub Actions/log/comment fetches; query only specific run/page/resource
 
-`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / FULL_HISTORY_PINNED / HOBBY_PREP / PURCHASE_FALSE`
+`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / AVOID_BULK_OUTPUT / FULL_HISTORY_PINNED / 5GB_CANDIDATE / PARITY_BEFORE_CUTOVER / PURCHASE_FALSE`
