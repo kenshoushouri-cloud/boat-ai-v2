@@ -82,15 +82,18 @@ jobs:
                   out["audit_date"] = str(today)
                   out["source_database_bytes"] = int(row["b"])
 
-                  cur.execute("""
-                    select table_name,
-                           array_agg(column_name order by ordinal_position) cols
-                      from information_schema.columns
-                     where table_schema='public'
-                     group by table_name
-                     order by table_name
-                  """)
-                  cols_by = {r["table_name"]: set(r["cols"]) for r in cur.fetchall()}
+                  def has_col(table, col):
+                      cur.execute(
+                          """select exists(
+                               select 1
+                                 from information_schema.columns
+                                where table_schema='public'
+                                  and table_name=%s
+                                  and column_name=%s
+                             ) ok""",
+                          (table, col),
+                      )
+                      return bool(cur.fetchone()["ok"])
 
                   cur.execute("""
                     select tablename
@@ -102,7 +105,8 @@ jobs:
 
                   growth = []
                   for table in tables:
-                      cols = cols_by.get(table, set())
+                      has_race_id = has_col(table, "race_id")
+                      has_race_date = has_col(table, "race_date")
                       cur.execute(
                           "select pg_total_relation_size(%s::regclass)::bigint b",
                           (f"public.{table}",),
@@ -112,11 +116,11 @@ jobs:
                       total = int(cur.fetchone()["n"] or 0)
 
                       date_mode = None
-                      if table == "v2_races" and "race_date" in cols:
+                      if table == "v2_races" and has_race_date:
                           date_mode = "direct"
-                      elif "race_id" in cols:
+                      elif has_race_id:
                           date_mode = "join"
-                      elif "race_date" in cols:
+                      elif has_race_date:
                           date_mode = "direct"
 
                       rec = {
@@ -154,7 +158,7 @@ jobs:
                   )
 
                   for table in HOT_TABLES:
-                      cols = cols_by.get(table, set())
+                      has_snapshot_label = has_col(table, "snapshot_label")
                       cur.execute(
                           "select pg_total_relation_size(%s::regclass)::bigint b",
                           (f"public.{table}",),
@@ -177,7 +181,7 @@ jobs:
                           old = max(0, total - hot)
                           est_archive = int(rel_bytes * old / total) if total else 0
                           historical_old = None
-                          if "snapshot_label" in cols:
+                          if has_snapshot_label:
                               cur.execute(
                                   f"""select count(*)::bigint n
                                         from public.{table} t
