@@ -81,6 +81,90 @@ jobs:
             diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
+          python - <<'PY' >> diagnostic.sanitized
+          import json
+          import os
+          import urllib.request
+
+          endpoint = "https://backboard.railway.com/graphql/v2"
+          token = os.environ["RAILWAY_TOKEN"]
+          target_service = os.environ["TARGET_SERVICE"]
+
+          query = """
+          query CandidateV4VolumeCapacity {
+            projectToken {
+              project {
+                services(first: 100) {
+                  edges { node { id name } }
+                }
+                volumes(first: 100) {
+                  edges {
+                    node {
+                      volumeInstances(first: 100) {
+                        edges {
+                          node {
+                            id
+                            serviceId
+                            sizeMB
+                            currentSizeMB
+                            deletedAt
+                            isPendingDeletion
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          req = urllib.request.Request(
+              endpoint,
+              data=json.dumps({"query": query, "variables": {}}).encode("utf-8"),
+              method="POST",
+              headers={
+                  "Project-Access-Token": token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "boat-ai-v2-v4-headroom-readonly",
+              },
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              payload = json.loads(resp.read().decode("utf-8"))
+          if payload.get("errors"):
+              raise SystemExit("volume metadata GraphQL query failed")
+
+          project = (((payload.get("data") or {}).get("projectToken") or {}).get("project") or {})
+          services = [
+              e.get("node") or {}
+              for e in ((project.get("services") or {}).get("edges") or [])
+          ]
+          service_ids = [s.get("id") for s in services if s.get("name") == target_service]
+          if len(service_ids) != 1:
+              raise SystemExit("target service could not be resolved uniquely")
+          service_id = service_ids[0]
+
+          matches = []
+          for vedge in ((project.get("volumes") or {}).get("edges") or []):
+              volume = vedge.get("node") or {}
+              for iedge in ((volume.get("volumeInstances") or {}).get("edges") or []):
+                  inst = iedge.get("node") or {}
+                  if (
+                      inst.get("serviceId") == service_id
+                      and not inst.get("deletedAt")
+                      and not inst.get("isPendingDeletion")
+                  ):
+                      matches.append(inst)
+
+          if len(matches) != 1:
+              raise SystemExit("active target volume could not be resolved uniquely")
+
+          inst = matches[0]
+          print(f"VOLUME_CONFIGURED_SIZE_MB|{inst.get('sizeMB')}")
+          print(f"VOLUME_CURRENT_SIZE_MB|{inst.get('currentSizeMB')}")
+          PY
+
       - name: Post sanitized result
         if: always()
         shell: bash
