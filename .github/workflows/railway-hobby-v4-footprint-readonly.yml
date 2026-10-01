@@ -1,0 +1,109 @@
+name: Railway Hobby v4 footprint read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  footprint:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-footprint-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Capture read-only storage footprint
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > footprint.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '60s';
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'TABLE_HEAP_BYTES|' || COALESCE(sum(pg_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('r','p');
+          SELECT 'TABLE_TOTAL_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('r','p');
+          SELECT 'INDEX_BYTES|' || COALESCE(sum(pg_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('i','I');
+          SELECT 'TOAST_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='pg_toast' AND c.relkind='t';
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'WAL_FILES|' || count(*) FROM pg_ls_waldir();
+          SELECT 'MAX_WAL_SIZE|' || current_setting('max_wal_size');
+          SELECT 'MIN_WAL_SIZE|' || current_setting('min_wal_size');
+          SELECT 'WAL_KEEP_SIZE|' || current_setting('wal_keep_size');
+          SELECT 'MAX_SLOT_WAL_KEEP_SIZE|' || current_setting('max_slot_wal_keep_size');
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+          SELECT 'ACTIVE_REPLICATION|' || count(*) FROM pg_stat_replication;
+
+          SELECT 'TOP_TABLE|' || c.relname || '|' || pg_total_relation_size(c.oid)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind='r'
+          ORDER BY pg_total_relation_size(c.oid) DESC
+          LIMIT 15;
+
+          SELECT 'TOP_INDEX|' || c.relname || '|' || pg_relation_size(c.oid)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind='i'
+          ORDER BY pg_relation_size(c.oid) DESC
+          LIMIT 15;
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < footprint.sql > footprint.raw
+
+          grep -E '^(DB_BYTES|TABLE_HEAP_BYTES|TABLE_TOTAL_BYTES|INDEX_BYTES|TOAST_BYTES|WAL_BYTES|WAL_FILES|MAX_WAL_SIZE|MIN_WAL_SIZE|WAL_KEEP_SIZE|MAX_SLOT_WAL_KEEP_SIZE|REPLICATION_SLOTS|ACTIVE_REPLICATION|TOP_TABLE|TOP_INDEX)\|' footprint.raw > footprint.sanitized
+          test -s footprint.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Hobby v4 storage footprint read-only'
+            echo
+            if [ -s footprint.sanitized ]; then
+              cat footprint.sanitized
+            else
+              echo 'FAIL: no sanitized footprint was produced.'
+            fi
+            echo
+            echo 'Read-only metadata only. No rows, schema, settings, Variables, service config, volume, or plan were changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
