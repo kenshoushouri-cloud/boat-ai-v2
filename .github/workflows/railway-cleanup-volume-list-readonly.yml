@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway volume list --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json > volumes.json
+          railway volume list --json > volumes.json
           python - <<'PY'
           import json
           from pathlib import Path
