@@ -59,6 +59,23 @@ jobs:
 
           SELECT 'DB_BYTES|' || pg_database_size(current_database());
 
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+
+          SELECT 'PUBLIC_TOTAL_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
+
+          SELECT 'PUBLIC_HEAP_BYTES|' || COALESCE(sum(pg_relation_size(c.oid)),0)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
+
+          SELECT 'PUBLIC_INDEX_BYTES|' || COALESCE(sum(pg_indexes_size(c.oid)),0)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
+
           SELECT
             'TOP|' ||
             n.nspname || '|' ||
@@ -79,7 +96,7 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < diagnostic.sql > diagnostic.out
 
-          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
+          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
       - name: Post sanitized result
