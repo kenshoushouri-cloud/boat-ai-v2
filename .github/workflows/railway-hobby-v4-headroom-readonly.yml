@@ -55,12 +55,14 @@ jobs:
           SELECT 'PUBLIC_TABLE_HEAP_BYTES|' || COALESCE(sum(pg_table_size(format('%I.%I',schemaname,tablename)::regclass)),0)
           FROM pg_tables WHERE schemaname='public';
 
-          SELECT 'SETTING|max_wal_size|' || setting || '|' || unit FROM pg_settings WHERE name='max_wal_size';
-          SELECT 'SETTING|min_wal_size|' || setting || '|' || unit FROM pg_settings WHERE name='min_wal_size';
-          SELECT 'SETTING|wal_keep_size|' || setting || '|' || unit FROM pg_settings WHERE name='wal_keep_size';
-          SELECT 'SETTING|max_slot_wal_keep_size|' || setting || '|' || unit FROM pg_settings WHERE name='max_slot_wal_keep_size';
-          SELECT 'SETTING|wal_level|' || setting || '|' || unit FROM pg_settings WHERE name='wal_level';
-          SELECT 'SETTING|archive_mode|' || setting || '|' || unit FROM pg_settings WHERE name='archive_mode';
+          SELECT 'SETTING|max_wal_size|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='max_wal_size';
+          SELECT 'SETTING|min_wal_size|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='min_wal_size';
+          SELECT 'SETTING|wal_keep_size|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='wal_keep_size';
+          SELECT 'SETTING|max_slot_wal_keep_size|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='max_slot_wal_keep_size';
+          SELECT 'SETTING|wal_level|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='wal_level';
+          SELECT 'SETTING|archive_mode|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='archive_mode';
+          SELECT 'SETTING|checkpoint_timeout|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='checkpoint_timeout';
+          SELECT 'SETTING|checkpoint_completion_target|' || setting || '|' || COALESCE(unit,'') FROM pg_settings WHERE name='checkpoint_completion_target';
 
           SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
           SELECT 'ACTIVE_REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots WHERE active;
