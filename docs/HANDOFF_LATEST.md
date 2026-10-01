@@ -7,9 +7,7 @@ Read only:
 2. the current compact handoff above, in full
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-Do **not** load old `LIVE_HANDOFF_*`, `PROJECT_HANDOFF.md`, `CURRENT_STATE.md`, or `SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` by default. They are deep history.
-
-Before every action, re-fetch only the live state needed for that one task.
+Do not load old handoffs/deep-history docs by default. Re-fetch only the live state needed for the next single task.
 
 Source of Truth:
 - GitHub `main` = code
@@ -17,11 +15,11 @@ Source of Truth:
 
 Current focus:
 - preserve daily prospective evidence
-- let the existing historical writer finish; no duplicate beforeinfo trigger
-- prepare Pro -> Hobby safely around the 10/03 billing boundary
+- let writer `36703692641` finish; no duplicate beforeinfo trigger
+- prepare Pro -> Hobby for the 10/03 billing boundary
 - backup + encrypted logical archive are secured
-- **next migration task = isolated restore drill**
-- archive -> restore -> parity -> cutover; never delete first
+- **next task = isolated restore drill**
+- restore -> parity -> cutover -> cleanup; never delete first
 - V5 operational-readiness target remains around 2026-10-15
 
 Fixed:
@@ -32,10 +30,6 @@ Fixed:
 - never enumerate Railway plaintext Variables
 - Railway Agent only when normal MCP cannot answer
 
-Working style:
-- one task at a time
-- no intermediate progress unless needed
-- concise completion reports
-- replace stale handoff text instead of appending
+Working style: **one task at a time; no long intermediate progress; concise result only; replace stale handoff text instead of appending.**
 
 `LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / PURCHASE_FALSE`
