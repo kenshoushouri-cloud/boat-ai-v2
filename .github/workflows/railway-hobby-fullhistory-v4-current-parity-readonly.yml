@@ -1,6 +1,10 @@
 name: Railway 5GB full-history v4 current parity read-only
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/railway-hobby-fullhistory-v4-current-parity-readonly.yml
   issue_comment:
     types: [created]
 
@@ -18,9 +22,12 @@ env:
 jobs:
   parity:
     if: >-
-      github.event.issue.number == 42 &&
-      github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway hobby-fullhistory-v4-current-parity'
+      github.event_name == 'push' ||
+      (
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway hobby-fullhistory-v4-current-parity'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
