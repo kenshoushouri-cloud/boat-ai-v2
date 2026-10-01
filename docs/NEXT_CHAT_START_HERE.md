@@ -9,16 +9,16 @@ Paste the block below into a new chat.
 
 新競艇AI開発プロジェクトNo.2の続きです。
 
-GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認してください。
+最初に GitHub repository `kenshoushouri-cloud/boat-ai-v2` を確認してください。
 
-最初に次の3点だけ読んでください。
+読むのは次の3点だけで十分です。
 1. `docs/HANDOFF_LATEST.md`
 2. そこから指定された current compact handoff を全文
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、`SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` は履歴です。特定の過去判断が必要な場合だけ確認してください。
+古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、dated purpose/timeline handoff は履歴です。特定の過去判断が必要な場合だけ確認してください。
 
-その後、snapshotを現在値と決めつけず、**一度に1作業だけ**live再取得して進めてください。最初に current main、その次にその作業へ必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
+その後、handoff内のSHA・run・件数を現在値と決めつけず、**一度に1作業だけ**live再取得してください。最初に current main、次にその作業に必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
 
 固定ルール:
 - GitHub main = code Source of Truth
@@ -38,9 +38,9 @@ GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認して�
 4. backupと暗号化logical archiveは確保済み
 5. **次の1作業はProductionから隔離したrestore drill**
 6. restore/parity前にhistorical DELETE・volume削除・Production切替・plan変更をしない
-7. 2026-10-15前後のV5 operational-readiness reviewへ進む
+7. matched-contract backtestと2026-10-15前後のV5 operational-readiness reviewへ進む
 
-タイムアウト回避のため、途中経過の長文表示は不要です。**1作業完了ごとに短く結果だけ報告**してください。
+タイムアウトとトーク容量対策のため、途中経過の長文表示は不要です。**1作業完了ごとに短く結果だけ報告**してください。
 
 `READ_HANDOFF_LATEST / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / PURCHASE_FALSE`
 
