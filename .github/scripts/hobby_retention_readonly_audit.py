@@ -41,7 +41,7 @@ def main() -> None:
     try:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
-            cur.execute("set local statement_timeout='45s'")
+            cur.execute("set local statement_timeout='90s'")
             cur.execute("set local lock_timeout='5s'")
             cur.execute("select current_setting('transaction_read_only') as ro")
             ro = str((cur.fetchone() or {}).get("ro") or "").lower()
@@ -73,9 +73,15 @@ def main() -> None:
                 row = dict(cur.fetchone() or {})
                 if not row:
                     raise SystemExit(f"table metadata unavailable: {table}")
+                cur.execute(f"select count(*)::bigint as n from {table}")
+                exact_total_rows = int((cur.fetchone() or {}).get("n") or 0)
+                if exact_total_rows <= 0:
+                    raise SystemExit(f"exact row count unavailable: {table}")
+
                 stats[table] = {
                     "relation_bytes": int(row["relation_bytes"] or 0),
-                    "estimated_live_rows": max(1, int(row["estimated_live_rows"] or 0)),
+                    "exact_total_rows": exact_total_rows,
+                    "estimated_live_rows": int(row["estimated_live_rows"] or 0),
                     "estimated_dead_rows": int(row["estimated_dead_rows"] or 0),
                     "hot_rows": {},
                 }
@@ -115,6 +121,7 @@ def main() -> None:
                 print(
                     "HOBBY_RETENTION_TABLE="
                     f"{table} relation_mib={mib(data['relation_bytes']):.1f} "
+                    f"exact_total_rows={data['exact_total_rows']} "
                     f"estimated_live_rows={data['estimated_live_rows']} "
                     f"estimated_dead_rows={data['estimated_dead_rows']}"
                 )
@@ -125,7 +132,7 @@ def main() -> None:
                 for table, data in stats.items():
                     ratio = min(
                         1.0,
-                        data["hot_rows"][days] / max(1, data["estimated_live_rows"]),
+                        data["hot_rows"][days] / max(1, data["exact_total_rows"]),
                     )
                     estimated_bytes = data["relation_bytes"] * ratio
                     estimated_hot_selected += estimated_bytes
