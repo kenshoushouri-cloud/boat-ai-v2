@@ -1,0 +1,292 @@
+name: Railway Postgres isolated archive restore drill v2
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_BRIDGE_ISSUE: "42"
+  KEY_SERVICE: "archive-restore-key-20261001"
+  ARCHIVE_NAME: "boat-ai-pre-hobby-restorable-20261001-v2"
+
+concurrency:
+  group: railway-postgres-isolated-archive-restore-drill-v2
+  cancel-in-progress: false
+
+jobs:
+  restore-drill:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway postgres-isolated-restore-drill-v2 CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: restoretest
+          POSTGRES_DB: restore_drill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_drill"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway variable set --help >/dev/null
+          railway run --help >/dev/null
+
+      - name: Generate restore-key pair and persist private key without printing it
+        id: key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes             -keyout archive-private.pem             -out archive-public-v2.pem             -subj "/CN=boat-ai-hobby-archive-restorable-v2-20261001"
+          test -s archive-private.pem
+          test -s archive-public-v2.pem
+
+          cert_sha="$(sha256sum archive-public-v2.pem | awk '{print $1}')"
+          private_b64="$(base64 -w0 archive-private.pem)"
+          test -n "$private_b64"
+
+          if railway variable set "ARCHIVE_CMS_PRIVATE_KEY_B64=$private_b64"             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE" >/tmp/key-set.out 2>/tmp/key-set.err; then
+            :
+          else
+            rm -f /tmp/key-set.out /tmp/key-set.err archive-private.pem
+            exit 1
+          fi
+
+          unset private_b64
+          rm -f /tmp/key-set.out /tmp/key-set.err archive-private.pem
+          test ! -e archive-private.pem
+          echo "cert_sha=$cert_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Create source logical dump read-only and capture base counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > dump-source.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?}"
+          export PGOPTIONS='-c default_transaction_read_only=on'
+
+          docker run --rm             -e DATABASE_PUBLIC_URL             -e PGOPTIONS             -v "$PWD:/work"             postgres:18             bash -lc 'pg_dump "$DATABASE_PUBLIC_URL" --format=custom --no-owner --no-acl --file=/work/full-source.dump'
+
+          docker run --rm             -e DATABASE_PUBLIC_URL             -e PGOPTIONS             postgres:18             psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+              SELECT 'v2_races' || E'\\t' || count(*) FROM v2_races
+              UNION ALL
+              SELECT 'v2_race_entries' || E'\\t' || count(*) FROM v2_race_entries
+              UNION ALL
+              SELECT 'v2_results' || E'\\t' || count(*) FROM v2_results
+              UNION ALL
+              SELECT 'v2_result_entries' || E'\\t' || count(*) FROM v2_result_entries
+              ORDER BY 1;
+            " > source-base-counts.tsv
+          SH
+          chmod 700 dump-source.sh
+
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service postgres-recovery             bash ./dump-source.sh
+
+          test -s full-source.dump
+          test -s source-base-counts.tsv
+
+      - name: Validate, fingerprint, and encrypt source dump
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" postgres:18             pg_restore --list /work/full-source.dump > restore-list.txt
+          test -s restore-list.txt
+
+          dump_bytes="$(stat -c %s full-source.dump)"
+          dump_sha="$(sha256sum full-source.dump | awk '{print $1}')"
+          list_entries="$(grep -c '^[0-9]' restore-list.txt || true)"
+
+          openssl cms -encrypt -binary -aes256             -in full-source.dump             -outform DER             -out "$ARCHIVE_NAME.dump.cms"             archive-public-v2.pem
+
+          test -s "$ARCHIVE_NAME.dump.cms"
+          encrypted_bytes="$(stat -c %s "$ARCHIVE_NAME.dump.cms")"
+          encrypted_sha="$(sha256sum "$ARCHIVE_NAME.dump.cms" | awk '{print $1}')"
+
+          echo "dump_bytes=$dump_bytes" >> "$GITHUB_OUTPUT"
+          echo "dump_sha=$dump_sha" >> "$GITHUB_OUTPUT"
+          echo "list_entries=$list_entries" >> "$GITHUB_OUTPUT"
+          echo "encrypted_bytes=$encrypted_bytes" >> "$GITHUB_OUTPUT"
+          echo "encrypted_sha=$encrypted_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Decrypt using only the escrowed Railway key
+        id: decrypt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e archive-private.pem
+
+          cat > decrypt-from-escrow.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${ARCHIVE_CMS_PRIVATE_KEY_B64:?}"
+          umask 077
+          printf '%s' "$ARCHIVE_CMS_PRIVATE_KEY_B64" | base64 -d > escrow-private.pem
+          openssl cms -decrypt -binary -inform DER             -in "$ARCHIVE_NAME.dump.cms"             -recip archive-public-v2.pem             -inkey escrow-private.pem             -out restored.dump
+          rm -f escrow-private.pem
+          SH
+          chmod 700 decrypt-from-escrow.sh
+
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE"             bash ./decrypt-from-escrow.sh
+
+          test -s restored.dump
+          restored_sha="$(sha256sum restored.dump | awk '{print $1}')"
+          test "$restored_sha" = "${{ steps.archive.outputs.dump_sha }}"
+          echo "restored_sha=$restored_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore into isolated local PostgreSQL 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             --network host             -e PGPASSWORD=restoretest             -v "$PWD:/work"             postgres:18             pg_restore               --no-owner               --no-acl               --exit-on-error               --jobs=2               --dbname="postgresql://postgres:restoretest@127.0.0.1:5432/restore_drill"               /work/restored.dump
+
+      - name: Verify restored base parity and local database health
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             --network host             -e PGPASSWORD=restoretest             postgres:18             psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_drill"             -At -v ON_ERROR_STOP=1 -c "
+              SELECT 'v2_races' || E'\\t' || count(*) FROM v2_races
+              UNION ALL
+              SELECT 'v2_race_entries' || E'\\t' || count(*) FROM v2_race_entries
+              UNION ALL
+              SELECT 'v2_results' || E'\\t' || count(*) FROM v2_results
+              UNION ALL
+              SELECT 'v2_result_entries' || E'\\t' || count(*) FROM v2_result_entries
+              ORDER BY 1;
+            " > restored-base-counts.tsv
+
+          diff -u source-base-counts.tsv restored-base-counts.tsv
+
+          restored_db_bytes="$(docker run --rm             --network host             -e PGPASSWORD=restoretest             postgres:18             psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_drill"             -At -v ON_ERROR_STOP=1 -c "SELECT pg_database_size(current_database());")"
+
+          public_tables="$(docker run --rm             --network host             -e PGPASSWORD=restoretest             postgres:18             psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_drill"             -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_tables WHERE schemaname='public';")"
+
+          test "$restored_db_bytes" -gt 0
+          test "$public_tables" -gt 0
+
+          echo "restored_db_bytes=$restored_db_bytes" >> "$GITHUB_OUTPUT"
+          echo "public_tables=$public_tables" >> "$GITHUB_OUTPUT"
+
+      - name: Build non-secret restore manifest
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "ARCHIVE_NAME=$ARCHIVE_NAME"
+            echo "PLAIN_DUMP_BYTES=${{ steps.archive.outputs.dump_bytes }}"
+            echo "PLAIN_DUMP_SHA256=${{ steps.archive.outputs.dump_sha }}"
+            echo "RESTORED_DUMP_SHA256=${{ steps.decrypt.outputs.restored_sha }}"
+            echo "RESTORE_LIST_ENTRIES=${{ steps.archive.outputs.list_entries }}"
+            echo "ENCRYPTED_BYTES=${{ steps.archive.outputs.encrypted_bytes }}"
+            echo "ENCRYPTED_SHA256=${{ steps.archive.outputs.encrypted_sha }}"
+            echo "CERT_SHA256=${{ steps.key.outputs.cert_sha }}"
+            echo "RESTORED_DB_BYTES=${{ steps.verify.outputs.restored_db_bytes }}"
+            echo "PUBLIC_TABLES=${{ steps.verify.outputs.public_tables }}"
+            echo "SOURCE_WRITE=0"
+            echo "RESTORE_TARGET=GITHUB_ACTIONS_LOCAL_POSTGRES18"
+            echo "KEY_ESCROW_SERVICE=$KEY_SERVICE"
+            echo "PRIVATE_KEY_UPLOADED=0"
+            echo "PLAINTEXT_DUMP_UPLOADED=0"
+          } > restore-manifest-v2.txt
+
+      - name: Upload only the restorable encrypted archive
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: |
+            ${{ env.ARCHIVE_NAME }}.dump.cms
+            archive-public-v2.pem
+            restore-manifest-v2.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Build sanitized success summary
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Isolated encrypted archive restore drill v2'
+            echo
+            echo '✅ PASS: a fresh read-only Production logical dump was encrypted, the local private key was deleted, the archive was decrypted only through the escrowed Railway key, and the dump was restored into an isolated GitHub Actions PostgreSQL 18 service.'
+            echo
+            echo "Artifact: `$ARCHIVE_NAME`"
+            echo "Plain dump bytes: `${{ steps.archive.outputs.dump_bytes }}`"
+            echo "Plain dump SHA-256: `${{ steps.archive.outputs.dump_sha }}`"
+            echo "Restored dump SHA-256: `${{ steps.decrypt.outputs.restored_sha }}`"
+            echo "Restore-list entries: `${{ steps.archive.outputs.list_entries }}`"
+            echo "Restored DB bytes: `${{ steps.verify.outputs.restored_db_bytes }}`"
+            echo "Public tables: `${{ steps.verify.outputs.public_tables }}`"
+            echo
+            echo 'Base-table exact row-count parity passed for v2_races, v2_race_entries, v2_results, and v2_result_entries.'
+            echo
+            echo "Key escrow service: `$KEY_SERVICE` (variable value never printed or uploaded)."
+            echo
+            echo 'SOURCE_WRITE=0 / Production rows and schema unchanged / restore target was local and isolated.'
+            echo
+            echo 'The older artifact boat-ai-pre-hobby-20261001 remains retained as historical evidence; this v2 artifact is the restore-verified replacement.'
+          } > restore-summary.md
+
+      - name: Build sanitized failure summary
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Isolated encrypted archive restore drill v2'
+            echo
+            echo '❌ FAIL: the isolated restore drill did not complete.'
+            echo
+            echo 'No Production delete, schema change, row change, cutover, volume cleanup, or plan change was requested.'
+            echo
+            echo 'Do not proceed to retention deletion, cutover, volume cleanup, or Pro -> Hobby downgrade.'
+          } > restore-summary.md
+
+      - name: Cleanup plaintext and private material
+        if: always()
+        shell: bash
+        run: |
+          rm -f             archive-private.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             source-base-counts.tsv             restored-base-counts.tsv             dump-source.sh             decrypt-from-escrow.sh             /tmp/key-set.out             /tmp/key-set.err
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file restore-summary.md
