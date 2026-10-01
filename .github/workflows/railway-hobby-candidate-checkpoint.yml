@@ -54,6 +54,12 @@ jobs:
           WHERE n.nspname='public' AND c.relkind IN ('r','m');
 
           CHECKPOINT;
+          SELECT 'AFTER1_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'AFTER2_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
+          SELECT 'AFTER3_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          CHECKPOINT;
 
           SELECT 'AFTER_DB_BYTES|' || pg_database_size(current_database());
           SELECT 'AFTER_WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
@@ -67,7 +73,7 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < checkpoint.sql > checkpoint.out
 
-          grep -E '^(BEFORE|AFTER)_(DB|WAL|INDEX)_BYTES\|' checkpoint.out > checkpoint.sanitized
+          grep -E '^(BEFORE_(DB|WAL|INDEX)_BYTES|AFTER[123]_WAL_BYTES|AFTER_(DB|WAL|INDEX)_BYTES)\|' checkpoint.out > checkpoint.sanitized
           test -s checkpoint.sanitized
 
       - name: Post sanitized result
