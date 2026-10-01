@@ -17,10 +17,6 @@ env:
   TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
   ARCHIVE_PREFIX: "boat-ai-pre-hobby-current-v4"
 
-concurrency:
-  group: railway-candidate-v4-current-refresh
-  cancel-in-progress: false
-
 jobs:
   parity:
     if: >-
