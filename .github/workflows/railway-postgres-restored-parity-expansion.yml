@@ -226,10 +226,14 @@ jobs:
           }
 
           def write_tsv(path, rows):
+              normalized = [
+                  ["" if value is None else str(value) for value in row]
+                  for row in rows
+              ]
+              normalized.sort()
               with open(path, "w", encoding="utf-8", newline="") as f:
                   writer = csv.writer(f, delimiter="\t", lineterminator="\n")
-                  for row in rows:
-                      writer.writerow(["" if value is None else str(value) for value in row])
+                  writer.writerows(normalized)
 
           def capture(conn, prefix):
               tables = conn.execute("""
@@ -531,6 +535,7 @@ jobs:
               out_path = raw_path[:-4] + ".tsv"
               with open(raw_path, "r", encoding="utf-8", newline="") as src:
                   rows = list(csv.reader(src, delimiter="\t"))
+              rows.sort()
               with open(out_path, "w", encoding="utf-8", newline="") as dst:
                   writer = csv.writer(dst, delimiter="\t", lineterminator="\n")
                   writer.writerows(rows)
