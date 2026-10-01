@@ -13,11 +13,13 @@ Current focus:
 - preserve daily prospective evidence
 - let historical writer `36703692641` continue; no duplicate trigger
 - prepare Pro -> Hobby for the 2026-10-03 billing boundary
-- Railway backup + current restore-verified encrypted archive are secured
-- current restore run `36811231115` = **SUCCESS**
-- current artifact id `11138759678`; dump SHA-256 = `493374319f2475d74da7ae50edb4709c5bb882ad14ce9bc5eab68d8843e80356`
-- restored parity expansion run `36812219830` = **SUCCESS**
-- full public schema parity passed; 10 additional critical tables passed source>=restore row-count evidence
+- Railway backup + current restore/parity-verified encrypted archive are secured
+- current restore/parity run `36812386066` = **SUCCESS**
+- current artifact id `11139857666`; artifact = `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066`
+- dump/restored SHA-256 = `87dea392d2667509c5040d3fd9bff85ffbbd2dc0d5dec974cba9f75a29e062ab`
+- exact parity passed for all 39 public table row counts plus table metadata / columns / constraints / indexes / sequences / views / triggers / policies / extensions
+- source/restored evidence SHA-256 = `658bac46705b3006fdc0ee370e9370bf90a484bc2a8767d8cc29734ae0af603d`
+- v2 artifacts are historical; v3 uses a run-scoped escrow key and must be the recovery reference
 - **next single task = hot-retention finalization**
 - no Production delete, cutover, volume cleanup, or plan downgrade before the Hobby-compatible set and parity are accepted
 - V5 operational-readiness review target remains around 2026-10-15
@@ -34,4 +36,4 @@ Fixed:
 
 Working style: **one task at a time; concise result only; replace stale text instead of appending.**
 
-`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / PARITY_VERIFIED / HOBBY_PREP / PURCHASE_FALSE`
+`LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_VERIFIED / EXACT_PARITY_VERIFIED / HOBBY_PREP / PURCHASE_FALSE`
