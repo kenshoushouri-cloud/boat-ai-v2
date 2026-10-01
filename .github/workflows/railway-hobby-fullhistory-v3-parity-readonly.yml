@@ -51,7 +51,7 @@ jobs:
           \pset format unaligned
           SET default_transaction_read_only = on;
           SET statement_timeout = '120s';
-          SELECT c.relname
+          SELECT 'TABLE_NAME|' || c.relname
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public'
@@ -63,7 +63,7 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < list-tables.sql > source-table-list.raw
 
-          grep -E '^[A-Za-z0-9_]+$' source-table-list.raw > table-list.txt
+          grep '^TABLE_NAME|' source-table-list.raw | cut -d'|' -f2- > table-list.txt
           test -s table-list.txt
 
           python3 - <<'PY'
