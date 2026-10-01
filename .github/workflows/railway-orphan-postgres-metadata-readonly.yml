@@ -1,0 +1,83 @@
+name: Railway orphan Postgres metadata read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+
+jobs:
+  metadata:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway orphan-postgres-metadata-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Read metadata only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/meta.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'CURRENT_DB|' || current_database();
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'PUBLIC_TABLES|' || count(*) FROM pg_tables WHERE schemaname='public';
+          SELECT 'PUBLIC_INDEXES|' || count(*) FROM pg_indexes WHERE schemaname='public';
+          SELECT 'NON_TEMPLATE_DATABASES|' ||
+                 COALESCE(string_agg(datname || ':' || pg_database_size(datname)::text, ',' ORDER BY datname),'')
+          FROM pg_database
+          WHERE NOT datistemplate AND datallowconn;
+          SQL
+
+          : > metadata.sanitized
+          for svc in Postgres Postgres-AbWo; do
+            echo "SERVICE|$svc" >> metadata.sanitized
+            railway connect "$svc" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < /tmp/meta.sql \
+              | grep -E '^(CURRENT_DB|DB_BYTES|PUBLIC_TABLES|PUBLIC_INDEXES|NON_TEMPLATE_DATABASES)\|' \
+              >> metadata.sanitized
+          done
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Orphan PostgreSQL metadata read-only'
+            echo
+            if [ -s metadata.sanitized ]; then
+              cat metadata.sanitized
+            else
+              echo 'FAIL: no sanitized metadata produced.'
+            fi
+            echo
+            echo 'Read-only metadata only. No row data, Variables, schema, deployment, volume, or service settings were changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
