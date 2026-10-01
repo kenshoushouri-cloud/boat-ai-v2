@@ -295,3 +295,181 @@ jobs:
           if [ -f railway-db-size-summary.md ]; then
             gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-db-size-summary.md
           fi
+
+  hobby-parity:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      HOT_CUTOFF: "2026-08-02"
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install "psycopg[binary]>=3.2,<4"
+          npm install --global @railway/cli
+
+      - name: Write read-only parity probe
+        shell: bash
+        run: |
+          cat > /tmp/hobby_parity.py <<'PY'
+          import json, os, psycopg
+          role=os.environ["AUDIT_ROLE"]
+          cutoff=os.environ["HOT_CUTOFF"]
+          url=os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          base=["v2_races","v2_race_entries","v2_results","v2_result_entries"]
+          hot=[
+              "v2_odds_trifecta",
+              "v2_realtime_racer_condition_snapshots",
+              "v2_realtime_weather_snapshots",
+              "v2_realtime_race_condition_snapshots",
+              "v2_realtime_exhibition_snapshots",
+          ]
+          observe=[
+              "v2_realtime_odds_snapshots",
+              "v2_v24_motor2_forward_shadow",
+              "v2_racer_course_stats_snapshots",
+              "v2_realtime_entry_snapshots",
+              "v2_opponent_pressure_shadow_v2",
+          ]
+          out={"role":role,"cutoff":cutoff,"database_bytes":0,"base":{},"hot":{},"observe":{}}
+          with psycopg.connect(url, autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("set transaction read only")
+                  cur.execute("set local statement_timeout='120s'")
+                  cur.execute("select pg_database_size(current_database())")
+                  out["database_bytes"]=int(cur.fetchone()[0])
+                  for t in base:
+                      cur.execute(f"select count(*)::bigint from public.{t}")
+                      out["base"][t]=int(cur.fetchone()[0])
+                  for t in hot:
+                      cur.execute(
+                          f"""select count(*)::bigint,
+                                     count(*) filter(where r.race_date >= %s::date)::bigint,
+                                     count(*) filter(where r.race_date < %s::date)::bigint
+                              from public.{t} x
+                              join public.v2_races r on r.race_id=x.race_id""",
+                          (cutoff,cutoff),
+                      )
+                      total,hot_n,old_n=cur.fetchone()
+                      out["hot"][t]={"total":int(total),"hot":int(hot_n),"old":int(old_n)}
+                  for t in observe:
+                      cur.execute("select to_regclass(%s)",(f"public.{t}",))
+                      if cur.fetchone()[0] is None:
+                          continue
+                      cur.execute(f"select count(*)::bigint from public.{t}")
+                      out["observe"][t]=int(cur.fetchone()[0])
+              conn.rollback()
+          print("HOBBY_PARITY="+json.dumps(out,sort_keys=True))
+          PY
+
+      - name: Read source counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service postgres-recovery bash -lc 'export AUDIT_ROLE=source; exec python /tmp/hobby_parity.py' > source-parity.txt
+
+      - name: Read candidate counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service postgres-hobby-candidate bash -lc 'export AUDIT_ROLE=target; exec python /tmp/hobby_parity.py' > target-parity.txt
+
+      - name: Build sanitized parity summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          def load(path):
+              s=Path(path).read_text(encoding="utf-8",errors="replace")
+              m=re.search(r"^HOBBY_PARITY=(\{.*\})$",s,re.M)
+              if not m:
+                  raise SystemExit("sanitized payload missing")
+              return json.loads(m.group(1))
+          src,tgt=load("source-parity.txt"),load("target-parity.txt")
+          base_ok=True
+          hot_ok=True
+          lines=[
+              "## Railway Hobby candidate parity",
+              "",
+              "READ ONLY; no database rows/schema, Variables, service config, volume, backup, or plan was changed.",
+              "",
+              f"Cutoff: **{src['cutoff']}**",
+              f"Source logical size: **{src['database_bytes']/1024/1024:.0f} MiB**",
+              f"Candidate logical size: **{tgt['database_bytes']/1024/1024:.0f} MiB**",
+              "",
+              "### Full-copy base tables",
+              "",
+              "| Table | Source | Candidate | Match |",
+              "|---|---:|---:|---|",
+          ]
+          for t,n in src["base"].items():
+              m=tgt["base"].get(t)
+              ok=(m==n); base_ok=base_ok and ok
+              lines.append(f"| `{t}` | {n:,} | {m if m is not None else 0:,} | {'PASS' if ok else 'FAIL'} |")
+          lines += ["","### Hot-only tables","","| Table | Source hot | Candidate total | Candidate old | Match |","|---|---:|---:|---:|---|"]
+          for t,s in src["hot"].items():
+              q=tgt["hot"].get(t,{})
+              ok=(q.get("total")==s.get("hot") and q.get("old")==0)
+              hot_ok=hot_ok and ok
+              lines.append(f"| `{t}` | {s['hot']:,} | {q.get('total',0):,} | {q.get('old',0):,} | {'PASS' if ok else 'FAIL'} |")
+          lines += ["","### Other retained tables (observe only)","","| Table | Source | Candidate |","|---|---:|---:|"]
+          for t,n in src["observe"].items():
+              lines.append(f"| `{t}` | {n:,} | {tgt['observe'].get(t,0):,} |")
+          overall=base_ok and hot_ok
+          lines += [
+              "",
+              f"Base parity: **{'PASS' if base_ok else 'FAIL'}**",
+              f"Hot parity: **{'PASS' if hot_ok else 'FAIL'}**",
+              f"Initial-seed parity: **{'PASS' if overall else 'FAIL'}**",
+              "",
+              "Count-only audit; this does not authorize Production cutover.",
+          ]
+          Path("hobby-parity-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Build parity failure summary
+        if: failure()
+        shell: bash
+        run: |
+          if [ ! -f hobby-parity-summary.md ]; then
+            printf '%s\n'               '## Railway Hobby candidate parity'               ''               '❌ Read-only parity audit failed before a sanitized comparison was produced.'               ''               'No destructive follow-up was attempted.'               > hobby-parity-summary.md
+          fi
+
+      - name: Remove raw parity files
+        if: always()
+        shell: bash
+        run: rm -f source-parity.txt target-parity.txt
+
+      - name: Post parity result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f hobby-parity-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file hobby-parity-summary.md
+          fi
+
