@@ -26,7 +26,21 @@ jobs:
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway hobby-fullhistory-v4-fixed-restore CONFIRM'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: preflight
+          POSTGRES_DB: restore_preflight
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_preflight"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +129,38 @@ jobs:
           )
           PY
 
+      - name: Preflight full restore in ephemeral PostgreSQL 18
+        shell: bash
+        env:
+          PGPASSWORD: preflight
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --network host \
+            -e PGPASSWORD=preflight \
+            -v "$PWD:/work" \
+            postgres:18 \
+            pg_restore \
+              --use-list=/work/restore-list-5gb.txt \
+              --no-owner \
+              --no-acl \
+              --exit-on-error \
+              --jobs=2 \
+              --dbname="postgresql://postgres:preflight@127.0.0.1:5432/restore_preflight" \
+              /work/fixed-reference.dump
+
+          psql "postgresql://postgres:preflight@127.0.0.1:5432/restore_preflight" -v ON_ERROR_STOP=1 -At <<'SQL' > preflight.sanitized
+          SELECT 'PREFLIGHT_PUBLIC_TABLES|' || count(*) FROM pg_tables WHERE schemaname='public';
+          SELECT 'PREFLIGHT_ODDS_INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'PREFLIGHT_VENUES_INDEX_PRESENT|' || (to_regclass('public.ux_v2_venues_venue_id') IS NOT NULL);
+          SELECT 'PREFLIGHT_DB_BYTES|' || pg_database_size(current_database());
+          SQL
+
+          grep -qx 'PREFLIGHT_PUBLIC_TABLES|39' preflight.sanitized
+          grep -qx 'PREFLIGHT_ODDS_INDEX_PRESENT|false' preflight.sanitized
+          grep -qx 'PREFLIGHT_VENUES_INDEX_PRESENT|true' preflight.sanitized
+
       - name: Restore fixed snapshot into isolated candidate v4
         shell: bash
         env:
@@ -171,7 +217,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f fixed-private.pem fixed-reference.dump /tmp/materialize-key.sh verify.sql verify.out
+          rm -f fixed-private.pem fixed-reference.dump /tmp/materialize-key.sh verify.sql verify.out preflight.sanitized
 
       - name: Post sanitized result
         if: always()
@@ -187,6 +233,7 @@ jobs:
               echo 'Fixed restore artifact was restored to candidate-v4 with only the large odds index intentionally deferred.'
               echo
               cat restore-plan.sanitized
+              cat preflight.sanitized
               cat verify.sanitized
               echo
               echo 'Next step is candidate-v4-only 5GB-safe odds-index repair, then read-only exact parity.'
