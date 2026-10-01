@@ -89,7 +89,7 @@ jobs:
         run: |
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file backup-summary.md
 
-logical-archive:
+  logical-archive:
     if: >-
       github.event.issue.number == 42 &&
       github.actor == github.repository_owner &&
