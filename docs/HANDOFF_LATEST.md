@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_FIRST_RUN_PASS.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_CLEANUP_PLAN.md`
 
 Read only:
 1. this pointer
@@ -11,17 +11,19 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 
 Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
-- `postgres-recovery` = verified rollback reference with preserved 20GB volume
-- cutover / smoke / rollback verification = PASS
-- 13 scheduled writers = original schedules resumed against candidate-v4
-- first resumed Production run = PASS
-- post-run candidate disk = 4.352606208 GB / 5 GB
-- FAILED/CRASHED since run window = 0
-- next = legacy cleanup planning before Pro→Hobby
-- no cleanup / resize / history move / plan change / Hobby downgrade yet
+- cutover / smoke / rollback / first resumed Production run = PASS
+- active schedules resumed against candidate-v4
+- legacy cleanup plan = READY
+- Hobby volume limit = 5GB
+- oversized blockers:
+  - `postgres-recovery` 20GB
+  - `Postgres` 50GB, unverified
+  - `Postgres-AbWo` 50GB, unverified
+- next = read-only verification of `Postgres` / `Postgres-AbWo` through Railway-private path
+- no delete / resize / history move / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
-- TOTO protected; `Postgres` / `Postgres-AbWo` unverified
+- TOTO protected
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / FIRST_RUN_PASS / LEGACY_CLEANUP_PLAN_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / CLEANUP_PLAN_READY / VERIFY_ORPHANS_NEXT / PURCHASE_FALSE`
