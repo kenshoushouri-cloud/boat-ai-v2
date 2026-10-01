@@ -1,0 +1,82 @@
+name: Railway 5GB candidate index repair
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
+
+jobs:
+  venues-index:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-index-repair-venues CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Create missing venues unique index on isolated candidate
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > repair.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          CREATE UNIQUE INDEX IF NOT EXISTS ux_v2_venues_venue_id
+            ON public.v2_venues USING btree (venue_id);
+          CHECKPOINT;
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'INDEX_PRESENT|' || (to_regclass('public.ux_v2_venues_venue_id') IS NOT NULL);
+          SELECT 'INDEX_BYTES|' || COALESCE(pg_relation_size(to_regclass('public.ux_v2_venues_venue_id')),0);
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < repair.sql > repair.out
+
+          grep -E '^(INDEX_PRESENT|INDEX_BYTES|DB_BYTES|WAL_BYTES)\|' repair.out > repair.sanitized
+          test -s repair.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB candidate venues-index repair'
+            echo
+            if [ -s repair.sanitized ]; then
+              echo 'Candidate-only index repair completed.'
+              echo
+              cat repair.sanitized
+            else
+              echo 'Candidate index repair failed before sanitized verification.'
+            fi
+            echo
+            echo 'Production was not targeted. No cutover, resize, deletion, plan change, or Production mutation was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
