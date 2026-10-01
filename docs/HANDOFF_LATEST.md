@@ -14,9 +14,9 @@ Current focus:
 - let historical writer `36703692641` continue; no duplicate trigger
 - prepare Pro -> Hobby for the 10/03 billing boundary
 - backup + encrypted logical archive are secured
-- **next task = isolated restore drill**
-- restore -> parity -> cutover -> cleanup; never delete first
-- V5 operational-readiness target remains around 2026-10-15
+- **next single task = isolated restore drill**
+- restore/parity before any Production delete, cutover, volume cleanup, or plan downgrade
+- V5 operational-readiness review target remains around 2026-10-15
 
 Fixed:
 - GitHub `main` = code Source of Truth
