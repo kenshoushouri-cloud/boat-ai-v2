@@ -7,15 +7,15 @@ Read only:
 2. the current compact handoff above, in full
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-Do not load deep-history handoffs by default. Re-fetch only the live state needed for the next single task.
+Do not load old handoffs by default. Re-fetch only the live state required for the next single task.
 
 Current focus:
 - preserve daily prospective evidence
 - let historical writer `36703692641` continue; no duplicate trigger
-- prepare Pro -> Hobby for the 10/03 billing boundary
-- backup + encrypted logical archive are secured
+- prepare Pro -> Hobby for the 2026-10-03 billing boundary
+- Railway backup + encrypted logical archive are secured
 - **next single task = isolated restore drill**
-- restore/parity before any Production delete, cutover, volume cleanup, or plan downgrade
+- restore/parity before Production delete, cutover, volume cleanup, or plan downgrade
 - V5 operational-readiness review target remains around 2026-10-15
 
 Fixed:
@@ -28,6 +28,6 @@ Fixed:
 - never enumerate Railway plaintext Variables
 - Railway Agent only when normal MCP cannot answer
 
-Working style: **one task at a time; no long intermediate progress; concise result only; replace stale text instead of appending.**
+Working style: **one task at a time; concise result only; replace stale text instead of appending.**
 
 `LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / PURCHASE_FALSE`

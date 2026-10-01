@@ -1,4 +1,4 @@
-# Live Handoff — 2026-10-01 11:56 JST (compact)
+# Live Handoff — 2026-10-01 12:08 JST (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
@@ -7,7 +7,7 @@ Re-fetch live state before every action. SHA/run/count values below are snapshot
 
 ## 1. System purpose / fixed contract
 
-Goal: build a reproducible positive-expectation boat-race selection system using only information available before each race deadline. No result leakage, hindsight reconstruction, or outcome-guided tuning. Stable real operation starts only after evidence gates are met. Monthly +50,000 JPY is a later economic objective, never a reason to loosen gates.
+Goal: build a reproducible positive-expectation boat-race selection system using only information available before each race deadline. No result leakage, hindsight reconstruction, or outcome-guided tuning. Stable real operation starts only after fixed evidence gates are met. Monthly +50,000 JPY is a later economic objective, never a reason to loosen gates.
 
 Fixed:
 - GitHub `main` = code Source of Truth; Railway PostgreSQL Production = data Source of Truth
@@ -19,13 +19,13 @@ Fixed:
 - never enumerate Railway plaintext Variables / never call `list_variables`
 - prefer normal Railway MCP; use Railway Agent only when normal tools cannot answer
 
-## 2. Timeline / formal status
+## 2. Time schedule / formal status
 
-Daily path:
+Daily:
 `08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> pre-deadline formal freeze -> 23:30 settlement`
 
 Milestones:
-- **2026-10-03 billing boundary:** Pro -> Hobby target only after restore/parity/resource checks
+- **2026-10-03 billing boundary:** Pro -> Hobby target; downgrade takes effect at the next billing cycle, so finish restore/parity/resource checks first
 - **around 2026-10-15:** V5 core freeze / operational-readiness review target; not automatic go-live
 
 Last settled baseline:
@@ -33,7 +33,7 @@ Last settled baseline:
 - S03_M2 = **63/100**
 - 2026-10-01 fallback freeze run `36790563118` = **SUCCESS**, prospective evidence eligible
 - do not add 2026-10-01 to resolved V4 before nightly settlement + terminal canonical evidence
-- delayed scheduled run `36804250424` arrived later and failed; it must not replace the earlier valid fallback artifact
+- delayed scheduled run `36804250424` later failed; it must not replace the earlier valid fallback artifact
 
 ## 3. Current work
 
@@ -45,12 +45,12 @@ Historical recovery:
 Pro -> Hobby preparation:
 - current plan = **PRO**; Hobby volume limit = **5 GB**
 - Production DB = `postgres-recovery`
-- volume configured **20 GB**; physical used about **4.96 GB**
+- current volume = configured **20 GB**, physical used about **4.95 GB**
 - logical DB about **4,221 MB**
-- 60-day hot-retention estimate: archive candidate about **2,693 MB**; planning estimate only
+- read-only retention estimates: archive candidate about **3,261 MB / 30d hot**, **2,693 MB / 60d hot**, **2,343 MB / 90d hot**; planning estimates only
 - Railway backup `pre-hobby-migration-20261001` secured
 - encrypted logical archive artifact `boat-ai-pre-hobby-20261001` secured
-- plain dump SHA-256: `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
+- plain dump bytes = **301,856,594**; SHA-256 = `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
 - `pg_restore --list` validation passed; Production rows/schema unchanged
 
 **Next single task: isolated restore drill of the encrypted logical archive.**
@@ -58,9 +58,9 @@ Pro -> Hobby preparation:
 Safe order:
 `restore drill -> restored parity -> hot-retention finalization -> Hobby-compatible DB/volume -> read-only parity -> explicit cutover approval -> stable cutover -> old-data/volume cleanup -> Pro->Hobby downgrade`
 
-Do not delete Production historical data first. PR #534 is Draft/stale against current main; do not merge blindly.
+Do not delete Production historical data first. PR #534 is Draft and stale against current main; do not merge blindly.
 
-## 4. Working style / handoff hygiene
+## 4. Handoff / operating discipline
 
 - one task at a time to avoid timeouts
 - no long intermediate progress; concise result only
