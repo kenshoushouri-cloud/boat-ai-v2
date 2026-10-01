@@ -1,0 +1,199 @@
+name: Railway 5GB candidate v4 fixed restore
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_BRIDGE_ISSUE: "42"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  KEY_SERVICE: "archive-restore-key-20261001"
+  KEY_VARIABLE: "ARCHIVE_CMS_PRIVATE_KEY_B64_PARITY_36812386066"
+  REFERENCE_RUN_ID: "36812386066"
+  REFERENCE_ARTIFACT: "boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066"
+
+jobs:
+  restore:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v4-fixed-restore CONFIRM'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Download fixed restore artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.REFERENCE_ARTIFACT }}
+          path: fixed-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.REFERENCE_RUN_ID }}
+
+      - name: Decrypt fixed restore artifact without exposing key
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -s "fixed-artifact/$REFERENCE_ARTIFACT.dump.cms"
+          test -s fixed-artifact/archive-public-v3.pem
+          test -s fixed-artifact/parity-manifest-v3.txt
+
+          cat > /tmp/materialize-key.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${KEY_VARIABLE:?}"
+          : "${!KEY_VARIABLE:?}"
+          umask 077
+          printf '%s' "${!KEY_VARIABLE}" | base64 -d > fixed-private.pem
+          test -s fixed-private.pem
+          SH
+          chmod 700 /tmp/materialize-key.sh
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$KEY_SERVICE" \
+            env KEY_VARIABLE="$KEY_VARIABLE" bash /tmp/materialize-key.sh
+
+          openssl cms -decrypt -binary -inform DER \
+            -in "fixed-artifact/$REFERENCE_ARTIFACT.dump.cms" \
+            -recip fixed-artifact/archive-public-v3.pem \
+            -inkey fixed-private.pem \
+            -out fixed-reference.dump
+
+          expected_dump_sha="$(awk -F= '$1=="PLAIN_DUMP_SHA256"{print $2}' fixed-artifact/parity-manifest-v3.txt | tail -1 | tr -d '[:space:]')"
+          actual_dump_sha="$(sha256sum fixed-reference.dump | awk '{print $1}')"
+          test -n "$expected_dump_sha"
+          test "$actual_dump_sha" = "$expected_dump_sha"
+
+      - name: Build 5GB-safe restore list
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" postgres:18 \
+            pg_restore --list /work/fixed-reference.dump > restore-list.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          src = Path("restore-list.txt").read_text(encoding="utf-8").splitlines()
+          needle = " INDEX public ux_v2_odds_trifecta_race_ticket "
+          skipped = [line for line in src if needle in line]
+          kept = [line for line in src if needle not in line]
+
+          if len(skipped) != 1:
+              raise SystemExit(f"expected exactly one odds index entry, found {len(skipped)}")
+
+          Path("restore-list-5gb.txt").write_text("\n".join(kept) + "\n", encoding="utf-8")
+          Path("restore-plan.sanitized").write_text(
+              "REFERENCE_RUN_ID=36812386066\n"
+              "SKIPPED_INDEX=ux_v2_odds_trifecta_race_ticket\n"
+              "SKIPPED_INDEX_COUNT=1\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Restore fixed snapshot into isolated candidate v4
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            printf '\\set ON_ERROR_STOP on\n'
+            docker run --rm \
+              -v "$PWD:/work" \
+              postgres:18 \
+              pg_restore \
+                --use-list=/work/restore-list-5gb.txt \
+                --clean \
+                --if-exists \
+                --no-owner \
+                --no-acl \
+                --exit-on-error \
+                --file=- \
+                /work/fixed-reference.dump
+          } | railway connect "$TARGET_SERVICE" \
+                --environment "$RAILWAY_ENVIRONMENT" \
+                --no-ssh
+
+      - name: Verify candidate v4 restore
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > verify.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          CHECKPOINT;
+          \pset tuples_only on
+          \pset format unaligned
+          SELECT 'PUBLIC_TABLES|' || count(*) FROM pg_tables WHERE schemaname='public';
+          SELECT 'ODDS_INDEX_PRESENT|' || (to_regclass('public.ux_v2_odds_trifecta_race_ticket') IS NOT NULL);
+          SELECT 'VENUES_INDEX_PRESENT|' || (to_regclass('public.ux_v2_venues_venue_id') IS NOT NULL);
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < verify.sql > verify.out
+
+          grep -E '^(PUBLIC_TABLES|ODDS_INDEX_PRESENT|VENUES_INDEX_PRESENT|DB_BYTES|WAL_BYTES)\|' verify.out > verify.sanitized
+          test -s verify.sanitized
+          grep -qx 'PUBLIC_TABLES|39' verify.sanitized
+          grep -qx 'ODDS_INDEX_PRESENT|false' verify.sanitized
+          grep -qx 'VENUES_INDEX_PRESENT|true' verify.sanitized
+
+      - name: Cleanup private/plaintext material
+        if: always()
+        shell: bash
+        run: |
+          rm -f fixed-private.pem fixed-reference.dump /tmp/materialize-key.sh verify.sql verify.out
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB candidate v4 fixed restore'
+            echo
+            if [ -s verify.sanitized ]; then
+              echo 'Fixed restore artifact was restored to candidate-v4 with only the large odds index intentionally deferred.'
+              echo
+              cat restore-plan.sanitized
+              cat verify.sanitized
+              echo
+              echo 'Next step is candidate-v4-only 5GB-safe odds-index repair, then read-only exact parity.'
+            else
+              echo 'FAIL: candidate-v4 fixed restore was not verified.'
+            fi
+            echo
+            echo 'Target was postgres-hobby-fullhistory-candidate-v4 only. No Production cutover, Production mutation, historical delete, volume resize/delete, or plan change was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
