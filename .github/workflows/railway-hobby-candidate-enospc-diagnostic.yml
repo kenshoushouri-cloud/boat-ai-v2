@@ -167,7 +167,7 @@ jobs:
           railway connect "$SOURCE_SERVICE" \
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < source-size.sql > source-size.out
-          grep -E '^(SOURCE_(DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES)|SOURCE_SETTING)\|' source-size.out > source-size.sanitized
+          grep -E '^(SOURCE_(DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES|INDEX)|SOURCE_SETTING)\|' source-size.out > source-size.sanitized
           test -s source-size.sanitized
 
       - name: Post sanitized result
