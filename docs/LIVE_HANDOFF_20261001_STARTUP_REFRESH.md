@@ -1,4 +1,4 @@
-# Live Handoff — 2026-10-01 10:21 JST (compact)
+# Live Handoff — 2026-10-01 10:28 JST (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
@@ -31,7 +31,7 @@ Milestones:
 - **2026-10-03 billing boundary:** target Pro -> Hobby transition only after restore/parity/resource checks
 - **around 2026-10-15:** V5 core freeze / operational-readiness review target; not automatic go-live
 
-Current prospective baseline:
+Prospective checkpoint:
 - V4 = **8/20** settled through 2026-09-28
 - S03_M2 = **63/100**
 - 2026-10-01 fallback freeze run `36790563118` = **SUCCESS**
@@ -42,19 +42,17 @@ Current prospective baseline:
 Historical recovery:
 - writer run `36703692641`: 2025-12 **in_progress**; 2026-01..09 queued
 - do not add a duplicate normal beforeinfo trigger while this lane is occupied
-- latest documented matched-readiness: complete_beforeinfo **14,705**, core_plus_beforeinfo **7,936 / 11.33%**, opponent_replay **56,599**, recent_form6 **0**
 - research sequence: `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
 Railway Pro -> Hobby preparation:
 - current plan **PRO**; Hobby volume limit **5 GB**
-- Production DB `postgres-recovery`
-- configured volume **20 GB**; physical used ≈ **4.96 GB**
+- Production DB = `postgres-recovery`
+- configured volume **20 GB**; physical used ≈ **4.95 GB**
 - logical DB ≈ **4,221 MB**
-- largest relations: `v2_odds_trifecta` ≈ 1,831 MB; `v2_realtime_odds_snapshots` ≈ 721 MB
-- read-only planning estimate: keeping 60d hot could archive ≈ **2,693 MB** across listed candidates; estimate is not guaranteed physical shrinkage
-- Railway backup `pre-hobby-migration-20261001` secured
-- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` secured
-- plain dump SHA-256 `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
+- 60-day hot-retention planning estimate: archive candidate ≈ **2,693 MB** across audited tables; estimate is not guaranteed physical shrinkage
+- Railway backup `pre-hobby-migration-20261001` is secured
+- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` is secured
+- plain dump SHA-256: `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
 - `pg_restore --list` validation passed; Production rows/schema unchanged
 
 **Next single task: isolated restore drill of the encrypted logical archive.**
