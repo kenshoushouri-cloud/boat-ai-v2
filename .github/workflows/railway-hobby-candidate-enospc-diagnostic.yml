@@ -84,6 +84,10 @@ jobs:
           FROM pg_replication_slots
           WHERE restart_lsn IS NOT NULL;
 
+          SELECT 'CANDIDATE_INDEX|ux_v2_odds_trifecta_race_ticket|' ||
+                 COALESCE(pg_relation_size(to_regclass('public.ux_v2_odds_trifecta_race_ticket')),0);
+          SELECT 'CANDIDATE_INDEX|ux_v2_venues_venue_id|' ||
+                 COALESCE(pg_relation_size(to_regclass('public.ux_v2_venues_venue_id')),0);
           SELECT 'PUBLIC_TOTAL_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -119,7 +123,7 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT" \
             --no-ssh < diagnostic.sql > diagnostic.out
 
-          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|WAL_BYTES|SETTING|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
+          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|WAL_BYTES|SETTING|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES|CANDIDATE_INDEX|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
           cat > source-size.sql <<'SQL'
@@ -142,6 +146,12 @@ jobs:
                  COALESCE(max(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)),0)::bigint
           FROM pg_replication_slots
           WHERE restart_lsn IS NOT NULL;
+          SELECT 'SOURCE_INDEX|ux_v2_odds_trifecta_race_ticket|' ||
+                 COALESCE(pg_relation_size(to_regclass('public.ux_v2_odds_trifecta_race_ticket')),0);
+          SELECT 'SOURCE_INDEX|ux_v2_venues_venue_id|' ||
+                 COALESCE(pg_relation_size(to_regclass('public.ux_v2_venues_venue_id')),0);
+          SELECT 'SOURCE_TABLE_HEAP|v2_odds_trifecta|' ||
+                 pg_relation_size('public.v2_odds_trifecta'::regclass);
           SELECT 'SOURCE_PUBLIC_TOTAL_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
