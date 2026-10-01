@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_CLEANUP_PLAN.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_ORPHANS_VERIFIED.md`
 
 Read only:
 1. this pointer
@@ -13,17 +13,15 @@ Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
 - cutover / smoke / rollback / first resumed Production run = PASS
 - active schedules resumed against candidate-v4
-- legacy cleanup plan = READY
-- Hobby volume limit = 5GB
-- oversized blockers:
-  - `postgres-recovery` 20GB
-  - `Postgres` 50GB, unverified
-  - `Postgres-AbWo` 50GB, unverified
-- next = read-only verification of `Postgres` / `Postgres-AbWo` through Railway-private path
+- oversized orphan DB verification = PASS
+- `Postgres` 50GB = logical DB ~7.86MB, 0 public tables/indexes, no boat tables
+- `Postgres-AbWo` 50GB = logical DB ~7.86MB, 0 public tables/indexes, no boat tables
+- `postgres-recovery` 20GB remains protected rollback source
+- next = fresh encrypted read-only archive + isolated restore verification of `postgres-recovery`
 - no delete / resize / history move / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
 - TOTO protected
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / CLEANUP_PLAN_READY / VERIFY_ORPHANS_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / ORPHAN_DBS_VERIFIED_EMPTY / RECOVERY_ARCHIVE_NEXT / PURCHASE_FALSE`
