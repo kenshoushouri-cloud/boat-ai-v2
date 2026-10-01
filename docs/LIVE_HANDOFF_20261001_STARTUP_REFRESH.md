@@ -1,13 +1,13 @@
-# Live Handoff — 2026-10-01 10:57 JST (compact)
+# Live Handoff — 2026-10-01 11:08 JST (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
 
-Re-fetch live state before every action. Snapshot SHA/run/count values are context only.
+Re-fetch live state before every action. SHA/run/count values below are snapshots only.
 
-## 1. Purpose / fixed contract
+## 1. System purpose / fixed contract
 
-Goal: build a reproducible positive-expectation boat-race selection system using only information available before each race deadline, without result leakage, hindsight reconstruction, or outcome-guided tuning; move to stable real operation only after evidence gates are met. Monthly +50,000 JPY is a later economic objective, never a reason to loosen selectors or gates.
+Goal: build a reproducible positive-expectation boat-race selection system using only information available before each race deadline, with no result leakage, hindsight reconstruction, or outcome-guided tuning. Move to stable real operation only after evidence gates are met. Monthly +50,000 JPY is a later economic objective, never a reason to loosen gates.
 
 Fixed:
 - GitHub `main` = code Source of Truth; Railway PostgreSQL Production = data Source of Truth
@@ -19,23 +19,24 @@ Fixed:
 - never enumerate Railway plaintext Variables / never call `list_variables`
 - prefer normal Railway MCP; Railway Agent only when normal tools cannot answer
 
-## 2. Timeline / formal status
+## 2. Timeline / current formal status
 
-Daily prospective path:
-`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> availability hard-stop -> pre-deadline freeze -> 23:30 settlement`
+Daily path:
+`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> pre-deadline freeze -> 23:30 settlement`
 
 Milestones:
 - **2026-10-03 billing boundary:** Pro -> Hobby target only after restore/parity/resource checks
 - **around 2026-10-15:** V5 core freeze / operational-readiness review target; not automatic go-live
 
-Last settled gate baseline:
+Last settled baseline:
 - V4 = **8/20** through 2026-09-28
 - S03_M2 = **63/100**
 - 2026-10-01 fallback freeze run `36790563118` = **SUCCESS**, prospective evidence eligible; do not count until nightly settlement + terminal canonical evidence
+- delayed scheduled run `36804250424` arrived at 11:06 JST and failed the timestamp-proven freeze; it must not replace the valid earlier fallback artifact
 
-## 3. Current work
+## 3. Current work / next safe task
 
-Snapshot main: `60379047affb581acb4f009d05f08b70aa2b7f01`.
+Snapshot main: `f24e564ac30fdacb10916d46ae6cc825b0c97b27`.
 
 Historical recovery:
 - writer `36703692641`: **2026-01 in_progress**; 2026-02..09 queued
@@ -47,9 +48,9 @@ Pro -> Hobby preparation:
 - Production DB = `postgres-recovery`
 - volume configured **20 GB**; physical used about **4.95 GB**
 - logical DB about **4,221 MB**
-- 60-day hot-retention planning estimate: archive candidate about **2,693 MB**; estimate only, not physical-shrink proof
-- Railway backup `pre-hobby-migration-20261001` is secured
-- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` is secured
+- read-only 60-day hot-retention estimate: archive candidate about **2,693 MB**; estimate only, not physical-shrink proof
+- Railway backup `pre-hobby-migration-20261001` secured
+- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` secured
 - plain dump SHA-256: `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
 - `pg_restore --list` validation passed; Production rows/schema unchanged
 
