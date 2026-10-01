@@ -41,9 +41,9 @@ jobs:
           set -euo pipefail
 
           cat > diagnostic.sql <<'SQL'
-          \\pset tuples_only on
-          \\pset format unaligned
-          \\pset fieldsep '|'
+          \pset tuples_only on
+          \pset format unaligned
+          \pset fieldsep '|'
           SET default_transaction_read_only = on;
 
           SELECT 'QUERYABLE|' || current_database();
