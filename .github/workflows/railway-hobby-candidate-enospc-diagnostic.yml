@@ -1,0 +1,107 @@
+name: Railway 5GB candidate ENOSPC diagnostic
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-candidate-enospc-diagnostic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Run read-only PostgreSQL size diagnostics
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          cat > diagnostic.sql <<'SQL'
+          \\pset tuples_only on
+          \\pset format unaligned
+          \\pset fieldsep '|'
+          SET default_transaction_read_only = on;
+
+          SELECT 'QUERYABLE|' || current_database();
+
+          SELECT
+            'RELFILENODE|' ||
+            COALESCE(n.nspname,'') || '|' ||
+            COALESCE(c.relname,'') || '|' ||
+            COALESCE(c.relkind::text,'')
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relfilenode = 71015;
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+
+          SELECT
+            'TOP|' ||
+            n.nspname || '|' ||
+            c.relname || '|' ||
+            c.relkind || '|' ||
+            pg_total_relation_size(c.oid) || '|' ||
+            pg_relation_size(c.oid) || '|' ||
+            COALESCE(pg_indexes_size(c.oid),0)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r','m')
+          ORDER BY pg_total_relation_size(c.oid) DESC
+          LIMIT 10;
+          SQL
+
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < diagnostic.sql > diagnostic.out
+
+          grep -E '^(QUERYABLE|RELFILENODE|DB_BYTES|TOP)\|' diagnostic.out > diagnostic.sanitized
+          test -s diagnostic.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## 5GB candidate ENOSPC diagnostic'
+            echo
+            if [ -s diagnostic.sanitized ]; then
+              echo 'Read-only query completed.'
+              echo
+              echo '```text'
+              cat diagnostic.sanitized
+              echo '```'
+            else
+              echo 'Diagnostic did not produce a sanitized result.'
+            fi
+            echo
+            echo 'No restore, delete, resize, VACUUM, REINDEX, cutover, plan change, or Variable change was requested.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
