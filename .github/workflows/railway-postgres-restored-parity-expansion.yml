@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
   issues: write
-  actions: read
 
 env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -15,9 +14,7 @@ env:
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_BRIDGE_ISSUE: "42"
   KEY_SERVICE: "archive-restore-key-20261001"
-  ARCHIVE_NAME: "boat-ai-pre-hobby-restorable-20261001-v2"
-  RESTORE_ARTIFACT_ID: "11138759678"
-  VERIFIED_DUMP_SHA256: "493374319f2475d74da7ae50edb4709c5bb882ad14ce9bc5eab68d8843e80356"
+  ARCHIVE_PREFIX: "boat-ai-pre-hobby-restorable-20261001-v3-parity"
 
 concurrency:
   group: railway-postgres-restored-parity-expansion
@@ -36,12 +33,12 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_PASSWORD: restoretest
-          POSTGRES_DB: restore_parity
+          POSTGRES_PASSWORD: paritytest
+          POSTGRES_DB: parity_restore
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d restore_parity"
+          --health-cmd "pg_isready -U postgres -d parity_restore"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
@@ -51,314 +48,475 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install Railway CLI
+      - name: Install tooling
         shell: bash
         run: |
           set -euo pipefail
           npm install --global @railway/cli
+          python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<3.4"
+          railway variable set --help >/dev/null
           railway run --help >/dev/null
 
-      - name: Download current restore-verified encrypted artifact
-        id: artifact
+      - name: Create run-scoped archive key escrow
+        id: key
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          artifact_id="$RESTORE_ARTIFACT_ID"
-          test -n "$artifact_id"
-          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > archive.zip
-          rm -rf artifact
-          mkdir artifact
-          unzip -q archive.zip -d artifact
-          test -s "artifact/$ARCHIVE_NAME.dump.cms"
-          test -s artifact/archive-public-v2.pem
-          test -s artifact/restore-manifest-v2.txt
-          cp "artifact/$ARCHIVE_NAME.dump.cms" .
-          cp artifact/archive-public-v2.pem .
-          cp artifact/restore-manifest-v2.txt .
-          expected_sha="$(awk -F= '$1=="PLAIN_DUMP_SHA256"{print $2}' restore-manifest-v2.txt)"
-          expected_tables="$(awk -F= '$1=="PUBLIC_TABLES"{print $2}' restore-manifest-v2.txt)"
-          test -n "$expected_sha"
-          test "$expected_sha" = "$VERIFIED_DUMP_SHA256"
-          test "$expected_tables" = "39"
-          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
-          echo "expected_sha=$expected_sha" >> "$GITHUB_OUTPUT"
+          umask 077
 
-      - name: Decrypt only through escrowed Railway key
+          key_var="ARCHIVE_CMS_PRIVATE_KEY_B64_PARITY_${GITHUB_RUN_ID}"
+
+          openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes             -keyout archive-private-v3.pem             -out archive-public-v3.pem             -subj "/CN=boat-ai-hobby-parity-${GITHUB_RUN_ID}"
+
+          test -s archive-private-v3.pem
+          test -s archive-public-v3.pem
+
+          private_b64="$(base64 -w0 archive-private-v3.pem)"
+          test -n "$private_b64"
+
+          railway variable set "$key_var=$private_b64"             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE"             >/tmp/key-set.out 2>/tmp/key-set.err
+
+          unset private_b64
+          rm -f /tmp/key-set.out /tmp/key-set.err archive-private-v3.pem
+          test ! -e archive-private-v3.pem
+
+          cert_sha="$(sha256sum archive-public-v3.pem | awk '{print $1}')"
+          echo "key_var=$key_var" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$cert_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Build consistent-snapshot evidence collector
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > parity_capture.py <<'PY'
+          import csv
+          import os
+          import subprocess
+          import sys
+
+          import psycopg
+          from psycopg import sql
+
+          QUERIES = {
+              "tables": """
+                  SELECT c.relname,
+                         c.relkind::text,
+                         c.relpersistence::text,
+                         c.relreplident::text,
+                         c.relrowsecurity::text,
+                         c.relforcerowsecurity::text
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public'
+                    AND c.relkind IN ('r','p')
+                  ORDER BY c.relname
+              """,
+              "columns": """
+                  SELECT table_name,
+                         ordinal_position::text,
+                         column_name,
+                         data_type,
+                         udt_schema,
+                         udt_name,
+                         is_nullable,
+                         COALESCE(column_default, ''),
+                         COALESCE(character_maximum_length::text, ''),
+                         COALESCE(numeric_precision::text, ''),
+                         COALESCE(numeric_scale::text, ''),
+                         COALESCE(collation_schema, ''),
+                         COALESCE(collation_name, ''),
+                         is_identity,
+                         COALESCE(identity_generation, ''),
+                         is_generated,
+                         COALESCE(generation_expression, '')
+                  FROM information_schema.columns
+                  WHERE table_schema = 'public'
+                  ORDER BY table_name, ordinal_position
+              """,
+              "constraints": """
+                  SELECT c.conrelid::regclass::text,
+                         c.conname,
+                         c.contype::text,
+                         pg_get_constraintdef(c.oid, true)
+                  FROM pg_constraint c
+                  JOIN pg_namespace n ON n.oid = c.connamespace
+                  WHERE n.nspname = 'public'
+                    AND c.conrelid <> 0
+                  ORDER BY c.conrelid::regclass::text, c.conname
+              """,
+              "indexes": """
+                  SELECT tablename, indexname, indexdef
+                  FROM pg_indexes
+                  WHERE schemaname = 'public'
+                  ORDER BY tablename, indexname
+              """,
+              "sequences": """
+                  SELECT sequencename,
+                         data_type,
+                         start_value::text,
+                         min_value::text,
+                         max_value::text,
+                         increment_by::text,
+                         cycle::text,
+                         cache_size::text
+                  FROM pg_sequences
+                  WHERE schemaname = 'public'
+                  ORDER BY sequencename
+              """,
+              "views": """
+                  SELECT c.relname,
+                         c.relkind::text,
+                         pg_get_viewdef(c.oid, true)
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public'
+                    AND c.relkind IN ('v','m')
+                  ORDER BY c.relname
+              """,
+              "triggers": """
+                  SELECT c.relname,
+                         t.tgname,
+                         pg_get_triggerdef(t.oid, true)
+                  FROM pg_trigger t
+                  JOIN pg_class c ON c.oid = t.tgrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public'
+                    AND NOT t.tgisinternal
+                  ORDER BY c.relname, t.tgname
+              """,
+              "policies": """
+                  SELECT tablename,
+                         policyname,
+                         permissive,
+                         roles::text,
+                         cmd,
+                         COALESCE(qual, ''),
+                         COALESCE(with_check, '')
+                  FROM pg_policies
+                  WHERE schemaname = 'public'
+                  ORDER BY tablename, policyname
+              """,
+              "extensions": """
+                  SELECT extname, extversion
+                  FROM pg_extension
+                  ORDER BY extname
+              """,
+          }
+
+          def write_tsv(path, rows):
+              with open(path, "w", encoding="utf-8", newline="") as f:
+                  writer = csv.writer(f, delimiter="\t", lineterminator="\n")
+                  for row in rows:
+                      writer.writerow(["" if value is None else str(value) for value in row])
+
+          def capture(conn, prefix):
+              tables = conn.execute("""
+                  SELECT c.relname
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public'
+                    AND c.relkind IN ('r','p')
+                  ORDER BY c.relname
+              """).fetchall()
+
+              counts = []
+              for (table_name,) in tables:
+                  query = sql.SQL("SELECT count(*) FROM {}.{}").format(
+                      sql.Identifier("public"),
+                      sql.Identifier(table_name),
+                  )
+                  counts.append((table_name, conn.execute(query).fetchone()[0]))
+              write_tsv(f"{prefix}-table-counts.tsv", counts)
+
+              for name, query in QUERIES.items():
+                  write_tsv(f"{prefix}-{name}.tsv", conn.execute(query).fetchall())
+
+          mode = sys.argv[1]
+
+          if mode == "source":
+              url = os.environ["DATABASE_PUBLIC_URL"]
+
+              keeper = psycopg.connect(url)
+              keeper.autocommit = True
+              keeper.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+              snapshot = keeper.execute("SELECT pg_export_snapshot()").fetchone()[0]
+
+              env = os.environ.copy()
+              env["PG_SNAPSHOT"] = snapshot
+
+              subprocess.run(
+                  [
+                      "docker", "run", "--rm",
+                      "-e", "DATABASE_PUBLIC_URL",
+                      "-e", "PG_SNAPSHOT",
+                      "-e", "PGOPTIONS=-c default_transaction_read_only=on",
+                      "-v", f"{os.getcwd()}:/work",
+                      "postgres:18",
+                      "bash", "-lc",
+                      'pg_dump "$DATABASE_PUBLIC_URL" --format=custom --no-owner --no-acl --snapshot="$PG_SNAPSHOT" --file=/work/full-source.dump'
+                  ],
+                  env=env,
+                  check=True,
+              )
+
+              evidence = psycopg.connect(url)
+              evidence.autocommit = True
+              evidence.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+              evidence.execute(
+                  sql.SQL("SET TRANSACTION SNAPSHOT {}").format(sql.Literal(snapshot))
+              )
+              capture(evidence, "source")
+              evidence.execute("COMMIT")
+              evidence.close()
+
+              keeper.execute("ROLLBACK")
+              keeper.close()
+
+          elif mode == "restored":
+              url = os.environ["LOCAL_DATABASE_URL"]
+              conn = psycopg.connect(url)
+              capture(conn, "restored")
+              conn.close()
+
+          else:
+              raise SystemExit("unknown mode")
+          PY
+
+      - name: Capture Production dump and evidence from one read-only snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service postgres-recovery             python3 parity_capture.py source
+
+          test -s full-source.dump
+          test -s source-table-counts.tsv
+          test -s source-columns.tsv
+
+      - name: Validate and encrypt snapshot archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm -v "$PWD:/work" postgres:18             pg_restore --list /work/full-source.dump > restore-list.txt
+
+          test -s restore-list.txt
+
+          archive_name="${ARCHIVE_PREFIX}-${GITHUB_RUN_ID}"
+          dump_bytes="$(stat -c %s full-source.dump)"
+          dump_sha="$(sha256sum full-source.dump | awk '{print $1}')"
+          list_entries="$(grep -c '^[0-9]' restore-list.txt || true)"
+
+          openssl cms -encrypt -binary -aes256             -in full-source.dump             -outform DER             -out "$archive_name.dump.cms"             archive-public-v3.pem
+
+          test -s "$archive_name.dump.cms"
+
+          encrypted_bytes="$(stat -c %s "$archive_name.dump.cms")"
+          encrypted_sha="$(sha256sum "$archive_name.dump.cms" | awk '{print $1}')"
+
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+          echo "dump_bytes=$dump_bytes" >> "$GITHUB_OUTPUT"
+          echo "dump_sha=$dump_sha" >> "$GITHUB_OUTPUT"
+          echo "list_entries=$list_entries" >> "$GITHUB_OUTPUT"
+          echo "encrypted_bytes=$encrypted_bytes" >> "$GITHUB_OUTPUT"
+          echo "encrypted_sha=$encrypted_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Decrypt only through run-scoped Railway key escrow
         id: decrypt
         shell: bash
         run: |
           set -euo pipefail
-          cat > decrypt-from-escrow.sh <<'SH'
+
+          cat > decrypt-v3.sh <<'SH'
           #!/usr/bin/env bash
           set -euo pipefail
-          : "${ARCHIVE_CMS_PRIVATE_KEY_B64:?}"
+          key_var="$1"
+          archive_name="$2"
+          : "${!key_var:?}"
           umask 077
-          printf '%s' "$ARCHIVE_CMS_PRIVATE_KEY_B64" | base64 -d > escrow-private.pem
-          openssl cms -decrypt -binary -inform DER             -in "$ARCHIVE_NAME.dump.cms"             -recip archive-public-v2.pem             -inkey escrow-private.pem             -out restored.dump
+          printf '%s' "${!key_var}" | base64 -d > escrow-private.pem
+          openssl cms -decrypt -binary -inform DER             -in "$archive_name.dump.cms"             -recip archive-public-v3.pem             -inkey escrow-private.pem             -out restored.dump
           rm -f escrow-private.pem
           SH
-          chmod 700 decrypt-from-escrow.sh
 
-          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE"             bash ./decrypt-from-escrow.sh
+          chmod 700 decrypt-v3.sh
+
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$KEY_SERVICE"             bash ./decrypt-v3.sh               "${{ steps.key.outputs.key_var }}"               "${{ steps.archive.outputs.archive_name }}"
 
           test -s restored.dump
+
           restored_sha="$(sha256sum restored.dump | awk '{print $1}')"
-          test "$restored_sha" = "${{ steps.artifact.outputs.expected_sha }}"
+          test "$restored_sha" = "${{ steps.archive.outputs.dump_sha }}"
           echo "restored_sha=$restored_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Restore archive into isolated local PostgreSQL 18
+      - name: Restore into isolated PostgreSQL 18
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             --network host             -e PGPASSWORD=restoretest             -v "$PWD:/work"             postgres:18             pg_restore               --no-owner               --no-acl               --exit-on-error               --jobs=2               --dbname="postgresql://postgres:restoretest@127.0.0.1:5432/restore_parity"               /work/restored.dump
 
-      - name: Build canonical schema collector
+          docker run --rm             --network host             -e PGPASSWORD=paritytest             -v "$PWD:/work"             postgres:18             pg_restore               --no-owner               --no-acl               --exit-on-error               --jobs=2               --dbname="postgresql://postgres:paritytest@127.0.0.1:5432/parity_restore"               /work/restored.dump
+
+      - name: Capture restored evidence
+        shell: bash
+        env:
+          LOCAL_DATABASE_URL: postgresql://postgres:paritytest@127.0.0.1:5432/parity_restore
+        run: |
+          set -euo pipefail
+          python3 parity_capture.py restored
+          test -s restored-table-counts.tsv
+          test -s restored-columns.tsv
+
+      - name: Require exact parity
+        id: parity
         shell: bash
         run: |
           set -euo pipefail
-          cat > schema.sql <<'SQL'
-          SELECT line
-          FROM (
-            SELECT 1 AS ord, c.relname AS k1, '' AS k2,
-                   concat_ws(E'\t', 'TABLE', c.relname, c.relkind::text) AS line
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
 
-            UNION ALL
+          kinds=(
+            table-counts
+            tables
+            columns
+            constraints
+            indexes
+            sequences
+            views
+            triggers
+            policies
+            extensions
+          )
 
-            SELECT 2, cols.table_name, lpad(cols.ordinal_position::text, 6, '0'),
-                   concat_ws(E'\t',
-                     'COLUMN',
-                     cols.table_name,
-                     cols.ordinal_position::text,
-                     cols.column_name,
-                     cols.data_type,
-                     cols.udt_name,
-                     cols.is_nullable,
-                     coalesce(cols.column_default, ''),
-                     coalesce(cols.character_maximum_length::text, ''),
-                     coalesce(cols.numeric_precision::text, ''),
-                     coalesce(cols.numeric_scale::text, '')
-                   )
-            FROM information_schema.columns cols
-            WHERE cols.table_schema = 'public'
+          for kind in "${kinds[@]}"; do
+            diff -u "source-$kind.tsv" "restored-$kind.tsv"
+          done
 
-            UNION ALL
+          table_count="$(wc -l < source-table-counts.tsv | tr -d ' ')"
+          column_count="$(wc -l < source-columns.tsv | tr -d ' ')"
+          constraint_count="$(wc -l < source-constraints.tsv | tr -d ' ')"
+          index_count="$(wc -l < source-indexes.tsv | tr -d ' ')"
+          sequence_count="$(wc -l < source-sequences.tsv | tr -d ' ')"
+          view_count="$(wc -l < source-views.tsv | tr -d ' ')"
+          trigger_count="$(wc -l < source-triggers.tsv | tr -d ' ')"
+          policy_count="$(wc -l < source-policies.tsv | tr -d ' ')"
+          extension_count="$(wc -l < source-extensions.tsv | tr -d ' ')"
 
-            SELECT 3, rel.relname, con.conname,
-                   concat_ws(E'\t',
-                     'CONSTRAINT',
-                     rel.relname,
-                     con.conname,
-                     con.contype::text,
-                     pg_get_constraintdef(con.oid, true)
-                   )
-            FROM pg_constraint con
-            JOIN pg_class rel ON rel.oid = con.conrelid
-            JOIN pg_namespace n ON n.oid = rel.relnamespace
-            WHERE n.nspname = 'public'
-
-            UNION ALL
-
-            SELECT 4, pi.tablename, pi.indexname,
-                   concat_ws(E'\t',
-                     'INDEX',
-                     pi.tablename,
-                     pi.indexname,
-                     pi.indexdef
-                   )
-            FROM pg_indexes pi
-            WHERE pi.schemaname = 'public'
-
-            UNION ALL
-
-            SELECT 5, seq.sequence_name, '',
-                   concat_ws(E'\t',
-                     'SEQUENCE',
-                     seq.sequence_name,
-                     seq.data_type,
-                     seq.start_value,
-                     seq.minimum_value,
-                     seq.maximum_value,
-                     seq.increment,
-                     seq.cycle_option
-                   )
-            FROM information_schema.sequences seq
-            WHERE seq.sequence_schema = 'public'
-
-            UNION ALL
-
-            SELECT 6, trg.event_object_table, trg.trigger_name,
-                   concat_ws(E'\t',
-                     'TRIGGER',
-                     trg.event_object_table,
-                     trg.trigger_name,
-                     trg.event_manipulation,
-                     trg.action_timing,
-                     trg.action_orientation,
-                     trg.action_statement
-                   )
-            FROM information_schema.triggers trg
-            WHERE trg.trigger_schema = 'public'
-
-            UNION ALL
-
-            SELECT 7, typ.typname, '',
-                   concat_ws(E'\t',
-                     'TYPE',
-                     typ.typname,
-                     typ.typtype::text,
-                     pg_catalog.format_type(typ.oid, NULL)
-                   )
-            FROM pg_type typ
-            JOIN pg_namespace n ON n.oid = typ.typnamespace
-            WHERE n.nspname = 'public'
-              AND typ.typtype IN ('e','d')
-          ) s
-          ORDER BY ord, k1, k2, line;
-          SQL
-
-          cat > critical-counts.sql <<'SQL'
-          SELECT 'v2_v24_motor2_forward_shadow' || E'\t' || count(*) FROM v2_v24_motor2_forward_shadow
-          UNION ALL SELECT 'v2_racer_course_stats_snapshots' || E'\t' || count(*) FROM v2_racer_course_stats_snapshots
-          UNION ALL SELECT 'v2_opponent_pressure_shadow_v2' || E'\t' || count(*) FROM v2_opponent_pressure_shadow_v2
-          UNION ALL SELECT 'v2_realtime_entry_snapshots' || E'\t' || count(*) FROM v2_realtime_entry_snapshots
-          UNION ALL SELECT 'v2_realtime_racer_condition_snapshots' || E'\t' || count(*) FROM v2_realtime_racer_condition_snapshots
-          UNION ALL SELECT 'v2_realtime_weather_snapshots' || E'\t' || count(*) FROM v2_realtime_weather_snapshots
-          UNION ALL SELECT 'v2_realtime_race_condition_snapshots' || E'\t' || count(*) FROM v2_realtime_race_condition_snapshots
-          UNION ALL SELECT 'v2_realtime_exhibition_snapshots' || E'\t' || count(*) FROM v2_realtime_exhibition_snapshots
-          UNION ALL SELECT 'v2_previous_st_shadow_rankings' || E'\t' || count(*) FROM v2_previous_st_shadow_rankings
-          UNION ALL SELECT 'v2_realtime_condition_shadow_rankings' || E'\t' || count(*) FROM v2_realtime_condition_shadow_rankings
-          ORDER BY 1;
-          SQL
-
-      - name: Collect restored schema and critical counts
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm             --network host             -e PGPASSWORD=restoretest             -v "$PWD:/work"             postgres:18             psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_parity"               -At -v ON_ERROR_STOP=1 -f /work/schema.sql > restored-schema.tsv
-
-          docker run --rm             --network host             -e PGPASSWORD=restoretest             -v "$PWD:/work"             postgres:18             psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_parity"               -At -v ON_ERROR_STOP=1 -f /work/critical-counts.sql > restored-critical.tsv
-
-          restored_public_tables="$(
-            docker run --rm --network host -e PGPASSWORD=restoretest postgres:18               psql "postgresql://postgres:restoretest@127.0.0.1:5432/restore_parity"               -At -v ON_ERROR_STOP=1               -c "SELECT count(*) FROM pg_tables WHERE schemaname='public';"
+          source_evidence_sha="$(
+            cat               source-table-counts.tsv               source-tables.tsv               source-columns.tsv               source-constraints.tsv               source-indexes.tsv               source-sequences.tsv               source-views.tsv               source-triggers.tsv               source-policies.tsv               source-extensions.tsv |
+            sha256sum | awk '{print $1}'
           )"
-          test "$restored_public_tables" = "39"
 
-      - name: Collect Production schema and critical counts read-only
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > collect-source-evidence.sh <<'SH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          : "${DATABASE_PUBLIC_URL:?}"
-          export PGOPTIONS='-c default_transaction_read_only=on'
+          restored_evidence_sha="$(
+            cat               restored-table-counts.tsv               restored-tables.tsv               restored-columns.tsv               restored-constraints.tsv               restored-indexes.tsv               restored-sequences.tsv               restored-views.tsv               restored-triggers.tsv               restored-policies.tsv               restored-extensions.tsv |
+            sha256sum | awk '{print $1}'
+          )"
 
-          docker run --rm             -e DATABASE_PUBLIC_URL             -e PGOPTIONS             -v "$PWD:/work"             postgres:18             psql "$DATABASE_PUBLIC_URL"               -At -v ON_ERROR_STOP=1 -f /work/schema.sql > source-schema.tsv
+          test "$source_evidence_sha" = "$restored_evidence_sha"
 
-          docker run --rm             -e DATABASE_PUBLIC_URL             -e PGOPTIONS             -v "$PWD:/work"             postgres:18             psql "$DATABASE_PUBLIC_URL"               -At -v ON_ERROR_STOP=1 -f /work/critical-counts.sql > source-critical.tsv
+          restored_db_bytes="$(
+            docker run --rm               --network host               -e PGPASSWORD=paritytest               postgres:18               psql "postgresql://postgres:paritytest@127.0.0.1:5432/parity_restore"                 -At -v ON_ERROR_STOP=1                 -c "SELECT pg_database_size(current_database());"
+          )"
 
-          docker run --rm             -e DATABASE_PUBLIC_URL             -e PGOPTIONS             postgres:18             psql "$DATABASE_PUBLIC_URL"               -At -v ON_ERROR_STOP=1               -c "SELECT count(*) FROM pg_tables WHERE schemaname='public';" > source-public-table-count.txt
-          SH
-          chmod 700 collect-source-evidence.sh
+          echo "table_count=$table_count" >> "$GITHUB_OUTPUT"
+          echo "column_count=$column_count" >> "$GITHUB_OUTPUT"
+          echo "constraint_count=$constraint_count" >> "$GITHUB_OUTPUT"
+          echo "index_count=$index_count" >> "$GITHUB_OUTPUT"
+          echo "sequence_count=$sequence_count" >> "$GITHUB_OUTPUT"
+          echo "view_count=$view_count" >> "$GITHUB_OUTPUT"
+          echo "trigger_count=$trigger_count" >> "$GITHUB_OUTPUT"
+          echo "policy_count=$policy_count" >> "$GITHUB_OUTPUT"
+          echo "extension_count=$extension_count" >> "$GITHUB_OUTPUT"
+          echo "source_evidence_sha=$source_evidence_sha" >> "$GITHUB_OUTPUT"
+          echo "restored_evidence_sha=$restored_evidence_sha" >> "$GITHUB_OUTPUT"
+          echo "restored_db_bytes=$restored_db_bytes" >> "$GITHUB_OUTPUT"
 
-          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service postgres-recovery             bash ./collect-source-evidence.sh
-
-          test "$(cat source-public-table-count.txt)" = "39"
-
-      - name: Verify schema parity and critical table retention
-        id: verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          diff -u source-schema.tsv restored-schema.tsv > schema.diff || {
-            echo "Schema parity mismatch"
-            exit 1
-          }
-
-          python - <<'PY'
-          from pathlib import Path
-
-          def read_counts(path):
-              out = {}
-              for raw in Path(path).read_text(encoding="utf-8").splitlines():
-                  if not raw.strip():
-                      continue
-                  name, value = raw.split("\t", 1)
-                  out[name] = int(value)
-              return out
-
-          source = read_counts("source-critical.tsv")
-          restored = read_counts("restored-critical.tsv")
-
-          if set(source) != set(restored):
-              raise SystemExit("critical table set mismatch")
-
-          failures = []
-          rows = []
-          for name in sorted(restored):
-              s = source[name]
-              r = restored[name]
-              delta = s - r
-              if delta < 0:
-                  failures.append((name, s, r, delta))
-              rows.append((name, r, s, delta))
-
-          if failures:
-              raise SystemExit(f"source row-count deficit vs restored archive: {failures}")
-
-          lines = [
-              "| Critical table | Restored archive rows | Live source rows | Live delta |",
-              "|---|---:|---:|---:|",
-          ]
-          for name, r, s, delta in rows:
-              lines.append(f"| `{name}` | {r} | {s} | +{delta} |")
-          Path("critical-count-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-          PY
-
-          source_schema_sha="$(sha256sum source-schema.tsv | awk '{print $1}')"
-          restored_schema_sha="$(sha256sum restored-schema.tsv | awk '{print $1}')"
-          test "$source_schema_sha" = "$restored_schema_sha"
-          schema_lines="$(wc -l < source-schema.tsv | tr -d ' ')"
-          critical_tables="$(wc -l < restored-critical.tsv | tr -d ' ')"
-
-          echo "source_schema_sha=$source_schema_sha" >> "$GITHUB_OUTPUT"
-          echo "restored_schema_sha=$restored_schema_sha" >> "$GITHUB_OUTPUT"
-          echo "schema_lines=$schema_lines" >> "$GITHUB_OUTPUT"
-          echo "critical_tables=$critical_tables" >> "$GITHUB_OUTPUT"
-
-      - name: Build sanitized parity summary
+      - name: Build non-secret parity manifest
         if: success()
         shell: bash
         run: |
           set -euo pipefail
+
           {
-            echo '## Restored parity expansion'
+            echo "ARCHIVE_NAME=${{ steps.archive.outputs.archive_name }}"
+            echo "KEY_VARIABLE_NAME=${{ steps.key.outputs.key_var }}"
+            echo "PLAIN_DUMP_BYTES=${{ steps.archive.outputs.dump_bytes }}"
+            echo "PLAIN_DUMP_SHA256=${{ steps.archive.outputs.dump_sha }}"
+            echo "RESTORED_DUMP_SHA256=${{ steps.decrypt.outputs.restored_sha }}"
+            echo "RESTORE_LIST_ENTRIES=${{ steps.archive.outputs.list_entries }}"
+            echo "ENCRYPTED_BYTES=${{ steps.archive.outputs.encrypted_bytes }}"
+            echo "ENCRYPTED_SHA256=${{ steps.archive.outputs.encrypted_sha }}"
+            echo "CERT_SHA256=${{ steps.key.outputs.cert_sha }}"
+            echo "RESTORED_DB_BYTES=${{ steps.parity.outputs.restored_db_bytes }}"
+            echo "PUBLIC_TABLES=${{ steps.parity.outputs.table_count }}"
+            echo "PUBLIC_COLUMNS=${{ steps.parity.outputs.column_count }}"
+            echo "PUBLIC_CONSTRAINTS=${{ steps.parity.outputs.constraint_count }}"
+            echo "PUBLIC_INDEXES=${{ steps.parity.outputs.index_count }}"
+            echo "PUBLIC_SEQUENCES=${{ steps.parity.outputs.sequence_count }}"
+            echo "PUBLIC_VIEWS=${{ steps.parity.outputs.view_count }}"
+            echo "PUBLIC_TRIGGERS=${{ steps.parity.outputs.trigger_count }}"
+            echo "PUBLIC_POLICIES=${{ steps.parity.outputs.policy_count }}"
+            echo "EXTENSIONS=${{ steps.parity.outputs.extension_count }}"
+            echo "SOURCE_EVIDENCE_SHA256=${{ steps.parity.outputs.source_evidence_sha }}"
+            echo "RESTORED_EVIDENCE_SHA256=${{ steps.parity.outputs.restored_evidence_sha }}"
+            echo "SOURCE_WRITE=0"
+            echo "CONSISTENT_SOURCE_SNAPSHOT=1"
+            echo "RESTORE_TARGET=GITHUB_ACTIONS_LOCAL_POSTGRES18"
+            echo "PRIVATE_KEY_UPLOADED=0"
+            echo "PLAINTEXT_DUMP_UPLOADED=0"
+          } > parity-manifest-v3.txt
+
+      - name: Upload restore-verified parity archive
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.archive_name }}
+          path: |
+            ${{ steps.archive.outputs.archive_name }}.dump.cms
+            archive-public-v3.pem
+            parity-manifest-v3.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Build sanitized success summary
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo '## Restored parity expansion v3'
             echo
-            echo '✅ PASS'
+            echo '✅ PASS: exact parity verified against the same read-only Production snapshot used for the dump.'
             echo
-            echo "Artifact: $ARCHIVE_NAME"
+            echo "Artifact: ${{ steps.archive.outputs.archive_name }}"
+            echo "Key variable name: ${{ steps.key.outputs.key_var }}"
+            echo "Plain dump bytes: ${{ steps.archive.outputs.dump_bytes }}"
+            echo "Dump SHA-256: ${{ steps.archive.outputs.dump_sha }}"
             echo "Restored dump SHA-256: ${{ steps.decrypt.outputs.restored_sha }}"
-            echo "Public tables: 39"
-            echo "Canonical schema evidence lines: ${{ steps.verify.outputs.schema_lines }}"
-            echo "Source schema SHA-256: ${{ steps.verify.outputs.source_schema_sha }}"
-            echo "Restored schema SHA-256: ${{ steps.verify.outputs.restored_schema_sha }}"
-            echo "Critical tables checked: ${{ steps.verify.outputs.critical_tables }}"
+            echo "Restore-list entries: ${{ steps.archive.outputs.list_entries }}"
+            echo "Restored DB bytes: ${{ steps.parity.outputs.restored_db_bytes }}"
+            echo "Public tables: ${{ steps.parity.outputs.table_count }}"
+            echo "Columns: ${{ steps.parity.outputs.column_count }}"
+            echo "Constraints: ${{ steps.parity.outputs.constraint_count }}"
+            echo "Indexes: ${{ steps.parity.outputs.index_count }}"
+            echo "Sequences: ${{ steps.parity.outputs.sequence_count }}"
+            echo "Views: ${{ steps.parity.outputs.view_count }}"
+            echo "Triggers: ${{ steps.parity.outputs.trigger_count }}"
+            echo "Policies: ${{ steps.parity.outputs.policy_count }}"
+            echo "Extensions: ${{ steps.parity.outputs.extension_count }}"
+            echo "Evidence SHA-256 source/restored: ${{ steps.parity.outputs.source_evidence_sha }}"
             echo
-            echo 'Full public schema parity passed for tables, columns, constraints, indexes, sequences, triggers, and public enum/domain types.'
-            echo 'For the additional critical tables below, live Production row counts were greater than or equal to the restore-verified archive counts; positive deltas are expected from post-archive live writes.'
-            echo
-            cat critical-count-summary.md
+            echo 'Exact equality passed for every public table row count plus table metadata, columns, constraints, indexes, sequences, views, triggers, policies, and extensions.'
             echo
             echo 'SOURCE_WRITE=0 / Production rows and schema unchanged / restore target was local and isolated.'
+            echo 'The decryption key is run-scoped, so later archive creation cannot overwrite this artifact key.'
             echo 'No plaintext dump or private key was uploaded.'
           } > parity-summary.md
 
@@ -367,28 +525,25 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## Restored parity expansion'
+            echo '## Restored parity expansion v3'
             echo
-            echo '❌ FAIL'
-            echo
-            echo 'The expanded schema/table parity check did not pass.'
+            echo '❌ FAIL: exact restored parity was not established.'
             echo
             echo 'No Production delete, row/schema mutation, cutover, volume cleanup, or plan change was requested.'
-            echo 'Do not proceed to retention deletion, cutover, volume cleanup, or Pro -> Hobby downgrade.'
+            echo 'Do not proceed to historical deletion, cutover, volume cleanup, or Pro -> Hobby downgrade.'
           } > parity-summary.md
 
       - name: Cleanup plaintext and private material
         if: always()
         shell: bash
         run: |
-          rm -rf artifact archive.zip
-          rm -f             restored.dump             escrow-private.pem             decrypt-from-escrow.sh             collect-source-evidence.sh             schema.sql             critical-counts.sql             source-schema.tsv             restored-schema.tsv             source-critical.tsv             restored-critical.tsv             source-public-table-count.txt             schema.diff
+          rm -f             archive-private-v3.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             decrypt-v3.sh             parity_capture.py             source-*.tsv             restored-*.tsv
 
       - name: Post sanitized result
         if: always()
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file parity-summary.md
