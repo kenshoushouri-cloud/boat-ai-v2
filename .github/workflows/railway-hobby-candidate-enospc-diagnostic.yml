@@ -63,7 +63,7 @@ jobs:
             'TOP|' ||
             n.nspname || '|' ||
             c.relname || '|' ||
-            c.relkind || '|' ||
+            c.relkind::text || '|' ||
             pg_total_relation_size(c.oid) || '|' ||
             pg_relation_size(c.oid) || '|' ||
             COALESCE(pg_indexes_size(c.oid),0)
