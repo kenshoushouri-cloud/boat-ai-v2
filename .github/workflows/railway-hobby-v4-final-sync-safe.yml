@@ -1,6 +1,10 @@
 name: Railway candidate v4 safe final sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/railway-hobby-v4-final-sync-safe.yml
   issue_comment:
     types: [created]
 
