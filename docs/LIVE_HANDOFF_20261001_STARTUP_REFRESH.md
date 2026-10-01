@@ -1,9 +1,9 @@
-# Live Handoff — 2026-10-01 10:13 JST (compact)
+# Live Handoff — 2026-10-01 10:18 JST (compact)
 
 Status: **CURRENT COMPACT HANDOFF**  
 Repository: `kenshoushouri-cloud/boat-ai-v2`
 
-Re-fetch GitHub/Railway live state before every action. Old SHA/run/count values are snapshots only.
+Re-fetch live GitHub/Railway state before every action. Values below are snapshots, not permanent truth.
 
 ## 1. System purpose / fixed contract
 
@@ -16,16 +16,16 @@ Source of Truth:
 Fixed:
 - 2026-09-29 formal V4 = permanently **UNAVAILABLE**
 - V5 gate = V4 >=20 resolved `FORMAL_AVAILABLE` days + S03_M2 >=100 official observations + clean evidence contract
-- historical reconstruction gives **zero prospective gate credit**
+- historical reconstruction gives **zero** prospective gate credit
 - `purchase_action=false`
 - Production model/selector/stake/LINE/purchase and Railway Production mutations require explicit approval
 - never enumerate Railway plaintext Variables / never call `list_variables`
-- Railway Agent is exceptional only; prefer normal MCP reads
+- prefer normal Railway MCP reads; Railway Agent only when required
 
-## 2. Timeline / prospective checkpoint
+## 2. Timeline / gates
 
-Daily path:
-`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> runtime availability hard-stop -> pre-deadline freeze -> 23:30 settlement`
+Daily prospective path:
+`08:15 cutoff -> 08:16 nominal GitHub -> 08:20 Railway fallback -> availability hard-stop -> pre-deadline freeze -> 23:30 settlement`
 
 Milestones:
 - **2026-10-03 billing boundary:** Pro -> Hobby only after restore/parity/resource checks
@@ -36,92 +36,50 @@ Prospective baseline:
 - S03_M2 = **63/100**
 - 2026-09-29 permanently unavailable
 - 2026-10-01 fallback freeze run `36790563118` = **SUCCESS**
-  - pre-freeze raw capture PASS
-  - prospective evidence eligible=true
-  - availability guard `PASS_ACTIVE_CORE`
-  - immutable artifact + F-count companion created
-  - `purchase_action=false`
 - 10/1 is not added to V4 until nightly settlement + terminal canonical evidence
 
-## 3. Historical recovery
+## 3. Current work
 
-Existing beforeinfo writer:
-- run `36703692641`
-- 2025-12 = **in_progress**
-- 2026-01..09 = queued
-- earlier 2025-08..11 = cancelled
-- **do not add another normal beforeinfo trigger while this lane is occupied**
+### Historical recovery
+- existing writer run `36703692641`
+- 2025-12 = **in_progress**; 2026-01..09 = queued
+- do **not** add another normal beforeinfo trigger while this lane is occupied
+- latest matched-readiness snapshot: complete_beforeinfo **14,705**, core_plus_beforeinfo **7,936 / 11.33%**, opponent_replay **56,599**, recent_form6 **0**
+- next research sequence: `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`
 
-Latest matched-readiness snapshot:
-- races = 70,026
-- complete_beforeinfo = 14,705
-- core_plus_beforeinfo = 7,936 / 11.33%
-- opponent_replay = 56,599
-- reconstructed full core = 47,431 / 67.73%
-- recent_form6 = 0
-- historical/read-only only; no prospective gate credit
+### Railway Pro -> Hobby
+- plan = **PRO**; billing boundary = **10/03**; Hobby volume limit = **5 GB**
+- Production DB = `postgres-recovery`
+- configured volume = **20 GB**; physical disk used ≈ **4.96 GB**
+- logical DB size ≈ **4,221 MB**
+- largest relations: `v2_odds_trifecta` ≈ 1,831 MB; `v2_realtime_odds_snapshots` ≈ 721 MB
+- read-only archive estimates: keep 30d -> **3,261 MB**, 60d -> **2,693 MB**, 90d -> **2,343 MB** archive candidates; estimates are not guaranteed physical shrinkage
 
-After beforeinfo recovery: `recent_form -> matched-readiness -> matched-contract backtest -> V5 review`.
+Recovery evidence secured:
+- Railway backup/snapshot `pre-hobby-migration-20261001`
+- encrypted logical archive artifact `boat-ai-pre-hobby-20261001`
+- plain dump SHA-256 `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
+- `pg_restore --list` validation passed; Production rows/schema unchanged
 
-## 4. Railway Pro -> Hobby preparation
+**Next single task: isolated restore drill of the encrypted logical archive.**
 
-Billing / limits:
-- current plan = **PRO**
-- billing boundary = **10/03**
-- Pro -> Hobby downgrade takes effect at the next billing cycle
-- Hobby volume size limit = **5 GB**
-
-Production DB:
-- service = `postgres-recovery`
-- configured volume = **20 GB**
-- physical disk used ≈ **4.958 GB**
-- latest logical DB size = **4,221 MB**
-- largest: `v2_odds_trifecta` ≈ 1,831 MB; `v2_realtime_odds_snapshots` ≈ 721 MB
-
-Read-only retention planning estimate:
-- keep 30d hot -> archive candidate ≈ **3,261 MB**
-- keep 60d hot -> archive candidate ≈ **2,693 MB**
-- keep 90d hot -> archive candidate ≈ **2,343 MB**
-These are row-proportional estimates, not guaranteed physical disk shrinkage.
-
-Recovery evidence already secured:
-- Railway snapshot `pre-hobby-migration-20261001` exists
-- encrypted logical archive artifact `boat-ai-pre-hobby-20261001` exists
-- plaintext dump bytes = 301,856,594
-- SHA-256 = `2f00b0b14f239fd1069d0dc4e95570201b1572657311ab53ef3f83411fdf733c`
-- `pg_restore --list` validation passed; 272 entries
-- plaintext dump was never uploaded to the public repo
-- Production rows/schema were unchanged
-
-PR #534:
-- Draft `Ops: add read-only Hobby retention sizing audit`
-- open, stale/non-mergeable against current main
-- do not merge blindly; rebase/revalidate only if still needed
-
-## 5. Immediate next work
-
-Principle: **archive first -> prove restore -> prove parity -> cut over -> only then clean up/downgrade.**
-
-**Next single task: isolated restore drill of the encrypted pre-Hobby logical archive.**
-
-Then, one task at a time:
+After that, one task at a time:
 1. verify restored schema/table/row counts
-2. finish hot-retention dependency audit; 60d is only a working candidate
-3. build a smaller Hobby-compatible DB/volume
+2. finalize hot-retention scope; 60d is only a working candidate
+3. build a Hobby-compatible <=5 GB DB/volume
 4. run read-only parity checks
 5. only with explicit exact-target approval: Production cutover
-6. after stable cutover: old-data/volume cleanup and plan downgrade
+6. after stable cutover: old-data/volume cleanup and Pro -> Hobby downgrade
 
-Do not run Production DELETE/schema/VACUUM, volume replacement, Cron/Variables changes, cutover, or plan change before restore/parity.
+Never delete Production historical data first. Archive -> restore -> parity -> cutover -> cleanup.
 
-## 6. Working style / context control
+PR #534 is Draft/stale against current main; do not merge blindly.
 
-User request:
+## 4. Working style / context control
+
 - **one task at a time** to avoid timeouts
-- no long intermediate progress in chat
-- report only concise completion/result
-- keep this handoff compact; replace stale text instead of appending
-
-Deep-history docs are reference only and should not be loaded by default.
+- no long intermediate progress in chat; report concise completion/results
+- replace stale handoff text instead of appending cumulative override blocks
+- old `LIVE_HANDOFF_*`, `PROJECT_HANDOFF.md`, `CURRENT_STATE.md`, and `SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` are deep history unless a specific past decision is needed
 
 `CURRENT_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / 929_UNAVAILABLE / V5_GATES_FIXED / PURCHASE_FALSE`
