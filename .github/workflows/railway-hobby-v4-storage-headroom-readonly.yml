@@ -1,0 +1,107 @@
+name: Railway candidate v4 storage headroom diagnostic
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  diagnostic:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-storage-headroom-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Read storage and WAL retention metadata only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > diagnostic.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'DB_BYTES|' || pg_database_size(current_database());
+          SELECT 'WAL_BYTES|' || COALESCE(sum(size),0) FROM pg_ls_waldir();
+          SELECT 'PUBLIC_TOTAL_BYTES|' || COALESCE(sum(pg_total_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('r','p');
+          SELECT 'PUBLIC_HEAP_BYTES|' || COALESCE(sum(pg_relation_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('r','p');
+          SELECT 'PUBLIC_INDEX_BYTES|' || COALESCE(sum(pg_indexes_size(c.oid)),0)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+          WHERE n.nspname='public' AND c.relkind IN ('r','p');
+
+          SELECT 'SETTING|max_wal_size|' || current_setting('max_wal_size');
+          SELECT 'SETTING|min_wal_size|' || current_setting('min_wal_size');
+          SELECT 'SETTING|wal_keep_size|' || current_setting('wal_keep_size');
+          SELECT 'SETTING|max_slot_wal_keep_size|' || current_setting('max_slot_wal_keep_size');
+          SELECT 'SETTING|archive_mode|' || current_setting('archive_mode');
+          SELECT 'SETTING|wal_level|' || current_setting('wal_level');
+          SELECT 'SETTING|checkpoint_timeout|' || current_setting('checkpoint_timeout');
+          SELECT 'SETTING|checkpoint_completion_target|' || current_setting('checkpoint_completion_target');
+
+          SELECT 'REPLICATION_SLOTS|' || count(*) FROM pg_replication_slots;
+          SELECT 'ACTIVE_REPLICATION_SLOTS|' || count(*) FILTER (WHERE active) FROM pg_replication_slots;
+          SELECT 'MAX_SLOT_RETAINED_BYTES|' ||
+                 COALESCE(max(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)),0)::bigint
+          FROM pg_replication_slots;
+
+          SELECT 'ARCHIVER_FAILED_COUNT|' || failed_count FROM pg_stat_archiver;
+          SELECT 'ARCHIVER_ARCHIVED_COUNT|' || archived_count FROM pg_stat_archiver;
+          SQL
+
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh \
+            < diagnostic.sql > diagnostic.out
+
+          grep -E '^(DB_BYTES|WAL_BYTES|PUBLIC_TOTAL_BYTES|PUBLIC_HEAP_BYTES|PUBLIC_INDEX_BYTES|SETTING|REPLICATION_SLOTS|ACTIVE_REPLICATION_SLOTS|MAX_SLOT_RETAINED_BYTES|ARCHIVER_FAILED_COUNT|ARCHIVER_ARCHIVED_COUNT)\|' \
+            diagnostic.out > diagnostic.sanitized
+          test -s diagnostic.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 storage headroom diagnostic'
+            echo
+            if [ -s diagnostic.sanitized ]; then
+              echo 'Read-only storage/WAL metadata:'
+              echo
+              echo '```text'
+              cat diagnostic.sanitized
+              echo '```'
+            else
+              echo 'Diagnostic did not produce a sanitized result.'
+            fi
+            echo
+            echo 'Target: postgres-hobby-fullhistory-candidate-v4 only.'
+            echo 'No row/schema/settings changes, checkpoint, delete, resize, cutover, plan change, or Production mutation.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
