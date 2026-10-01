@@ -1,0 +1,302 @@
+name: Railway 5GB full-history v3 exact parity read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-recovery"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v3"
+  LIMIT_BYTES: "5000000000"
+
+jobs:
+  parity:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-fullhistory-v3-exact-parity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+
+      - name: Build canonical read-only capture
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          cat > list-tables.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '120s';
+          SELECT c.relname
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r','p')
+          ORDER BY c.relname;
+          SQL
+
+          railway connect "$SOURCE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < list-tables.sql > source-table-list.raw
+
+          grep -E '^[A-Za-z0-9_]+$' source-table-list.raw > table-list.txt
+          test -s table-list.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tables = [x.strip() for x in Path("table-list.txt").read_text().splitlines() if x.strip()]
+          out = [
+              r"\set ON_ERROR_STOP on",
+              r"\pset tuples_only on",
+              r"\pset format unaligned",
+              "SET default_transaction_read_only = on;",
+              "SET statement_timeout = '120s';",
+          ]
+
+          for table in tables:
+              ident = '"' + table.replace('"', '""') + '"'
+              lit = table.replace("'", "''")
+              out.append(
+                  "SELECT 'COUNT|' || jsonb_build_array(" +
+                  f"'{lit}', count(*)::text" +
+                  f")::text FROM public.{ident};"
+              )
+
+          out.extend([
+              """
+              SELECT 'TABLE|' || jsonb_build_array(
+                c.relname, c.relkind::text, c.relpersistence::text,
+                c.relreplident::text, c.relrowsecurity::text, c.relforcerowsecurity::text
+              )::text
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+              ORDER BY c.relname;
+              """,
+              """
+              SELECT 'COLUMN|' || jsonb_build_array(
+                table_name, ordinal_position::text, column_name, data_type,
+                udt_schema, udt_name, is_nullable, COALESCE(column_default, ''),
+                COALESCE(character_maximum_length::text, ''),
+                COALESCE(numeric_precision::text, ''),
+                COALESCE(numeric_scale::text, ''),
+                COALESCE(collation_schema, ''), COALESCE(collation_name, ''),
+                is_identity, COALESCE(identity_generation, ''),
+                is_generated, COALESCE(generation_expression, '')
+              )::text
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+              ORDER BY table_name, ordinal_position;
+              """,
+              """
+              SELECT 'CONSTRAINT|' || jsonb_build_array(
+                c.conrelid::regclass::text, c.conname, c.contype::text,
+                pg_get_constraintdef(c.oid, true)
+              )::text
+              FROM pg_constraint c
+              JOIN pg_namespace n ON n.oid = c.connamespace
+              WHERE n.nspname = 'public' AND c.conrelid <> 0
+              ORDER BY c.conrelid::regclass::text, c.conname;
+              """,
+              """
+              SELECT 'INDEX|' || jsonb_build_array(tablename, indexname, indexdef)::text
+              FROM pg_indexes
+              WHERE schemaname = 'public'
+              ORDER BY tablename, indexname;
+              """,
+              """
+              SELECT 'SEQUENCE|' || jsonb_build_array(
+                sequencename, data_type, start_value::text, min_value::text,
+                max_value::text, increment_by::text, cycle::text, cache_size::text
+              )::text
+              FROM pg_sequences
+              WHERE schemaname = 'public'
+              ORDER BY sequencename;
+              """,
+              """
+              SELECT 'VIEW|' || jsonb_build_array(
+                c.relname, c.relkind::text, pg_get_viewdef(c.oid, true)
+              )::text
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind IN ('v','m')
+              ORDER BY c.relname;
+              """,
+              """
+              SELECT 'TRIGGER|' || jsonb_build_array(
+                c.relname, t.tgname, pg_get_triggerdef(t.oid, true)
+              )::text
+              FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND NOT t.tgisinternal
+              ORDER BY c.relname, t.tgname;
+              """,
+              """
+              SELECT 'POLICY|' || jsonb_build_array(
+                tablename, policyname, permissive, roles::text, cmd,
+                COALESCE(qual, ''), COALESCE(with_check, '')
+              )::text
+              FROM pg_policies
+              WHERE schemaname = 'public'
+              ORDER BY tablename, policyname;
+              """,
+              """
+              SELECT 'EXTENSION|' || jsonb_build_array(extname, extversion)::text
+              FROM pg_extension
+              ORDER BY extname;
+              """,
+              "SELECT 'DB_BYTES|' || pg_database_size(current_database());",
+              "SELECT 'TARGET_INDEX|' || COALESCE(to_regclass('public.ux_v2_odds_trifecta_race_ticket')::text,'');",
+          ])
+
+          Path("capture.sql").write_text("\n".join(out) + "\n", encoding="utf-8")
+          PY
+
+      - name: Capture source before read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$SOURCE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < capture.sql > source-before.raw
+          grep -E '^(COUNT|TABLE|COLUMN|CONSTRAINT|INDEX|SEQUENCE|VIEW|TRIGGER|POLICY|EXTENSION|DB_BYTES|TARGET_INDEX)\|' source-before.raw > source-before.sanitized
+          grep -Ev '^(DB_BYTES|TARGET_INDEX)\|' source-before.sanitized | LC_ALL=C sort > source-before.evidence
+          test -s source-before.evidence
+
+      - name: Capture candidate v3 read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$TARGET_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < capture.sql > candidate.raw
+          grep -E '^(COUNT|TABLE|COLUMN|CONSTRAINT|INDEX|SEQUENCE|VIEW|TRIGGER|POLICY|EXTENSION|DB_BYTES|TARGET_INDEX)\|' candidate.raw > candidate.sanitized
+          grep -Ev '^(DB_BYTES|TARGET_INDEX)\|' candidate.sanitized | LC_ALL=C sort > candidate.evidence
+          test -s candidate.evidence
+
+      - name: Capture source after read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway connect "$SOURCE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --no-ssh < capture.sql > source-after.raw
+          grep -E '^(COUNT|TABLE|COLUMN|CONSTRAINT|INDEX|SEQUENCE|VIEW|TRIGGER|POLICY|EXTENSION|DB_BYTES|TARGET_INDEX)\|' source-after.raw > source-after.sanitized
+          grep -Ev '^(DB_BYTES|TARGET_INDEX)\|' source-after.sanitized | LC_ALL=C sort > source-after.evidence
+          test -s source-after.evidence
+
+      - name: Require exact parity and 5GB limit
+        id: parity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          diff -u source-before.evidence source-after.evidence
+          diff -u source-before.evidence candidate.evidence
+
+          source_sha="$(sha256sum source-before.evidence | awk '{print $1}')"
+          candidate_sha="$(sha256sum candidate.evidence | awk '{print $1}')"
+          test "$source_sha" = "$candidate_sha"
+
+          candidate_db_bytes="$(awk -F'|' '$1=="DB_BYTES"{print $2}' candidate.sanitized | tail -1 | tr -d '[:space:]')"
+          test -n "$candidate_db_bytes"
+          test "$candidate_db_bytes" -lt "$LIMIT_BYTES"
+          headroom="$((LIMIT_BYTES - candidate_db_bytes))"
+
+          target_index="$(awk -F'|' '$1=="TARGET_INDEX"{print $2}' candidate.sanitized | tail -1 | tr -d '[:space:]')"
+          test "$target_index" = "ux_v2_odds_trifecta_race_ticket"
+
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_db_bytes=$candidate_db_bytes" >> "$GITHUB_OUTPUT"
+          echo "headroom=$headroom" >> "$GITHUB_OUTPUT"
+          echo "table_count=$(grep -c '^TABLE|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "column_count=$(grep -c '^COLUMN|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "constraint_count=$(grep -c '^CONSTRAINT|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "index_count=$(grep -c '^INDEX|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "sequence_count=$(grep -c '^SEQUENCE|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "view_count=$(grep -c '^VIEW|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "trigger_count=$(grep -c '^TRIGGER|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "policy_count=$(grep -c '^POLICY|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+          echo "extension_count=$(grep -c '^EXTENSION|' source-before.evidence || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Build sanitized result
+        if: success()
+        shell: bash
+        run: |
+          cat > summary.md <<EOF
+          ## 5GB full-history candidate v3 exact parity
+
+          PASS: source-before and source-after evidence are identical, and candidate-v3 exactly matches that stable source evidence.
+
+          - Tables: ${{ steps.parity.outputs.table_count }}
+          - Columns: ${{ steps.parity.outputs.column_count }}
+          - Constraints: ${{ steps.parity.outputs.constraint_count }}
+          - Indexes: ${{ steps.parity.outputs.index_count }}
+          - Sequences: ${{ steps.parity.outputs.sequence_count }}
+          - Views: ${{ steps.parity.outputs.view_count }}
+          - Triggers: ${{ steps.parity.outputs.trigger_count }}
+          - Policies: ${{ steps.parity.outputs.policy_count }}
+          - Extensions: ${{ steps.parity.outputs.extension_count }}
+          - Evidence SHA-256: ${{ steps.parity.outputs.candidate_sha }}
+          - Candidate DB bytes: ${{ steps.parity.outputs.candidate_db_bytes }}
+          - Headroom vs 5,000,000,000 bytes: ${{ steps.parity.outputs.headroom }}
+          - Required index: ux_v2_odds_trifecta_race_ticket present
+
+          Exact equality includes every public table row count and all compared schema metadata.
+
+          SOURCE_WRITE=0 / CANDIDATE_WRITE=0 / CUTOVER=0 / DELETE=0 / RESIZE=0 / PLAN_CHANGE=0 / PURCHASE_ACTION=false.
+          EOF
+
+      - name: Build sanitized failure
+        if: failure()
+        shell: bash
+        run: |
+          cat > summary.md <<'EOF'
+          ## 5GB full-history candidate v3 exact parity
+
+          FAIL: exact read-only parity was not established.
+
+          No source/candidate row or schema mutation, cutover, delete, resize, plan change, or purchase action was requested.
+          EOF
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
