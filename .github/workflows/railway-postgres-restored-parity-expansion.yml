@@ -14,6 +14,7 @@ env:
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_BRIDGE_ISSUE: "42"
   KEY_SERVICE: "archive-restore-key-20261001"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate"
   ARCHIVE_PREFIX: "boat-ai-pre-hobby-restorable-20261001-v3-parity"
 
 concurrency:
@@ -27,7 +28,7 @@ jobs:
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway postgres-restored-parity-expand CONFIRM'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     services:
       postgres:
@@ -286,6 +287,16 @@ jobs:
               capture(conn, "restored")
               conn.close()
 
+          elif mode == "candidate":
+              url = os.environ["DATABASE_PUBLIC_URL"]
+              conn = psycopg.connect(url)
+              conn.execute("SET default_transaction_read_only = on")
+              capture(conn, "candidate")
+              db_bytes = conn.execute("SELECT pg_database_size(current_database())").fetchone()[0]
+              with open("candidate-db-bytes.txt", "w", encoding="utf-8") as f:
+                  f.write(str(db_bytes) + "\n")
+              conn.close()
+
           else:
               raise SystemExit("unknown mode")
           PY
@@ -437,6 +448,115 @@ jobs:
           echo "restored_evidence_sha=$restored_evidence_sha" >> "$GITHUB_OUTPUT"
           echo "restored_db_bytes=$restored_db_bytes" >> "$GITHUB_OUTPUT"
 
+      - name: Restore exact-parity snapshot into isolated 5GB Hobby candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > restore-candidate.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?}"
+          export TARGET_DATABASE_URL="$DATABASE_PUBLIC_URL"
+
+          docker run --rm \
+            -e TARGET_DATABASE_URL \
+            -v "$PWD:/work" \
+            postgres:18 \
+            bash -lc 'pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error --jobs=2 --dbname="$TARGET_DATABASE_URL" /work/restored.dump'
+          SH
+
+          chmod 700 restore-candidate.sh
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$TARGET_SERVICE" \
+            bash ./restore-candidate.sh
+
+      - name: Capture 5GB candidate evidence read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$TARGET_SERVICE" \
+            python3 parity_capture.py candidate
+
+          test -s candidate-table-counts.tsv
+          test -s candidate-columns.tsv
+          test -s candidate-db-bytes.txt
+
+      - name: Require exact 5GB candidate parity
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kinds=(
+            table-counts
+            tables
+            columns
+            constraints
+            indexes
+            sequences
+            views
+            triggers
+            policies
+            extensions
+          )
+
+          for kind in "${kinds[@]}"; do
+            diff -u "source-$kind.tsv" "candidate-$kind.tsv"
+          done
+
+          candidate_evidence_sha="$(
+            cat \
+              candidate-table-counts.tsv \
+              candidate-tables.tsv \
+              candidate-columns.tsv \
+              candidate-constraints.tsv \
+              candidate-indexes.tsv \
+              candidate-sequences.tsv \
+              candidate-views.tsv \
+              candidate-triggers.tsv \
+              candidate-policies.tsv \
+              candidate-extensions.tsv |
+            sha256sum | awk '{print $1}'
+          )"
+
+          test "$candidate_evidence_sha" = "${{ steps.parity.outputs.source_evidence_sha }}"
+
+          table_count="$(wc -l < candidate-table-counts.tsv | tr -d ' ')"
+          column_count="$(wc -l < candidate-columns.tsv | tr -d ' ')"
+          constraint_count="$(wc -l < candidate-constraints.tsv | tr -d ' ')"
+          index_count="$(wc -l < candidate-indexes.tsv | tr -d ' ')"
+          sequence_count="$(wc -l < candidate-sequences.tsv | tr -d ' ')"
+          view_count="$(wc -l < candidate-views.tsv | tr -d ' ')"
+          trigger_count="$(wc -l < candidate-triggers.tsv | tr -d ' ')"
+          policy_count="$(wc -l < candidate-policies.tsv | tr -d ' ')"
+          extension_count="$(wc -l < candidate-extensions.tsv | tr -d ' ')"
+
+          test "$table_count" = "${{ steps.parity.outputs.table_count }}"
+          test "$column_count" = "${{ steps.parity.outputs.column_count }}"
+          test "$constraint_count" = "${{ steps.parity.outputs.constraint_count }}"
+          test "$index_count" = "${{ steps.parity.outputs.index_count }}"
+          test "$sequence_count" = "${{ steps.parity.outputs.sequence_count }}"
+          test "$view_count" = "${{ steps.parity.outputs.view_count }}"
+          test "$trigger_count" = "${{ steps.parity.outputs.trigger_count }}"
+          test "$policy_count" = "${{ steps.parity.outputs.policy_count }}"
+          test "$extension_count" = "${{ steps.parity.outputs.extension_count }}"
+
+          candidate_db_bytes="$(tr -d '[:space:]' < candidate-db-bytes.txt)"
+          test "$candidate_db_bytes" -lt 5000000000
+          candidate_headroom_bytes="$((5000000000 - candidate_db_bytes))"
+
+          echo "candidate_evidence_sha=$candidate_evidence_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_db_bytes=$candidate_db_bytes" >> "$GITHUB_OUTPUT"
+          echo "candidate_headroom_bytes=$candidate_headroom_bytes" >> "$GITHUB_OUTPUT"
+
       - name: Build non-secret parity manifest
         if: success()
         shell: bash
@@ -465,9 +585,17 @@ jobs:
             echo "EXTENSIONS=${{ steps.parity.outputs.extension_count }}"
             echo "SOURCE_EVIDENCE_SHA256=${{ steps.parity.outputs.source_evidence_sha }}"
             echo "RESTORED_EVIDENCE_SHA256=${{ steps.parity.outputs.restored_evidence_sha }}"
+            echo "CANDIDATE_SERVICE=$TARGET_SERVICE"
+            echo "CANDIDATE_EVIDENCE_SHA256=${{ steps.candidate.outputs.candidate_evidence_sha }}"
+            echo "CANDIDATE_DB_BYTES=${{ steps.candidate.outputs.candidate_db_bytes }}"
+            echo "CANDIDATE_HEADROOM_VS_5GB_BYTES=${{ steps.candidate.outputs.candidate_headroom_bytes }}"
+            echo "CANDIDATE_VOLUME_LIMIT_BYTES=5000000000"
+            echo "CANDIDATE_PARITY=PASS"
             echo "SOURCE_WRITE=0"
             echo "CONSISTENT_SOURCE_SNAPSHOT=1"
-            echo "RESTORE_TARGET=GITHUB_ACTIONS_LOCAL_POSTGRES18"
+            echo "RESTORE_TARGET=GITHUB_ACTIONS_LOCAL_POSTGRES18_AND_RAILWAY_5GB_CANDIDATE"
+            echo "CUTOVER=0"
+            echo "PLAN_CHANGE=0"
             echo "PRIVATE_KEY_UPLOADED=0"
             echo "PLAINTEXT_DUMP_UPLOADED=0"
           } > parity-manifest-v3.txt
@@ -512,10 +640,15 @@ jobs:
             echo "Policies: ${{ steps.parity.outputs.policy_count }}"
             echo "Extensions: ${{ steps.parity.outputs.extension_count }}"
             echo "Evidence SHA-256 source/restored: ${{ steps.parity.outputs.source_evidence_sha }}"
+            echo "5GB candidate service: $TARGET_SERVICE"
+            echo "5GB candidate evidence SHA-256: ${{ steps.candidate.outputs.candidate_evidence_sha }}"
+            echo "5GB candidate DB bytes: ${{ steps.candidate.outputs.candidate_db_bytes }}"
+            echo "5GB candidate headroom bytes: ${{ steps.candidate.outputs.candidate_headroom_bytes }}"
             echo
             echo 'Exact equality passed for every public table row count plus table metadata, columns, constraints, indexes, sequences, views, triggers, policies, and extensions.'
+            echo 'The same exact-parity snapshot was restored into the isolated 5GB Railway candidate and matched the source evidence fingerprint.'
             echo
-            echo 'SOURCE_WRITE=0 / Production rows and schema unchanged / restore target was local and isolated.'
+            echo 'SOURCE_WRITE=0 / Production rows and schema unchanged / CUTOVER=0 / PLAN_CHANGE=0.'
             echo 'The decryption key is run-scoped, so later archive creation cannot overwrite this artifact key.'
             echo 'No plaintext dump or private key was uploaded.'
           } > parity-summary.md
@@ -537,7 +670,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f             archive-private-v3.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             decrypt-v3.sh             parity_capture.py             source-*.tsv             restored-*.tsv
+          rm -f             archive-private-v3.pem             escrow-private.pem             full-source.dump             restored.dump             restore-list.txt             decrypt-v3.sh             restore-candidate.sh             parity_capture.py             source-*.tsv             restored-*.tsv             candidate-*.tsv             candidate-db-bytes.txt
 
       - name: Post sanitized result
         if: always()
