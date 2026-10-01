@@ -1,6 +1,6 @@
 # Next Chat Start Here
 
-Paste this into a new chat:
+Paste the block below into a new chat.
 
 ---
 
@@ -16,9 +16,9 @@ GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認して�
 2. そこから指定された current compact handoff を全文
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、`SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` は履歴です。必要な過去判断がある場合だけ開いてください。
+古い `LIVE_HANDOFF_*`、`PROJECT_HANDOFF.md`、`CURRENT_STATE.md`、`SYSTEM_PURPOSE_TIMELINE_HANDOFF_20260930.md` は履歴です。特定の過去判断が必要な場合だけ確認してください。
 
-その後、snapshotを現在値と決めつけず、**一度に1作業だけ**live再取得して進めてください。最初に current main、次にその1作業に必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
+その後、snapshotを現在値と決めつけず、**一度に1作業だけ**live再取得して進めてください。最初に current main、その次にその作業へ必要な PR / Actions / Issue #42 / Railway Production / PostgreSQL evidence だけを確認してください。
 
 固定ルール:
 - GitHub main = code Source of Truth
@@ -33,9 +33,9 @@ GitHub repository `kenshoushouri-cloud/boat-ai-v2` を最優先で確認して�
 
 現在の優先順位:
 1. daily prospective evidenceを落とさない
-2. run `36703692641` のhistorical writerを重複triggerなしで継続
+2. historical writer `36703692641` を重複triggerなしで継続
 3. 10/03 billing boundaryへ向けPro -> Hobby準備
-4. pre-Hobby backupと暗号化logical archiveは確保済み
+4. backupと暗号化logical archiveは確保済み
 5. **次の1作業はProductionから隔離したrestore drill**
 6. restore/parity前にhistorical DELETE・volume削除・Production切替・plan変更をしない
 7. 2026-10-15前後のV5 operational-readiness reviewへ進む

@@ -7,15 +7,11 @@ Read only:
 2. the current compact handoff above, in full
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-Do not load old handoffs/deep-history docs by default. Re-fetch only the live state needed for the next single task.
-
-Source of Truth:
-- GitHub `main` = code
-- Railway PostgreSQL Production = data
+Do not load deep-history handoffs by default. Re-fetch only the live state needed for the next single task.
 
 Current focus:
 - preserve daily prospective evidence
-- let writer `36703692641` finish; no duplicate beforeinfo trigger
+- let historical writer `36703692641` continue; no duplicate trigger
 - prepare Pro -> Hobby for the 10/03 billing boundary
 - backup + encrypted logical archive are secured
 - **next task = isolated restore drill**
@@ -23,6 +19,8 @@ Current focus:
 - V5 operational-readiness target remains around 2026-10-15
 
 Fixed:
+- GitHub `main` = code Source of Truth
+- Railway PostgreSQL Production = data Source of Truth
 - 2026-09-29 formal V4 permanently UNAVAILABLE
 - V5 gate = V4 >=20 resolved `FORMAL_AVAILABLE` days / S03_M2 >=100 official observations / clean evidence contract
 - historical reconstruction gives no prospective gate credit
@@ -30,6 +28,6 @@ Fixed:
 - never enumerate Railway plaintext Variables
 - Railway Agent only when normal MCP cannot answer
 
-Working style: **one task at a time; no long intermediate progress; concise result only; replace stale handoff text instead of appending.**
+Working style: **one task at a time; no long intermediate progress; concise result only; replace stale text instead of appending.**
 
 `LATEST_COMPACT_HANDOFF / ONE_TASK_AT_A_TIME / RESTORE_BEFORE_DELETE / HOBBY_PREP / PURCHASE_FALSE`
