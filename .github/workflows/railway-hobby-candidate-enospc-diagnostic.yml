@@ -144,6 +144,17 @@ jobs:
           SELECT 'SOURCE_PUBLIC_INDEX_BYTES|' || COALESCE(sum(pg_indexes_size(c.oid)),0)
           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public' AND c.relkind IN ('r','m');
+
+          SELECT
+            'SOURCE_INDEX|' || c.relname || '|' || pg_relation_size(c.oid) || '|' ||
+            i.indisvalid::text || '|' || i.indisready::text
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_index i ON i.indexrelid = c.oid
+          WHERE n.nspname = 'public'
+            AND c.relkind = 'i'
+          ORDER BY pg_relation_size(c.oid) DESC, c.relname
+          LIMIT 20;
           SQL
 
           railway connect "$SOURCE_SERVICE" \
