@@ -16,6 +16,8 @@ env:
   RAILWAY_BRIDGE_ISSUE: "42"
   KEY_SERVICE: "archive-restore-key-20261001"
   ARCHIVE_NAME: "boat-ai-pre-hobby-restorable-20261001-v2"
+  RESTORE_ARTIFACT_ID: "11138584090"
+  VERIFIED_DUMP_SHA256: "0476d7020032b7c42e2a1bbf98c037cfbd1743644fe975f2c213b79bb96b76ff"
 
 concurrency:
   group: railway-postgres-restored-parity-expansion
@@ -67,9 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          artifact_id="$(
-            gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/artifacts"               -f name="$ARCHIVE_NAME"               -f per_page=100               --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | last | .id'
-          )"
+          artifact_id="$RESTORE_ARTIFACT_ID"
           test -n "$artifact_id"
           gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > archive.zip
           rm -rf artifact
@@ -84,6 +84,7 @@ jobs:
           expected_sha="$(awk -F= '$1=="PLAIN_DUMP_SHA256"{print $2}' restore-manifest-v2.txt)"
           expected_tables="$(awk -F= '$1=="PUBLIC_TABLES"{print $2}' restore-manifest-v2.txt)"
           test -n "$expected_sha"
+          test "$expected_sha" = "$VERIFIED_DUMP_SHA256"
           test "$expected_tables" = "39"
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
           echo "expected_sha=$expected_sha" >> "$GITHUB_OUTPUT"
