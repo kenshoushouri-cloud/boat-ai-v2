@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_SMOKE_PASS.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_ROLLBACK_PASS.md`
 
 Read only:
 1. this pointer
@@ -11,18 +11,18 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 
 Current:
 - `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
-- `postgres-recovery` = protected rollback reference
+- `postgres-recovery` = verified rollback reference with preserved 20GB volume
 - final delta sync = PASS
 - zero-delta exact parity = PASS
 - explicit cutover = DONE
 - cutover smoke = PASS
-- PRE / FINAL / learning DB target + path smoke = PASS
+- rollback verification = PASS
 - writers remain frozen
-- next = rollback verification only
-- no cleanup / resize / plan change / Hobby downgrade yet
+- next = restore/resume original writer schedules against candidate-v4
+- no cleanup / resize / history move / plan change / Hobby downgrade yet
 - retention = FULL_HISTORY_PINNED
 - TOTO protected; `Postgres` / `Postgres-AbWo` unverified
 - never call `list_variables`; `purchase_action=false`
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / SMOKE_PASS / ROLLBACK_VERIFY_NEXT / WRITERS_FROZEN / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / ROLLBACK_PASS / RESUME_SCHEDULES_NEXT / PURCHASE_FALSE`
