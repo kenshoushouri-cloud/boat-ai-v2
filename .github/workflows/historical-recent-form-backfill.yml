@@ -1,6 +1,7 @@
 name: Historical prior-day recent_form backfill
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "research/historical_recent_form_backfill_pg.py"
@@ -56,7 +57,7 @@ jobs:
           PY
 
   live-read-only-dry-run:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
