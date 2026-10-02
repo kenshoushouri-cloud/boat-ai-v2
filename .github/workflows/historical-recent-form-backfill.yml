@@ -18,7 +18,7 @@ env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
-  RAILWAY_DB_SERVICE: "postgres-recovery"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
 
 jobs:
   validate:
