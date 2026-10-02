@@ -11,7 +11,7 @@ with psycopg.connect(url, row_factory=dict_row, autocommit=True) as conn:
         cur.execute("set transaction read only")
         cur.execute("""
             with m as (
-              select to_char(r.race_date, 'YYYY-MM') month,
+              select to_char(r.race_date, 'YYYY-MM') as month_key,
                      count(distinct r.race_id)::int races,
                      count(distinct e.race_id) filter (where e.n=6)::int entries6,
                      count(distinct rs.race_id)::int results,
@@ -25,9 +25,9 @@ with psycopg.connect(url, row_factory=dict_row, autocommit=True) as conn:
               where r.race_date >= date '2025-07-01'
               group by 1
             )
-            select * from m order by month
+            select * from m order by month_key
         """)
         print("MONTH|RACES|ENTRIES6|RESULTS|RESULT_ENTRIES6|ODDS120")
         for x in cur.fetchall():
-            print(f"{x['month']}|{x['races']}|{x['entries6']}|{x['results']}|{x['result_entries6']}|{x['odds120']}")
+            print(f"{x['month_key']}|{x['races']}|{x['entries6']}|{x['results']}|{x['result_entries6']}|{x['odds120']}")
 print("CANDIDATE_V4_MONTHLY_COVERAGE=PASS_READ_ONLY")
