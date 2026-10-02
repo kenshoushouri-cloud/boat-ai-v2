@@ -91,7 +91,7 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.number == 42 &&
       github.actor == github.repository_owner &&
-      startsWith(github.event.comment.body, '/railway historical-recent-form-backfill ')
+      (startsWith(github.event.comment.body, '/railway historical-recent-form-backfill ') || github.event.comment.body == '/railway historical-recent-form-next')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -111,18 +111,23 @@ jobs:
           python - <<'PY' >> "$GITHUB_ENV"
           import os
           from datetime import date
-          p=os.environ["COMMENT_BODY"].strip().split()
-          if len(p) != 4 or p[1] != "historical-recent-form-backfill":
-              raise SystemExit("command: /railway historical-recent-form-backfill YYYY-MM-DD YYYY-MM-DD")
-          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          body=os.environ["COMMENT_BODY"].strip()
+          if body == "/railway historical-recent-form-next":
+              start_s=end_s="2025-07-04"
+          else:
+              p=body.split()
+              if len(p) != 4 or p[1] != "historical-recent-form-backfill":
+                  raise SystemExit("command: /railway historical-recent-form-backfill YYYY-MM-DD YYYY-MM-DD")
+              start_s,end_s=p[2],p[3]
+          a=date.fromisoformat(start_s); b=date.fromisoformat(end_s)
           if b < a:
               raise SystemExit("end before start")
           if (b-a).days + 1 > 500:
               raise SystemExit("maximum recent_form range is 500 days")
           if a < date(2025,7,1):
               raise SystemExit("approved historical start is 2025-07-01")
-          print("HIST_START_DATE="+p[2])
-          print("HIST_END_DATE="+p[3])
+          print("HIST_START_DATE="+start_s)
+          print("HIST_END_DATE="+end_s)
           PY
 
       - name: Fill prior-day-only recent_form
