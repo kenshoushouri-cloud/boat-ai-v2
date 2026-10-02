@@ -76,7 +76,7 @@ jobs:
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE; exec python -u research/historical_recent_form_backfill_pg.py --start-date 2025-07-01 --end-date 2025-07-02 --output historical-recent-form-dry-run.json' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE; exec python -u research/historical_recent_form_backfill_pg.py --start-date 2025-07-03 --end-date 2025-07-05 --output historical-recent-form-dry-run.json' \
             | tee historical-recent-form-dry-run.txt
           grep -q '^HIST_RECENT_FORM_SAME_DAY_RESULT_USED=0$' historical-recent-form-dry-run.txt
           grep -q '^HIST_RECENT_FORM_FUTURE_RESULT_USED=0$' historical-recent-form-dry-run.txt
