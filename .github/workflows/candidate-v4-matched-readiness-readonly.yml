@@ -1,0 +1,11 @@
+name: Candidate v4 matched readiness audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "workflow scaffold ready"
