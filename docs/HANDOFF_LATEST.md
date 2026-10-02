@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_HOBBY_ACTIVE.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261002_RECENT_FORM_14D.md`
 
 Read only:
 1. this pointer
@@ -10,15 +10,14 @@ Read only:
 Do not load old handoffs by default. Re-fetch only live state needed for the next single task.
 
 Current:
-- `postgres-hobby-fullhistory-candidate-v4` = Production data SoT
-- migration / restore / oversized cleanup = complete
-- Railway Active Plan = Hobby
-- boat-v2-postgres post-Hobby smoke = PASS
-- TOTO post-Hobby smoke = PASS
-- first unambiguous post-Hobby scheduled run at 08:30 JST = PASS
-- next = read-only candidate-v4 storage safety check
-- protect candidate-v4 / history archive / escrow key / active writers / TOTO
-- never call `list_variables`; `purchase_action=false`
+- Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
+- Railway plan = Hobby
+- Historical Recent Form completed through 2025-07-23
+- next fixed target = 2025-07-24..2025-08-06 (14 days)
+- next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
+- never bulk-fetch Issue #42 comments
+- protect candidate-v4 / history archive / escrow / active writers / TOTO
+- never call `list_variables`; no purchase/plan/volume changes
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / HOBBY_ACTIVE / STORAGE_SAFETY_NEXT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / RECENT_FORM_14D_NEXT / TOKEN_COMPACT / PURCHASE_FALSE`
