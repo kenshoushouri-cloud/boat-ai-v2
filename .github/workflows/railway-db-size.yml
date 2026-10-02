@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           railway variable list \
-            --service postgres-recovery \
+            --service postgres-hobby-fullhistory-candidate-v4 \
             --environment production \
             --json > railway-vars.json 2> railway-vars-error.txt
 
@@ -89,7 +89,7 @@ jobs:
                       break
 
           if not value:
-              raise SystemExit('DATABASE_PUBLIC_URL was not found for postgres-recovery')
+              raise SystemExit('DATABASE_PUBLIC_URL was not found for postgres-hobby-fullhistory-candidate-v4')
 
           print(f'::add-mask::{value}')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
