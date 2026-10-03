@@ -580,14 +580,14 @@ jobs:
           AUDIT_ROLE: source
         run: |
           set -euo pipefail
-          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             bash -lc 'export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; exec python3 /tmp/archive_race_condition_readonly.py'             > source.out
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             bash -lc 'export PGOPTIONS="-c default_transaction_read_only=on"; exec python3 /tmp/archive_race_condition_readonly.py'             > source.out
 
       - name: Read archive metadata only
         env:
           AUDIT_ROLE: archive
         run: |
           set -euo pipefail
-          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-history-archive             bash -lc 'export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; exec python3 /tmp/archive_race_condition_readonly.py'             > archive.out
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-history-archive             bash -lc 'export PGOPTIONS="-c default_transaction_read_only=on"; exec python3 /tmp/archive_race_condition_readonly.py'             > archive.out
 
       - name: Build sanitized summary
         run: |
