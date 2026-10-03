@@ -1,0 +1,86 @@
+name: Racer Course Missing Neutral PostStudy
+
+on:
+  pull_request:
+    paths:
+      - 'docs/RACER_COURSE_MISSING_NEUTRAL_POSTSTUDY_HOLDOUT_20260911.md'
+      - '.github/scripts/racer_course_missing_neutral_oos_20260911.py'
+      - '.github/scripts/racer_course_missing_neutral_poststudy_20260911.py'
+      - '.github/workflows/racer-course-missing-neutral-poststudy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-holdout:
+    # Post-study evidence is frozen at the already-successful research head.
+    # Later PR synchronizations must not repeatedly query Production DB.
+    if: github.event.pull_request.head.sha == 'e590ebd62bbb0ad613c09f3a9c07cf9b54b6d736'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate frozen holdout contract
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/racer_course_missing_neutral_oos_20260911.py .github/scripts/racer_course_missing_neutral_poststudy_20260911.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          w=Path('.github/scripts/racer_course_missing_neutral_poststudy_20260911.py').read_text(encoding='utf-8').lower()
+          b=Path('.github/scripts/racer_course_missing_neutral_oos_20260911.py').read_text(encoding='utf-8').lower()
+          d=Path('docs/RACER_COURSE_MISSING_NEUTRAL_POSTSTUDY_HOLDOUT_20260911.md').read_text(encoding='utf-8').lower()
+          assert 'c7f7daf39eaa877fb605e43d52a978b206c87b89' in w
+          assert 'date(2026, 8, 25)' in w and 'date(2026, 9, 10)' in w
+          assert 'min_missing_races = 300' in w and 'min_missing_dates = 10' in w
+          assert 'course_coef = 0.50' in b
+          assert 'bootstrap_n = 5000' in b and 'bootstrap_seed = 20260911' in b
+          assert 'poststudy_holdout_supports_forward_shadow_review' in d
+          assert 'set transaction read only' in b
+          assert not re.search(r'\binsert\s+into\b', b)
+          assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', b)
+          assert not re.search(r'\bdelete\s+from\b', b)
+          print('COURSE_POSTSTUDY_CONTRACT=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run post-study holdout
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/racer_course_missing_neutral_poststudy_20260911.py | tee course-poststudy.txt
+          grep -q '^COURSE_POSTSTUDY_PREREG=c7f7daf39eaa877fb605e43d52a978b206c87b89$' course-poststudy.txt
+          grep -q '^COURSE_NEUTRAL_RESULT=PASS_READ_ONLY$' course-poststudy.txt
+          grep -q '^COURSE_NEUTRAL_STATUS=' course-poststudy.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json course-poststudy.txt

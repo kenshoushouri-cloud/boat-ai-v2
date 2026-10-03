@@ -1,0 +1,91 @@
+name: Opponent Pressure timing integrity audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/opponent_pressure_timing_integrity_audit_20260911.py'
+      - '.github/workflows/opponent-pressure-timing-integrity-audit.yml'
+      - 'research/opponent_pressure_forward_timing_contract.py'
+      - 'research/test_opponent_pressure_forward_timing_contract.py'
+      - 'docs/RACER_COURSE_OPPONENT_PREPROD_REVIEW_20260911.md'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate audit isolation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            .github/scripts/opponent_pressure_timing_integrity_audit_20260911.py \
+            research/opponent_pressure_forward_timing_contract.py \
+            research/test_opponent_pressure_forward_timing_contract.py
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          p=Path('.github/scripts/opponent_pressure_timing_integrity_audit_20260911.py').read_text(encoding='utf-8').lower()
+          assert 'read_only_no_results_no_odds_no_predictions' in p
+          assert 'no_writes_no_production_no_line_no_coefficients' in p
+          assert 'set transaction read only' in p
+          assert 'updated_at' in p and 'created_at' in p and 'deadline_at' in p
+          assert 'v2_results' not in p and 'v2_odds' not in p
+          assert not re.search(r'\binsert\s+into\b', p)
+          assert not re.search(r'\bupdate\s+[a-z_][a-z0-9_]*\s+set\b', p)
+          assert not re.search(r'\bdelete\s+from\b', p)
+          q=Path('research/opponent_pressure_forward_timing_contract.py').read_text(encoding='utf-8').lower()
+          assert 'no i/o' in q
+          assert 'fixed_cutoff = time(8, 15)' in q
+          assert 'updated_after_cutoff' in q
+          assert 'updated_at_or_after_deadline' in q
+          assert 'opponent_coverage_incomplete' in q
+          print('OPP_TIMING_AUDIT_VALIDATE=PASS')
+          PY
+      - name: Run synthetic timing contract tests
+        run: |
+          set -euo pipefail
+          python -m unittest -v research.test_opponent_pressure_forward_timing_contract
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run read-only timing audit
+        env:
+          TARGET_DATE: '2026-09-11'
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/opponent_pressure_timing_integrity_audit_20260911.py | tee opponent-timing-audit.txt
+          grep -q '^OPP_TIMING_AUDIT_RESULT=PASS_READ_ONLY$' opponent-timing-audit.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json opponent-timing-audit.txt
