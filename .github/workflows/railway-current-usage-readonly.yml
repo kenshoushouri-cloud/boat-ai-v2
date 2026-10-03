@@ -10,7 +10,7 @@ permissions:
 
 env:
   RAILWAY_BRIDGE_ISSUE: "42"
-  TARGET_PROJECT: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  TARGET_PROJECT: "268a5b17-0712-440a-884d-27f7fa887a2d"\n  TARGET_WORKSPACE: "29e4aeb2-f71d-4a46-8981-03561bac20cd"
 
 jobs:
   usage:
@@ -34,8 +34,8 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           set -euo pipefail
-          railway usage --period current --json > usage-current.json
-          railway usage projects --project "$TARGET_PROJECT" --period current --json > usage-project.json
+          railway usage --workspace "$TARGET_WORKSPACE" --period current --json > usage-current.json
+          railway usage projects --workspace "$TARGET_WORKSPACE" --project "$TARGET_PROJECT" --period current --json > usage-project.json
           python - <<'PY'
           import json
           from pathlib import Path
