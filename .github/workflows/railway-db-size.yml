@@ -664,3 +664,113 @@ jobs:
             printf '%s\n'               '## History archive race-condition audit — read only'               ''               '❌ Read-only audit failed before a sanitized result was produced.'               ''               'No destructive follow-up was attempted.'               > history-archive-race-condition-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file history-archive-race-condition-failure.md
           fi
+
+
+  history-archive-http-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway history-archive-http-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Call existing audit service once
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://production-pg-audit-readiness-production.up.railway.app'
+
+          health_status="$(curl -sS -o health.json -w '%{http_code}'             --connect-timeout 15 --max-time 30             "$base/health")"
+
+          audit_status="$(curl -sS -o audit.json -w '%{http_code}'             --connect-timeout 15 --max-time 120             "$base/audit?target_date=2026-10-03")"
+
+          printf '%s\n' "$health_status" > health.status
+          printf '%s\n' "$audit_status" > audit.status
+
+      - name: Build sanitized read-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          health_status = Path("health.status").read_text().strip()
+          audit_status = Path("audit.status").read_text().strip()
+          health_body = Path("health.json").read_text(encoding="utf-8", errors="replace")
+          audit_body = Path("audit.json").read_text(encoding="utf-8", errors="replace")
+
+          health_ok = health_status == "200" and '"status":"ok"' in health_body.replace(" ", "")
+
+          db_reached = False
+          archive_empty_schema = False
+          audit_ok = audit_status == "200"
+
+          message = ""
+          try:
+              payload = json.loads(audit_body)
+              if isinstance(payload, dict):
+                  message = str(payload.get("error") or "")
+          except Exception:
+              message = ""
+
+          low = message.lower()
+          if "does not exist" in low and "relation" in low:
+              db_reached = True
+              archive_empty_schema = True
+          elif audit_ok:
+              db_reached = True
+
+          state = (
+              "ARCHIVE_CONNECTION_OK_EMPTY_SCHEMA"
+              if health_ok and db_reached and archive_empty_schema
+              else "ARCHIVE_READONLY_AUDIT_OK"
+              if health_ok and audit_ok
+              else "ARCHIVE_HTTP_AUDIT_BLOCKED"
+          )
+
+          safe_error = ""
+          if message:
+              safe_error = re.sub(r"postgres(?:ql)?://[^\s]+", "[REDACTED_DB_URL]", message)
+              safe_error = safe_error.replace("\n", " ")[:300]
+
+          lines = [
+              "## History archive HTTP audit — read only",
+              "",
+              f"State: **{state}**",
+              f"- health HTTP: **{health_status}**",
+              f"- audit HTTP: **{audit_status}**",
+              f"- health endpoint OK: **{health_ok}**",
+              f"- PostgreSQL reached: **{db_reached}**",
+              f"- archive schema empty/missing expected Production tables: **{archive_empty_schema}**",
+          ]
+          if safe_error:
+              lines.append(f"- sanitized audit error: `{safe_error}`")
+          lines += [
+              "",
+              "The endpoint uses READ ONLY SQL and ROLLBACK.",
+              "No archive rows/schema, Production rows, Railway Variables, volumes, or plans were changed by this audit.",
+          ]
+          Path("history-archive-http-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove raw HTTP bodies
+        if: always()
+        shell: bash
+        run: rm -f health.json audit.json health.status audit.status
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f history-archive-http-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file history-archive-http-summary.md
+          else
+            printf '%s\n'               '## History archive HTTP audit — read only'               ''               '❌ HTTP audit failed before a sanitized result was produced.'               ''               'No destructive follow-up was attempted.'               > history-archive-http-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file history-archive-http-failure.md
+          fi
