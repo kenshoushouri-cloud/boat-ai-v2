@@ -1,0 +1,66 @@
+name: Railway current usage readonly
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  TARGET_PROJECT: "268a5b17-0712-440a-884d-27f7fa887a2d"
+
+jobs:
+  usage:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway current-usage-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Read current billing usage only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway usage --period current --json > usage-current.json
+          railway usage projects --project "$TARGET_PROJECT" --period current --json > usage-project.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary=json.loads(Path('usage-current.json').read_text())
+          project=json.loads(Path('usage-project.json').read_text())
+          out={'workspace': summary, 'project': project}
+          Path('usage-sanitized.json').write_text(json.dumps(out, ensure_ascii=False, indent=2)+'\n')
+          PY
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Railway current usage — read only'
+            echo
+            if [ -s usage-sanitized.json ]; then
+              cat usage-sanitized.json
+            else
+              echo 'FAILED: no usage result.'
+            fi
+            echo
+            echo 'Read-only billing/usage query. No Railway resource or setting was changed.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
