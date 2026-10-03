@@ -3307,3 +3307,130 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_rewrite_estimate.py racer-rewrite-estimate.out racer-rewrite-estimate-summary.md
+
+  racer-condition-active-session-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-active-session-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Inspect active DB sessions read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_active_sessions.py <<'PY'
+          import json, os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          url=os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          out={}
+          with psycopg.connect(url,row_factory=dict_row,autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("""
+                    select pid, usename, application_name, client_addr::text,
+                           state, backend_type,
+                           xact_start::text, query_start::text,
+                           wait_event_type, wait_event,
+                           left(regexp_replace(query, E'[\\n\\r\\t]+',' ','g'),160) query_prefix
+                    from pg_stat_activity
+                    where datname=current_database()
+                      and pid<>pg_backend_pid()
+                      and state<>'idle'
+                    order by coalesce(xact_start,query_start)
+                  """)
+                  out["sessions"]=[dict(x) for x in cur.fetchall()]
+
+                  cur.execute("""
+                    select mode, granted, count(*)::bigint n
+                    from pg_locks
+                    where relation='public.v2_realtime_racer_condition_snapshots'::regclass
+                    group by mode,granted
+                    order by mode,granted
+                  """)
+                  out["table_locks"]=[
+                    {"mode":x["mode"],"granted":bool(x["granted"]),"count":int(x["n"])}
+                    for x in cur.fetchall()
+                  ]
+              conn.rollback()
+
+          print("RACER_ACTIVE_SESSIONS="+json.dumps(out,sort_keys=True))
+          PY
+
+          railway run \
+            --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+            --environment production \
+            --service postgres-hobby-fullhistory-candidate-v4 \
+            python3 /tmp/racer_active_sessions.py > racer-active-sessions.out
+
+      - name: Build sanitized session summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          p=Path("racer-active-sessions.out")
+          if p.exists():
+              for line in p.read_text(encoding="utf-8",errors="replace").splitlines():
+                  if line.startswith("RACER_ACTIVE_SESSIONS="):
+                      payload=json.loads(line.split("=",1)[1])
+                      break
+          if payload is None:
+              lines=["## Racer-condition active-session check — read only","","State: **FAILED**"]
+          else:
+              ss=payload.get("sessions",[])
+              locks=payload.get("table_locks",[])
+              lines=[
+                "## Racer-condition active-session check — read only",
+                "",
+                "State: **PASS**",
+                f"- active non-self DB sessions: **{len(ss)}**",
+                f"- relation lock records: **{sum(x['count'] for x in locks)}**",
+                f"- ungranted relation locks: **{sum(x['count'] for x in locks if not x['granted'])}**",
+              ]
+              for i,s in enumerate(ss[:10],1):
+                  qp=(s.get("query_prefix") or "").replace("|"," ")
+                  lines.append(
+                    f"- session {i}: backend={s.get('backend_type')} state={s.get('state')} "
+                    f"app={s.get('application_name') or '-'} wait={s.get('wait_event_type') or '-'}:{s.get('wait_event') or '-'} "
+                    f"query={qp}"
+                  )
+              lines += ["","READ ONLY + ROLLBACK. No session was terminated and no DB change was performed."]
+          Path("racer-active-sessions-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized session result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-active-sessions-summary.md
+
+      - name: Remove transient session material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_active_sessions.py racer-active-sessions.out racer-active-sessions-summary.md
