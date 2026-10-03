@@ -12,11 +12,14 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 Current:
 - Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
 - Railway plan = Hobby
-- Historical Recent Form completed through 2025-07-23
-- next fixed target = 2026-02-05..2026-02-18 (14 days)
+- Historical Recent Form completed through 2026-02-18
+- next fixed target = 2026-02-19..2026-03-04 (14 days)
 - next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
 - never bulk-fetch Issue #42 comments
 - protect candidate-v4 / history archive / escrow / active writers / TOTO
+- default cost policy = **no recurring Railway cost increase**; sleep/retire unused compute before adding resources; any expected cost increase requires explicit cost check + user approval
+- candidate-v3 is sleeping with volume/data preserved; audit HTTP services `production-pg-audit-readiness` and `snapshot-audit-readonly` are sleep-enabled
+- V5 = research-only; Production remains V4; core gate = V4 >=20 resolved formal days + S03_M2 >=100 official observations + clean evidence contract
 - never call `list_variables`; no purchase/plan/volume changes
 - one task at a time / short output
 
