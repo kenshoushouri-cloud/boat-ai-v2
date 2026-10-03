@@ -1882,9 +1882,10 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Run verified Production delete
+       - name: Run verified Production delete
         shell: bash
         env:
+          PGOPTIONS: -c default_transaction_read_only=off -c temp_file_limit=65536
           ARCHIVE_CUTOFF: "2026-07-05"
           EXPECTED_ROWS: "56316"
         run: |
