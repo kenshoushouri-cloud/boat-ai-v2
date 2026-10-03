@@ -196,7 +196,7 @@ jobs:
               cells=[]
               for days in hot_windows:
                   w=x['windows'][days]
-                  cells.append(f"{w['hot']:,} rows / {mb(w['est_old_bytes']):.0f} MB")
+                  cells.append(f"{w['hot']:,} hot / {w['old']:,} archive rows / {mb(w['est_old_bytes']):.0f} MB")
               lines.append(f"| `{x['table']}` | {mb(x['bytes']):.0f} | {cells[0]} | {cells[1]} | {cells[2]} | {x['source']} |")
           for days in hot_windows:
               est=sum(x['windows'][days]['est_old_bytes'] for x in rows)
