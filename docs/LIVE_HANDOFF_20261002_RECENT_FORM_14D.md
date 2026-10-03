@@ -22,6 +22,10 @@
 - Missing-data recent_form backfill itself is cheap: successful 14-day GitHub Actions run `37099767217` spent about 4m49s in the DB backfill step. Prefer this short-lived GitHub Actions -> candidate-v4 path; do not add a new always-on Railway runner.
 - The temporary Railway recent-form runner approach via `test-beforeinfo-extra` failed with `python3: command not found`; do not rely on it as the normal cost path.
 - Direct Railway billing month-to-date is not available through current non-Agent tools. Do not estimate invoice from stale Sleep-state RAM metrics alone.
+- 2026-10-04 post-redeploy live cgroup read-only diagnostic: `memory.current=83,251,200 bytes (~0.083GB)`; `anon=9,699,328`, `file=67,502,080`, `shmem=42,029,056`, `kernel=5,914,624`. This strongly supports that prior 1-3GB memory growth was dominated by reclaimable file/page cache rather than PostgreSQL private/anon memory.
+- The 08:00 JST `cron-learning-all` and `cron-final-check` executions completed normally after the redeploy; candidate-v4 remained around 0.08GB immediately afterward.
+- Existing `railway-current-usage-readonly.yml` was tried without Railway Agent, but `railway usage` exited 1 under the current GitHub Railway token before JSON was produced; do not repeatedly retry unless token/billing scope is deliberately changed.
+- Candidate-v4 currently has an 8GB memory limit. A lower per-replica memory cap (candidate: ~1GB) may bound page-cache-driven billing, but it is a Production resource-limit change and requires explicit approval plus post-change monitoring before use.
 
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
