@@ -1003,6 +1003,7 @@ jobs:
                   """)
                   before = cur.fetchone()
 
+                  cur.execute("SET default_transaction_read_only = off")
                   cur.execute("CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public")
 
                   cur.execute("""
