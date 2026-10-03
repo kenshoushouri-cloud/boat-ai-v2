@@ -1738,21 +1738,17 @@ jobs:
           npm install --global @railway/cli
 
       - name: Resolve source and archive connection references
-        id: db
         shell: bash
         run: |
           set -euo pipefail
-
           source_url="$(
-            railway run               --project "268a5b17-0712-440a-884d-27f7fa887a2d"               --environment production               --service postgres-hobby-fullhistory-candidate-v4               python3 -c 'import os; print(os.environ.get("DATABASE_PUBLIC_URL",""))'
+            railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service postgres-hobby-fullhistory-candidate-v4               python3 -c 'import os; print(os.environ.get("DATABASE_PUBLIC_URL",""))'
           )"
           archive_url="$(
-            railway run               --project "268a5b17-0712-440a-884d-27f7fa887a2d"               --environment production               --service postgres-history-archive               python3 -c 'import os; print(os.environ.get("DATABASE_URL",""))'
+            railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service postgres-history-archive               python3 -c 'import os; print(os.environ.get("DATABASE_URL",""))'
           )"
-
           test -n "$source_url"
           test -n "$archive_url"
-
           {
             echo "SOURCE_DATABASE_URL<<EOF"
             echo "$source_url"
@@ -1775,167 +1771,13 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
-            grep -E '^(psql:|ERROR:|FATAL:|DETAIL:|HINT:|CONTEXT:|ARCHIVE_COPY_)' archive-copy.sanitized \
-              | sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted-db-url>#g' \
-              | tail -80 || true
+            grep -E '^(psql:|ERROR:|FATAL:|DETAIL:|HINT:|CONTEXT:|ARCHIVE_COPY_)' archive-copy.sanitized               | sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted-db-url>#g'               | tail -80 || true
             exit "$rc"
           fi
-          grep -q '^ARCHIVE_COPY_RESULT=PASS
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f archive-copy.sanitized ] && grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized; then
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **56,316**'
-              echo '- archive rows copied: **56,316**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Next step is independent copy verification before any Production deletion.'
-            } > archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f archive-copy.sanitized archive-copy-summary.md
- archive-copy.sanitized
-          grep -q '^ARCHIVE_COPY_ROWS=56316
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f archive-copy.sanitized ] && grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized; then
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **56,316**'
-              echo '- archive rows copied: **56,316**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Next step is independent copy verification before any Production deletion.'
-            } > archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f archive-copy.sanitized archive-copy-summary.md
- archive-copy.sanitized
-          grep -q '^PRODUCTION_DELETE=0
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f archive-copy.sanitized ] && grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized; then
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **56,316**'
-              echo '- archive rows copied: **56,316**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Next step is independent copy verification before any Production deletion.'
-            } > archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f archive-copy.sanitized archive-copy-summary.md
- archive-copy.sanitized
-          grep -q '^VACUUM_OR_REWRITE=0
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f archive-copy.sanitized ] && grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized; then
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **56,316**'
-              echo '- archive rows copied: **56,316**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Next step is independent copy verification before any Production deletion.'
-            } > archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f archive-copy.sanitized archive-copy-summary.md
- archive-copy.sanitized
+          grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized
+          grep -q '^ARCHIVE_COPY_ROWS=56316$' archive-copy.sanitized
+          grep -q '^PRODUCTION_DELETE=0$' archive-copy.sanitized
+          grep -q '^VACUUM_OR_REWRITE=0$' archive-copy.sanitized
 
       - name: Post sanitized result
         if: always()
