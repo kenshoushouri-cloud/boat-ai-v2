@@ -5,7 +5,10 @@
 - Railway Active Plan = Hobby.
 - Protect candidate-v4, history archive, escrow key, active writers/reports/backtest/historical services, and TOTO.
 - Never call `list_variables`. No purchase/plan/volume-size changes. Do not touch the TOTO staged patch.
+- **Operating-cost hard target: keep Railway at or below USD 20/month even after missing-data acquisition/backfills resume; lower is better.** Cost is a first-class design constraint, but do not reduce required Production, backtest, live-test, learning, data-acquisition, restore-safety, or system-building capability merely to save cost.
 - **Default cost policy: do not increase cost without reducing system quality.** Prefer existing Hobby resources and sleep/retire unused compute first. Before any new always-on service, Volume/Replica, plan change, or other recurring-cost increase, state the necessity, expected monthly impact, and lower-cost alternative, then obtain explicit user approval.
+- **Do not use Railway Agent / Railway AI.** Its token usage can affect Railway billing and has already affected a prior invoice. Use direct read-only Railway status/metrics/logs/docs calls instead.
+- For missing-data/backfill work, prefer short-lived execution using existing resources (e.g. GitHub Actions -> candidate-v4) and avoid new always-on Railway compute/DB/replicas unless explicitly approved.
 - Cost reduction applied 2026-10-03: candidate-v3 is `SLEEPING` with its 5GB volume/data preserved; `production-pg-audit-readiness` and `snapshot-audit-readonly` have `sleepApplication=true`. Production candidate-v4 and active crons remain unchanged.
 - One task at a time; keep output short.
 
@@ -40,4 +43,4 @@
 - Do not re-fetch unrelated Railway inventory, variables, or services.
 - Re-fetch only live state needed for the current single task.
 
-`RECENT_FORM_14D_NEXT / HOBBY / PURCHASE_FALSE / TOKEN_COMPACT`
+`RECENT_FORM_14D_NEXT / HOBBY / PURCHASE_FALSE / TOKEN_COMPACT / COST_LE_20 / NO_RAILWAY_AGENT`
