@@ -1197,3 +1197,154 @@ jobs:
             printf '%s\n' '## Candidate-v4 write-session capability' '' '❌ Probe failed before sanitized output.' > candidate-write-session-capability-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-write-session-capability-failure.md
           fi
+
+
+  candidate-to-archive-dblink-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-to-archive-dblink-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write private-network dblink probe
+        shell: bash
+        run: |
+          cat > /tmp/archive_dblink_probe.py <<'PY'
+          import json
+          import subprocess
+          import psycopg
+
+          PROJECT = "268a5b17-0712-440a-884d-27f7fa887a2d"
+          ENV = "production"
+
+          def get_var(service, key):
+              code = f'import os; v=os.environ.get("{key}",""); print("VALUE="+v)'
+              p = subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,"--service",service,
+                   "python3","-c",code],
+                  check=True, text=True, capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE="):
+                      value=line[6:].strip()
+                      if value:
+                          return value
+              raise RuntimeError(f"{key} unavailable for {service}")
+
+          candidate_url = get_var("postgres-hobby-fullhistory-candidate-v4", "DATABASE_PUBLIC_URL")
+          archive_url = get_var("postgres-history-archive", "DATABASE_URL")
+
+          result = {}
+          with psycopg.connect(candidate_url, autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("select exists(select 1 from pg_extension where extname='dblink')")
+                  result["dblink_installed"] = bool(cur.fetchone()[0])
+                  if not result["dblink_installed"]:
+                      raise RuntimeError("dblink extension missing")
+
+                  connected = False
+                  try:
+                      cur.execute("select dblink_connect('archive_probe', %s)", (archive_url,))
+                      connected = True
+                      cur.execute("select dblink_exec('archive_probe', 'BEGIN READ ONLY')")
+                      cur.execute("""
+                          select remote_ro, public_tables
+                          from dblink(
+                            'archive_probe',
+                            'select current_setting(''transaction_read_only'')::text,
+                                    (select count(*) from pg_tables where schemaname=''public'')::bigint'
+                          ) as t(remote_ro text, public_tables bigint)
+                      """)
+                      remote_ro, public_tables = cur.fetchone()
+                      result["archive_connected"] = True
+                      result["archive_transaction_read_only"] = remote_ro
+                      result["archive_public_table_count"] = int(public_tables)
+                      cur.execute("select dblink_exec('archive_probe', 'ROLLBACK')")
+                  finally:
+                      if connected:
+                          try:
+                              cur.execute("select dblink_disconnect('archive_probe')")
+                          except Exception:
+                              pass
+                  conn.rollback()
+
+          print("ARCHIVE_DBLINK_READONLY=" + json.dumps(result, sort_keys=True))
+          PY
+
+      - name: Run private-network dblink probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/archive_dblink_probe.py > archive-dblink.out
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload=None
+          for line in Path("archive-dblink.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("ARCHIVE_DBLINK_READONLY="):
+                  payload=json.loads(line.split("=",1)[1])
+                  break
+          if payload is None:
+              raise SystemExit("sanitized dblink payload missing")
+
+          passed = (
+              payload.get("dblink_installed") is True and
+              payload.get("archive_connected") is True and
+              payload.get("archive_transaction_read_only") == "on"
+          )
+          lines=[
+              "## Candidate-v4 → history archive private dblink — read only",
+              "",
+              f"State: **{'PASS' if passed else 'BLOCKED'}**",
+              f"- dblink installed: **{payload.get('dblink_installed')}**",
+              f"- archive private connection: **{payload.get('archive_connected')}**",
+              f"- remote transaction read only: **{payload.get('archive_transaction_read_only')}**",
+              f"- archive public table count: **{payload.get('archive_public_table_count')}**",
+              "",
+              "Candidate transaction and archive transaction were both READ ONLY and rolled back.",
+              "No rows, schema, Variables, volumes, or plans were changed.",
+          ]
+          Path("archive-dblink-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          if not passed:
+              raise SystemExit("private dblink postcondition failed")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        shell: bash
+        run: rm -f archive-dblink.out
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f archive-dblink-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-dblink-summary.md
+          else
+            printf '%s\n'               '## Candidate-v4 → history archive private dblink — read only'               ''               '❌ Private-network probe failed before sanitized PASS output.'               ''               'No migration or delete operation was attempted.'               > archive-dblink-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-dblink-failure.md
+          fi
