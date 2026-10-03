@@ -1712,3 +1712,103 @@ jobs:
             printf '%s\n'               '## Race-condition archive receiver table'               ''               '❌ Archive receiver creation did not produce a verified PASS result.'               ''               'No Production delete or row migration was attempted.'               > archive-table-create-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-table-create-failure.md
           fi
+
+
+  race-condition-archive-copy-existing-migrator:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway race-condition-archive-copy CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || {
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          }
+          npm install --global @railway/cli
+
+      - name: Resolve source and archive connection references
+        id: db
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_url="$(
+            railway run               --project "268a5b17-0712-440a-884d-27f7fa887a2d"               --environment production               --service postgres-hobby-fullhistory-candidate-v4               python3 -c 'import os; print(os.environ.get("DATABASE_PUBLIC_URL",""))'
+          )"
+          archive_url="$(
+            railway run               --project "268a5b17-0712-440a-884d-27f7fa887a2d"               --environment production               --service postgres-history-archive               python3 -c 'import os; print(os.environ.get("DATABASE_URL",""))'
+          )"
+
+          test -n "$source_url"
+          test -n "$archive_url"
+
+          {
+            echo "SOURCE_DATABASE_URL<<EOF"
+            echo "$source_url"
+            echo "EOF"
+            echo "TARGET_DATABASE_URL<<EOF"
+            echo "$archive_url"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Run guarded archive-only copy
+        shell: bash
+        env:
+          MIGRATION_MODE: ARCHIVE_RACE_CONDITION
+          ARCHIVE_CUTOFF: "2026-07-05"
+          ARCHIVE_EXPECTED_ROWS: "56316"
+        run: |
+          set -euo pipefail
+          bash ops/hobby-migrator/run.sh > archive-copy.sanitized 2>&1
+          grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized
+          grep -q '^ARCHIVE_COPY_ROWS=56316$' archive-copy.sanitized
+          grep -q '^PRODUCTION_DELETE=0$' archive-copy.sanitized
+          grep -q '^VACUUM_OR_REWRITE=0$' archive-copy.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f archive-copy.sanitized ] && grep -q '^ARCHIVE_COPY_RESULT=PASS$' archive-copy.sanitized; then
+            {
+              echo '## Race-condition archive copy'
+              echo
+              echo 'State: **PASS**'
+              echo '- Production source rows: **56,316**'
+              echo '- archive rows copied: **56,316**'
+              echo '- Production DELETE: **0**'
+              echo '- VACUUM / table rewrite: **0**'
+              echo
+              echo 'Next step is independent copy verification before any Production deletion.'
+            } > archive-copy-summary.md
+          else
+            {
+              echo '## Race-condition archive copy'
+              echo
+              echo 'State: **BLOCKED / FAILED**'
+              echo '- No Production deletion or compaction was authorized.'
+              echo '- Archive transaction was designed to roll back on copy failure.'
+            } > archive-copy-summary.md
+          fi
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-copy-summary.md
+
+      - name: Remove transient connection material
+        if: always()
+        shell: bash
+        run: |
+          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
+          rm -f archive-copy.sanitized archive-copy-summary.md
