@@ -2524,3 +2524,178 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/create_racer_condition_archive_table.py racer-archive-table-create.out racer-archive-table-create-summary.md
+
+  racer-condition-archive-verify-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-archive-verify-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Independent racer-condition archive verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_condition_archive_verify.py <<'PY'
+          import json
+          import subprocess
+          import psycopg
+
+          PROJECT="268a5b17-0712-440a-884d-27f7fa887a2d"
+          ENV="production"
+          CUTOFF="2026-07-06"
+          EXPECTED=338904
+
+          def get_var(service,key):
+              code=f'import os; print("VALUE="+os.environ.get("{key}",""))'
+              p=subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,
+                   "--service",service,"python3","-c",code],
+                  check=True,text=True,capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE=") and line[6:].strip():
+                      return line[6:].strip()
+              raise RuntimeError(f"{key} unavailable for {service}")
+
+          source_url=get_var("postgres-hobby-fullhistory-candidate-v4","DATABASE_PUBLIC_URL")
+          archive_url=get_var("postgres-history-archive","DATABASE_URL")
+          out={"cutoff":CUTOFF}
+
+          with psycopg.connect(source_url,autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("set local statement_timeout='180s'")
+                  cur.execute("select exists(select 1 from pg_extension where extname='dblink')")
+                  out["dblink_installed"]=bool(cur.fetchone()[0])
+                  if not out["dblink_installed"]:
+                      raise RuntimeError("dblink_missing")
+
+                  cur.execute("""
+                    select count(*)::bigint,
+                           coalesce(sum(hashtextextended(row_to_json(s)::text,0)::numeric),0)::text
+                    from public.v2_realtime_racer_condition_snapshots s
+                    where exists (
+                      select 1 from public.v2_races r
+                      where r.race_id=s.race_id
+                        and r.race_date < %s::date
+                    )
+                  """,(CUTOFF,))
+                  source_rows,source_fp=cur.fetchone()
+                  out["source_rows"]=int(source_rows)
+
+                  connected=False
+                  try:
+                      cur.execute("select dblink_connect('racer_verify', %s)",(archive_url,))
+                      connected=True
+                      cur.execute("select dblink_exec('racer_verify', 'BEGIN READ ONLY')")
+                      cur.execute("""
+                        select remote_ro, archive_rows, archive_columns, archive_fp
+                        from dblink(
+                          'racer_verify',
+                          'select current_setting(''transaction_read_only'')::text,
+                                  (select count(*) from archive.v2_realtime_racer_condition_snapshots)::bigint,
+                                  (select count(*) from information_schema.columns
+                                     where table_schema=''archive''
+                                       and table_name=''v2_realtime_racer_condition_snapshots'')::bigint,
+                                  (select coalesce(sum(hashtextextended(row_to_json(a)::text,0)::numeric),0)::text
+                                     from archive.v2_realtime_racer_condition_snapshots a)'
+                        ) as t(remote_ro text, archive_rows bigint, archive_columns bigint, archive_fp text)
+                      """)
+                      remote_ro,archive_rows,archive_columns,archive_fp=cur.fetchone()
+                      out["archive_read_only"]=remote_ro
+                      out["archive_rows"]=int(archive_rows)
+                      out["archive_columns"]=int(archive_columns)
+                      out["fingerprint_match"]=(source_fp==archive_fp)
+                      cur.execute("select dblink_exec('racer_verify', 'ROLLBACK')")
+                  finally:
+                      if connected:
+                          try:
+                              cur.execute("select dblink_disconnect('racer_verify')")
+                          except Exception:
+                              pass
+              conn.rollback()
+
+          out["pass"]=(
+              out["source_rows"]==EXPECTED and
+              out["archive_rows"]==EXPECTED and
+              out["archive_columns"]==21 and
+              out["archive_read_only"]=="on" and
+              out["fingerprint_match"] is True
+          )
+          print("RACER_ARCHIVE_VERIFY="+json.dumps(out,sort_keys=True))
+          if not out["pass"]:
+              raise SystemExit("independent archive verification failed")
+          PY
+
+          python3 /tmp/racer_condition_archive_verify.py > racer-archive-verify.out
+
+      - name: Build sanitized verification result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          p=Path("racer-archive-verify.out")
+          if p.exists():
+              for line in p.read_text(encoding="utf-8",errors="replace").splitlines():
+                  if line.startswith("RACER_ARCHIVE_VERIFY="):
+                      payload=json.loads(line.split("=",1)[1])
+                      break
+
+          if payload:
+              state="PASS" if payload.get("pass") else "BLOCKED"
+              lines=[
+                  "## Racer-condition archive independent verification",
+                  "",
+                  f"State: **{state}**",
+                  f"- cutoff: **{payload.get('cutoff')}**",
+                  f"- Production source rows: **{payload.get('source_rows')}**",
+                  f"- archive rows: **{payload.get('archive_rows')}**",
+                  f"- archive columns: **{payload.get('archive_columns')}**",
+                  f"- archive transaction read only: **{payload.get('archive_read_only')}**",
+                  f"- fingerprint match: **{payload.get('fingerprint_match')}**",
+                  "",
+                  "Both sides were verified read-only. No rows, schema, Variables, volumes, or plans were changed.",
+              ]
+          else:
+              lines=[
+                  "## Racer-condition archive independent verification",
+                  "",
+                  "State: **FAILED**",
+                  "",
+                  "No Production delete or write operation was attempted.",
+              ]
+          Path("racer-archive-verify-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized verification result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-verify-summary.md
+
+      - name: Remove transient verification material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_condition_archive_verify.py racer-archive-verify.out racer-archive-verify-summary.md
