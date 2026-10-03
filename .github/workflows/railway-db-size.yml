@@ -853,3 +853,109 @@ jobs:
             printf '%s\n' '## Snapshot audit to history archive — read only' '' '❌ Audit failed before sanitized output.' > snapshot-archive-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file snapshot-archive-failure.md
           fi
+
+
+  candidate-private-link-extension-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-private-link-extension-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write read-only extension probe
+        run: |
+          cat > /tmp/extension_probe.py <<'PY'
+          import json
+          import os
+          import psycopg
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          out = {"installed": {}, "available": {}}
+          with psycopg.connect(url, autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("set transaction read only")
+                  cur.execute("set local statement_timeout='30s'")
+                  cur.execute("""
+                      select extname, extversion
+                      from pg_extension
+                      where extname in ('dblink','postgres_fdw')
+                      order by extname
+                  """)
+                  for name, version in cur.fetchall():
+                      out["installed"][name] = version
+                  cur.execute("""
+                      select name, default_version, installed_version
+                      from pg_available_extensions
+                      where name in ('dblink','postgres_fdw')
+                      order by name
+                  """)
+                  for name, default_version, installed_version in cur.fetchall():
+                      out["available"][name] = {
+                          "default_version": default_version,
+                          "installed_version": installed_version,
+                      }
+              conn.rollback()
+
+          print("PRIVATE_LINK_EXTENSION_PROBE=" + json.dumps(out, sort_keys=True))
+          PY
+
+      - name: Run candidate-v4 extension probe read only
+        run: |
+          set -euo pipefail
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             python3 /tmp/extension_probe.py > extension-probe.out
+
+      - name: Build sanitized result
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          for line in Path("extension-probe.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("PRIVATE_LINK_EXTENSION_PROBE="):
+                  payload=json.loads(line.split("=",1)[1])
+                  break
+          if payload is None:
+              raise SystemExit("probe output missing")
+
+          lines=["## Candidate private-link extension audit — read only",""]
+          for name in ("dblink","postgres_fdw"):
+              installed=payload["installed"].get(name)
+              available=payload["available"].get(name)
+              lines.append(f"- {name}: installed={bool(installed)}, available={bool(available)}, version={installed or (available or {}).get('default_version') or 'n/a'}")
+          lines += [
+              "",
+              "READ ONLY + ROLLBACK. No extension was created and no database object was changed.",
+          ]
+          Path("candidate-private-link-extension-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Remove raw probe
+        if: always()
+        run: rm -f extension-probe.out
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f candidate-private-link-extension-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-private-link-extension-summary.md
+          else
+            printf '%s\n' '## Candidate private-link extension audit — read only' '' '❌ Probe failed before sanitized output.' > candidate-private-link-extension-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-private-link-extension-failure.md
+          fi
