@@ -3,6 +3,127 @@ set -euo pipefail
 
 : "${SOURCE_DATABASE_URL:?SOURCE_DATABASE_URL is required}"
 : "${TARGET_DATABASE_URL:?TARGET_DATABASE_URL is required}"
+
+MIGRATION_MODE="${MIGRATION_MODE:-HOT_SEED}"
+
+if [[ "$MIGRATION_MODE" == "ARCHIVE_RACE_CONDITION" ]]; then
+  : "${ARCHIVE_CUTOFF:?ARCHIVE_CUTOFF is required}"
+  : "${ARCHIVE_EXPECTED_ROWS:?ARCHIVE_EXPECTED_ROWS is required}"
+  if [[ ! "$ARCHIVE_CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "ARCHIVE_COPY_ABORT=invalid_cutoff" >&2
+    exit 11
+  fi
+  if [[ ! "$ARCHIVE_EXPECTED_ROWS" =~ ^[0-9]+$ ]] || [[ "$ARCHIVE_EXPECTED_ROWS" == "0" ]]; then
+    echo "ARCHIVE_COPY_ABORT=invalid_expected_rows" >&2
+    exit 12
+  fi
+
+  echo "ARCHIVE_COPY_SOURCE_WRITE=0 TARGET_ONLY_WRITE=1 CUTOFF=$ARCHIVE_CUTOFF"
+
+  PGOPTIONS="-c default_transaction_read_only=on -c temp_file_limit=65536" \
+  psql "$SOURCE_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
+    -v archive_url="$TARGET_DATABASE_URL" \
+    -v cutoff="$ARCHIVE_CUTOFF" \
+    -v expected="$ARCHIVE_EXPECTED_ROWS" <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT dblink_connect('archive_copy', :'archive_url');
+SELECT dblink_exec('archive_copy', 'BEGIN');
+
+DO $archive_copy$
+DECLARE
+  cutoff_date date := :'cutoff'::date;
+  expected_rows bigint := :'expected'::bigint;
+  source_rows bigint;
+  archive_rows bigint;
+  batch_size integer := 250;
+  offset_rows integer := 0;
+  payload text;
+  remote_sql text;
+BEGIN
+  SELECT count(*)::bigint INTO source_rows
+  FROM public.v2_realtime_race_condition_snapshots s
+  JOIN public.v2_races r ON r.race_id = s.race_id
+  WHERE r.race_date < cutoff_date;
+
+  IF source_rows <> expected_rows THEN
+    RAISE EXCEPTION 'source_count_changed';
+  END IF;
+
+  SELECT n INTO archive_rows
+  FROM dblink(
+    'archive_copy',
+    'SELECT count(*)::bigint FROM archive.v2_realtime_race_condition_snapshots'
+  ) AS t(n bigint);
+
+  IF archive_rows <> 0 THEN
+    RAISE EXCEPTION 'archive_receiver_not_empty';
+  END IF;
+
+  LOOP
+    SELECT coalesce(json_agg(x), '[]'::json)::text
+      INTO payload
+    FROM (
+      SELECT s.*
+      FROM public.v2_realtime_race_condition_snapshots s
+      JOIN public.v2_races r ON r.race_id = s.race_id
+      WHERE r.race_date < cutoff_date
+      ORDER BY s.ctid
+      LIMIT batch_size OFFSET offset_rows
+    ) AS x;
+
+    EXIT WHEN payload = '[]';
+
+    remote_sql :=
+      'INSERT INTO archive.v2_realtime_race_condition_snapshots ' ||
+      'SELECT * FROM json_populate_recordset(' ||
+      'NULL::archive.v2_realtime_race_condition_snapshots,' ||
+      quote_literal(payload) || '::json)';
+
+    PERFORM dblink_exec('archive_copy', remote_sql);
+    offset_rows := offset_rows + batch_size;
+  END LOOP;
+
+  SELECT n INTO archive_rows
+  FROM dblink(
+    'archive_copy',
+    'SELECT count(*)::bigint FROM archive.v2_realtime_race_condition_snapshots'
+  ) AS t(n bigint);
+
+  IF archive_rows <> expected_rows THEN
+    RAISE EXCEPTION 'archive_post_count_mismatch';
+  END IF;
+
+  SELECT count(*)::bigint INTO source_rows
+  FROM public.v2_realtime_race_condition_snapshots s
+  JOIN public.v2_races r ON r.race_id = s.race_id
+  WHERE r.race_date < cutoff_date;
+
+  IF source_rows <> expected_rows THEN
+    RAISE EXCEPTION 'source_snapshot_drift';
+  END IF;
+
+  RAISE NOTICE 'ARCHIVE_COPY_VERIFIED source=% archive=%', source_rows, archive_rows;
+EXCEPTION WHEN OTHERS THEN
+  BEGIN
+    PERFORM dblink_exec('archive_copy', 'ROLLBACK');
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  RAISE;
+END
+$archive_copy$;
+
+SELECT dblink_exec('archive_copy', 'COMMIT');
+SELECT dblink_disconnect('archive_copy');
+ROLLBACK;
+SQL
+
+  echo "ARCHIVE_COPY_RESULT=PASS"
+  echo "ARCHIVE_COPY_ROWS=$ARCHIVE_EXPECTED_ROWS"
+  echo "PRODUCTION_DELETE=0"
+  echo "VACUUM_OR_REWRITE=0"
+  exit 0
+fi
 : "${HOT_CUTOFF:?HOT_CUTOFF is required}"
 if [[ ! "$HOT_CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
   echo "HOBBY_MIGRATION_ABORT=invalid_cutoff" >&2
