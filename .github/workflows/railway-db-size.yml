@@ -2069,3 +2069,158 @@ jobs:
         run: |
           unset SOURCE_DATABASE_URL ARCHIVE_DATABASE_URL || true
           rm -f /tmp/race_condition_delete.py delete-result.sanitized delete-summary.md
+
+  racer-condition-archive-receiver-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-archive-receiver-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Run racer-condition archive receiver audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_condition_receiver_audit.py <<'PY'
+          import json
+          import subprocess
+          import psycopg
+
+          PROJECT = "268a5b17-0712-440a-884d-27f7fa887a2d"
+          ENV = "production"
+          TABLE = "v2_realtime_racer_condition_snapshots"
+
+          def get_var(service, key):
+              code = f'import os; v=os.environ.get("{key}",""); print("VALUE="+v)'
+              p = subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,"--service",service,
+                   "python3","-c",code],
+                  check=True, text=True, capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE="):
+                      value=line[6:].strip()
+                      if value:
+                          return value
+              raise RuntimeError(f"{key} unavailable for {service}")
+
+          candidate_url = get_var("postgres-hobby-fullhistory-candidate-v4", "DATABASE_PUBLIC_URL")
+          archive_url = get_var("postgres-history-archive", "DATABASE_URL")
+
+          out = {"table": TABLE}
+          with psycopg.connect(candidate_url, autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("""
+                    select count(*)::bigint
+                    from information_schema.columns
+                    where table_schema='public' and table_name=%s
+                  """, (TABLE,))
+                  out["source_columns"] = int(cur.fetchone()[0])
+
+                  cur.execute("select dblink_connect('receiver_probe', %s)", (archive_url,))
+                  try:
+                      cur.execute("select dblink_exec('receiver_probe', 'BEGIN READ ONLY')")
+                      cur.execute("""
+                        select schema_exists, table_exists, column_count, row_count
+                        from dblink(
+                          'receiver_probe',
+                          'select
+                             exists(select 1 from information_schema.schemata where schema_name=''archive'')::boolean,
+                             (to_regclass(''archive.v2_realtime_racer_condition_snapshots'') is not null)::boolean,
+                             (select count(*) from information_schema.columns
+                                where table_schema=''archive''
+                                  and table_name=''v2_realtime_racer_condition_snapshots'')::bigint,
+                             case
+                               when to_regclass(''archive.v2_realtime_racer_condition_snapshots'') is not null
+                               then (select count(*) from archive.v2_realtime_racer_condition_snapshots)::bigint
+                               else 0::bigint
+                             end'
+                        ) as t(schema_exists boolean, table_exists boolean, column_count bigint, row_count bigint)
+                      """)
+                      schema_exists, table_exists, col_count, row_count = cur.fetchone()
+                      out["archive_schema_exists"] = bool(schema_exists)
+                      out["archive_table_exists"] = bool(table_exists)
+                      out["archive_columns"] = int(col_count)
+                      out["archive_rows"] = int(row_count)
+                      cur.execute("select dblink_exec('receiver_probe', 'ROLLBACK')")
+                  finally:
+                      try:
+                          cur.execute("select dblink_disconnect('receiver_probe')")
+                      except Exception:
+                          pass
+              conn.rollback()
+
+          print("RACER_CONDITION_RECEIVER_AUDIT=" + json.dumps(out, sort_keys=True))
+          PY
+
+          python /tmp/racer_condition_receiver_audit.py > racer-condition-receiver.out
+
+      - name: Build sanitized receiver result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          for line in Path("racer-condition-receiver.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("RACER_CONDITION_RECEIVER_AUDIT="):
+                  payload=json.loads(line.split("=",1)[1])
+                  break
+          if payload is None:
+              raise SystemExit("receiver payload missing")
+
+          ready = (
+              payload.get("archive_schema_exists") is True and
+              payload.get("archive_table_exists") is True and
+              payload.get("source_columns") == payload.get("archive_columns") and
+              payload.get("archive_rows") == 0
+          )
+          lines=[
+              "## Racer-condition archive receiver — read only",
+              "",
+              f"State: **{'READY' if ready else 'NOT READY'}**",
+              f"- archive schema exists: **{payload.get('archive_schema_exists')}**",
+              f"- archive table exists: **{payload.get('archive_table_exists')}**",
+              f"- source columns: **{payload.get('source_columns')}**",
+              f"- archive columns: **{payload.get('archive_columns')}**",
+              f"- archive rows: **{payload.get('archive_rows')}**",
+              "",
+              "READ ONLY + ROLLBACK. No rows, schema, Variables, volumes, or plans were changed.",
+          ]
+          Path("racer-condition-receiver-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized receiver result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f racer-condition-receiver-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-condition-receiver-summary.md
+          else
+            printf '%s\n' '## Racer-condition archive receiver — read only' '' 'State: **FAILED**' '' 'No write operation was attempted.' > racer-condition-receiver-summary.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-condition-receiver-summary.md
+          fi
+
+      - name: Remove transient receiver material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_condition_receiver_audit.py racer-condition-receiver.out racer-condition-receiver-summary.md
