@@ -1,0 +1,221 @@
+name: Railway history archive race-condition read-only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  ARCHIVE_SERVICE: "postgres-history-archive"
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway history-archive-race-condition-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        run: |
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write read-only audit helper
+        run: |
+          cat > /tmp/archive_race_condition_readonly.py <<'PY'
+          import hashlib
+          import json
+          import os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          TABLE = "v2_realtime_race_condition_snapshots"
+          role = os.environ["AUDIT_ROLE"]
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          def one(cur, q, params=()):
+              cur.execute(q, params)
+              return cur.fetchone()
+
+          def allrows(cur, q, params=()):
+              cur.execute(q, params)
+              return cur.fetchall()
+
+          out = {
+              "role": role,
+              "table": TABLE,
+              "write": 0,
+              "schema_write": 0,
+          }
+
+          with psycopg.connect(url, autocommit=True, row_factory=dict_row) as conn:
+              with conn.cursor() as cur:
+                  out["database_bytes"] = int(one(cur, "select pg_database_size(current_database())::bigint b")["b"])
+                  exists = bool(one(cur, "select to_regclass(%s) is not null ok", (f"public.{TABLE}",))["ok"])
+                  out["table_exists"] = exists
+                  if exists:
+                      columns = allrows(cur, """
+                          select column_name, data_type, udt_name, is_nullable, column_default, ordinal_position
+                          from information_schema.columns
+                          where table_schema='public' and table_name=%s
+                          order by ordinal_position
+                      """, (TABLE,))
+                      indexes = allrows(cur, """
+                          select indexname, indexdef
+                          from pg_indexes
+                          where schemaname='public' and tablename=%s
+                          order by indexname
+                      """, (TABLE,))
+                      constraints = allrows(cur, """
+                          select con.conname, pg_get_constraintdef(con.oid) def
+                          from pg_constraint con
+                          join pg_class c on c.oid=con.conrelid
+                          join pg_namespace n on n.oid=c.relnamespace
+                          where n.nspname='public' and c.relname=%s
+                          order by con.conname
+                      """, (TABLE,))
+                      payload = {"columns": columns, "indexes": indexes, "constraints": constraints}
+                      out["schema_sha256"] = hashlib.sha256(
+                          json.dumps(payload, sort_keys=True, default=str).encode()
+                      ).hexdigest()
+                      out["column_count"] = len(columns)
+                      out["index_count"] = len(indexes)
+                      out["constraint_count"] = len(constraints)
+                      out["table_bytes"] = int(one(
+                          cur, "select pg_total_relation_size(%s::regclass)::bigint b",
+                          (f"public.{TABLE}",)
+                      )["b"])
+                      r = one(cur, f"""
+                          select count(*)::bigint total_rows,
+                                 min(race_date)::text min_date,
+                                 max(race_date)::text max_date,
+                                 (current_date - interval '90 days')::date::text cutoff,
+                                 count(*) filter (
+                                   where race_date < (current_date - interval '90 days')::date
+                                 )::bigint old_rows
+                          from {TABLE}
+                      """)
+                      out.update(dict(r))
+                      out["estimated_old_bytes"] = (
+                          int(out["table_bytes"] * out["old_rows"] / out["total_rows"])
+                          if out["total_rows"] else 0
+                      )
+                      s = one(cur, """
+                          select n_live_tup::bigint live_rows_est,
+                                 n_dead_tup::bigint dead_rows_est
+                          from pg_stat_user_tables
+                          where schemaname='public' and relname=%s
+                      """, (TABLE,))
+                      if s:
+                          out.update(dict(s))
+
+          print("ARCHIVE_RACE_CONDITION_AUDIT=" + json.dumps(out, sort_keys=True))
+          PY
+
+      - name: Read source metadata only
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$SOURCE_SERVICE"             bash -lc 'export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export AUDIT_ROLE=source; exec python3 /tmp/archive_race_condition_readonly.py'             > source.out
+
+      - name: Read archive metadata only
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$ARCHIVE_SERVICE"             bash -lc 'export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export AUDIT_ROLE=archive; exec python3 /tmp/archive_race_condition_readonly.py'             > archive.out
+
+      - name: Build sanitized summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          def load(path):
+              for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+                  if line.startswith("ARCHIVE_RACE_CONDITION_AUDIT="):
+                      return json.loads(line.split("=", 1)[1])
+              raise SystemExit(f"missing audit output: {path}")
+
+          s = load("source.out")
+          a = load("archive.out")
+          mb = lambda n: n / 1024 / 1024
+
+          if not s.get("table_exists"):
+              state = "BLOCKED_SOURCE_TABLE_MISSING"
+          elif not a.get("table_exists"):
+              state = "READY_FOR_SCHEMA_COPY_PLANNING"
+          elif s.get("schema_sha256") == a.get("schema_sha256"):
+              state = "READY_FOR_ROW_COPY_PLANNING_SCHEMA_MATCH"
+          else:
+              state = "BLOCKED_SCHEMA_MISMATCH"
+
+          lines = [
+              "## History archive race-condition audit — read only",
+              "",
+              f"State: **{state}**",
+              "",
+              f"Source database: **{mb(s['database_bytes']):.0f} MB**",
+              f"Archive database: **{mb(a['database_bytes']):.0f} MB**",
+              "",
+              "### Source",
+              f"- table exists: `{s.get('table_exists')}`",
+          ]
+          if s.get("table_exists"):
+              lines += [
+                  f"- table size: **{mb(s['table_bytes']):.1f} MB**",
+                  f"- total rows: **{s['total_rows']:,}**",
+                  f"- date range: **{s.get('min_date')} .. {s.get('max_date')}**",
+                  f"- 90d cutoff: **{s.get('cutoff')}**",
+                  f"- rows older than cutoff: **{s['old_rows']:,}**",
+                  f"- proportional old-data estimate: **{mb(s['estimated_old_bytes']):.1f} MB**",
+                  f"- schema fingerprint: `{s.get('schema_sha256')}`",
+              ]
+          lines += [
+              "",
+              "### Archive",
+              f"- table exists: `{a.get('table_exists')}`",
+          ]
+          if a.get("table_exists"):
+              lines += [
+                  f"- table size: **{mb(a['table_bytes']):.1f} MB**",
+                  f"- total rows: **{a['total_rows']:,}**",
+                  f"- date range: **{a.get('min_date')} .. {a.get('max_date')}**",
+                  f"- schema fingerprint: `{a.get('schema_sha256')}`",
+              ]
+          lines += [
+              "",
+              "No rows, schema, settings, Variables, deployments, volumes, or plans were changed.",
+              "This audit does not authorize archive copy or Production deletion.",
+          ]
+          Path("summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove raw outputs
+        if: always()
+        run: rm -f source.out archive.out
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          else
+            printf '%s\n'               '## History archive race-condition audit — read only'               ''               '❌ Read-only audit failed before a sanitized result was produced.'               ''               'No destructive follow-up was attempted.'               > failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file failure.md
+          fi
