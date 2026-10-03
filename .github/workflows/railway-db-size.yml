@@ -1348,3 +1348,165 @@ jobs:
             printf '%s\n'               '## Candidate-v4 → history archive private dblink — read only'               ''               '❌ Private-network probe failed before sanitized PASS output.'               ''               'No migration or delete operation was attempted.'               > archive-dblink-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file archive-dblink-failure.md
           fi
+
+
+  race-condition-archive-source-audit:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway race-condition-archive-source-audit'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write source audit
+        shell: bash
+        run: |
+          cat > /tmp/race_condition_archive_source_audit.py <<'PY'
+          import json, os
+          from datetime import date, timedelta
+          import psycopg
+
+          url=os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          cutoff=(date.today()-timedelta(days=90)).isoformat()
+          out={"cutoff":cutoff}
+
+          with psycopg.connect(url, autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("set local statement_timeout='60s'")
+
+                  cur.execute("""
+                    select a.attnum, a.attname, pg_catalog.format_type(a.atttypid,a.atttypmod),
+                           a.attnotnull, pg_get_expr(d.adbin,d.adrelid)
+                    from pg_attribute a
+                    left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+                    where a.attrelid='public.v2_realtime_race_condition_snapshots'::regclass
+                      and a.attnum>0 and not a.attisdropped
+                    order by a.attnum
+                  """)
+                  out["columns"]=[
+                    {"pos":r[0],"name":r[1],"type":r[2],"not_null":r[3],"default":r[4]}
+                    for r in cur.fetchall()
+                  ]
+
+                  cur.execute("""
+                    select conname, contype, pg_get_constraintdef(oid,true)
+                    from pg_constraint
+                    where conrelid='public.v2_realtime_race_condition_snapshots'::regclass
+                    order by conname
+                  """)
+                  out["constraints"]=[
+                    {"name":r[0],"type":r[1],"def":r[2]} for r in cur.fetchall()
+                  ]
+
+                  cur.execute("""
+                    select indexname, indexdef
+                    from pg_indexes
+                    where schemaname='public' and tablename='v2_realtime_race_condition_snapshots'
+                    order by indexname
+                  """)
+                  out["indexes"]=[{"name":r[0],"def":r[1]} for r in cur.fetchall()]
+
+                  cur.execute("""
+                    select count(*)::bigint,
+                           min(r.race_date)::text,
+                           max(r.race_date)::text
+                    from v2_realtime_race_condition_snapshots s
+                    join v2_races r on r.race_id=s.race_id
+                    where r.race_date < %s::date
+                  """,(cutoff,))
+                  n,mn,mx=cur.fetchone()
+                  out["archive_rows"]=int(n)
+                  out["archive_min_date"]=mn
+                  out["archive_max_date"]=mx
+
+                  cur.execute("""
+                    select count(*)::bigint
+                    from v2_realtime_race_condition_snapshots
+                  """)
+                  out["total_rows"]=int(cur.fetchone()[0])
+
+                  cur.execute("""
+                    select pg_total_relation_size('public.v2_realtime_race_condition_snapshots'::regclass)::bigint,
+                           pg_relation_size('public.v2_realtime_race_condition_snapshots'::regclass)::bigint,
+                           pg_indexes_size('public.v2_realtime_race_condition_snapshots'::regclass)::bigint
+                  """)
+                  total,heap,indexes=cur.fetchone()
+                  out["bytes"]={"total":int(total),"heap":int(heap),"indexes":int(indexes)}
+              conn.rollback()
+
+          print("RACE_CONDITION_ARCHIVE_SOURCE_AUDIT="+json.dumps(out,sort_keys=True))
+          PY
+
+      - name: Run candidate-v4 source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             python3 /tmp/race_condition_archive_source_audit.py > race-condition-source-audit.out
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          for line in Path("race-condition-source-audit.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("RACE_CONDITION_ARCHIVE_SOURCE_AUDIT="):
+                  payload=json.loads(line.split("=",1)[1]); break
+          if payload is None:
+              raise SystemExit("audit payload missing")
+
+          b=payload["bytes"]
+          mb=lambda x: x/1024/1024
+          lines=[
+            "## Race-condition archive source audit — read only","",
+            "State: **PASS**",
+            f"- cutoff: **{payload['cutoff']}**",
+            f"- total rows: **{payload['total_rows']}**",
+            f"- archive candidate rows: **{payload['archive_rows']}**",
+            f"- archive date range: **{payload['archive_min_date']} → {payload['archive_max_date']}**",
+            f"- relation total: **{mb(b['total']):.1f} MB**",
+            f"- heap: **{mb(b['heap']):.1f} MB**",
+            f"- indexes: **{mb(b['indexes']):.1f} MB**",
+            f"- columns: **{len(payload['columns'])}**",
+            f"- constraints: **{len(payload['constraints'])}**",
+            f"- indexes defined: **{len(payload['indexes'])}**","",
+            "READ ONLY + ROLLBACK. No rows, schema, Variables, volumes, or plans were changed."
+          ]
+          Path("race-condition-source-audit-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        shell: bash
+        run: rm -f race-condition-source-audit.out
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f race-condition-source-audit-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file race-condition-source-audit-summary.md
+          else
+            printf '%s\n' '## Race-condition archive source audit — read only' '' '❌ Audit failed before sanitized output.' > race-condition-source-audit-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file race-condition-source-audit-failure.md
+          fi
