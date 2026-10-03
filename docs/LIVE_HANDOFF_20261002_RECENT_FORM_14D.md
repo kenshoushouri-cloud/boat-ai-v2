@@ -12,6 +12,17 @@
 - Cost reduction applied 2026-10-03: candidate-v3 is `SLEEPING` with its 5GB volume/data preserved; `production-pg-audit-readiness` and `snapshot-audit-readonly` have `sleepApplication=true`. Production candidate-v4 and active crons remain unchanged.
 - One task at a time; keep output short.
 
+## Cost investigation 2026-10-04
+- candidate-v3 is confirmed `SLEEPING`; its last sleep transition stopped the container about 10 minutes after startup with no meaningful network activity. Keep its 5GB volume/data preserved unless separately approved for deletion.
+- candidate-v4 was explicitly approved and redeployed once on 2026-10-04 to ensure `sleepApplication=true` applied to a fresh container. New deployment: `f7e44bc7-661b-47c6-97d8-4545f5fee343`; deployment reached SUCCESS and PostgreSQL became ready normally.
+- After the redeploy, candidate-v4 had no application TCP/DNS traffic for >15 minutes; only two startup multicast ingress packets were observed. Despite this, the deployment remained Online/SUCCESS and no `Stopping Container` event occurred.
+- v3/v4 live Railway config, source image, region/replica count, TCP proxy shape, volume size, tracing state, and variable-name set are effectively identical; tracing/auto-instrumentation are OFF for both.
+- Read-only `pg_stat_activity` diagnostic after redeploy showed total=9, client_backends=1, active=1, idle=0; the single client backend is consistent with the diagnostic connection itself, so no persistent idle client connection was found.
+- Conclusion: candidate-v4 Serverless non-sleep is not explained by an obvious app connection, tracing, variable-name/config difference, or visible network traffic. Treat it as a Railway/runtime behavior issue until a safer cause is identified. Do not repeatedly redeploy Production just to test sleep.
+- Missing-data recent_form backfill itself is cheap: successful 14-day GitHub Actions run `37099767217` spent about 4m49s in the DB backfill step. Prefer this short-lived GitHub Actions -> candidate-v4 path; do not add a new always-on Railway runner.
+- The temporary Railway recent-form runner approach via `test-beforeinfo-extra` failed with `python3: command not found`; do not rely on it as the normal cost path.
+- Direct Railway billing month-to-date is not available through current non-Agent tools. Do not estimate invoice from stale Sleep-state RAM metrics alone.
+
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
