@@ -2224,3 +2224,199 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_condition_receiver_audit.py racer-condition-receiver.out racer-condition-receiver-summary.md
+
+  racer-condition-archive-create-table:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-archive-create-table CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write guarded racer-condition archive table creator
+        shell: bash
+        run: |
+          cat > /tmp/create_racer_condition_archive_table.py <<'PY'
+          import json
+          import subprocess
+          import psycopg
+          from psycopg import sql
+
+          PROJECT="268a5b17-0712-440a-884d-27f7fa887a2d"
+          ENV="production"
+          SOURCE_SERVICE="postgres-hobby-fullhistory-candidate-v4"
+          ARCHIVE_SERVICE="postgres-history-archive"
+          SOURCE_TABLE="v2_realtime_racer_condition_snapshots"
+          ARCHIVE_SCHEMA="archive"
+
+          def get_var(service,key):
+              code=f'import os; print("VALUE="+os.environ.get("{key}",""))'
+              p=subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,
+                   "--service",service,"python3","-c",code],
+                  check=True,text=True,capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE=") and line[6:].strip():
+                      return line[6:].strip()
+              raise RuntimeError(f"{key} unavailable for {service}")
+
+          source_url=get_var(SOURCE_SERVICE,"DATABASE_PUBLIC_URL")
+          archive_url=get_var(ARCHIVE_SERVICE,"DATABASE_URL")
+
+          with psycopg.connect(source_url,autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("SET default_transaction_read_only = off")
+                  cur.execute("""
+                    select a.attname,
+                           pg_catalog.format_type(a.atttypid,a.atttypmod),
+                           a.attnotnull
+                    from pg_attribute a
+                    where a.attrelid=%s::regclass
+                      and a.attnum>0 and not a.attisdropped
+                    order by a.attnum
+                  """,(f"public.{SOURCE_TABLE}",))
+                  cols=cur.fetchall()
+                  if not cols:
+                      raise RuntimeError("source column metadata missing")
+
+                  column_defs=[]
+                  for name,typ,notnull in cols:
+                      part=sql.SQL("{} {}{}").format(
+                          sql.Identifier(name),
+                          sql.SQL(typ),
+                          sql.SQL(" NOT NULL" if notnull else ""),
+                      )
+                      column_defs.append(part.as_string(conn))
+
+                  create_schema=sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                      sql.Identifier(ARCHIVE_SCHEMA)
+                  ).as_string(conn)
+                  create_table=sql.SQL("CREATE TABLE IF NOT EXISTS {}.{} ({})").format(
+                      sql.Identifier(ARCHIVE_SCHEMA),
+                      sql.Identifier(SOURCE_TABLE),
+                      sql.SQL(", ").join(sql.SQL(x) for x in column_defs),
+                  ).as_string(conn)
+
+                  cur.execute("select dblink_connect('archive_mutation_racer', %s)",(archive_url,))
+                  connected=True
+                  try:
+                      cur.execute("select dblink_exec('archive_mutation_racer', 'BEGIN')")
+                      cur.execute("select dblink_exec('archive_mutation_racer', %s)",(create_schema,))
+                      cur.execute("select dblink_exec('archive_mutation_racer', %s)",(create_table,))
+
+                      verify_sql=f"""
+                        select
+                          (select count(*) from information_schema.columns
+                           where table_schema='{ARCHIVE_SCHEMA}'
+                             and table_name='{SOURCE_TABLE}')::bigint,
+                          (select count(*) from {ARCHIVE_SCHEMA}.{SOURCE_TABLE})::bigint
+                      """
+                      cur.execute("""
+                        select col_count,row_count
+                        from dblink('archive_mutation_racer', %s)
+                        as t(col_count bigint,row_count bigint)
+                      """,(verify_sql,))
+                      archive_col_count,archive_rows=cur.fetchone()
+                      archive_col_count=int(archive_col_count)
+                      archive_rows=int(archive_rows)
+
+                      if archive_col_count != len(cols):
+                          raise RuntimeError(
+                              f"archive column-count mismatch: source={len(cols)} archive={archive_col_count}"
+                          )
+                      if archive_rows != 0:
+                          raise RuntimeError(f"archive receiver not empty: rows={archive_rows}")
+
+                      cur.execute("select dblink_exec('archive_mutation_racer', 'COMMIT')")
+                  except Exception:
+                      try:
+                          cur.execute("select dblink_exec('archive_mutation_racer', 'ROLLBACK')")
+                      except Exception:
+                          pass
+                      raise
+                  finally:
+                      if connected:
+                          try:
+                              cur.execute("select dblink_disconnect('archive_mutation_racer')")
+                          except Exception:
+                              pass
+
+          print("RACER_ARCHIVE_TABLE_CREATE="+json.dumps({
+              "source_columns":len(cols),
+              "archive_columns":archive_col_count,
+              "archive_rows":archive_rows,
+              "archive_schema":ARCHIVE_SCHEMA,
+              "archive_table":SOURCE_TABLE,
+          },sort_keys=True))
+          PY
+
+      - name: Create empty racer-condition archive receiver table
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/create_racer_condition_archive_table.py > racer-archive-table-create.out
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          for line in Path("racer-archive-table-create.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("RACER_ARCHIVE_TABLE_CREATE="):
+                  payload=json.loads(line.split("=",1)[1]); break
+          if payload is None:
+              raise SystemExit("archive table payload missing")
+          if payload["source_columns"] != payload["archive_columns"] or payload["archive_rows"] != 0:
+              raise SystemExit("archive table postcondition failed")
+
+          lines=[
+              "## Racer-condition archive receiver table",
+              "",
+              "State: **PASS**",
+              f"- schema: **{payload['archive_schema']}**",
+              f"- table: **{payload['archive_table']}**",
+              f"- source columns: **{payload['source_columns']}**",
+              f"- archive columns: **{payload['archive_columns']}**",
+              f"- archive rows: **{payload['archive_rows']}**",
+              "",
+              "Archive-only schema mutation. No Production rows were changed or deleted.",
+              "No historical rows have been copied yet.",
+          ]
+          Path("racer-archive-table-create-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f racer-archive-table-create-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-table-create-summary.md
+          else
+            printf '%s\n' '## Racer-condition archive receiver table' '' 'State: **FAILED**' '' 'No Production delete or row migration was attempted.' > racer-archive-table-create-summary.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-table-create-summary.md
+          fi
+
+      - name: Remove transient create-table material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/create_racer_condition_archive_table.py racer-archive-table-create.out racer-archive-table-create-summary.md
