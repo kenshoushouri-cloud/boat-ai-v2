@@ -76,7 +76,7 @@ jobs:
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE; exec python -u research/historical_recent_form_backfill_pg.py --start-date 2025-07-06 --end-date 2025-07-10 --output historical-recent-form-dry-run.json' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; python -u scripts/wake_candidate_v4_pg.py; unset CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE; exec python -u research/historical_recent_form_backfill_pg.py --start-date 2025-07-06 --end-date 2025-07-10 --output historical-recent-form-dry-run.json' \
             | tee historical-recent-form-dry-run.txt
           grep -q '^HIST_RECENT_FORM_SAME_DAY_RESULT_USED=0$' historical-recent-form-dry-run.txt
           grep -q '^HIST_RECENT_FORM_FUTURE_RESULT_USED=0$' historical-recent-form-dry-run.txt
@@ -139,7 +139,7 @@ jobs:
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE="YES"; exec python -u research/historical_recent_form_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; python -u scripts/wake_candidate_v4_pg.py; export CONFIRM_HISTORICAL_RECENT_FORM_DB_WRITE="YES"; exec python -u research/historical_recent_form_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
             | tee historical-recent-form-backfill.txt
           grep -q '^HIST_RECENT_FORM_SAME_DAY_RESULT_USED=0$' historical-recent-form-backfill.txt
           grep -q '^HIST_RECENT_FORM_FUTURE_RESULT_USED=0$' historical-recent-form-backfill.txt
