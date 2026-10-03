@@ -13,7 +13,7 @@ Current:
 - Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
 - Railway plan = Hobby
 - Historical Recent Form completed through 2025-07-23
-- next fixed target = 2025-12-25..2026-01-07 (14 days)
+- next fixed target = 2026-01-08..2026-01-21 (14 days)
 - next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
 - never bulk-fetch Issue #42 comments
 - protect candidate-v4 / history archive / escrow / active writers / TOTO
