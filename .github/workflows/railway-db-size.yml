@@ -2930,3 +2930,207 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_condition_archive_verify.py racer-archive-verify.out racer-archive-verify-summary.md
+
+  racer-condition-reclaim-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-reclaim-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Run physical reclaim diagnostic read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_reclaim_readonly.py <<'PY'
+          import json, os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          TABLE="v2_realtime_racer_condition_snapshots"
+          url=os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          out={"table":TABLE}
+          with psycopg.connect(url,row_factory=dict_row,autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("set local statement_timeout='120s'")
+
+                  cur.execute("""
+                    select pg_database_size(current_database())::bigint db_bytes,
+                           pg_total_relation_size(%s::regclass)::bigint total_bytes,
+                           pg_relation_size(%s::regclass)::bigint heap_bytes,
+                           pg_indexes_size(%s::regclass)::bigint index_bytes
+                  """,(f"public.{TABLE}",f"public.{TABLE}",f"public.{TABLE}"))
+                  r=cur.fetchone()
+                  out.update({k:int(r[k]) for k in ("db_bytes","total_bytes","heap_bytes","index_bytes")})
+
+                  cur.execute(f"select count(*)::bigint n from public.{TABLE}")
+                  out["exact_live_rows"]=int(cur.fetchone()["n"])
+
+                  cur.execute("""
+                    select n_live_tup::bigint live_est,
+                           n_dead_tup::bigint dead_est,
+                           last_vacuum::text,
+                           last_autovacuum::text,
+                           vacuum_count::bigint,
+                           autovacuum_count::bigint
+                    from pg_stat_user_tables
+                    where schemaname='public' and relname=%s
+                  """,(TABLE,))
+                  s=cur.fetchone() or {}
+                  out["stats"]={
+                    "live_est":int(s.get("live_est") or 0),
+                    "dead_est":int(s.get("dead_est") or 0),
+                    "last_vacuum":s.get("last_vacuum"),
+                    "last_autovacuum":s.get("last_autovacuum"),
+                    "vacuum_count":int(s.get("vacuum_count") or 0),
+                    "autovacuum_count":int(s.get("autovacuum_count") or 0),
+                  }
+
+                  cur.execute("""
+                    select mode, granted, count(*)::bigint n
+                    from pg_locks
+                    where relation=%s::regclass
+                    group by mode, granted
+                    order by mode, granted
+                  """,(f"public.{TABLE}",))
+                  out["locks"]=[
+                    {"mode":x["mode"],"granted":bool(x["granted"]),"count":int(x["n"])}
+                    for x in cur.fetchall()
+                  ]
+
+                  cur.execute("""
+                    select indexrelname,
+                           pg_relation_size(indexrelid)::bigint bytes,
+                           idx_scan::bigint
+                    from pg_stat_user_indexes
+                    where schemaname='public' and relname=%s
+                    order by pg_relation_size(indexrelid) desc, indexrelname
+                  """,(TABLE,))
+                  out["indexes"]=[
+                    {"name":x["indexrelname"],"bytes":int(x["bytes"]),"idx_scan":int(x["idx_scan"] or 0)}
+                    for x in cur.fetchall()
+                  ]
+
+                  cur.execute("select exists(select 1 from pg_extension where extname='pgstattuple') ok")
+                  out["pgstattuple_installed"]=bool(cur.fetchone()["ok"])
+                  if out["pgstattuple_installed"]:
+                      try:
+                          cur.execute(
+                              "select table_len::bigint, tuple_count::bigint, tuple_len::bigint, "
+                              "dead_tuple_count::bigint, dead_tuple_len::bigint, free_space::bigint "
+                              "from pgstattuple_approx(%s::regclass)",
+                              (f"public.{TABLE}",)
+                          )
+                          p=cur.fetchone()
+                          out["pgstattuple"]={k:int(p[k]) for k in p.keys()}
+                      except Exception as e:
+                          out["pgstattuple_error"]=type(e).__name__
+                          conn.rollback()
+                          cur.execute("BEGIN READ ONLY")
+                  conn.rollback()
+
+          print("RACER_RECLAIM_READONLY="+json.dumps(out,sort_keys=True))
+          PY
+
+          railway run \
+            --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+            --environment production \
+            --service postgres-hobby-fullhistory-candidate-v4 \
+            python3 /tmp/racer_reclaim_readonly.py > racer-reclaim.out
+
+      - name: Build sanitized reclaim summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          p=Path("racer-reclaim.out")
+          if p.exists():
+              for line in p.read_text(encoding="utf-8",errors="replace").splitlines():
+                  if line.startswith("RACER_RECLAIM_READONLY="):
+                      payload=json.loads(line.split("=",1)[1])
+                      break
+
+          if payload is None:
+              lines=[
+                  "## Racer-condition physical reclaim diagnostic — read only",
+                  "",
+                  "State: **FAILED**",
+                  "",
+                  "No VACUUM, table rewrite, row change, schema change, Variable change, volume change, or plan change was attempted.",
+              ]
+          else:
+              mb=lambda n: n/1024/1024
+              st=payload.get("stats",{})
+              total=payload.get("total_bytes",0)
+              heap=payload.get("heap_bytes",0)
+              idx=payload.get("index_bytes",0)
+              dead=st.get("dead_est",0)
+              live=st.get("live_est",0)
+              stat_total=live+dead
+              dead_pct=(100.0*dead/stat_total) if stat_total else 0.0
+              locks=payload.get("locks",[])
+              blocking=sum(x["count"] for x in locks if not x["granted"])
+              lines=[
+                  "## Racer-condition physical reclaim diagnostic — read only",
+                  "",
+                  "State: **PASS**",
+                  f"- database size: **{mb(payload.get('db_bytes',0)):.1f} MB**",
+                  f"- table total: **{mb(total):.1f} MB**",
+                  f"- heap: **{mb(heap):.1f} MB**",
+                  f"- indexes: **{mb(idx):.1f} MB**",
+                  f"- exact live rows: **{payload.get('exact_live_rows')}**",
+                  f"- stats live estimate: **{live}**",
+                  f"- stats dead estimate: **{dead}**",
+                  f"- estimated dead-row share from stats: **{dead_pct:.1f}%**",
+                  f"- ungranted relation locks now: **{blocking}**",
+                  f"- pgstattuple already installed: **{payload.get('pgstattuple_installed')}**",
+                  f"- last autovacuum: **{st.get('last_autovacuum')}**",
+                  "",
+                  "READ ONLY + ROLLBACK. No VACUUM, table rewrite, row/schema/settings/volume/plan change was performed.",
+              ]
+              if payload.get("pgstattuple"):
+                  q=payload["pgstattuple"]
+                  lines += [
+                    "",
+                    "### pgstattuple_approx",
+                    f"- dead tuple bytes: **{mb(q.get('dead_tuple_len',0)):.1f} MB**",
+                    f"- free space: **{mb(q.get('free_space',0)):.1f} MB**",
+                  ]
+          Path("racer-reclaim-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized reclaim result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-reclaim-summary.md
+
+      - name: Remove transient reclaim material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_reclaim_readonly.py racer-reclaim.out racer-reclaim-summary.md
