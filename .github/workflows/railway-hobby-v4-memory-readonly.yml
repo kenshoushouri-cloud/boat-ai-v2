@@ -74,6 +74,21 @@ jobs:
           SELECT 'CURRENT_BACKEND_MEMORY_BYTES|' || COALESCE(sum(total_bytes),0)::bigint
           FROM pg_backend_memory_contexts;
 
+          SELECT 'CGROUP|memory.current|' ||
+                 COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.current', 0, 64, true)), 'NA');
+
+          WITH raw AS (
+            SELECT pg_read_file('/sys/fs/cgroup/memory.stat', 0, 65536, true) AS body
+          ),
+          lines AS (
+            SELECT line
+            FROM raw, regexp_split_to_table(COALESCE(body, ''), E'\\n') AS line
+          )
+          SELECT 'CGROUP_STAT|' || replace(line, ' ', '|')
+          FROM lines
+          WHERE line ~ '^(anon|file|kernel|kernel_stack|pagetables|sock|shmem) '
+          ORDER BY line;
+
           SELECT 'PENDING_RESTART|' || name || '|' || setting || '|' || unit
           FROM pg_settings
           WHERE pending_restart
@@ -83,7 +98,7 @@ jobs:
           railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh \
             < diagnostic.sql > diagnostic.out
 
-          grep -E '^(SETTING|ACTIVITY|DBSTAT|CURRENT_BACKEND_MEMORY_BYTES|PENDING_RESTART)\|' diagnostic.out > diagnostic.sanitized
+          grep -E '^(SETTING|ACTIVITY|DBSTAT|CURRENT_BACKEND_MEMORY_BYTES|CGROUP|CGROUP_STAT|PENDING_RESTART)\|' diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
       - name: Post sanitized result
@@ -104,6 +119,6 @@ jobs:
               echo 'FAILED: no sanitized diagnostic result.'
             fi
             echo
-            echo 'Read-only PostgreSQL memory/settings/activity inspection. No settings, rows, schema, service, volume, plan, or deployment changes.'
+            echo 'Read-only PostgreSQL memory/settings/activity/cgroup inspection. No settings, rows, schema, service, volume, plan, or deployment changes.'
           } > summary.md
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
