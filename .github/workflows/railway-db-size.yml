@@ -1838,3 +1838,233 @@ jobs:
         run: |
           unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
           rm -f archive-copy.sanitized archive-copy-summary.md
+
+  race-condition-production-delete:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway race-condition-production-delete CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install guarded delete tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Resolve candidate and archive connection references
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_url="$(
+            railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service postgres-hobby-fullhistory-candidate-v4 \
+              python3 -c 'import os; print(os.environ.get("DATABASE_PUBLIC_URL",""))'
+          )"
+          archive_url="$(
+            railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service postgres-history-archive \
+              python3 -c 'import os; print(os.environ.get("DATABASE_URL",""))'
+          )"
+          test -n "$source_url"
+          test -n "$archive_url"
+          {
+            echo "SOURCE_DATABASE_URL<<EOF"
+            echo "$source_url"
+            echo "EOF"
+            echo "ARCHIVE_DATABASE_URL<<EOF"
+            echo "$archive_url"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Run verified Production delete
+        shell: bash
+        env:
+          ARCHIVE_CUTOFF: "2026-07-05"
+          EXPECTED_ROWS: "56316"
+        run: |
+          set -euo pipefail
+          cat > /tmp/race_condition_delete.py <<'PY'
+          import os
+          import psycopg
+
+          source_url = os.environ["SOURCE_DATABASE_URL"]
+          archive_url = os.environ["ARCHIVE_DATABASE_URL"]
+          cutoff = os.environ["ARCHIVE_CUTOFF"]
+          expected = int(os.environ["EXPECTED_ROWS"])
+
+          result = {
+              "deleted_rows": 0,
+              "post_source_rows": None,
+              "archive_rows": None,
+              "archive_columns": None,
+              "fingerprint_match": False,
+          }
+
+          with psycopg.connect(source_url, autocommit=False) as conn:
+              conn.execute("set transaction isolation level serializable")
+              conn.execute("set local statement_timeout='180s'")
+              with conn.cursor() as cur:
+                  cur.execute("select exists(select 1 from pg_extension where extname='dblink')")
+                  if not cur.fetchone()[0]:
+                      raise RuntimeError("dblink_missing")
+
+                  cur.execute("""
+                      select count(*)::bigint,
+                             coalesce(sum(hashtextextended(row_to_json(s)::text,0)::numeric),0)::text
+                      from public.v2_realtime_race_condition_snapshots s
+                      where exists (
+                        select 1
+                        from public.v2_races r
+                        where r.race_id=s.race_id
+                          and r.race_date < %s::date
+                      )
+                  """, (cutoff,))
+                  source_rows, source_fp = cur.fetchone()
+                  source_rows = int(source_rows)
+                  if source_rows != expected:
+                      raise RuntimeError(f"source_count_changed:{source_rows}")
+
+                  connected = False
+                  try:
+                      cur.execute("select dblink_connect('archive_delete_guard', %s)", (archive_url,))
+                      connected = True
+                      cur.execute("select dblink_exec('archive_delete_guard', 'BEGIN READ ONLY')")
+                      cur.execute("""
+                          select archive_rows, archive_columns, archive_fp
+                          from dblink(
+                            'archive_delete_guard',
+                            'select
+                               (select count(*) from archive.v2_realtime_race_condition_snapshots)::bigint,
+                               (select count(*) from information_schema.columns
+                                  where table_schema=''archive''
+                                    and table_name=''v2_realtime_race_condition_snapshots'')::bigint,
+                               (select coalesce(sum(hashtextextended(row_to_json(a)::text,0)::numeric),0)::text
+                                  from archive.v2_realtime_race_condition_snapshots a)'
+                          ) as t(archive_rows bigint, archive_columns bigint, archive_fp text)
+                      """)
+                      archive_rows, archive_columns, archive_fp = cur.fetchone()
+                      archive_rows = int(archive_rows)
+                      archive_columns = int(archive_columns)
+                      result["archive_rows"] = archive_rows
+                      result["archive_columns"] = archive_columns
+                      result["fingerprint_match"] = (source_fp == archive_fp)
+
+                      if archive_rows != expected:
+                          raise RuntimeError(f"archive_count_changed:{archive_rows}")
+                      if archive_columns != 16:
+                          raise RuntimeError(f"archive_columns_changed:{archive_columns}")
+                      if source_fp != archive_fp:
+                          raise RuntimeError("archive_fingerprint_mismatch")
+
+                      cur.execute("""
+                          delete from public.v2_realtime_race_condition_snapshots s
+                          where exists (
+                            select 1
+                            from public.v2_races r
+                            where r.race_id=s.race_id
+                              and r.race_date < %s::date
+                          )
+                      """, (cutoff,))
+                      deleted = cur.rowcount
+                      result["deleted_rows"] = int(deleted)
+                      if deleted != expected:
+                          raise RuntimeError(f"delete_count_mismatch:{deleted}")
+
+                      cur.execute("""
+                          select count(*)::bigint
+                          from public.v2_realtime_race_condition_snapshots s
+                          where exists (
+                            select 1
+                            from public.v2_races r
+                            where r.race_id=s.race_id
+                              and r.race_date < %s::date
+                          )
+                      """, (cutoff,))
+                      post_rows = int(cur.fetchone()[0])
+                      result["post_source_rows"] = post_rows
+                      if post_rows != 0:
+                          raise RuntimeError(f"post_delete_rows_remaining:{post_rows}")
+
+                      cur.execute("select dblink_exec('archive_delete_guard', 'ROLLBACK')")
+                      cur.execute("select dblink_disconnect('archive_delete_guard')")
+                      connected = False
+                      conn.commit()
+                  finally:
+                      if connected:
+                          try:
+                              cur.execute("select dblink_exec('archive_delete_guard', 'ROLLBACK')")
+                          except Exception:
+                              pass
+                          try:
+                              cur.execute("select dblink_disconnect('archive_delete_guard')")
+                          except Exception:
+                              pass
+
+          print("PRODUCTION_DELETE_RESULT=PASS")
+          print("PRODUCTION_DELETE_ROWS=" + str(result["deleted_rows"]))
+          print("POST_SOURCE_ROWS=" + str(result["post_source_rows"]))
+          print("ARCHIVE_ROWS=" + str(result["archive_rows"]))
+          print("ARCHIVE_COLUMNS=" + str(result["archive_columns"]))
+          print("FINGERPRINT_MATCH=" + str(result["fingerprint_match"]).lower())
+          print("VACUUM_OR_REWRITE=0")
+          PY
+
+          set +e
+          python /tmp/race_condition_delete.py > delete-result.sanitized 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            grep -E '^(RuntimeError:|psycopg\.|PRODUCTION_DELETE_|POST_SOURCE_ROWS|ARCHIVE_ROWS|ARCHIVE_COLUMNS|FINGERPRINT_MATCH|VACUUM_OR_REWRITE)' delete-result.sanitized | tail -60 || true
+            exit "$rc"
+          fi
+          grep -q '^PRODUCTION_DELETE_RESULT=PASS$' delete-result.sanitized
+          grep -q '^PRODUCTION_DELETE_ROWS=56316$' delete-result.sanitized
+          grep -q '^POST_SOURCE_ROWS=0$' delete-result.sanitized
+          grep -q '^ARCHIVE_ROWS=56316$' delete-result.sanitized
+          grep -q '^ARCHIVE_COLUMNS=16$' delete-result.sanitized
+          grep -q '^FINGERPRINT_MATCH=true$' delete-result.sanitized
+          grep -q '^VACUUM_OR_REWRITE=0$' delete-result.sanitized
+
+      - name: Post sanitized delete result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f delete-result.sanitized ] && grep -q '^PRODUCTION_DELETE_RESULT=PASS$' delete-result.sanitized; then
+            {
+              echo '## Race-condition Production retention delete'
+              echo
+              echo 'State: **PASS**'
+              echo '- archive precheck rows: **56,316**'
+              echo '- fingerprint match: **True**'
+              echo '- Production deleted rows: **56,316**'
+              echo '- Production rows older than cutoff remaining: **0**'
+              echo '- VACUUM / table rewrite: **0**'
+              echo
+              echo 'Archive data was preserved.'
+            } > delete-summary.md
+          else
+            {
+              echo '## Race-condition Production retention delete'
+              echo
+              echo 'State: **BLOCKED / FAILED**'
+              echo '- Transaction was not committed unless every guard and exact row-count check passed.'
+              echo '- No VACUUM or table rewrite was attempted.'
+            } > delete-summary.md
+          fi
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file delete-summary.md
+
+      - name: Remove transient delete material
+        if: always()
+        shell: bash
+        run: |
+          unset SOURCE_DATABASE_URL ARCHIVE_DATABASE_URL || true
+          rm -f /tmp/race_condition_delete.py delete-result.sanitized delete-summary.md
