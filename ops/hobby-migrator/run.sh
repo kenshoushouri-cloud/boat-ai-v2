@@ -38,9 +38,11 @@ DECLARE
   source_rows bigint;
   archive_rows bigint;
   batch_size integer := 250;
-  offset_rows integer := 0;
-  payload text;
+  batch_count integer := 0;
+  copied_rows bigint := 0;
+  payload text := '[';
   remote_sql text;
+  rec record;
 BEGIN
   SELECT count(*)::bigint INTO source_rows
   FROM public.v2_realtime_race_condition_snapshots s
@@ -61,29 +63,49 @@ BEGIN
     RAISE EXCEPTION 'archive_receiver_not_empty';
   END IF;
 
+  FOR rec IN
+    SELECT row_to_json(s)::text AS row_json
+    FROM public.v2_realtime_race_condition_snapshots s
+    WHERE EXISTS (
+      SELECT 1
+      FROM public.v2_races r
+      WHERE r.race_id = s.race_id
+        AND r.race_date < cutoff_date
+    )
   LOOP
-    SELECT coalesce(json_agg(x), '[]'::json)::text
-      INTO payload
-    FROM (
-      SELECT s.*
-      FROM public.v2_realtime_race_condition_snapshots s
-      JOIN public.v2_races r ON r.race_id = s.race_id
-      WHERE r.race_date < cutoff_date
-      ORDER BY s.ctid
-      LIMIT batch_size OFFSET offset_rows
-    ) AS x;
+    IF batch_count > 0 THEN
+      payload := payload || ',';
+    END IF;
+    payload := payload || rec.row_json;
+    batch_count := batch_count + 1;
+    copied_rows := copied_rows + 1;
 
-    EXIT WHEN payload = '[]';
+    IF batch_count >= batch_size THEN
+      payload := payload || ']';
+      remote_sql :=
+        'INSERT INTO archive.v2_realtime_race_condition_snapshots ' ||
+        'SELECT * FROM json_populate_recordset(' ||
+        'NULL::archive.v2_realtime_race_condition_snapshots,' ||
+        quote_literal(payload) || '::json)';
+      PERFORM dblink_exec('archive_copy', remote_sql);
+      payload := '[';
+      batch_count := 0;
+    END IF;
+  END LOOP;
 
+  IF batch_count > 0 THEN
+    payload := payload || ']';
     remote_sql :=
       'INSERT INTO archive.v2_realtime_race_condition_snapshots ' ||
       'SELECT * FROM json_populate_recordset(' ||
       'NULL::archive.v2_realtime_race_condition_snapshots,' ||
       quote_literal(payload) || '::json)';
-
     PERFORM dblink_exec('archive_copy', remote_sql);
-    offset_rows := offset_rows + batch_size;
-  END LOOP;
+  END IF;
+
+  IF copied_rows <> expected_rows THEN
+    RAISE EXCEPTION 'copied_row_count_mismatch';
+  END IF;
 
   SELECT n INTO archive_rows
   FROM dblink(
