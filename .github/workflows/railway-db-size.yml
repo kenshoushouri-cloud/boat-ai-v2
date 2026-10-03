@@ -774,3 +774,82 @@ jobs:
             printf '%s\n'               '## History archive HTTP audit — read only'               ''               '❌ HTTP audit failed before a sanitized result was produced.'               ''               'No destructive follow-up was attempted.'               > history-archive-http-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file history-archive-http-failure.md
           fi
+
+
+  snapshot-archive-http-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway snapshot-archive-http-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Call snapshot audit once
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://snapshot-audit-readonly-production.up.railway.app'
+          health_status="$(curl -sS -o health.json -w '%{http_code}' --connect-timeout 15 --max-time 30 "$base/health")"
+          audit_status="$(curl -sS -o audit.json -w '%{http_code}' --connect-timeout 15 --max-time 120 "$base/audit")"
+          printf '%s\n' "$health_status" > health.status
+          printf '%s\n' "$audit_status" > audit.status
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          hs=Path("health.status").read_text().strip()
+          as_=Path("audit.status").read_text().strip()
+          hb=Path("health.json").read_text(encoding="utf-8",errors="replace")
+          ab=Path("audit.json").read_text(encoding="utf-8",errors="replace")
+          health_ok = hs=="200"
+          audit_ok = as_=="200"
+          db_reached = audit_ok
+          empty_schema = False
+          safe_error = ""
+          if not audit_ok:
+              try:
+                  p=json.loads(ab)
+                  msg=str(p.get("error") or p)
+              except Exception:
+                  msg=ab
+              low=msg.lower()
+              if "does not exist" in low or "relation" in low:
+                  db_reached=True
+                  empty_schema=True
+              safe_error=re.sub(r"postgres(?:ql)?://[^\s]+","[REDACTED_DB_URL]",msg).replace("\n"," ")[:400]
+          state = "ARCHIVE_BUNSQL_OK" if audit_ok else ("ARCHIVE_BUNSQL_CONNECTED_EMPTY_SCHEMA" if db_reached and empty_schema else "ARCHIVE_BUNSQL_BLOCKED")
+          lines=[
+              "## Snapshot audit to history archive — read only","",
+              f"State: **{state}**",
+              f"- health HTTP: **{hs}**",
+              f"- audit HTTP: **{as_}**",
+              f"- health endpoint OK: **{health_ok}**",
+              f"- PostgreSQL reached: **{db_reached}**",
+              f"- empty/missing expected schema: **{empty_schema}**",
+          ]
+          if safe_error:
+              lines.append(f"- sanitized audit error: `{safe_error}`")
+          lines += ["","No database rows/schema, Variables, volumes, or plans were changed by this audit."]
+          Path("snapshot-archive-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Remove raw bodies
+        if: always()
+        run: rm -f health.json audit.json health.status audit.status
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f snapshot-archive-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file snapshot-archive-summary.md
+          else
+            printf '%s\n' '## Snapshot audit to history archive — read only' '' '❌ Audit failed before sanitized output.' > snapshot-archive-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file snapshot-archive-failure.md
+          fi
