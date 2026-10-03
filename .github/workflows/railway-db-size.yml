@@ -959,3 +959,117 @@ jobs:
             printf '%s\n' '## Candidate private-link extension audit — read only' '' '❌ Probe failed before sanitized output.' > candidate-private-link-extension-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-private-link-extension-failure.md
           fi
+
+
+  candidate-dblink-install:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-dblink-install CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write guarded dblink installer
+        shell: bash
+        run: |
+          cat > /tmp/install_dblink.py <<'PY'
+          import json
+          import os
+          import psycopg
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          with psycopg.connect(url, autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""
+                      select extname, extversion
+                      from pg_extension
+                      where extname='dblink'
+                  """)
+                  before = cur.fetchone()
+
+                  cur.execute("CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public")
+
+                  cur.execute("""
+                      select extname, extversion
+                      from pg_extension
+                      where extname='dblink'
+                  """)
+                  after = cur.fetchone()
+
+          print("DBLINK_INSTALL_RESULT=" + json.dumps({
+              "before_installed": bool(before),
+              "after_installed": bool(after),
+              "version": after[1] if after else None,
+          }, sort_keys=True))
+          PY
+
+      - name: Install dblink on candidate-v4
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             python3 /tmp/install_dblink.py > dblink-install.out
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload=None
+          for line in Path("dblink-install.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("DBLINK_INSTALL_RESULT="):
+                  payload=json.loads(line.split("=",1)[1])
+                  break
+          if payload is None or not payload.get("after_installed"):
+              raise SystemExit("dblink postcondition failed")
+
+          lines=[
+              "## Candidate-v4 dblink install",
+              "",
+              "State: **PASS**",
+              f"- installed before: **{payload['before_installed']}**",
+              f"- installed after: **{payload['after_installed']}**",
+              f"- version: **{payload['version']}**",
+              "",
+              "Only the PostgreSQL dblink extension was created if it was missing.",
+              "No table rows, application data, archive schema, volumes, or plans were changed.",
+          ]
+          Path("candidate-dblink-install-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        shell: bash
+        run: rm -f dblink-install.out
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f candidate-dblink-install-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-dblink-install-summary.md
+          else
+            printf '%s\n'               '## Candidate-v4 dblink install'               ''               '❌ dblink install did not produce a verified PASS result.'               ''               'No follow-up migration or delete operation was attempted.'               > candidate-dblink-install-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-dblink-install-failure.md
+          fi
