@@ -148,6 +148,176 @@ SQL
   echo "VACUUM_OR_REWRITE=0"
   exit 0
 fi
+
+if [[ "$MIGRATION_MODE" == "ARCHIVE_RACER_CONDITION" ]]; then
+  : "${ARCHIVE_CUTOFF:?ARCHIVE_CUTOFF is required}"
+  : "${ARCHIVE_EXPECTED_ROWS:?ARCHIVE_EXPECTED_ROWS is required}"
+  if [[ ! "$ARCHIVE_CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "RACER_ARCHIVE_COPY_ABORT=invalid_cutoff" >&2
+    exit 51
+  fi
+  if [[ ! "$ARCHIVE_EXPECTED_ROWS" =~ ^[0-9]+$ ]] || [[ "$ARCHIVE_EXPECTED_ROWS" == "0" ]]; then
+    echo "RACER_ARCHIVE_COPY_ABORT=invalid_expected_rows" >&2
+    exit 52
+  fi
+
+  echo "RACER_ARCHIVE_COPY_SOURCE_WRITE=0 TARGET_ONLY_WRITE=1 CUTOFF=$ARCHIVE_CUTOFF"
+
+  PGOPTIONS="-c default_transaction_read_only=on -c temp_file_limit=65536" \
+  psql "$SOURCE_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
+    -v archive_url="$TARGET_DATABASE_URL" \
+    -v cutoff="$ARCHIVE_CUTOFF" \
+    -v expected="$ARCHIVE_EXPECTED_ROWS" <<'SQL'
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT dblink_connect('racer_archive_copy', :'archive_url');
+SELECT dblink_exec('racer_archive_copy', 'BEGIN');
+SELECT set_config('app.archive_cutoff', :'cutoff', false);
+SELECT set_config('app.archive_expected_rows', :'expected', false);
+
+DO $racer_archive_copy$
+DECLARE
+  cutoff_date date := current_setting('app.archive_cutoff')::date;
+  expected_rows bigint := current_setting('app.archive_expected_rows')::bigint;
+  source_rows bigint;
+  archive_rows bigint;
+  archive_columns bigint;
+  source_fp text;
+  archive_fp text;
+  batch_size integer := 250;
+  batch_count integer := 0;
+  copied_rows bigint := 0;
+  payload text := '[';
+  remote_sql text;
+  rec record;
+BEGIN
+  SELECT count(*)::bigint,
+         coalesce(sum(hashtextextended(row_to_json(s)::text,0)::numeric),0)::text
+    INTO source_rows, source_fp
+  FROM public.v2_realtime_racer_condition_snapshots s
+  WHERE EXISTS (
+    SELECT 1
+    FROM public.v2_races r
+    WHERE r.race_id = s.race_id
+      AND r.race_date < cutoff_date
+  );
+
+  IF source_rows <> expected_rows THEN
+    RAISE EXCEPTION 'racer_source_count_changed';
+  END IF;
+
+  SELECT n, c INTO archive_rows, archive_columns
+  FROM dblink(
+    'racer_archive_copy',
+    'SELECT
+       (SELECT count(*) FROM archive.v2_realtime_racer_condition_snapshots)::bigint,
+       (SELECT count(*) FROM information_schema.columns
+          WHERE table_schema=''archive''
+            AND table_name=''v2_realtime_racer_condition_snapshots'')::bigint'
+  ) AS t(n bigint, c bigint);
+
+  IF archive_rows <> 0 THEN
+    RAISE EXCEPTION 'racer_archive_receiver_not_empty';
+  END IF;
+  IF archive_columns <> 21 THEN
+    RAISE EXCEPTION 'racer_archive_column_count_mismatch';
+  END IF;
+
+  FOR rec IN
+    SELECT row_to_json(s)::text AS row_json
+    FROM public.v2_realtime_racer_condition_snapshots s
+    WHERE EXISTS (
+      SELECT 1
+      FROM public.v2_races r
+      WHERE r.race_id = s.race_id
+        AND r.race_date < cutoff_date
+    )
+  LOOP
+    IF batch_count > 0 THEN
+      payload := payload || ',';
+    END IF;
+    payload := payload || rec.row_json;
+    batch_count := batch_count + 1;
+    copied_rows := copied_rows + 1;
+
+    IF batch_count >= batch_size THEN
+      payload := payload || ']';
+      remote_sql :=
+        'INSERT INTO archive.v2_realtime_racer_condition_snapshots ' ||
+        'SELECT * FROM json_populate_recordset(' ||
+        'NULL::archive.v2_realtime_racer_condition_snapshots,' ||
+        quote_literal(payload) || '::json)';
+      PERFORM dblink_exec('racer_archive_copy', remote_sql);
+      payload := '[';
+      batch_count := 0;
+    END IF;
+  END LOOP;
+
+  IF batch_count > 0 THEN
+    payload := payload || ']';
+    remote_sql :=
+      'INSERT INTO archive.v2_realtime_racer_condition_snapshots ' ||
+      'SELECT * FROM json_populate_recordset(' ||
+      'NULL::archive.v2_realtime_racer_condition_snapshots,' ||
+      quote_literal(payload) || '::json)';
+    PERFORM dblink_exec('racer_archive_copy', remote_sql);
+  END IF;
+
+  IF copied_rows <> expected_rows THEN
+    RAISE EXCEPTION 'racer_copied_row_count_mismatch';
+  END IF;
+
+  SELECT n, fp INTO archive_rows, archive_fp
+  FROM dblink(
+    'racer_archive_copy',
+    'SELECT count(*)::bigint,
+            coalesce(sum(hashtextextended(row_to_json(a)::text,0)::numeric),0)::text
+       FROM archive.v2_realtime_racer_condition_snapshots a'
+  ) AS t(n bigint, fp text);
+
+  IF archive_rows <> expected_rows THEN
+    RAISE EXCEPTION 'racer_archive_post_count_mismatch';
+  END IF;
+  IF archive_fp IS DISTINCT FROM source_fp THEN
+    RAISE EXCEPTION 'racer_archive_fingerprint_mismatch';
+  END IF;
+
+  SELECT count(*)::bigint INTO source_rows
+  FROM public.v2_realtime_racer_condition_snapshots s
+  WHERE EXISTS (
+    SELECT 1
+    FROM public.v2_races r
+    WHERE r.race_id = s.race_id
+      AND r.race_date < cutoff_date
+  );
+
+  IF source_rows <> expected_rows THEN
+    RAISE EXCEPTION 'racer_source_snapshot_drift';
+  END IF;
+
+  RAISE NOTICE 'RACER_ARCHIVE_COPY_VERIFIED source=% archive=% fingerprint_match=true',
+    source_rows, archive_rows;
+EXCEPTION WHEN OTHERS THEN
+  BEGIN
+    PERFORM dblink_exec('racer_archive_copy', 'ROLLBACK');
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  RAISE;
+END
+$racer_archive_copy$;
+
+SELECT dblink_exec('racer_archive_copy', 'COMMIT');
+SELECT dblink_disconnect('racer_archive_copy');
+ROLLBACK;
+SQL
+
+  echo "RACER_ARCHIVE_COPY_RESULT=PASS"
+  echo "RACER_ARCHIVE_COPY_ROWS=$ARCHIVE_EXPECTED_ROWS"
+  echo "RACER_ARCHIVE_FINGERPRINT_MATCH=true"
+  echo "PRODUCTION_DELETE=0"
+  echo "VACUUM_OR_REWRITE=0"
+  exit 0
+fi
 : "${HOT_CUTOFF:?HOT_CUTOFF is required}"
 if [[ ! "$HOT_CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
   echo "HOBBY_MIGRATION_ABORT=invalid_cutoff" >&2
