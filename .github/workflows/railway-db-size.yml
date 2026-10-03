@@ -3134,3 +3134,176 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_reclaim_readonly.py racer-reclaim.out racer-reclaim-summary.md
+
+  racer-condition-rewrite-estimate-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-rewrite-estimate-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Estimate rewrite footprint read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_rewrite_estimate.py <<'PY'
+          import json, os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          TABLE="v2_realtime_racer_condition_snapshots"
+          DELETED_ROWS=338904
+          url=os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          out={"table":TABLE,"deleted_rows":DELETED_ROWS}
+          with psycopg.connect(url,row_factory=dict_row,autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("set local statement_timeout='180s'")
+
+                  cur.execute("""
+                    select pg_relation_size(%s::regclass)::bigint heap_bytes,
+                           pg_indexes_size(%s::regclass)::bigint index_bytes,
+                           pg_total_relation_size(%s::regclass)::bigint total_bytes
+                  """,(f"public.{TABLE}",f"public.{TABLE}",f"public.{TABLE}"))
+                  r=cur.fetchone()
+                  out.update({k:int(r[k]) for k in ("heap_bytes","index_bytes","total_bytes")})
+
+                  cur.execute(f"""
+                    select count(*)::bigint live_rows,
+                           coalesce(sum(pg_column_size(t))::bigint,0) payload_bytes,
+                           coalesce(avg(pg_column_size(t))::numeric,0)::float8 avg_payload_bytes
+                    from public.{TABLE} t
+                  """)
+                  r=cur.fetchone()
+                  out["live_rows"]=int(r["live_rows"])
+                  out["payload_bytes"]=int(r["payload_bytes"])
+                  out["avg_payload_bytes"]=float(r["avg_payload_bytes"])
+
+                  cur.execute("""
+                    select coalesce(sum(pg_relation_size(indexrelid))::bigint,0) index_bytes,
+                           count(*)::bigint index_count
+                    from pg_index
+                    where indrelid=%s::regclass
+                  """,(f"public.{TABLE}",))
+                  r=cur.fetchone()
+                  out["index_count"]=int(r["index_count"])
+
+                  cur.execute("""
+                    select count(*)::bigint
+                    from pg_stat_activity
+                    where datname=current_database()
+                      and pid<>pg_backend_pid()
+                      and state<>'idle'
+                  """)
+                  out["other_active_db_sessions"]=int(cur.fetchone()["count"])
+
+                  cur.execute("""
+                    select count(*)::bigint
+                    from pg_locks
+                    where relation=%s::regclass
+                      and not granted
+                  """,(f"public.{TABLE}",))
+                  out["ungranted_relation_locks"]=int(cur.fetchone()["count"])
+              conn.rollback()
+
+          before_rows=out["live_rows"]+DELETED_ROWS
+          live_ratio=(out["live_rows"]/before_rows) if before_rows else 1.0
+
+          # Conservative estimates:
+          # - scale current heap/index by retained-row ratio
+          # - add 30%% slack for page/index overhead
+          # - WAL reserve = 1.25x compacted relation
+          # - fixed 64 MiB operational reserve
+          compact_heap=int(out["heap_bytes"]*live_ratio*1.30)
+          compact_indexes=int(out["index_bytes"]*live_ratio*1.30)
+          compact_total=compact_heap+compact_indexes
+          wal_reserve=int(compact_total*1.25)
+          fixed_reserve=64*1024*1024
+          peak_extra=compact_total+wal_reserve+fixed_reserve
+
+          out["live_ratio"]=live_ratio
+          out["projected_compact_heap_bytes"]=compact_heap
+          out["projected_compact_index_bytes"]=compact_indexes
+          out["projected_compact_total_bytes"]=compact_total
+          out["wal_reserve_bytes"]=wal_reserve
+          out["fixed_reserve_bytes"]=fixed_reserve
+          out["conservative_peak_extra_bytes"]=peak_extra
+
+          print("RACER_REWRITE_ESTIMATE="+json.dumps(out,sort_keys=True))
+          PY
+
+          railway run \
+            --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+            --environment production \
+            --service postgres-hobby-fullhistory-candidate-v4 \
+            python3 /tmp/racer_rewrite_estimate.py > racer-rewrite-estimate.out
+
+      - name: Build sanitized estimate summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          p=Path("racer-rewrite-estimate.out")
+          if p.exists():
+              for line in p.read_text(encoding="utf-8",errors="replace").splitlines():
+                  if line.startswith("RACER_REWRITE_ESTIMATE="):
+                      payload=json.loads(line.split("=",1)[1])
+                      break
+          if payload is None:
+              lines=["## Racer-condition rewrite estimate — read only","","State: **FAILED**",
+                     "","No VACUUM FULL or table rewrite was attempted."]
+          else:
+              mib=lambda x:x/1024/1024
+              lines=[
+                "## Racer-condition rewrite estimate — read only",
+                "",
+                "State: **PASS**",
+                f"- live rows: **{payload['live_rows']:,}**",
+                f"- deleted rows basis: **{payload['deleted_rows']:,}**",
+                f"- current total relation: **{mib(payload['total_bytes']):.1f} MiB**",
+                f"- projected compact relation: **{mib(payload['projected_compact_total_bytes']):.1f} MiB**",
+                f"- conservative WAL reserve: **{mib(payload['wal_reserve_bytes']):.1f} MiB**",
+                f"- fixed operational reserve: **{mib(payload['fixed_reserve_bytes']):.1f} MiB**",
+                f"- conservative peak extra estimate: **{mib(payload['conservative_peak_extra_bytes']):.1f} MiB**",
+                f"- other active DB sessions now: **{payload['other_active_db_sessions']}**",
+                f"- ungranted relation locks now: **{payload['ungranted_relation_locks']}**",
+                "",
+                "READ ONLY + ROLLBACK. No VACUUM FULL, rewrite, row/schema/settings/volume/plan change was performed.",
+              ]
+          Path("racer-rewrite-estimate-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized estimate result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-rewrite-estimate-summary.md
+
+      - name: Remove transient estimate material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_rewrite_estimate.py racer-rewrite-estimate.out racer-rewrite-estimate-summary.md
