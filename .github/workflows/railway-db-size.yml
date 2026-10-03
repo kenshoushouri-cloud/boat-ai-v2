@@ -1201,10 +1201,16 @@ jobs:
 
   candidate-to-archive-dblink-readonly:
     if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.number == 42 &&
-      github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway candidate-to-archive-dblink-readonly'
+      (
+        github.event_name == 'push' &&
+        github.event.head_commit.message == 'workflow: trigger archive pre-copy verification'
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 42 &&
+        github.actor == github.repository_owner &&
+        github.event.comment.body == '/railway candidate-to-archive-dblink-readonly'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
