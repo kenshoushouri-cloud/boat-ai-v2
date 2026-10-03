@@ -10,12 +10,12 @@
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
-- Completed through 2025-10-15.
-- 2025-10-02..10-15 run `37082025323`: SUCCESS, 11,157 rows updated, fillable_rows=11,157, target_empty_rows=11,160, PASS.
+- Completed through 2025-10-29.
+- 2025-10-16..10-29 run `37084265839`: SUCCESS, 11,157 rows updated, fillable_rows=11,157, target_empty_rows=11,160, PASS.
 - A prior run `37003791680` failed during Railway CLI download with ECONNRESET before parse/DB work; no DB write occurred.
-- After the 14-day PASS, candidate-v4 DISK_USAGE_GB was ~4.2673 current / 4.3133 24h max, below 5GB.
-- Fixed command target is now **2025-10-16..2025-10-29 (14 days)**.
-- Target update commit: `5a3fcaa01c44c560280ff97e04151bc204a1fd26`.
+- After the 14-day PASS, candidate-v4 DISK_USAGE_GB was ~4.2592 current / 4.3133 24h max, below 5GB.
+- Fixed command target is now **2025-10-30..2025-11-12 (14 days)**.
+- Target update commit: `18aabb6b91b11747bc41d8740ad95bef5ef96955`.
 
 ## Next single task
 1. User posts to Issue #42: `/railway historical-recent-form-next`.
