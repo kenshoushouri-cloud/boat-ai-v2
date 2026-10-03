@@ -5,7 +5,7 @@
 - Railway Active Plan = Hobby.
 - Protect candidate-v4, history archive, escrow key, active writers/reports/backtest/historical services, and TOTO.
 - Never call `list_variables`. No purchase/plan/volume-size changes. Do not touch the TOTO staged patch.
-- **Default cost policy: do not increase recurring Railway cost.** Prefer existing Hobby resources, sleep/retire unused compute first, and avoid new always-on services. Any action expected to increase monthly compute/storage/Agent usage requires an explicit cost check and user approval first.
+- **Default cost policy: do not increase cost without reducing system quality.** Prefer existing Hobby resources and sleep/retire unused compute first. Before any new always-on service, Volume/Replica, plan change, or other recurring-cost increase, state the necessity, expected monthly impact, and lower-cost alternative, then obtain explicit user approval.
 - Cost reduction applied 2026-10-03: candidate-v3 is `SLEEPING` with its 5GB volume/data preserved; `production-pg-audit-readiness` and `snapshot-audit-readonly` have `sleepApplication=true`. Production candidate-v4 and active crons remain unchanged.
 - One task at a time; keep output short.
 
