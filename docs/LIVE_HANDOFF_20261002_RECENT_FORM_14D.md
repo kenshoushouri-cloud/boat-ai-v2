@@ -5,6 +5,8 @@
 - Railway Active Plan = Hobby.
 - Protect candidate-v4, history archive, escrow key, active writers/reports/backtest/historical services, and TOTO.
 - Never call `list_variables`. No purchase/plan/volume-size changes. Do not touch the TOTO staged patch.
+- **Default cost policy: do not increase recurring Railway cost.** Prefer existing Hobby resources, sleep/retire unused compute first, and avoid new always-on services. Any action expected to increase monthly compute/storage/Agent usage requires an explicit cost check and user approval first.
+- Cost reduction applied 2026-10-03: candidate-v3 is `SLEEPING` with its 5GB volume/data preserved; `production-pg-audit-readiness` and `snapshot-audit-readonly` have `sleepApplication=true`. Production candidate-v4 and active crons remain unchanged.
 - One task at a time; keep output short.
 
 ## Historical Recent Form status
@@ -16,6 +18,13 @@
 - After the 14-day PASS, candidate-v4 DISK_USAGE_GB was ~4.4714 current / 4.5053 24h max, below 5GB.
 - Fixed command target is now **2026-02-19..2026-03-04 (14 days)**.
 - Target update commit: `8fbaf37eb522781a4b99cc7b45dc06916e332fd8`.
+
+## V5 status
+- V5 is a **research candidate only**; there is no V5 Production Railway database/service to run or pay for. Production remains V4.
+- Target: **2026-10-15 V5 core freeze review**.
+- Mandatory gates: V4 >=20 resolved `FORMAL_AVAILABLE` days; S03_M2 >=100 officially evaluated observations; evidence contract clean.
+- Last documented settled baseline: V4 **8/20** through 2026-09-28; S03_M2 **63/100** through 2026-09-29. Treat these as last confirmed documented values, not live current counts, until a fresh checkpoint is verified.
+- Historical reconstruction gives zero prospective gate credit. No automatic Production/model/selector/stake/purchase activation.
 
 ## Next single task
 1. User posts to Issue #42: `/railway historical-recent-form-next`.
