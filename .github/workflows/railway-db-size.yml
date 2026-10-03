@@ -1901,7 +1901,9 @@ jobs:
             exit "$rc"
           fi
           grep -q '^RACER_ARCHIVE_COPY_RESULT=PASS$' racer-archive-copy.sanitized
-          grep -q '^RACER_ARCHIVE_COPY_ROWS=338904 racer-archive-copy.sanitized
+          grep -q '^RACER_ARCHIVE_COPY_ROWS=338904$' racer-archive-copy.sanitized
+          grep -q '^RACER_ARCHIVE_FINGERPRINT_MATCH=true$' racer-archive-copy.sanitized
+          grep -q '^PRODUCTION_DELETE=0$' racer-archive-copy.sanitized
           grep -q '^VACUUM_OR_REWRITE=0$' racer-archive-copy.sanitized
 
       - name: Post sanitized result
@@ -1926,123 +1928,7 @@ jobs:
             } > racer-archive-copy-summary.md
           else
             {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > racer-archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f racer-archive-copy.sanitized racer-archive-copy-summary.md racer-archive-copy.sanitized
-          grep -q '^RACER_ARCHIVE_FINGERPRINT_MATCH=true racer-archive-copy.sanitized
-          grep -q '^VACUUM_OR_REWRITE=0$' racer-archive-copy.sanitized
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f racer-archive-copy.sanitized ] && grep -q '^RACER_ARCHIVE_COPY_RESULT=PASS$' racer-archive-copy.sanitized; then
-            {
               echo '## Racer-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **338,904**'
-              echo '- archive rows copied: **338,904**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Fingerprint verification is required before any Production deletion.'
-            } > racer-archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > racer-archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f racer-archive-copy.sanitized racer-archive-copy-summary.md racer-archive-copy.sanitized
-          grep -q '^PRODUCTION_DELETE=0 racer-archive-copy.sanitized
-          grep -q '^VACUUM_OR_REWRITE=0$' racer-archive-copy.sanitized
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f racer-archive-copy.sanitized ] && grep -q '^RACER_ARCHIVE_COPY_RESULT=PASS$' racer-archive-copy.sanitized; then
-            {
-              echo '## Racer-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **338,904**'
-              echo '- archive rows copied: **338,904**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Fingerprint verification is required before any Production deletion.'
-            } > racer-archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
-              echo
-              echo 'State: **BLOCKED / FAILED**'
-              echo '- No Production deletion or compaction was authorized.'
-              echo '- Archive transaction was designed to roll back on copy failure.'
-            } > racer-archive-copy-summary.md
-          fi
-          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-archive-copy-summary.md
-
-      - name: Remove transient connection material
-        if: always()
-        shell: bash
-        run: |
-          unset SOURCE_DATABASE_URL TARGET_DATABASE_URL || true
-          rm -f racer-archive-copy.sanitized racer-archive-copy-summary.md racer-archive-copy.sanitized
-          grep -q '^VACUUM_OR_REWRITE=0$' racer-archive-copy.sanitized
-
-      - name: Post sanitized result
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -f racer-archive-copy.sanitized ] && grep -q '^RACER_ARCHIVE_COPY_RESULT=PASS$' racer-archive-copy.sanitized; then
-            {
-              echo '## Racer-condition archive copy'
-              echo
-              echo 'State: **PASS**'
-              echo '- Production source rows: **338,904**'
-              echo '- archive rows copied: **338,904**'
-              echo '- Production DELETE: **0**'
-              echo '- VACUUM / table rewrite: **0**'
-              echo
-              echo 'Fingerprint verification is required before any Production deletion.'
-            } > racer-archive-copy-summary.md
-          else
-            {
-              echo '## Race-condition archive copy'
               echo
               echo 'State: **BLOCKED / FAILED**'
               echo '- No Production deletion or compaction was authorized.'
