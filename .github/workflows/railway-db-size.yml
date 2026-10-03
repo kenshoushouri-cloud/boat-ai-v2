@@ -1073,3 +1073,126 @@ jobs:
             printf '%s\n'               '## Candidate-v4 dblink install'               ''               '❌ dblink install did not produce a verified PASS result.'               ''               'No follow-up migration or delete operation was attempted.'               > candidate-dblink-install-failure.md
             gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-dblink-install-failure.md
           fi
+
+
+  candidate-write-session-capability-readonly:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-write-session-capability-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Write read-only capability probe
+        shell: bash
+        run: |
+          cat > /tmp/write_session_capability_probe.py <<'PY'
+          import json
+          import os
+          import psycopg
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise SystemExit("database URL unavailable")
+
+          with psycopg.connect(url, autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""
+                      select
+                        pg_is_in_recovery(),
+                        current_setting('default_transaction_read_only'),
+                        current_setting('transaction_read_only')
+                  """)
+                  recovery, default_ro_before, tx_ro_before = cur.fetchone()
+
+                  cur.execute("SET default_transaction_read_only = off")
+
+                  cur.execute("""
+                      select
+                        current_setting('default_transaction_read_only'),
+                        current_setting('transaction_read_only')
+                  """)
+                  default_ro_after, tx_ro_after = cur.fetchone()
+
+          print("WRITE_SESSION_CAPABILITY=" + json.dumps({
+              "pg_is_in_recovery": bool(recovery),
+              "default_read_only_before": default_ro_before,
+              "transaction_read_only_before": tx_ro_before,
+              "default_read_only_after_session_set": default_ro_after,
+              "transaction_read_only_after_session_set": tx_ro_after,
+          }, sort_keys=True))
+          PY
+
+      - name: Run candidate-v4 session capability probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-hobby-fullhistory-candidate-v4             python3 /tmp/write_session_capability_probe.py > write-session-capability.out
+
+      - name: Build sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload=None
+          for line in Path("write-session-capability.out").read_text(encoding="utf-8",errors="replace").splitlines():
+              if line.startswith("WRITE_SESSION_CAPABILITY="):
+                  payload=json.loads(line.split("=",1)[1])
+                  break
+          if payload is None:
+              raise SystemExit("probe output missing")
+
+          can_write_session = (
+              not payload["pg_is_in_recovery"] and
+              payload["default_read_only_after_session_set"] == "off" and
+              payload["transaction_read_only_after_session_set"] == "off"
+          )
+
+          lines=[
+              "## Candidate-v4 write-session capability — no data mutation",
+              "",
+              f"State: **{'SESSION_WRITE_CAPABLE' if can_write_session else 'SESSION_WRITE_BLOCKED'}**",
+              f"- pg_is_in_recovery: **{payload['pg_is_in_recovery']}**",
+              f"- default_transaction_read_only before: **{payload['default_read_only_before']}**",
+              f"- transaction_read_only before: **{payload['transaction_read_only_before']}**",
+              f"- default_transaction_read_only after session SET: **{payload['default_read_only_after_session_set']}**",
+              f"- transaction_read_only after session SET: **{payload['transaction_read_only_after_session_set']}**",
+              "",
+              "Only a session-local SET was performed. No table rows, schema objects, extensions, database settings, Variables, or volumes were changed.",
+          ]
+          Path("candidate-write-session-capability-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        shell: bash
+        run: rm -f write-session-capability.out
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f candidate-write-session-capability-summary.md ]; then
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-write-session-capability-summary.md
+          else
+            printf '%s\n' '## Candidate-v4 write-session capability' '' '❌ Probe failed before sanitized output.' > candidate-write-session-capability-failure.md
+            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file candidate-write-session-capability-failure.md
+          fi
