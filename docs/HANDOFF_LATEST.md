@@ -17,10 +17,12 @@ Current:
 - next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
 - never bulk-fetch Issue #42 comments
 - protect candidate-v4 / history archive / escrow / active writers / TOTO
+- **operating-cost hard target = <= USD 20/month even after missing-data/backfill work resumes; lower is better.** Do not cut required Production/backtest/live-test/system-building data or services.
 - default cost policy = **no recurring Railway cost increase**; sleep/retire unused compute before adding resources; any expected cost increase requires explicit cost check + user approval
+- **never use Railway Agent / Railway AI** for this project; Agent token usage can affect the invoice. Use direct read-only Railway status/metrics/logs/docs instead.
 - candidate-v3 is sleeping with volume/data preserved; audit HTTP services `production-pg-audit-readiness` and `snapshot-audit-readonly` are sleep-enabled
 - V5 = research-only; Production remains V4; core gate = V4 >=20 resolved formal days + S03_M2 >=100 official observations + clean evidence contract
 - never call `list_variables`; no purchase/plan/volume changes
 - one task at a time / short output
 
-`READ_CURRENT_COMPACT / RECENT_FORM_14D_NEXT / TOKEN_COMPACT / PURCHASE_FALSE`
+`READ_CURRENT_COMPACT / RECENT_FORM_14D_NEXT / TOKEN_COMPACT / PURCHASE_FALSE / COST_LE_20 / NO_RAILWAY_AGENT`
