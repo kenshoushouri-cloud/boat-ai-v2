@@ -3434,3 +3434,239 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_active_sessions.py racer-active-sessions.out racer-active-sessions-summary.md
+
+  racer-condition-vacuum-full:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway racer-condition-vacuum-full CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install maintenance dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]"
+          npm install --global @railway/cli
+
+      - name: Run guarded VACUUM FULL on racer-condition only
+        shell: bash
+        env:
+          PGOPTIONS: -c default_transaction_read_only=off
+        run: |
+          set -euo pipefail
+          cat > /tmp/racer_vacuum_full.py <<'PY'
+          import json, os, subprocess, time
+          import psycopg
+          from psycopg.rows import dict_row
+
+          PROJECT="268a5b17-0712-440a-884d-27f7fa887a2d"
+          ENV="production"
+          SERVICE="postgres-hobby-fullhistory-candidate-v4"
+          TABLE="v2_realtime_racer_condition_snapshots"
+          CUTOFF="2026-07-06"
+          EXPECTED_LIVE=147942
+          MAX_BEFORE_BYTES=230*1024*1024
+
+          def get_url():
+              code='import os; print("VALUE="+(os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL") or ""))'
+              p=subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,"--service",SERVICE,
+                   "python3","-c",code],
+                  check=True,text=True,capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE=") and line[6:].strip():
+                      return line[6:].strip()
+              raise RuntimeError("database URL unavailable")
+
+          url=get_url()
+          out={}
+
+          with psycopg.connect(url,row_factory=dict_row,autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("set lock_timeout='2s'")
+                  cur.execute("set statement_timeout='300s'")
+                  cur.execute("set maintenance_work_mem='64MB'")
+                  cur.execute("set temp_file_limit='96MB'")
+
+                  cur.execute("""
+                    select count(*)::bigint n,
+                           coalesce(sum(hashtextextended(row_to_json(s)::text,0)::numeric),0)::text fp
+                    from public.v2_realtime_racer_condition_snapshots s
+                  """)
+                  r=cur.fetchone()
+                  out["before_rows"]=int(r["n"])
+                  out["before_fp"]=r["fp"]
+
+                  cur.execute("""
+                    select count(*)::bigint n
+                    from public.v2_realtime_racer_condition_snapshots s
+                    where exists (
+                      select 1 from public.v2_races r
+                      where r.race_id=s.race_id and r.race_date < %s::date
+                    )
+                  """,(CUTOFF,))
+                  out["before_old_rows"]=int(cur.fetchone()["n"])
+
+                  cur.execute("""
+                    select pg_total_relation_size(%s::regclass)::bigint total_bytes,
+                           pg_relation_size(%s::regclass)::bigint heap_bytes,
+                           pg_indexes_size(%s::regclass)::bigint index_bytes,
+                           pg_database_size(current_database())::bigint db_bytes
+                  """,(f"public.{TABLE}",f"public.{TABLE}",f"public.{TABLE}"))
+                  r=cur.fetchone()
+                  out["before_total_bytes"]=int(r["total_bytes"])
+                  out["before_heap_bytes"]=int(r["heap_bytes"])
+                  out["before_index_bytes"]=int(r["index_bytes"])
+                  out["before_db_bytes"]=int(r["db_bytes"])
+
+                  cur.execute("""
+                    select count(*)::bigint n
+                    from pg_stat_activity
+                    where datname=current_database()
+                      and pid<>pg_backend_pid()
+                      and state<>'idle'
+                  """)
+                  out["active_other_sessions"]=int(cur.fetchone()["n"])
+
+                  cur.execute("""
+                    select count(*)::bigint n
+                    from pg_locks
+                    where relation=%s::regclass and not granted
+                  """,(f"public.{TABLE}",))
+                  out["ungranted_relation_locks"]=int(cur.fetchone()["n"])
+
+                  if out["before_rows"] != EXPECTED_LIVE:
+                      raise RuntimeError(f"live_row_count_changed:{out['before_rows']}")
+                  if out["before_old_rows"] != 0:
+                      raise RuntimeError(f"old_rows_reappeared:{out['before_old_rows']}")
+                  if out["before_total_bytes"] > MAX_BEFORE_BYTES:
+                      raise RuntimeError(f"relation_size_unexpected:{out['before_total_bytes']}")
+                  if out["active_other_sessions"] != 0:
+                      raise RuntimeError(f"active_other_sessions:{out['active_other_sessions']}")
+                  if out["ungranted_relation_locks"] != 0:
+                      raise RuntimeError(f"ungranted_relation_locks:{out['ungranted_relation_locks']}")
+
+                  started=time.time()
+                  cur.execute("VACUUM (FULL, ANALYZE) public.v2_realtime_racer_condition_snapshots")
+                  out["vacuum_seconds"]=round(time.time()-started,3)
+
+                  cur.execute("""
+                    select count(*)::bigint n,
+                           coalesce(sum(hashtextextended(row_to_json(s)::text,0)::numeric),0)::text fp
+                    from public.v2_realtime_racer_condition_snapshots s
+                  """)
+                  r=cur.fetchone()
+                  out["after_rows"]=int(r["n"])
+                  out["after_fp"]=r["fp"]
+
+                  cur.execute("""
+                    select count(*)::bigint n
+                    from public.v2_realtime_racer_condition_snapshots s
+                    where exists (
+                      select 1 from public.v2_races r
+                      where r.race_id=s.race_id and r.race_date < %s::date
+                    )
+                  """,(CUTOFF,))
+                  out["after_old_rows"]=int(cur.fetchone()["n"])
+
+                  cur.execute("""
+                    select pg_total_relation_size(%s::regclass)::bigint total_bytes,
+                           pg_relation_size(%s::regclass)::bigint heap_bytes,
+                           pg_indexes_size(%s::regclass)::bigint index_bytes,
+                           pg_database_size(current_database())::bigint db_bytes
+                  """,(f"public.{TABLE}",f"public.{TABLE}",f"public.{TABLE}"))
+                  r=cur.fetchone()
+                  out["after_total_bytes"]=int(r["total_bytes"])
+                  out["after_heap_bytes"]=int(r["heap_bytes"])
+                  out["after_index_bytes"]=int(r["index_bytes"])
+                  out["after_db_bytes"]=int(r["db_bytes"])
+
+          if out["after_rows"] != out["before_rows"]:
+              raise RuntimeError("post_row_count_mismatch")
+          if out["after_fp"] != out["before_fp"]:
+              raise RuntimeError("post_fingerprint_mismatch")
+          if out["after_old_rows"] != 0:
+              raise RuntimeError("post_old_rows_nonzero")
+          out["reclaimed_bytes"]=out["before_total_bytes"]-out["after_total_bytes"]
+          out["db_reduction_bytes"]=out["before_db_bytes"]-out["after_db_bytes"]
+          out["fingerprint_match"]=True
+
+          print("RACER_VACUUM_FULL_RESULT="+json.dumps(out,sort_keys=True))
+          PY
+
+          set +e
+          python3 /tmp/racer_vacuum_full.py > racer-vacuum-full.out 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            grep -E '^(RuntimeError:|psycopg\\.|RACER_VACUUM_FULL_RESULT)' racer-vacuum-full.out | tail -80 || true
+            exit "$rc"
+          fi
+
+      - name: Build sanitized VACUUM FULL result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=None
+          p=Path("racer-vacuum-full.out")
+          if p.exists():
+              for line in p.read_text(encoding="utf-8",errors="replace").splitlines():
+                  if line.startswith("RACER_VACUUM_FULL_RESULT="):
+                      payload=json.loads(line.split("=",1)[1])
+                      break
+          mib=lambda x:(x or 0)/1024/1024
+          if payload is None:
+              lines=[
+                  "## Racer-condition VACUUM FULL",
+                  "",
+                  "State: **BLOCKED / FAILED**",
+                  "",
+                  "Guard failure or maintenance error. Row deletion was not part of this operation.",
+              ]
+          else:
+              lines=[
+                  "## Racer-condition VACUUM FULL",
+                  "",
+                  "State: **PASS**",
+                  f"- live rows preserved: **{payload['after_rows']:,}**",
+                  f"- fingerprint match: **{payload['fingerprint_match']}**",
+                  f"- old rows remaining: **{payload['after_old_rows']}**",
+                  f"- relation before: **{mib(payload['before_total_bytes']):.1f} MiB**",
+                  f"- relation after: **{mib(payload['after_total_bytes']):.1f} MiB**",
+                  f"- relation reclaimed: **{mib(payload['reclaimed_bytes']):.1f} MiB**",
+                  f"- DB before: **{mib(payload['before_db_bytes']):.1f} MiB**",
+                  f"- DB after: **{mib(payload['after_db_bytes']):.1f} MiB**",
+                  f"- DB reduction: **{mib(payload['db_reduction_bytes']):.1f} MiB**",
+                  f"- VACUUM FULL runtime: **{payload['vacuum_seconds']} sec**",
+                  "",
+                  "Only public.v2_realtime_racer_condition_snapshots was rewritten. No rows were deleted by this maintenance step.",
+              ]
+          Path("racer-vacuum-full-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized VACUUM FULL result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file racer-vacuum-full-summary.md
+
+      - name: Remove transient maintenance material
+        if: always()
+        shell: bash
+        run: rm -f /tmp/racer_vacuum_full.py racer-vacuum-full.out racer-vacuum-full-summary.md
