@@ -1,0 +1,109 @@
+name: Railway candidate v4 memory diagnostic readonly
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  diagnostic:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway hobby-v4-memory-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Read PostgreSQL memory settings and activity only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > diagnostic.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'SETTING|shared_buffers|' || current_setting('shared_buffers');
+          SELECT 'SETTING|work_mem|' || current_setting('work_mem');
+          SELECT 'SETTING|maintenance_work_mem|' || current_setting('maintenance_work_mem');
+          SELECT 'SETTING|autovacuum_work_mem|' || current_setting('autovacuum_work_mem');
+          SELECT 'SETTING|temp_buffers|' || current_setting('temp_buffers');
+          SELECT 'SETTING|wal_buffers|' || current_setting('wal_buffers');
+          SELECT 'SETTING|max_connections|' || current_setting('max_connections');
+          SELECT 'SETTING|superuser_reserved_connections|' || current_setting('superuser_reserved_connections');
+          SELECT 'SETTING|max_worker_processes|' || current_setting('max_worker_processes');
+          SELECT 'SETTING|max_parallel_workers|' || current_setting('max_parallel_workers');
+          SELECT 'SETTING|max_parallel_workers_per_gather|' || current_setting('max_parallel_workers_per_gather');
+          SELECT 'SETTING|autovacuum_max_workers|' || current_setting('autovacuum_max_workers');
+          SELECT 'SETTING|effective_cache_size|' || current_setting('effective_cache_size');
+          SELECT 'SETTING|huge_pages|' || current_setting('huge_pages');
+          SELECT 'SETTING|max_wal_size|' || current_setting('max_wal_size');
+          SELECT 'SETTING|min_wal_size|' || current_setting('min_wal_size');
+
+          SELECT 'ACTIVITY|total|' || count(*) FROM pg_stat_activity;
+          SELECT 'ACTIVITY|client_backends|' || count(*) FROM pg_stat_activity WHERE backend_type='client backend';
+          SELECT 'ACTIVITY|active|' || count(*) FROM pg_stat_activity WHERE state='active';
+          SELECT 'ACTIVITY|idle|' || count(*) FROM pg_stat_activity WHERE state='idle';
+          SELECT 'ACTIVITY|idle_in_transaction|' || count(*) FROM pg_stat_activity WHERE state='idle in transaction';
+          SELECT 'ACTIVITY|autovacuum_workers|' || count(*) FROM pg_stat_activity WHERE backend_type='autovacuum worker';
+          SELECT 'ACTIVITY|parallel_workers|' || count(*) FROM pg_stat_activity WHERE backend_type='parallel worker';
+
+          SELECT 'DBSTAT|temp_files|' || temp_files FROM pg_stat_database WHERE datname=current_database();
+          SELECT 'DBSTAT|temp_bytes|' || temp_bytes FROM pg_stat_database WHERE datname=current_database();
+          SELECT 'DBSTAT|db_bytes|' || pg_database_size(current_database());
+
+          SELECT 'CURRENT_BACKEND_MEMORY_BYTES|' || COALESCE(sum(total_bytes),0)::bigint
+          FROM pg_backend_memory_contexts;
+
+          SELECT 'PENDING_RESTART|' || name || '|' || setting || '|' || unit
+          FROM pg_settings
+          WHERE pending_restart
+          ORDER BY name;
+          SQL
+
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh \
+            < diagnostic.sql > diagnostic.out
+
+          grep -E '^(SETTING|ACTIVITY|DBSTAT|CURRENT_BACKEND_MEMORY_BYTES|PENDING_RESTART)\|' diagnostic.out > diagnostic.sanitized
+          test -s diagnostic.sanitized
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Candidate v4 memory diagnostic — read only'
+            echo
+            if [ -s diagnostic.sanitized ]; then
+              echo '```text'
+              cat diagnostic.sanitized
+              echo '```'
+            else
+              echo 'FAILED: no sanitized diagnostic result.'
+            fi
+            echo
+            echo 'Read-only PostgreSQL memory/settings/activity inspection. No settings, rows, schema, service, volume, plan, or deployment changes.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
