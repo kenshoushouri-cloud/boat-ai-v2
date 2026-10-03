@@ -1263,17 +1263,23 @@ jobs:
                       connected = True
                       cur.execute("select dblink_exec('archive_probe', 'BEGIN READ ONLY')")
                       cur.execute("""
-                          select remote_ro, public_tables
+                          select remote_ro, public_tables, archive_rows, archive_columns
                           from dblink(
                             'archive_probe',
                             'select current_setting(''transaction_read_only'')::text,
-                                    (select count(*) from pg_tables where schemaname=''public'')::bigint'
-                          ) as t(remote_ro text, public_tables bigint)
+                                    (select count(*) from pg_tables where schemaname=''public'')::bigint,
+                                    (select count(*) from archive.v2_realtime_race_condition_snapshots)::bigint,
+                                    (select count(*) from information_schema.columns
+                                      where table_schema=''archive''
+                                        and table_name=''v2_realtime_race_condition_snapshots'')::bigint'
+                          ) as t(remote_ro text, public_tables bigint, archive_rows bigint, archive_columns bigint)
                       """)
-                      remote_ro, public_tables = cur.fetchone()
+                      remote_ro, public_tables, archive_rows, archive_columns = cur.fetchone()
                       result["archive_connected"] = True
                       result["archive_transaction_read_only"] = remote_ro
                       result["archive_public_table_count"] = int(public_tables)
+                      result["archive_race_condition_rows"] = int(archive_rows)
+                      result["archive_race_condition_columns"] = int(archive_columns)
                       cur.execute("select dblink_exec('archive_probe', 'ROLLBACK')")
                   finally:
                       if connected:
@@ -1311,7 +1317,9 @@ jobs:
           passed = (
               payload.get("dblink_installed") is True and
               payload.get("archive_connected") is True and
-              payload.get("archive_transaction_read_only") == "on"
+              payload.get("archive_transaction_read_only") == "on" and
+              payload.get("archive_race_condition_rows") == 0 and
+              payload.get("archive_race_condition_columns") == 16
           )
           lines=[
               "## Candidate-v4 → history archive private dblink — read only",
@@ -1321,6 +1329,8 @@ jobs:
               f"- archive private connection: **{payload.get('archive_connected')}**",
               f"- remote transaction read only: **{payload.get('archive_transaction_read_only')}**",
               f"- archive public table count: **{payload.get('archive_public_table_count')}**",
+              f"- archive race-condition rows: **{payload.get('archive_race_condition_rows')}**",
+              f"- archive race-condition columns: **{payload.get('archive_race_condition_columns')}**",
               "",
               "Candidate transaction and archive transaction were both READ ONLY and rolled back.",
               "No rows, schema, Variables, volumes, or plans were changed.",
