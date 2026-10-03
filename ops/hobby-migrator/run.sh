@@ -28,11 +28,13 @@ if [[ "$MIGRATION_MODE" == "ARCHIVE_RACE_CONDITION" ]]; then
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT dblink_connect('archive_copy', :'archive_url');
 SELECT dblink_exec('archive_copy', 'BEGIN');
+SELECT set_config('app.archive_cutoff', :'cutoff', false);
+SELECT set_config('app.archive_expected_rows', :'expected', false);
 
 DO $archive_copy$
 DECLARE
-  cutoff_date date := :'cutoff'::date;
-  expected_rows bigint := :'expected'::bigint;
+  cutoff_date date := current_setting('app.archive_cutoff')::date;
+  expected_rows bigint := current_setting('app.archive_expected_rows')::bigint;
   source_rows bigint;
   archive_rows bigint;
   batch_size integer := 250;
