@@ -47,6 +47,65 @@ MODE_GENERIC = "generic"
 MODE_EXHIBITION_TIME_ONLY = "exhibition-time-only"
 MODES = (MODE_GENERIC, MODE_EXHIBITION_TIME_ONLY)
 
+# Official archived beforeinfo was read-only verified on 2026-10-04:
+# 39 races expose only five Exhibition Time values and 14 expose none.
+# They are terminal/unfillable for six-lane Exhibition-Time-only backfill.
+JULY_2026_EXHIBITION_TERMINAL_UNFILLABLE = frozenset({
+    "20260701_10_08",
+    "20260701_11_10",
+    "20260701_19_12",
+    "20260701_20_06",
+    "20260703_06_12",
+    "20260703_23_10",
+    "20260704_12_04",
+    "20260704_12_12",
+    "20260704_19_08",
+    "20260706_05_06",
+    "20260706_05_09",
+    "20260706_05_10",
+    "20260706_07_11",
+    "20260707_05_12",
+    "20260708_10_09",
+    "20260708_24_08",
+    "20260710_08_09",
+    "20260710_11_08",
+    "20260711_14_11",
+    "20260712_10_07",
+    "20260712_22_12",
+    "20260713_04_07",
+    "20260715_03_05",
+    "20260717_01_12",
+    "20260717_13_10",
+    "20260718_20_08",
+    "20260720_04_09",
+    "20260721_09_05",
+    "20260723_15_06",
+    "20260724_15_11",
+    "20260725_03_09",
+    "20260725_14_10",
+    "20260726_13_11",
+    "20260727_04_09",
+    "20260727_04_11",
+    "20260727_17_11",
+    "20260728_09_12",
+    "20260728_17_06",
+    "20260729_09_01",
+    "20260729_09_02",
+    "20260729_09_03",
+    "20260729_09_04",
+    "20260729_09_05",
+    "20260729_09_06",
+    "20260729_09_07",
+    "20260729_09_08",
+    "20260729_09_09",
+    "20260729_09_10",
+    "20260729_09_11",
+    "20260729_09_12",
+    "20260730_22_08",
+    "20260731_13_10",
+    "20260731_24_07",
+})
+
 
 def _date_range(start_date: str, end_date: str) -> list[str]:
     a = date.fromisoformat(start_date)
@@ -143,7 +202,11 @@ def _target_races(
                 """,
                 (target_date,),
             )
-            return [dict(row) for row in cur.fetchall()]
+            rows = [dict(row) for row in cur.fetchall()]
+            return [
+                row for row in rows
+                if str(row.get("race_id") or "") not in JULY_2026_EXHIBITION_TERMINAL_UNFILLABLE
+            ]
 
     with conn.cursor() as cur:
         cur.execute(
