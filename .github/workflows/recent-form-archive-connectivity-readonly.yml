@@ -97,10 +97,11 @@ jobs:
             echo
             cat tunnel-status.out 2>/dev/null || echo 'TUNNEL_READY=0'
             grep '^ARCHIVE_TUNNEL=' probe.out 2>/dev/null || true
-            if [ -s tunnel.err ]; then
+            if [ -s tunnel.out ] || [ -s tunnel.err ]; then
               echo
-              echo 'Tunnel error summary:'
-              sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted>#g; s#(password=)[^[:space:]]+#\1<redacted>#g' tunnel.err | tail -6
+              echo 'Tunnel command summary:'
+              { tail -6 tunnel.out 2>/dev/null; tail -6 tunnel.err 2>/dev/null; } |
+                sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted>#g; s#(password=)[^[:space:]]+#\1<redacted>#g'
             fi
             echo
             echo 'No variable values/list, DB writes, source reads, resource creation, public proxy, cutover, cleanup, Railway AI/Agent.'
