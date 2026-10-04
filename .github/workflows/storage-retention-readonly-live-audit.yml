@@ -1,0 +1,184 @@
+name: Storage Retention Readonly Live Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/storage_retention_readonly_inventory.py'
+      - '.github/scripts/storage_retention_output_invariance.py'
+      - '.github/scripts/storage_retention_candidate_preview.py'
+      - '.github/scripts/storage_retention_candidate_digest.py'
+      - '.github/scripts/storage_reclaim_readonly_stats.py'
+      - '.github/scripts/storage_top_relations_readonly.py'
+      - '.github/scripts/storage_odds_trifecta_readonly_inventory.py'
+      - '.github/scripts/storage_odds_index_readonly.py'
+      - '.github/scripts/storage_core_tables_readonly_inventory.py'
+      - '.github/scripts/storage_realtime_odds_label_readonly.py'
+      - '.github/scripts/storage_realtime_odds_index_readonly.py'
+      - '.github/scripts/storage_realtime_label_matrix_readonly.py'
+      - '.github/scripts/storage_learning_all_growth_readonly.py'
+      - '.github/scripts/storage_retention_backup_readonly.py'
+      - '.github/workflows/storage-retention-readonly-live-audit.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storage-production-readonly-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c temp_file_limit=65536
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only scripts
+        run: |
+          python -m py_compile .github/scripts/storage_retention_readonly_inventory.py
+          python -m py_compile .github/scripts/storage_retention_output_invariance.py
+          python -m py_compile .github/scripts/storage_retention_candidate_preview.py
+          python -m py_compile .github/scripts/storage_retention_candidate_digest.py
+          python -m py_compile .github/scripts/storage_reclaim_readonly_stats.py
+          python -m py_compile .github/scripts/storage_top_relations_readonly.py
+          python -m py_compile .github/scripts/storage_odds_trifecta_readonly_inventory.py
+          python -m py_compile .github/scripts/storage_odds_index_readonly.py
+          python -m py_compile .github/scripts/storage_core_tables_readonly_inventory.py
+          python -m py_compile .github/scripts/storage_realtime_odds_label_readonly.py
+          python -m py_compile .github/scripts/storage_realtime_odds_index_readonly.py
+          python -m py_compile .github/scripts/storage_realtime_label_matrix_readonly.py
+          python -m py_compile .github/scripts/storage_learning_all_growth_readonly.py
+          python -m py_compile .github/scripts/storage_retention_backup_readonly.py
+          python - <<'PY'
+          from pathlib import Path
+          db_paths = (
+              '.github/scripts/storage_retention_readonly_inventory.py',
+              '.github/scripts/storage_retention_output_invariance.py',
+              '.github/scripts/storage_retention_candidate_preview.py',
+              '.github/scripts/storage_retention_candidate_digest.py',
+              '.github/scripts/storage_reclaim_readonly_stats.py',
+              '.github/scripts/storage_top_relations_readonly.py',
+              '.github/scripts/storage_odds_trifecta_readonly_inventory.py',
+              '.github/scripts/storage_odds_index_readonly.py',
+              '.github/scripts/storage_core_tables_readonly_inventory.py',
+              '.github/scripts/storage_realtime_odds_label_readonly.py',
+              '.github/scripts/storage_realtime_odds_index_readonly.py',
+              '.github/scripts/storage_realtime_label_matrix_readonly.py',
+              '.github/scripts/storage_learning_all_growth_readonly.py',
+          )
+          for path in db_paths:
+              text=Path(path).read_text(encoding='utf-8').lower()
+              assert 'from db_pg import fetch_all' in text
+              for token in ('execute(', 'upsert', 'insert into', 'update ', 'delete from', 'alter table', 'drop table', 'create table', 'send_line'):
+                  assert token not in text, (path, token)
+          backup = Path('.github/scripts/storage_retention_backup_readonly.py').read_text(encoding='utf-8').lower()
+          assert 'volumeinstancebackuplist' in backup
+          for token in ('mutation ', 'backupcreate', 'backupdelete', 'backuprestore', 'volumedelete', 'serviceinstanceupdate'):
+              assert token not in backup, token
+          print('STORAGE_RETENTION_LIVE_AUDIT_ISOLATION=PASS')
+          PY
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load public database URL without publishing it
+        run: |
+          set -euo pipefail
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run read-only inventory
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_readonly_inventory.py | tee storage-inventory.txt
+          grep -q '^STORAGE_RETENTION_INVENTORY_RESULT=PASS_READ_ONLY$' storage-inventory.txt
+      - name: Run protected-output invariance audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_output_invariance.py | tee storage-invariance.txt
+          grep -q '^STORAGE_RETENTION_INVARIANCE_RESULT=PASS_READ_ONLY$' storage-invariance.txt
+      - name: Run read-only candidate preview
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_candidate_preview.py | tee storage-candidates.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_PREVIEW_RESULT=PASS_READ_ONLY$' storage-candidates.txt
+      - name: Run read-only candidate digest
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_candidate_digest.py | tee storage-candidate-digest.txt
+          grep -q '^STORAGE_RETENTION_CANDIDATE_DIGEST_RESULT=PASS_READ_ONLY$' storage-candidate-digest.txt
+      - name: Run read-only physical reclaim stats
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_reclaim_readonly_stats.py | tee storage-reclaim-stats.txt
+          grep -q '^STORAGE_RECLAIM_STATS_RESULT=PASS_READ_ONLY$' storage-reclaim-stats.txt
+      - name: Run read-only top relation capacity audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_top_relations_readonly.py | tee storage-top-relations.txt
+          grep -q '^STORAGE_TOP_RELATIONS_RESULT=PASS_READ_ONLY$' storage-top-relations.txt
+      - name: Run read-only trifecta odds capacity audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_odds_trifecta_readonly_inventory.py | tee storage-odds-trifecta.txt
+          grep -q '^STORAGE_ODDS_TRIFECTA_RESULT=PASS_READ_ONLY$' storage-odds-trifecta.txt
+      - name: Run read-only trifecta odds index audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_odds_index_readonly.py | tee storage-odds-index.txt
+          grep -q '^STORAGE_ODDS_INDEX_RESULT=PASS_READ_ONLY$' storage-odds-index.txt
+      - name: Run exact read-only core-table capacity audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_core_tables_readonly_inventory.py | tee storage-core-tables.txt
+          grep -q '^STORAGE_CORE_TABLES_RESULT=PASS_READ_ONLY$' storage-core-tables.txt
+      - name: Run read-only realtime odds label overlap audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_realtime_odds_label_readonly.py | tee storage-realtime-odds-labels.txt
+          grep -q '^STORAGE_REALTIME_ODDS_LABEL_RESULT=PASS_READ_ONLY$' storage-realtime-odds-labels.txt
+      - name: Run read-only realtime odds index audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_realtime_odds_index_readonly.py | tee storage-realtime-odds-index.txt
+          grep -q '^STORAGE_RT_ODDS_INDEX_RESULT=PASS_READ_ONLY$' storage-realtime-odds-index.txt
+      - name: Run read-only realtime snapshot label matrix audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_realtime_label_matrix_readonly.py | tee storage-realtime-label-matrix.txt
+          grep -q '^STORAGE_REALTIME_LABEL_MATRIX_RESULT=PASS_READ_ONLY$' storage-realtime-label-matrix.txt
+      - name: Run read-only learning label growth audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_learning_all_growth_readonly.py | tee storage-learning-growth.txt
+          grep -q '^STORAGE_LEARNING_ALL_GROWTH_RESULT=PASS_READ_ONLY$' storage-learning-growth.txt
+      - name: Run read-only Railway backup metadata audit
+        run: |
+          set -euo pipefail
+          python -u .github/scripts/storage_retention_backup_readonly.py | tee storage-backups.txt
+          grep -Eq '^STORAGE_RETENTION_BACKUP_RESULT=(PASS_METADATA_VISIBLE|BLOCK_NO_BACKUP_VISIBLE|BLOCK_NO_VOLUME_INSTANCE)$' storage-backups.txt
+      - name: Clean temporary files
+        if: always()
+        run: rm -f railway-vars.json storage-inventory.txt storage-invariance.txt storage-candidates.txt storage-candidate-digest.txt storage-reclaim-stats.txt storage-top-relations.txt storage-odds-trifecta.txt storage-odds-index.txt storage-core-tables.txt storage-realtime-odds-labels.txt storage-realtime-odds-index.txt storage-realtime-label-matrix.txt storage-learning-growth.txt storage-backups.txt

@@ -1,0 +1,51 @@
+name: Storage Odds Race Date Static Audit
+
+on:
+  pull_request:
+    paths:
+      - 'research/odds_race_date_index_static_audit.py'
+      - 'tests/test_odds_race_date_index_static_audit.py'
+      - '.github/workflows/storage-odds-race-date-static-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and unit test
+        run: |
+          set -euo pipefail
+          python -m py_compile research/odds_race_date_index_static_audit.py tests/test_odds_race_date_index_static_audit.py
+          python -m unittest tests.test_odds_race_date_index_static_audit -v
+      - name: Enforce pure static isolation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          path=Path('research/odds_race_date_index_static_audit.py')
+          tree=ast.parse(path.read_text(encoding='utf-8'))
+          forbidden={'psycopg','db_pg','requests','urllib','subprocess','socket'}
+          imports=set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imports.update(alias.name.split('.')[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom) and node.module:
+                  imports.add(node.module.split('.')[0])
+          assert not (imports & forbidden), sorted(imports & forbidden)
+          print('ODDS_RACE_DATE_STATIC_ISOLATION=PASS')
+          PY
+      - name: Scan repository SQL constants
+        run: |
+          set -euo pipefail
+          python -u research/odds_race_date_index_static_audit.py --assert-no-direct | tee odds-race-date-static.txt
+          grep -q '^ODDS_RACE_DATE_STATIC_RESULT=PASS_NO_DIRECT_CONSUMER$' odds-race-date-static.txt
