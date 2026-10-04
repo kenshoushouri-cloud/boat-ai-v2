@@ -1,0 +1,336 @@
+name: Recent Form compact preflight
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    paths:
+      - ".github/workflows/recent-form-compact-preflight.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: recent-form-compact-preflight
+  cancel-in-progress: false
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  BRIDGE_ISSUE: "42"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Static safety checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=".github/workflows/recent-form-compact-preflight.yml"
+          grep -q 'default_transaction_read_only=on' "$f"
+          grep -q 'pg_restore.*jobs=1' "$f"
+          grep -q 'update v2_race_entries set recent_form=null' "$f"
+          grep -q 'vacuum (full, analyze) v2_race_entries' "$f"
+          ! grep -qi 'railway agent' "$f"
+          ! grep -qi 'railway variable list' "$f"
+          ! grep -qi 'railway ai' "$f"
+          echo "RECENT_FORM_COMPACT_PREFLIGHT_VALIDATE=PASS"
+
+  preflight:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-compact-preflight CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: compacttest
+          POSTGRES_DB: compact_source
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d compact_source"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway run --help >/dev/null
+
+      - name: Capture current candidate as one read-only logical dump
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > dump-current.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?}"
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=0'
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL -e PGOPTIONS \
+            -v "$PWD:/work" \
+            postgres:18 \
+            pg_dump "$DATABASE_PUBLIC_URL" \
+              --format=custom --compress=gzip:1 --no-owner --no-acl \
+              --file=/work/current.dump
+          SH
+          chmod 700 dump-current.sh
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$SOURCE_SERVICE" \
+            bash ./dump-current.sh
+          test -s current.dump
+          echo "SOURCE_DUMP_BYTES=$(stat -c %s current.dump)"
+          echo "SOURCE_DUMP_SHA256=$(sha256sum current.dump | awk '{print $1}')"
+          rm -f dump-current.sh
+          echo "SOURCE_WRITE=0"
+
+      - name: Restore source snapshot locally with one worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_restore --no-owner --no-acl --exit-on-error --jobs=1 \
+              --dbname="postgresql://postgres:compacttest@127.0.0.1:5432/compact_source" \
+              /work/current.dump
+
+      - name: Capture source parity manifest locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > capture.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          \o table-counts.tsv
+          SELECT tablename || E'\t' || count_rows
+          FROM (
+            SELECT c.relname AS tablename,
+                   (xpath('/row/c/text()', query_to_xml(
+                     format('select count(*) c from public.%I', c.relname),
+                     false, true, '')))[1]::text::bigint AS count_rows
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='public' AND c.relkind='r'
+          ) s
+          ORDER BY tablename;
+          \o columns.tsv
+          SELECT table_name || E'\t' || ordinal_position || E'\t' || column_name || E'\t' ||
+                 data_type || E'\t' || coalesce(udt_name,'') || E'\t' || is_nullable || E'\t' ||
+                 coalesce(column_default,'')
+          FROM information_schema.columns
+          WHERE table_schema='public'
+          ORDER BY table_name,ordinal_position;
+          \o constraints.tsv
+          SELECT conrelid::regclass::text || E'\t' || conname || E'\t' || pg_get_constraintdef(oid,true)
+          FROM pg_constraint
+          WHERE connamespace='public'::regnamespace
+          ORDER BY 1,2;
+          \o indexes.tsv
+          SELECT tablename || E'\t' || indexname || E'\t' || indexdef
+          FROM pg_indexes
+          WHERE schemaname='public'
+          ORDER BY tablename,indexname;
+          \o sequences.tsv
+          SELECT sequencename || E'\t' || data_type || E'\t' || start_value || E'\t' || increment_by
+          FROM pg_sequences
+          WHERE schemaname='public'
+          ORDER BY sequencename;
+          \o entry-hash.tsv
+          SELECT count(*) || E'\t' ||
+                 coalesce(bit_xor(hashtextextended((to_jsonb(e)-'recent_form')::text,0)),0) || E'\t' ||
+                 coalesce(sum(hashtextextended((to_jsonb(e)-'recent_form')::text,1)::numeric),0)
+          FROM public.v2_race_entries e;
+          \o source-stats.tsv
+          SELECT 'DB_BYTES' || E'\t' || pg_database_size(current_database())
+          UNION ALL
+          SELECT 'ENTRY_RELATION_BYTES' || E'\t' || pg_total_relation_size('public.v2_race_entries')
+          UNION ALL
+          SELECT 'RECENT_FORM_NONEMPTY' || E'\t' ||
+                 count(*) filter(where recent_form is not null and recent_form::text not in ('null','[]','{}','""',''))
+          FROM public.v2_race_entries;
+          \o
+          SQL
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest -v "$PWD:/work" -w /work postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_source" \
+              -v ON_ERROR_STOP=1 -f capture.sql
+          mv table-counts.tsv source-table-counts.tsv
+          mv columns.tsv source-columns.tsv
+          mv constraints.tsv source-constraints.tsv
+          mv indexes.tsv source-indexes.tsv
+          mv sequences.tsv source-sequences.tsv
+          mv entry-hash.tsv source-entry-hash.tsv
+          test -s source-table-counts.tsv
+          test -s source-entry-hash.tsv
+
+      - name: Compact Recent Form locally only
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_source" \
+              -v ON_ERROR_STOP=1 <<'SQL'
+          SET statement_timeout=0;
+          SET lock_timeout='30s';
+          SET max_parallel_workers_per_gather=0;
+          UPDATE public.v2_race_entries SET recent_form=NULL WHERE recent_form IS NOT NULL;
+          VACUUM (FULL, ANALYZE) public.v2_race_entries;
+          CHECKPOINT;
+          SQL
+
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_source" \
+              -At -v ON_ERROR_STOP=1 -c "
+                SELECT 'COMPACT_DB_BYTES=' || pg_database_size(current_database())
+                UNION ALL
+                SELECT 'COMPACT_ENTRY_RELATION_BYTES=' || pg_total_relation_size('public.v2_race_entries')
+                UNION ALL
+                SELECT 'COMPACT_RECENT_FORM_NONEMPTY=' ||
+                  count(*) filter(where recent_form is not null and recent_form::text not in ('null','[]','{}','""',''))
+                FROM public.v2_race_entries;
+              " | tee compact-stats.txt
+          grep -q '^COMPACT_RECENT_FORM_NONEMPTY=0$' compact-stats.txt
+
+      - name: Dump compact local database with low compression CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_dump "postgresql://postgres:compacttest@127.0.0.1:5432/compact_source" \
+              --format=custom --compress=gzip:1 --no-owner --no-acl \
+              --file=/work/compact.dump
+          test -s compact.dump
+          echo "COMPACT_DUMP_BYTES=$(stat -c %s compact.dump)" | tee compact-dump-stats.txt
+          echo "COMPACT_DUMP_SHA256=$(sha256sum compact.dump | awk '{print $1}')" | tee -a compact-dump-stats.txt
+
+      - name: Replace local source DB with clean verification restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/postgres" \
+              -v ON_ERROR_STOP=1 -c "DROP DATABASE compact_source WITH (FORCE);"
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/postgres" \
+              -v ON_ERROR_STOP=1 -c "CREATE DATABASE compact_verify;"
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_restore --no-owner --no-acl --exit-on-error --jobs=1 \
+              --dbname="postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" \
+              /work/compact.dump
+
+      - name: Capture verification manifest and require parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest -v "$PWD:/work" -w /work postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" \
+              -v ON_ERROR_STOP=1 -f capture.sql
+          mv table-counts.tsv verify-table-counts.tsv
+          mv columns.tsv verify-columns.tsv
+          mv constraints.tsv verify-constraints.tsv
+          mv indexes.tsv verify-indexes.tsv
+          mv sequences.tsv verify-sequences.tsv
+          mv entry-hash.tsv verify-entry-hash.tsv
+
+          diff -u source-table-counts.tsv verify-table-counts.tsv
+          diff -u source-columns.tsv verify-columns.tsv
+          diff -u source-constraints.tsv verify-constraints.tsv
+          diff -u source-indexes.tsv verify-indexes.tsv
+          diff -u source-sequences.tsv verify-sequences.tsv
+          diff -u source-entry-hash.tsv verify-entry-hash.tsv
+
+          recent_nonempty="$(docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" -At -v ON_ERROR_STOP=1 \
+              -c "select count(*) from public.v2_race_entries where recent_form is not null and recent_form::text not in ('null','[]','{}','""','');")"
+          test "$recent_nonempty" = "0"
+
+          verify_bytes="$(docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            psql "postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" -At -v ON_ERROR_STOP=1 \
+              -c "select pg_database_size(current_database());")"
+          test "$verify_bytes" -gt 0
+          test "$verify_bytes" -lt 5000000000
+
+          source_bytes="$(awk -F'\t' '$1=="DB_BYTES"{print $2}' source-stats.tsv | tr -d '[:space:]')"
+          saved_bytes="$((source_bytes - verify_bytes))"
+          {
+            echo "PREFLIGHT_RESULT=PASS"
+            echo "SOURCE_DB_BYTES=$source_bytes"
+            echo "VERIFY_COMPACT_DB_BYTES=$verify_bytes"
+            echo "ESTIMATED_DB_BYTES_SAVED=$saved_bytes"
+            echo "VERIFY_RECENT_FORM_NONEMPTY=$recent_nonempty"
+            echo "TABLE_COUNT_PARITY=PASS"
+            echo "SCHEMA_PARITY=PASS"
+            echo "CONSTRAINT_PARITY=PASS"
+            echo "INDEX_PARITY=PASS"
+            echo "SEQUENCE_PARITY=PASS"
+            echo "RACE_ENTRY_NON_RECENT_FORM_HASH_PARITY=PASS"
+            echo "SOURCE_WRITE=0"
+            echo "RAILWAY_RESOURCE_CREATE=0"
+            echo "RAILWAY_AI_AGENT_USED=0"
+            echo "LOCAL_RESTORE_JOBS=1"
+          } | tee final-result.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Recent Form compact preflight'
+            echo
+            if [ -s final-result.txt ] && grep -q '^PREFLIGHT_RESULT=PASS$' final-result.txt; then
+              echo 'PASS: current candidate-v4 was dumped read-only once, compacted only in isolated GitHub Actions PostgreSQL, re-restored, and parity-checked.'
+              echo
+              echo '~~~text'
+              cat final-result.txt
+              cat compact-stats.txt 2>/dev/null || true
+              cat compact-dump-stats.txt 2>/dev/null || true
+              echo '~~~'
+            else
+              echo 'FAIL: isolated compact preflight did not establish parity. No Railway DB mutation or Railway resource creation was requested.'
+            fi
+            echo
+            echo 'Railway source write=0. No cutover, archive write, service/volume creation, Production setting change, LINE/purchase change, Railway AI or Railway Agent use.'
+          } > result.md
+          gh issue comment "$BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file result.md
+
+      - name: Cleanup local dump material
+        if: always()
+        shell: bash
+        run: |
+          rm -f current.dump compact.dump capture.sql source-*.tsv verify-*.tsv compact-stats.txt compact-dump-stats.txt final-result.txt
