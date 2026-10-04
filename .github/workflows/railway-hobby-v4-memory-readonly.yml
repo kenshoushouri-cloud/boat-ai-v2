@@ -76,6 +76,8 @@ jobs:
 
           SELECT 'CGROUP|memory.current|' ||
                  COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.current', 0, 64, true)), 'NA');
+          SELECT 'CGROUP|memory.max|' ||
+                 COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.max', 0, 64, true)), 'NA');
 
           WITH raw AS (
             SELECT pg_read_file('/sys/fs/cgroup/memory.stat', 0, 65536, true) AS body
