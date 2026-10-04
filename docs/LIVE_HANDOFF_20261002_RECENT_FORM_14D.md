@@ -28,9 +28,9 @@
 
 ## Cost change 2026-10-04
 - candidate-v4 RAM cap = 1GB. Verified live cgroup `memory.max=999997440` bytes.
-- Representative 14-day backfills under the 1GB cap have completed successfully. Latest: run `37168372204`, 2026-05-28..2026-06-10, 12,671 rows updated, PASS.
-- Latest run under the 1GB cap peaked at ~0.999GB. Post-run cgroup sample showed cumulative `memory.events max=780`, with `oom=0`, `oom_kill=0`, `oom_group_kill=0`; `anon` remained ~10MB and memory was dominated by reclaimable file cache.
-- After completion, candidate-v4 stayed Online/SUCCESS; latest checked disk was ~4.440GB current / ~4.475GB 1h max, below the 5GB Hobby volume limit.
+- Representative 14-day backfills under the 1GB cap have completed successfully. Latest: run `37169159248`, 2026-06-11..2026-06-24, 13,032 rows updated, PASS.
+- Latest run under the 1GB cap peaked at ~0.991GB. Post-run cgroup sample showed cumulative `memory.events max=1087`, with `oom=0`, `oom_kill=0`, `oom_group_kill=0`; `anon` remained ~9MB and memory was dominated by reclaimable file cache.
+- After completion, candidate-v4 stayed Online/SUCCESS; latest checked disk was ~4.458GB, below the 5GB Hobby volume limit.
 - Keep the 1GB cap for now. Do not lower further without explicit approval and representative workload evidence.
 - `/railway historical-recent-form-next` had become stale and re-ran 2026-04-16..04-29 with 0 updates. Workflow was corrected so the next range is 2026-05-14..05-27.
 - Backfill concurrency was corrected so manual ranges and `/railway historical-recent-form-next` share one `historical-production-write` group, preventing overlapping Production backfills.
@@ -38,12 +38,12 @@
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
-- Completed through **2026-06-10**.
-- Latest substantive batch: 2026-05-28..2026-06-10 run `37168372204`: SUCCESS, db_rows_updated=12,671, fillable_rows=12,671, target_empty_rows=12,672, official_k_rows_added_after_build=12,204, PASS.
+- Completed through **2026-06-24**.
+- Latest substantive batch: 2026-06-11..2026-06-24 run `37169159248`: SUCCESS, db_rows_updated=13,032, fillable_rows=13,032, target_empty_rows=13,032, official_k_rows_added_after_build=13,026, PASS.
 - Latest run confirmed SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1.
 - A stale `/railway historical-recent-form-next` run rechecked 2026-04-16..04-29 and updated 0 rows; no harmful overwrite occurred because fill-missing-only remained enforced.
-- Fixed command target is now **2026-06-11..2026-06-24 (14 days)**.
-- Workflow update commit: `7afc7580f8cc6c8d0ce59a46bd825ee672de9858`.
+- Fixed command target is now **2026-06-25..2026-07-08 (14 days)**.
+- Workflow update commit: `444e2cd38251bea219bb5428e8a71b9217e3a4fa`.
 
 ## V5 status
 - V5 is a **research candidate only**; there is no V5 Production Railway database/service to run or pay for. Production remains V4.
