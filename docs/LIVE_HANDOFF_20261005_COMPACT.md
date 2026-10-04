@@ -74,8 +74,22 @@
 - candidate-v3はsleepingだが約4.553GB使用中。explicit approvalなしにwipe/reuseしない。
 - Railway current Hobby limits上、volumeはproject最大10個・各5GB、現在live volumeは3個。storage単価は$0.15/GB-month。temporary overlapは短くし、費用<=USD20を守る。
 
+## Recent Form compact preflight result
+- workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
+- result: **PASS**。
+- source candidate-v4: **read-only**、Railway resource作成=0、cutover=0、archive write=0、Railway AI/Agent使用=0。
+- source `v2_race_entries`: relation **933,183,488 bytes** / rows **425,772** / Recent Form nonempty **425,772**。
+- local compact relation（recent_form=NULL）: **122,896,384 bytes**。
+- projected reclaim: **810,287,104 bytes ≈ 810MB**。
+- projected DB size: **4,392,974,015 → 3,582,686,911 bytes**。
+- non-Recent-Form payload binary SHA256 **exact match**、row count exact match。
+- Railwayから転送したcompact streamは **155,952,460 bytes ≈ 156MB**。全DB dumpは実施していない。
+- low-resource controls: max parallel query workers=0、maintenance_work_mem=64MB、parallel restore jobs=0。
+- run後candidate-v4の直近1h metrics: CPU avg約**2.1%**、RAM avg約**0.70GB**。AI/Agent=0。
+- よって物理回収は技術的に有効。次はRecent Form payloadをarchive側へ安全に退避・検証してからfresh compact target/cutoverを検討する。
+
 ## Next ONE task
-**GitHub Actions isolated PostgreSQLだけを使うRecent Form compact-rebuild preflight workflowを作成し、source candidate-v4 read-onlyのままcompact後DB容量とexact parityを検証する。Railway resource追加/cutover/archive writeはまだ行わない。**
+**Recent Form payloadをpostgres-history-archiveへarchiveする前のread-only設計を確定する。row identity / count / deterministic checksum / restore検証 / 追加容量を定義し、まだarchive write・source cleanup・cutoverは行わない。**
 
 条件:
 - まだ移動・削除しない。
