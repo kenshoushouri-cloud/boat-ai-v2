@@ -20,18 +20,18 @@
 - 直近storage read-only: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。
 
 ## 次の1作業
-**2026-08-02をExhibition-Time-only plan-onlyでtarget件数だけ確認する。**
+**2026-08-03をExhibition-Time-only plan-onlyでtarget件数だけ確認する。**
 
 確認済み:
-- Aug 01 plan-only: target1 / HTTP0 / DB write0。
-- Aug 01実pilot: **official_partial 1（5艇）/ HTTP1 / DB write0 / FAIL_DAY_OFFICIAL_PARTIAL_ONLY**。
+- Aug 01実pilot: **official_partial 1（5艇）/ HTTP1 / DB write0**。
+- Aug 02 plan-only: **target0 / HTTP0 / DB write0 / PASS**。
 
 条件:
-- 8/2 plan-onlyのみ。HTTPなし / DB writeなし。
+- 8/3 plan-onlyのみ。HTTPなし / DB writeなし.
 - Aug一括/Sep禁止。result・odds・payout read禁止。Production/LINE/purchase変更なし。
 
 ## 次チャット
 最初に読むのは `HANDOFF_LATEST.md` → current compact → `NEXT_CHAT_START_HERE.md` の3点だけ。
 古いhandoffは履歴。SHA/run/件数/容量は必要時のみlive再取得。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / AUG01_PARTIAL_WRITE0 / AUG02_PLAN_NEXT / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / AUG02_TARGET0 / AUG03_PLAN_NEXT / ONE_TASK_ONLY`
