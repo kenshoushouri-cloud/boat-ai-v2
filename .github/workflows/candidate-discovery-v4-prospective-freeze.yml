@@ -41,7 +41,7 @@ env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
   RAILWAY_ENVIRONMENT: 'production'
-  RAILWAY_DB_SERVICE: 'postgres-recovery'
+  RAILWAY_DB_SERVICE: 'postgres-hobby-fullhistory-candidate-v4'
   PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
   PYTHONPATH: .
 
@@ -110,7 +110,8 @@ jobs:
           assert ('railway'+' variable'+' list') not in workflow
           assert ('railway-vars'+'.json') not in workflow
           assert workflow.count('railway run') >= 3
-          assert 'RAILWAY_DB_SERVICE' in workflow
+          assert "RAILWAY_DB_SERVICE: 'postgres-hobby-fullhistory-candidate-v4'" in workflow
+          assert "RAILWAY_DB_SERVICE: 'postgres-recovery'" not in workflow
           assert 'V4_FCOUNT_CAPTURE_RESULT=PASS_SEPARATE_COMPANION' in workflow
           assert "steps.fcount_capture.outcome == 'success'" in workflow
           assert 'candidate-discovery-v4-fcount-companion-' in workflow
