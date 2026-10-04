@@ -447,3 +447,42 @@ def test_batch_status_distinguishes_official_absent():
         plan_only=False,
     )
     assert status == "FAIL_DAY_OFFICIAL_ABSENT_ONLY"
+
+
+
+def test_terminal_unfillable_manifest_has_exact_verified_july_53():
+    ids = m._terminal_unfillable_exhibition_ids()
+    assert len(ids) == 53
+    assert "20260701_10_08" in ids
+    assert "20260729_09_12" in ids
+
+
+def test_exhibition_only_target_excludes_terminal_unfillable(monkeypatch):
+    class Cur:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, sql, params):
+            pass
+        def fetchall(self):
+            return [
+                {"race_id": "20260701_10_08", "race_date": "2026-07-01", "venue_id": "10", "race_no": 8},
+                {"race_id": "keep_me", "race_date": "2026-07-01", "venue_id": "10", "race_no": 9},
+            ]
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+    monkeypatch.setattr(
+        m,
+        "_terminal_unfillable_exhibition_ids",
+        lambda: {"20260701_10_08"},
+    )
+    rows = m._target_races(
+        Conn(),
+        "2026-07-01",
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+    )
+    assert [row["race_id"] for row in rows] == ["keep_me"]
