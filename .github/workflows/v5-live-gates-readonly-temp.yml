@@ -11,6 +11,7 @@ permissions:
 
 env:
   PYTHONPATH: .
+  GH_TOKEN: ${{ github.token }}
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
