@@ -376,3 +376,74 @@ def test_batch_status_distinguishes_official_partial_from_parser_failure():
         plan_only=False,
     )
     assert failure == "FAIL_DAY_PARSER_FAILURE"
+
+
+
+def test_official_absent_is_visible_but_never_written(monkeypatch):
+    monkeypatch.setattr(
+        m,
+        "_target_races",
+        lambda conn, target_date, mode=m.MODE_GENERIC: [{
+            "race_id": "x",
+            "race_date": "2026-07-29",
+            "venue_id": "09",
+            "race_no": 1,
+            "deadline_at": None,
+        }],
+    )
+    monkeypatch.setattr(m, "_fetch", lambda session, url, sleep_sec: "<html/>")
+    monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
+    monkeypatch.setattr(
+        m.historical_parser_v3,
+        "inspect_exhibition_time_page",
+        lambda html: {
+            "status": m.historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_ABSENT,
+            "valid_time_count": 0,
+            "lanes": [1, 2, 3, 4, 5, 6],
+            "rows": [],
+            "source": "primary_structured_rows_no_times",
+        },
+    )
+    monkeypatch.setattr(
+        m,
+        "_upsert_exhibition_time_only",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("official absent must never write")
+        ),
+    )
+
+    class Conn:
+        def commit(self):
+            raise AssertionError("official absent must not commit")
+        def rollback(self):
+            pass
+
+    report = m.process_day(
+        Conn(),
+        object(),
+        "2026-07-29",
+        write_enabled=True,
+        sleep_sec=0.0,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        plan_only=False,
+    )
+    s = report["summary"]
+    assert s["exhibition_official_absent_races"] == 1
+    assert s["exhibition_parse_rejected_races"] == 1
+    assert s.get("exhibition_rows_touched", 0) == 0
+
+
+def test_batch_status_distinguishes_official_absent():
+    status = m._batch_parse_quality_status(
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        reports=[{
+            "summary": {
+                "target_missing_races": 1,
+                "exhibition_rows_usable": 0,
+                "exhibition_complete_races": 0,
+                "exhibition_official_absent_races": 1,
+            }
+        }],
+        plan_only=False,
+    )
+    assert status == "FAIL_DAY_OFFICIAL_ABSENT_ONLY"
