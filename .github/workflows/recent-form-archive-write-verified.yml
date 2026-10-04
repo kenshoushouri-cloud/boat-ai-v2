@@ -63,7 +63,7 @@ jobs:
           }
           trap cleanup_probe EXIT
 
-          python - <<'PY'
+          if ! python - <<'PY'
           import socket,time
           deadline=time.time()+8
           while time.time() < deadline:
@@ -73,8 +73,24 @@ jobs:
                       raise SystemExit(0)
               except OSError:
                   time.sleep(1)
-          raise SystemExit("ARCHIVE_PRIVATE_TUNNEL_PROBE=FAIL")
+          raise SystemExit(1)
           PY
+          then
+            python - "$tunnel_log" <<'PY'
+          import re,sys
+          from pathlib import Path
+          text=Path(sys.argv[1]).read_text(errors="replace")
+          keep=("unauthorized","not linked","project","service","ssh","token","login","error","failed","permission")
+          for line in text.splitlines():
+              low=line.lower()
+              if any(k in low for k in keep):
+                  line=re.sub(r'(?:postgres|postgresql)://\\S+','[REDACTED_DATABASE_URL]',line)
+                  line=re.sub(r'(?i)(password|token)=\\S+',r'\\1=[REDACTED]',line)
+                  print("ARCHIVE_TUNNEL_DIAG="+line[:500])
+          PY
+            echo "ARCHIVE_PRIVATE_TUNNEL_PROBE=FAIL"
+            exit 1
+          fi
 
       - name: Write guarded source exporter
         shell: bash
