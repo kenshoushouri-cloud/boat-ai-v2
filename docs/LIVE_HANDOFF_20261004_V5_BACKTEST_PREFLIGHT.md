@@ -31,11 +31,19 @@
 - DB write / Production change / LINE / purchase / stake changeなし。
 - Railway Agent/AI、`list_variables` / `railway variable list`禁止。1回1作業、read-only優先。
 
+## Prospective gate diagnosis — read-only
+- V4 10/02・10/03: formal inventoryは両日とも `candidate_artifact_count=0 / valid_capture_count=0 / UNAVAILABLE_NO_VALID_CAPTURE`。
+- 原因: current `.github/workflows/candidate-discovery-v4-prospective-freeze.yml` の `RAILWAY_DB_SERVICE='postgres-recovery'` がstale。現Production環境に `postgres-recovery` serviceは存在せず、SoTは `postgres-hobby-fullhistory-candidate-v4`。
+- 新fallback dispatcherも同じGitHub workflowをdispatchするため、workflow側を直さない限り将来captureも解消しない。
+- S03_M2は停止していない。10/02 logs: S03 matched day=3 / night=4、10/03: day=1 / night=3（window観測値、race/rule upsertのため単純加算uniqueではない）。
+- latest gate audit: source S03 rows=142、timing rejected=3、missing motor=0、Motor2 score>0=68、official evaluated=66、pending=1、invalid result=1。
+- よってS03 66/100の主因はcollector停止ではなく、frozen S03条件＋Motor2 positive条件＋official settlement待ちで自然増加が遅いこと。
+
 ## Next ONE task
-**prospective gateが増えていない原因をread-onlyで確認する。**
-- V4: 2026-10-02 / 10-03 が `UNAVAILABLE_NO_VALID_CAPTURE` の理由を確認。
-- S03_M2: 66/100で止まっている収集経路と直近eligible件数を確認。
-- gateを下げない。Production/DB/config変更は原因特定後に別判断。
+**V4 prospective-freeze workflowのDB service参照だけを `postgres-recovery` → `postgres-hobby-fullhistory-candidate-v4` に修正し、安全テストでread-only・no-purchase/no-writeを確認する。**
+- gateは下げない。
+- 過去10/02・10/03をprospectiveとして再構築しない。
+- S03 collectorは変更しない。
 - economics backtestはまだ実行しない。
 
 `SELECTION_FROZEN_2742_V4_1522_V5 / SHARED_70164 / FREEZE_SHA_7627BE7B / LIVE_GATES_NEXT / ONE_TASK_ONLY / COST_LE_20`
