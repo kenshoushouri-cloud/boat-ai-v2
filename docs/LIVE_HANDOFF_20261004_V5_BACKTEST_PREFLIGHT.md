@@ -110,12 +110,23 @@
 - exact original fetch timestampは不明/不要（historical policy）。prospective evidenceには数えない。
 - result/odds/payout read=0 / DB write=0 / Production change=0。
 
+## Exhibition Time OOS gap diagnosis — READ ONLY
+- PR `#542` / run `37190349026` SUCCESS / artifact `11298477527`。
+- OOS total **14,514 races** / time6 **9,811** / missing **4,703** / coverage **67.5968%**。
+- 2026-07: **4,879 / 4,932 = 98.9254%**、missing 53。
+- 2026-08: **2,840 / 4,926 = 57.6533%**、missing 2,086。
+- 2026-09: **2,092 / 4,656 = 44.9313%**、missing 2,564。
+- sourceは7/8月が `official_beforeinfo_historical`、9月complete分が `official_archived_beforeinfo_historical_reconstruction`。
+- ZERO日が29日あり、代表的に **8/16..8/27**, **8/31..9/13**, **9/28..9/30**。一方でその後にcomplete/partial日が再出現するため、自然欠損ではなく**backfill実行範囲の不連続**が主因。
+- 過去long campaign run `36667954064` は segment 1/2/3 のbackfill jobsが全てcancelled。後続の部分backfillで一部埋まったが、OOSに未完区間が残ったと判断。
+- outcome/odds/payout read=0 / DB write=0 / Production change=0。
+
 ## Next ONE task
-**OOSで展示タイムcoverageが67.60%まで落ちる原因を、月別・日付境界・source別にread-only診断する。**
-- outcomeはまだ読まない。
-- missingを理由に後付け対象抽出しない。
-- 追加backfillが必要でも、費用/取得量を確認するまで実行しない。
+**4,703 missing racesを埋める最小コストbackfill計画を作り、HTTP件数・分割範囲・Railway/GitHub実行量を事前見積りする。**
+- この次作業ではまだbackfillを実行しない。
+- cost target <=USD20/monthを優先。
+- outcomeは読まない。
 - Recent Formは不採用のまま収集継続。
 - prospective V4/S03 gateは自然蓄積を継続し、matched economicsはlive gates達成まで実行しない。
 
-`EX_TIME_READY_64297_70170 / OOS_COVERAGE_67P60_DIAG_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+`EX_TIME_OOS_GAP_BACKFILL_INCOMPLETE / MISSING_4703 / PLAN_COST_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
