@@ -16,18 +16,18 @@
 - Exhibition Time OOS missing **4,703**。低コストExhibition-Time-only modeを使用。
 - Jul missing **53**は再pilot済み: HTTP53 / fetch failure0 / DB write0。6艇quality gateを満たさずfail-closed停止。Aug/Sep未実行。
 - PR #555で `official_absent` を追加。分類は `complete / official_partial / official_absent / parser_failure`。partial/absentはwrite禁止、6艇有効値のみwrite gateへ進む。
-- Jul 53件: **official_partial 39 / zero-value 14 / complete 0**。zero-value代表3件は6艇行あり・展示タイム全空欄。
+- Jul 53件: **official_partial 39 / zero-value 14 / complete 0**。zero-value代表3件は新parserで**3/3 official_absent**。HTTP3 / DB write0。
 - 直近storage read-only: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。
 
 ## 次の1作業
-**zero-value代表3件だけをread-only再分類し、新 `official_absent` が実データで成立するか確認する。**
+**zero-value未確認11件だけをread-only再分類し、14件すべてが `official_absent` か確定する。**
 
 条件:
-- 最大HTTP3 / DB writeなし / Railway設定変更なし。
+- 最大HTTP11 / DB writeなし / Railway設定変更なし。
 - result・odds・payout read禁止。Production/LINE/purchase変更なし。Aug/Sep禁止。
 
 ## 次チャット
 最初に読むのは `HANDOFF_LATEST.md` → current compact → `NEXT_CHAT_START_HERE.md` の3点だけ。
 古いhandoffは履歴。SHA/run/件数/容量は必要時のみlive再取得。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / OFFICIAL_ABSENT_MERGED / VERIFY_3_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / OFFICIAL_ABSENT_3_OF_3 / VERIFY_11_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
