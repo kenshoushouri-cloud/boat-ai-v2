@@ -13,7 +13,6 @@ env:
   RAILWAY_ENVIRONMENT: "production"
   SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
   ARCHIVE_SERVICE: "postgres-history-archive"
-  ARCHIVE_TABLE: "v2_recent_form_archive"
   RAILWAY_BRIDGE_ISSUE: "42"
 
 concurrency:
@@ -27,189 +26,378 @@ jobs:
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway recent-form-archive-write-once'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          persist-credentials: false
+          python-version: "3.12"
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install Railway CLI only
+      - name: Install minimal dependencies
+        shell: bash
         run: |
           set -euo pipefail
+          python -m pip install "psycopg[binary]>=3.2,<4"
           npm install --global @railway/cli
-          railway run --help >/dev/null
 
-      - name: Archive Recent Form and verify exact parity
+      - name: Write private-dblink archive helper
+        shell: bash
+        run: |
+          cat > /tmp/recent_form_archive_dblink.py <<'PY'
+          import calendar
+          import datetime as dt
+          import json
+          import os
+          import re
+          import subprocess
+          import psycopg
+
+          PROJECT=os.environ["RAILWAY_PROJECT_ID"]
+          ENV=os.environ["RAILWAY_ENVIRONMENT"]
+          SOURCE=os.environ["SOURCE_SERVICE"]
+          ARCHIVE=os.environ["ARCHIVE_SERVICE"]
+          CONN_NAME="rf_archive_once"
+
+          def get_var(service, key):
+              code=f'import os; print("VALUE="+os.environ.get("{key}",""))'
+              p=subprocess.run(
+                  ["railway","run","--project",PROJECT,"--environment",ENV,
+                   "--service",service,"python3","-c",code],
+                  check=True,text=True,capture_output=True,
+              )
+              for line in reversed(p.stdout.splitlines()):
+                  if line.startswith("VALUE=") and line[6:].strip():
+                      return line[6:].strip()
+              raise RuntimeError(f"{key} unavailable for {service}")
+
+          source_url=get_var(SOURCE,"DATABASE_PUBLIC_URL")
+          archive_url=get_var(ARCHIVE,"DATABASE_URL")
+
+          out={
+              "source_write":0,
+              "source_read_only":1,
+              "archive_write":0,
+              "cutover":0,
+              "source_cleanup":0,
+              "railway_resource_created":0,
+              "railway_ai_agent_used":0,
+              "github_payload_transfer_bytes":0,
+              "private_dblink":1,
+          }
+
+          conn=psycopg.connect(source_url,autocommit=False)
+          connected=False
+          remote_tx=False
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                  cur.execute("SET LOCAL statement_timeout='900s'")
+                  cur.execute("SET LOCAL work_mem='8MB'")
+                  cur.execute("SET LOCAL temp_file_limit='96MB'")
+                  cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
+
+                  cur.execute("select exists(select 1 from pg_extension where extname='dblink')")
+                  if not bool(cur.fetchone()[0]):
+                      raise RuntimeError("dblink_not_installed")
+
+                  cur.execute("""
+                    select
+                      count(*)::bigint,
+                      count(*) filter(where race_id is null or lane is null)::bigint,
+                      coalesce(sum(pg_column_size(recent_form)),0)::bigint,
+                      coalesce(sum(
+                        coalesce(pg_column_size(race_id),0)
+                        + coalesce(pg_column_size(lane),0)
+                        + coalesce(pg_column_size(recent_form),0)
+                      ),0)::bigint,
+                      min(race_id),
+                      max(race_id)
+                    from public.v2_race_entries
+                    where recent_form is not null
+                  """)
+                  rows,null_keys,payload_bytes,logical_bytes,min_rid,max_rid=cur.fetchone()
+
+                  cur.execute("""
+                    select coalesce(sum(n-1),0)::bigint
+                    from (
+                      select count(*)::bigint n
+                      from public.v2_race_entries
+                      where recent_form is not null
+                      group by race_id,lane
+                      having count(*)>1
+                    ) d
+                  """)
+                  dup_rows=int(cur.fetchone()[0] or 0)
+
+                  cur.execute("""
+                    with x as (
+                      select race_id,lane,
+                             md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                      from public.v2_race_entries
+                      where recent_form is not null
+                    )
+                    select count(*)::bigint,
+                           md5(string_agg(row_md5,'' order by race_id,lane))
+                    from x
+                  """)
+                  checksum_rows,payload_md5=cur.fetchone()
+
+                  if int(null_keys)!=0 or dup_rows!=0:
+                      raise RuntimeError("source_identity_gate_failed")
+                  if int(rows)!=int(checksum_rows):
+                      raise RuntimeError("source_checksum_count_mismatch")
+                  if not min_rid or not max_rid:
+                      raise RuntimeError("source_empty")
+
+                  out.update({
+                      "source_rows":int(rows),
+                      "source_key_null_rows":int(null_keys),
+                      "source_duplicate_rows":dup_rows,
+                      "source_payload_bytes":int(payload_bytes),
+                      "source_archive_logical_bytes":int(logical_bytes),
+                      "source_payload_md5":str(payload_md5),
+                  })
+
+                  cur.execute("select dblink_connect(%s,%s)",(CONN_NAME,archive_url))
+                  connected=True
+
+                  def rexec(sql):
+                      cur.execute("select dblink_exec(%s,%s)",(CONN_NAME,sql))
+                      return cur.fetchone()[0]
+
+                  def rone(sql, decl):
+                      cur.execute(
+                          f"select * from dblink(%s,%s) as t({decl})",
+                          (CONN_NAME,sql),
+                      )
+                      return cur.fetchone()
+
+                  archive_before=int(rone(
+                      "select pg_database_size(current_database())::bigint",
+                      "db_bytes bigint",
+                  )[0])
+                  out["archive_db_bytes_before"]=archive_before
+
+                  rexec("BEGIN")
+                  remote_tx=True
+                  rexec("SET LOCAL statement_timeout='1200s'")
+                  rexec("SET LOCAL lock_timeout='10s'")
+                  rexec("SET LOCAL work_mem='8MB'")
+                  rexec("SET LOCAL maintenance_work_mem='64MB'")
+                  rexec("SET LOCAL max_parallel_workers_per_gather=0")
+                  rexec("""
+                    create table if not exists public.v2_recent_form_archive (
+                      race_id text not null,
+                      lane integer not null,
+                      recent_form jsonb not null,
+                      primary key (race_id,lane)
+                    )
+                  """)
+
+                  schema=rone("""
+                    select coalesce(string_agg(
+                      column_name||':'||udt_name||':'||is_nullable,
+                      ',' order by ordinal_position
+                    ),'')
+                    from information_schema.columns
+                    where table_schema='public'
+                      and table_name='v2_recent_form_archive'
+                  ""","schema_text text")[0]
+                  if schema!="race_id:text:NO,lane:int4:NO,recent_form:jsonb:NO":
+                      raise RuntimeError("archive_schema_mismatch")
+
+                  pk=rone("""
+                    select coalesce(pg_get_constraintdef(oid,true),'')
+                    from pg_constraint
+                    where conrelid='public.v2_recent_form_archive'::regclass
+                      and contype='p'
+                    limit 1
+                  ""","pk text")[0]
+                  if pk!="PRIMARY KEY (race_id, lane)":
+                      raise RuntimeError("archive_pk_mismatch")
+
+                  existing=rone("""
+                    with x as (
+                      select race_id,lane,
+                             md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                      from public.v2_recent_form_archive
+                    )
+                    select count(*)::bigint,
+                           md5(string_agg(row_md5,'' order by race_id,lane))
+                    from x
+                  ""","rows bigint, payload_md5 text")
+                  existing_rows=int(existing[0] or 0)
+                  existing_md5=existing[1]
+
+                  if existing_rows:
+                      if existing_rows==int(rows) and str(existing_md5)==str(payload_md5):
+                          rexec("ROLLBACK")
+                          remote_tx=False
+                          conn.rollback()
+                          out.update({
+                              "archive_inserted":0,
+                              "archive_rows":existing_rows,
+                              "archive_payload_md5":str(existing_md5),
+                              "archive_key_null_rows":0,
+                              "archive_duplicate_rows":0,
+                              "parity":"PASS",
+                              "idempotent_existing_match":1,
+                          })
+                          print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True))
+                          raise SystemExit(0)
+                      raise RuntimeError("archive_preexisting_mismatch")
+
+                  lo=str(min_rid)[:8]
+                  hi=str(max_rid)[:8]
+                  if not (re.fullmatch(r"\d{8}",lo) and re.fullmatch(r"\d{8}",hi)):
+                      raise RuntimeError("unexpected_race_id_date_prefix")
+                  start=dt.datetime.strptime(lo,"%Y%m%d").date()
+                  end=dt.datetime.strptime(hi,"%Y%m%d").date()
+
+                  transferred=0
+                  active_days=0
+                  day=start
+                  while day<=end:
+                      nxt=day+dt.timedelta(days=1)
+                      lo_key=day.strftime("%Y%m%d")
+                      hi_key=nxt.strftime("%Y%m%d")
+                      cur.execute("""
+                        with q as (
+                          select
+                            count(*)::bigint n,
+                            jsonb_agg(
+                              jsonb_build_object(
+                                'race_id',race_id,
+                                'lane',lane,
+                                'recent_form',recent_form
+                              )
+                              order by race_id,lane
+                            ) payload
+                          from public.v2_race_entries
+                          where recent_form is not null
+                            and race_id >= %s
+                            and race_id < %s
+                        )
+                        select n,
+                               case when n=0 then null
+                                    else dblink_exec(
+                                      %s,
+                                      format(
+                                        'insert into public.v2_recent_form_archive(race_id,lane,recent_form) '
+                                        'select race_id,lane,recent_form '
+                                        'from jsonb_to_recordset(%L::jsonb) '
+                                        'as x(race_id text,lane integer,recent_form jsonb)',
+                                        payload::text
+                                      )
+                                    )
+                               end
+                        from q
+                      """,(lo_key,hi_key,CONN_NAME))
+                      n,status=cur.fetchone()
+                      n=int(n or 0)
+                      if n:
+                          transferred+=n
+                          active_days+=1
+                          if not str(status).startswith("INSERT "):
+                              raise RuntimeError("remote_insert_status_unexpected")
+                      day=nxt
+
+                  out["transferred_rows"]=transferred
+                  out["active_day_batches"]=active_days
+                  if transferred!=int(rows):
+                      raise RuntimeError(
+                          f"transfer_count_mismatch:{transferred}:{int(rows)}"
+                      )
+
+                  verified=rone("""
+                    with x as (
+                      select race_id,lane,
+                             md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                      from public.v2_recent_form_archive
+                    ),
+                    d as (
+                      select coalesce(sum(n-1),0)::bigint dup_rows
+                      from (
+                        select count(*)::bigint n
+                        from public.v2_recent_form_archive
+                        group by race_id,lane
+                        having count(*)>1
+                      ) q
+                    )
+                    select
+                      (select count(*)::bigint from public.v2_recent_form_archive),
+                      (select md5(string_agg(row_md5,'' order by race_id,lane)) from x),
+                      (select count(*)::bigint from public.v2_recent_form_archive
+                        where race_id is null or lane is null),
+                      (select dup_rows from d),
+                      pg_total_relation_size('public.v2_recent_form_archive')::bigint,
+                      pg_database_size(current_database())::bigint
+                  ""","rows bigint, payload_md5 text, null_rows bigint, dup_rows bigint, relation_bytes bigint, db_bytes bigint")
+
+                  a_rows,a_md5,a_null,a_dup,a_rel,a_db=verified
+                  if int(a_rows)!=int(rows):
+                      raise RuntimeError("archive_row_count_mismatch")
+                  if str(a_md5)!=str(payload_md5):
+                      raise RuntimeError("archive_payload_md5_mismatch")
+                  if int(a_null)!=0 or int(a_dup)!=0:
+                      raise RuntimeError("archive_identity_gate_failed")
+
+                  rexec("COMMIT")
+                  remote_tx=False
+                  out.update({
+                      "archive_write":1,
+                      "archive_inserted":1,
+                      "archive_rows":int(a_rows),
+                      "archive_payload_md5":str(a_md5),
+                      "archive_key_null_rows":int(a_null),
+                      "archive_duplicate_rows":int(a_dup),
+                      "archive_relation_bytes":int(a_rel),
+                      "archive_db_bytes_after":int(a_db),
+                      "archive_db_growth_bytes":int(a_db)-archive_before,
+                      "parity":"PASS",
+                      "idempotent_existing_match":0,
+                  })
+                  conn.rollback()
+          except SystemExit:
+              raise
+          except Exception:
+              if connected and remote_tx:
+                  try:
+                      with conn.cursor() as cur:
+                          cur.execute("select dblink_exec(%s,'ROLLBACK')",(CONN_NAME,))
+                  except Exception:
+                      pass
+              conn.rollback()
+              raise
+          finally:
+              if connected:
+                  try:
+                      with conn.cursor() as cur:
+                          cur.execute("select dblink_disconnect(%s)",(CONN_NAME,))
+                      conn.rollback()
+                  except Exception:
+                      pass
+              conn.close()
+
+          print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True))
+          PY
+
+      - name: Archive through private dblink and verify before commit
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
-
-          get_db_url() {
-            railway run \
-              --project "$RAILWAY_PROJECT_ID" \
-              --environment "$RAILWAY_ENVIRONMENT" \
-              --service "$1" \
-              bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; printf "%s" "$DATABASE_PUBLIC_URL"'
-          }
-
-          SOURCE_URL="$(get_db_url "$SOURCE_SERVICE")"
-          ARCHIVE_URL="$(get_db_url "$ARCHIVE_SERVICE")"
-          echo "::add-mask::$SOURCE_URL"
-          echo "::add-mask::$ARCHIVE_URL"
-          export SOURCE_URL ARCHIVE_URL
-
-          cat > source.sql <<'SQL'
-          \set ON_ERROR_STOP on
-          BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
-          SET LOCAL statement_timeout='900s';
-          SET LOCAL work_mem='8MB';
-          SET LOCAL max_parallel_workers_per_gather=0;
-          \copy (select race_id,lane,recent_form from public.v2_race_entries where recent_form is not null order by race_id,lane) to '/work/recent_form.bin' with (format binary)
-          WITH x AS (
-            SELECT race_id,lane,
-                   md5(jsonb_build_array(race_id,lane,recent_form)::text) AS row_md5
-            FROM public.v2_race_entries
-            WHERE recent_form IS NOT NULL
-          )
-          SELECT count(*)::text || '|' ||
-                 md5(string_agg(row_md5,'' ORDER BY race_id,lane)) || '|' ||
-                 coalesce(sum(pg_column_size(recent_form)),0)::text
-          FROM public.v2_race_entries e
-          JOIN x USING (race_id,lane)
-          WHERE e.recent_form IS NOT NULL;
-          COMMIT;
-          SQL
-
-          docker run --rm \
-            -e DB="$SOURCE_URL" \
-            -v "$PWD:/work" \
-            postgres:18 bash -lc \
-            "psql \"\$DB\" -X -v ON_ERROR_STOP=1 -Atq -f /work/source.sql" \
-            > source-output.txt
-
-          grep -E '^[0-9]+\|[0-9a-f]{32}\|[0-9]+$' source-output.txt | tail -n1 > source-meta.txt
-          test -s source-meta.txt
-          source_rows="$(cut -d'|' -f1 source-meta.txt)"
-          source_md5="$(cut -d'|' -f2 source-meta.txt)"
-          source_payload_bytes="$(cut -d'|' -f3 source-meta.txt)"
-          test "$source_rows" -gt 0
-          test "${#source_md5}" -eq 32
-          sha256sum recent_form.bin | awk '{print $1}' > transport.sha256
-          stat -c %s recent_form.bin > transport.bytes
-
-          archive_before="$(docker run --rm -e DB="$ARCHIVE_URL" postgres:18 \
-            bash -lc "psql \"\$DB\" -X -Atq -v ON_ERROR_STOP=1 -c \"select pg_database_size(current_database())\"")"
-
-          exists="$(docker run --rm -e DB="$ARCHIVE_URL" postgres:18 \
-            bash -lc "psql \"\$DB\" -X -Atq -v ON_ERROR_STOP=1 -c \"select case when to_regclass('public.v2_recent_form_archive') is null then 0 else 1 end\"")"
-
-          archive_write=0
-          if [ "$exists" = "0" ]; then
-            cat > archive-load.sql <<'SQL'
-            \set ON_ERROR_STOP on
-            BEGIN;
-            SET LOCAL statement_timeout='1200s';
-            SET LOCAL maintenance_work_mem='64MB';
-            SET LOCAL max_parallel_maintenance_workers=0;
-            CREATE TABLE public.v2_recent_form_archive (
-              race_id text NOT NULL,
-              lane integer NOT NULL,
-              recent_form jsonb NOT NULL
-            );
-            \copy public.v2_recent_form_archive(race_id,lane,recent_form) from '/work/recent_form.bin' with (format binary)
-            ALTER TABLE public.v2_recent_form_archive
-              ADD CONSTRAINT v2_recent_form_archive_pkey PRIMARY KEY (race_id,lane);
-            COMMIT;
-            SQL
-
-            docker run --rm \
-              -e DB="$ARCHIVE_URL" \
-              -v "$PWD:/work" \
-              postgres:18 bash -lc \
-              "psql \"\$DB\" -X -v ON_ERROR_STOP=1 -q -f /work/archive-load.sql"
-            archive_write=1
-          fi
-
-          cat > archive-verify.sql <<'SQL'
-          \set ON_ERROR_STOP on
-          SET default_transaction_read_only=on;
-          SET statement_timeout='900s';
-          SET work_mem='8MB';
-          SET max_parallel_workers_per_gather=0;
-          WITH x AS (
-            SELECT race_id,lane,
-                   md5(jsonb_build_array(race_id,lane,recent_form)::text) AS row_md5
-            FROM public.v2_recent_form_archive
-          ),
-          d AS (
-            SELECT coalesce(sum(n-1),0)::bigint AS dup_rows
-            FROM (
-              SELECT count(*)::bigint AS n
-              FROM public.v2_recent_form_archive
-              GROUP BY race_id,lane
-              HAVING count(*) > 1
-            ) q
-          )
-          SELECT
-            (SELECT count(*) FROM public.v2_recent_form_archive)::text || '|' ||
-            (SELECT md5(string_agg(row_md5,'' ORDER BY race_id,lane)) FROM x) || '|' ||
-            (SELECT count(*) FROM public.v2_recent_form_archive WHERE race_id IS NULL OR lane IS NULL)::text || '|' ||
-            (SELECT dup_rows FROM d)::text;
-          SQL
-
-          docker run --rm \
-            -e DB="$ARCHIVE_URL" \
-            -v "$PWD:/work" \
-            postgres:18 bash -lc \
-            "psql \"\$DB\" -X -v ON_ERROR_STOP=1 -Atq -f /work/archive-verify.sql" \
-            > archive-meta.txt
-
-          archive_rows="$(cut -d'|' -f1 archive-meta.txt)"
-          archive_md5="$(cut -d'|' -f2 archive-meta.txt)"
-          archive_null="$(cut -d'|' -f3 archive-meta.txt)"
-          archive_dup="$(cut -d'|' -f4 archive-meta.txt)"
-
-          test "$source_rows" = "$archive_rows"
-          test "$source_md5" = "$archive_md5"
-          test "$archive_null" = "0"
-          test "$archive_dup" = "0"
-
-          archive_after="$(docker run --rm -e DB="$ARCHIVE_URL" postgres:18 \
-            bash -lc "psql \"\$DB\" -X -Atq -v ON_ERROR_STOP=1 -c \"select pg_database_size(current_database())\"")"
-
-          {
-            echo "SOURCE_ROWS=$source_rows"
-            echo "SOURCE_PAYLOAD_MD5=$source_md5"
-            echo "SOURCE_PAYLOAD_BYTES=$source_payload_bytes"
-            echo "TRANSPORT_BYTES=$(cat transport.bytes)"
-            echo "TRANSPORT_SHA256=$(cat transport.sha256)"
-            echo "ARCHIVE_ROWS=$archive_rows"
-            echo "ARCHIVE_PAYLOAD_MD5=$archive_md5"
-            echo "ARCHIVE_KEY_NULL_ROWS=$archive_null"
-            echo "ARCHIVE_DUPLICATE_ROWS=$archive_dup"
-            echo "ARCHIVE_DB_BYTES_BEFORE=$archive_before"
-            echo "ARCHIVE_DB_BYTES_AFTER=$archive_after"
-            echo "ARCHIVE_DB_GROWTH_BYTES=$((archive_after - archive_before))"
-            echo "ARCHIVE_WRITE=$archive_write"
-            echo "SOURCE_WRITE=0"
-            echo "SOURCE_READ_ONLY=1"
-            echo "CUTOVER=0"
-            echo "SOURCE_CLEANUP=0"
-            echo "RAILWAY_RESOURCE_CREATED=0"
-            echo "RAILWAY_AI_AGENT_USED=0"
-            echo "MAX_PARALLEL_QUERY_WORKERS=0"
-            echo "MAX_PARALLEL_MAINTENANCE_WORKERS=0"
-          } > result.txt
-
-          cat result.txt
+          python /tmp/recent_form_archive_dblink.py | tee archive-result.out
+          grep -q '"parity": "PASS"' archive-result.out
+          grep -q '"source_write": 0' archive-result.out
+          grep -q '"cutover": 0' archive-result.out
+          grep -q '"source_cleanup": 0' archive-result.out
+          grep -q '"github_payload_transfer_bytes": 0' archive-result.out
 
       - name: Post sanitized result
         if: always()
@@ -218,31 +406,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo '## Recent Form archive write once'
-            echo
-            if [ -s result.txt ] &&
-               grep -q '^SOURCE_WRITE=0$' result.txt &&
-               grep -q '^SOURCE_READ_ONLY=1$' result.txt &&
-               grep -q '^ARCHIVE_KEY_NULL_ROWS=0$' result.txt &&
-               grep -q '^ARCHIVE_DUPLICATE_ROWS=0$' result.txt; then
-              echo 'PASS: Recent Form archive write/parity verification completed.'
-              echo
-              echo '~~~text'
-              cat result.txt
-              echo '~~~'
-            else
-              echo 'FAIL: archive write/parity verification did not complete.'
-              echo
-              echo 'Source candidate-v4 was requested read-only. No cutover, source cleanup, volume resize, Railway resource creation, Railway AI or Railway Agent use was requested.'
-            fi
-          } > body.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          payload=None
+          p=Path("archive-result.out")
+          if p.exists():
+              m=re.search(r'^RECENT_FORM_ARCHIVE_RESULT=(\{.*\})$',p.read_text(errors="replace"),re.M)
+              if m:
+                  payload=json.loads(m.group(1))
+          if payload and payload.get("parity")=="PASS":
+              lines=[
+                  "## Recent Form archive write once — private dblink",
+                  "",
+                  "State: **PASS**",
+                  f"- source rows: **{payload['source_rows']:,}**",
+                  f"- archive rows: **{payload['archive_rows']:,}**",
+                  f"- payload MD5 match: **{payload['source_payload_md5']==payload['archive_payload_md5']}**",
+                  f"- key null rows: **{payload['archive_key_null_rows']}**",
+                  f"- duplicate key rows: **{payload['archive_duplicate_rows']}**",
+                  f"- archive relation: **{payload.get('archive_relation_bytes',0)/1_000_000:.1f} MB**",
+                  f"- archive logical DB: **{payload.get('archive_db_bytes_after',payload.get('archive_db_bytes_before',0))/1_000_000_000:.3f} GB**",
+                  f"- inserted this run: **{bool(payload.get('archive_inserted'))}**",
+                  f"- GitHub payload transfer: **{payload['github_payload_transfer_bytes']} bytes**",
+                  "",
+                  "Source candidate-v4 remained READ ONLY. No source cleanup, cutover, volume resize, Railway resource creation, Production/LINE/purchase/model change, or Railway AI/Agent use.",
+              ]
+          else:
+              lines=[
+                  "## Recent Form archive write once — private dblink",
+                  "",
+                  "State: **FAILED / archive transaction rolled back where started**",
+                  "",
+                  "No source cleanup or cutover was attempted. Source was requested READ ONLY; no Railway resource creation or Railway AI/Agent use.",
+              ]
+          Path("archive-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file archive-summary.md
 
-      - name: Cleanup transfer files
+      - name: Cleanup
         if: always()
         shell: bash
-        run: |
-          rm -f recent_form.bin source.sql archive-load.sql archive-verify.sql \
-            source-output.txt source-meta.txt archive-meta.txt transport.sha256 \
-            transport.bytes result.txt body.md
+        run: rm -f /tmp/recent_form_archive_dblink.py archive-result.out archive-summary.md
