@@ -45,6 +45,12 @@
 - Fixed command target is now **2026-07-23..2026-08-05 (14 days)**.
 - Workflow update commit: `045a262d69956be53db63a172a8aed04e82ba8bd`.
 
+## Mid-October operating-start priority
+- **Target: begin operational use around mid-October 2026.**
+- Critical path is: complete required historical missing-data acquisition -> run a final read-only coverage/integrity check -> execute the agreed backtest -> review results -> only then migrate/archive old historical data and finalize Production retention.
+- Treat this as the highest project execution priority unless Production safety is at risk. Keep 14-day recent_form batches sequential; after each batch verify PASS/leakage invariants, OOM=0, and 5GB disk headroom, then immediately advance when safe.
+- Do not spend time on cosmetic cleanup or non-blocking research before the backtest critical path is complete.
+
 ## V5 status
 - V5 is a **research candidate only**; there is no V5 Production Railway database/service to run or pay for. Production remains V4.
 - Target: **2026-10-15 V5 core freeze review**.
