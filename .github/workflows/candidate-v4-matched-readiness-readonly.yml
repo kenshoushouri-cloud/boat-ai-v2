@@ -1,6 +1,10 @@
 name: Candidate v4 matched readiness audit
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "research/historical_matched_contract_readiness_pg.py"
+      - ".github/workflows/candidate-v4-matched-readiness-readonly.yml"
 permissions:
   contents: read
 env:
