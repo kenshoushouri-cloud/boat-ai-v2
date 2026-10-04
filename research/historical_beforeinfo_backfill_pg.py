@@ -42,6 +42,9 @@ SOURCE_CONTRACT = "BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1"
 WRITE_CONFIRM = "YES"
 DEFAULT_SLEEP_SEC = 0.50
 USER_AGENT = "boat-ai-v2-historical-beforeinfo-backfill/1.0"
+MODE_GENERIC = "generic"
+MODE_EXHIBITION_TIME_ONLY = "exhibition-time-only"
+MODES = (MODE_GENERIC, MODE_EXHIBITION_TIME_ONLY)
 
 
 def _date_range(start_date: str, end_date: str) -> list[str]:
@@ -99,7 +102,48 @@ def _fetch(session: requests.Session, url: str, sleep_sec: float) -> str | None:
     return response.text
 
 
-def _target_races(conn: psycopg.Connection, target_date: str) -> list[dict[str, Any]]:
+def _target_races(
+    conn: psycopg.Connection,
+    target_date: str,
+    *,
+    mode: str = MODE_GENERIC,
+) -> list[dict[str, Any]]:
+    if mode not in MODES:
+        raise ValueError(f"unsupported mode: {mode}")
+
+    if mode == MODE_EXHIBITION_TIME_ONLY:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                with ex as (
+                  select race_id,
+                         count(*) filter(
+                           where snapshot_label='historical'
+                         ) as row_count,
+                         count(*) filter(
+                           where snapshot_label='historical'
+                             and exhibition_time is not null
+                         ) as time_count
+                    from v2_realtime_exhibition_snapshots
+                   group by race_id
+                )
+                select r.race_id,
+                       r.race_date,
+                       coalesce(r.venue_id,r.venue_code) as venue_id,
+                       r.race_no,
+                       r.deadline_at,
+                       coalesce(ex.row_count,0) as ex_rows,
+                       coalesce(ex.time_count,0) as ex_times
+                  from v2_races r
+                  left join ex using(race_id)
+                 where r.race_date=%s
+                   and coalesce(ex.time_count,0) < 6
+                 order by r.deadline_at nulls last, r.race_id
+                """,
+                (target_date,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -340,6 +384,113 @@ def _upsert_exhibition(
     return total
 
 
+def _upsert_exhibition_time_only(
+    conn: psycopg.Connection,
+    race: dict[str, Any],
+    exhibition: list[dict[str, Any]],
+) -> int:
+    """Fill only Exhibition Time / rank / diff fields."""
+    deadline_at = _deadline(race.get("deadline_at"))
+    snapshot_at = _synthetic_snapshot_at(deadline_at, str(race["race_date"]))
+    total = 0
+    for row in exhibition:
+        lane = int(row.get("lane") or 0)
+        ex_time = row.get("exhibition_time")
+        if lane not in (1, 2, 3, 4, 5, 6) or ex_time is None:
+            continue
+        raw = _historical_raw(
+            target_date=str(race["race_date"]),
+            deadline_at=deadline_at,
+            kind="exhibition_time_only",
+            parsed_raw={"cells": row.get("raw_cells") or []},
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into v2_realtime_exhibition_snapshots(
+                    race_id,race_date,venue_id,venue_code,race_no,
+                    snapshot_label,snapshot_at,source,lane,
+                    exhibition_time,exhibition_time_rank,exhibition_time_diff,
+                    raw,updated_at
+                )
+                values(
+                    %s,%s,%s,%s,%s,
+                    'historical',%s,%s,%s,
+                    %s,%s,%s,%s,now()
+                )
+                on conflict(race_id,snapshot_label,lane) do update set
+                    exhibition_time=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time,
+                        excluded.exhibition_time
+                    ),
+                    exhibition_time_rank=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time_rank,
+                        excluded.exhibition_time_rank
+                    ),
+                    exhibition_time_diff=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time_diff,
+                        excluded.exhibition_time_diff
+                    ),
+                    source=coalesce(
+                        v2_realtime_exhibition_snapshots.source,
+                        excluded.source
+                    ),
+                    snapshot_at=coalesce(
+                        v2_realtime_exhibition_snapshots.snapshot_at,
+                        excluded.snapshot_at
+                    ),
+                    raw=coalesce(
+                        v2_realtime_exhibition_snapshots.raw,
+                        excluded.raw
+                    ),
+                    updated_at=now()
+                where
+                       (
+                         v2_realtime_exhibition_snapshots.exhibition_time is null
+                         and excluded.exhibition_time is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.exhibition_time_rank is null
+                         and excluded.exhibition_time_rank is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.exhibition_time_diff is null
+                         and excluded.exhibition_time_diff is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.source is null
+                         and excluded.source is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.snapshot_at is null
+                         and excluded.snapshot_at is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.raw is null
+                         and excluded.raw is not null
+                       )
+                returning 1
+                """,
+                (
+                    str(race["race_id"]),
+                    race["race_date"],
+                    str(race.get("venue_id") or "").zfill(2),
+                    str(race.get("venue_id") or "").zfill(2),
+                    int(race.get("race_no") or 0),
+                    snapshot_at,
+                    SOURCE,
+                    lane,
+                    ex_time,
+                    row.get("exhibition_time_rank"),
+                    row.get("exhibition_time_diff"),
+                    Jsonb(raw),
+                ),
+            )
+            if cur.fetchone():
+                total += 1
+    return total
+
+
 def process_day(
     conn: psycopg.Connection,
     session: requests.Session,
@@ -347,10 +498,20 @@ def process_day(
     *,
     write_enabled: bool,
     sleep_sec: float,
+    mode: str = MODE_GENERIC,
+    plan_only: bool = False,
 ) -> dict[str, Any]:
-    races = _target_races(conn, target_date)
+    races = _target_races(conn, target_date, mode=mode)
     counts: Counter[str] = Counter()
     counts["target_missing_races"] = len(races)
+
+    if plan_only:
+        counts["plan_only_no_http"] = len(races)
+        return {
+            "target_date": target_date,
+            "mode": mode,
+            "summary": dict(sorted(counts.items())),
+        }
 
     for race in races:
         venue = str(race.get("venue_id") or "").zfill(2)
@@ -365,40 +526,51 @@ def process_day(
             counts["official_no_data"] += 1
             continue
 
-        weather = rt.parse_weather(html)
         exhibition = rt.parse_exhibition(html)
         counts["parsed_beforeinfo"] += 1
-        counts["weather_parsed"] += int(any(
-            weather.get(k) is not None
-            for k in (
-                "weather","temperature_c","water_temperature_c",
-                "wind_speed_m","wind_direction","wave_height_cm",
-            )
-        ))
         counts["exhibition_rows_parsed"] += len(exhibition)
         counts["exhibition_complete_races"] += int(
             sorted(int(x.get("lane") or 0) for x in exhibition)
             == [1, 2, 3, 4, 5, 6]
         )
 
+        weather: dict[str, Any] = {}
+        if mode == MODE_GENERIC:
+            weather = rt.parse_weather(html)
+            counts["weather_parsed"] += int(any(
+                weather.get(k) is not None
+                for k in (
+                    "weather","temperature_c","water_temperature_c",
+                    "wind_speed_m","wind_direction","wave_height_cm",
+                )
+            ))
+        else:
+            counts["weather_parse_skipped"] += 1
+
         if not write_enabled:
             continue
 
-        weather_has_data = any(
-            weather.get(k) is not None
-            for k in (
-                "weather","temperature_c","water_temperature_c",
-                "wind_speed_m","wind_direction","wave_height_cm",
-            )
-        )
         try:
-            if weather_has_data:
-                counts["weather_rows_touched"] += _upsert_weather(
-                    conn, race, weather
+            if mode == MODE_GENERIC:
+                weather_has_data = any(
+                    weather.get(k) is not None
+                    for k in (
+                        "weather","temperature_c","water_temperature_c",
+                        "wind_speed_m","wind_direction","wave_height_cm",
+                    )
                 )
-            counts["exhibition_rows_touched"] += _upsert_exhibition(
-                conn, race, exhibition
-            )
+                if weather_has_data:
+                    counts["weather_rows_touched"] += _upsert_weather(
+                        conn, race, weather
+                    )
+            if mode == MODE_EXHIBITION_TIME_ONLY:
+                counts["exhibition_rows_touched"] += _upsert_exhibition_time_only(
+                    conn, race, exhibition
+                )
+            else:
+                counts["exhibition_rows_touched"] += _upsert_exhibition(
+                    conn, race, exhibition
+                )
             conn.commit()
         except Exception:
             conn.rollback()
@@ -406,6 +578,7 @@ def process_day(
 
     return {
         "target_date": target_date,
+        "mode": mode,
         "summary": dict(sorted(counts.items())),
     }
 
@@ -414,6 +587,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--start-date", required=True)
     ap.add_argument("--end-date", required=True)
+    ap.add_argument("--mode", choices=MODES, default=MODE_GENERIC)
+    ap.add_argument("--plan-only", action="store_true")
     ap.add_argument(
         "--sleep-sec",
         type=float,
@@ -444,6 +619,8 @@ def main() -> None:
     print("HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0", flush=True)
     print("HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0", flush=True)
     print(f"HIST_BEFOREINFO_WRITE_ENABLED={int(write_enabled)}", flush=True)
+    print(f"HIST_BEFOREINFO_MODE={args.mode}", flush=True)
+    print(f"HIST_BEFOREINFO_PLAN_ONLY={int(args.plan_only)}", flush=True)
 
     reports: list[dict[str, Any]] = []
     session = requests.Session()
@@ -455,6 +632,8 @@ def main() -> None:
                 target_date,
                 write_enabled=write_enabled,
                 sleep_sec=max(0.0, args.sleep_sec),
+                mode=args.mode,
+                plan_only=args.plan_only,
             )
             reports.append(report)
             s = report["summary"]
@@ -490,6 +669,8 @@ def main() -> None:
         "fill_missing_only": True,
         "result_odds_payout_read": False,
         "write_enabled": write_enabled,
+        "mode": args.mode,
+        "plan_only": args.plan_only,
         "totals": dict(sorted(totals.items())),
         "days": reports,
         "production_model_change": False,
