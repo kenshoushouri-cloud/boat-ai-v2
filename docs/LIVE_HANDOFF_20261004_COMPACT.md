@@ -16,18 +16,19 @@
 - Exhibition Time OOS missing **4,703**。低コストExhibition-Time-only modeを使用。
 - Jul missing **53**は再pilot済み: HTTP53 / fetch failure0 / DB write0。6艇quality gateを満たさずfail-closed停止。Aug/Sep未実行。
 - PR #555で `official_absent` を追加。分類は `complete / official_partial / official_absent / parser_failure`。partial/absentはwrite禁止、6艇有効値のみwrite gateへ進む。
-- Jul 53件は確定: **official_partial 39 / official_absent 14 / complete 0 / parser_failure 0**。追加11件も11/11 official_absent。DB write0。
+- Jul 53件は **official_partial 39 / official_absent 14** で確定。PR #561でterminal/unfillable manifest化し、Exhibition-Time-onlyではHTTP前に除外。July plan-onlyは **target=0 / HTTP=0 / DB write=0** でPASS。
 - 直近storage read-only: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。
 
 ## 次の1作業
-**Jul 53件を再取得対象から外せるterminal/unfillable扱いを低コストで実装し、安全テストだけ通す。**
+**Augを一括実行せず、1日分だけExhibition-Time-only plan-onlyでtarget件数を確認する。**
 
 条件:
-- 不要な再HTTPを防ぐ。DB/Railway設定変更なし。
-- result・odds・payout read禁止。Production/LINE/purchase変更なし。Aug/Sep禁止。
+- HTTPなし / DB writeなし / Railway設定変更なし。
+- result・odds・payout read禁止。Production/LINE/purchase変更なし。
+- 1日分確認後に、最小単位の実データpilotへ進むか判断。
 
 ## 次チャット
 最初に読むのは `HANDOFF_LATEST.md` → current compact → `NEXT_CHAT_START_HERE.md` の3点だけ。
 古いhandoffは履歴。SHA/run/件数/容量は必要時のみlive再取得。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_53_UNFILLABLE_CONFIRMED / TERMINAL_SKIP_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_TERMINAL_SKIP_DONE / AUG_ONE_DAY_PLAN_NEXT / ONE_TASK_ONLY`
