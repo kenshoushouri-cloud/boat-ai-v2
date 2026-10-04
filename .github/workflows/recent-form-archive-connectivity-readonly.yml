@@ -20,7 +20,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install --global @railway/cli
+      - run: |
+          npm install --global @railway/cli
+          mkdir -p ~/.ssh
+          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/railway_ephemeral
       - name: Probe archive over Railway SSH
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
