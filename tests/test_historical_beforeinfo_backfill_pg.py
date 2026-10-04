@@ -109,3 +109,125 @@ def test_exhibition_only_write_function_cannot_fill_st_tilt_course_or_weather():
     assert "exhibition_course=" not in block
     assert "exhibition_course," not in block
     assert "v2_realtime_weather_snapshots" not in block
+
+
+
+def _valid_exhibition_rows():
+    return [
+        {
+            "lane": lane,
+            "exhibition_time": 6.70 + lane / 100,
+            "exhibition_time_rank": lane,
+            "exhibition_time_diff": (lane - 1) / 100,
+        }
+        for lane in range(1, 7)
+    ]
+
+
+def test_exhibition_time_quality_gate_requires_six_unique_plausible_times():
+    rows = _valid_exhibition_rows()
+    assert m._exhibition_time_quality_ok(rows) is True
+
+    assert m._exhibition_time_quality_ok(rows[:5]) is False
+
+    duplicate = [dict(row) for row in rows]
+    duplicate[-1]["lane"] = 5
+    assert m._exhibition_time_quality_ok(duplicate) is False
+
+    bad_time = [dict(row) for row in rows]
+    bad_time[0]["exhibition_time"] = 8.50
+    assert m._exhibition_time_quality_ok(bad_time) is False
+
+
+def test_exhibition_only_uses_historical_parser_v3(monkeypatch):
+    monkeypatch.setattr(
+        m,
+        "_target_races",
+        lambda conn, target_date, mode=m.MODE_GENERIC: [
+            {"race_id": "x", "race_date": target_date, "venue_id": "01", "race_no": 1}
+        ],
+    )
+    monkeypatch.setattr(m, "_fetch", lambda session, url, sleep_sec: "<html>ok</html>")
+    monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
+    monkeypatch.setattr(
+        m.rt,
+        "parse_exhibition",
+        lambda html: (_ for _ in ()).throw(
+            AssertionError("realtime parser must not be used in exhibition-only mode")
+        ),
+    )
+    monkeypatch.setattr(
+        m.historical_parser_v3,
+        "parse_exhibition",
+        lambda html: _valid_exhibition_rows(),
+    )
+
+    report = m.process_day(
+        object(),
+        object(),
+        "2026-07-01",
+        write_enabled=False,
+        sleep_sec=0.0,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+    )
+    s = report["summary"]
+    assert s["historical_parser_v3_used"] == 1
+    assert s["exhibition_time_quality_pass_races"] == 1
+    assert s.get("exhibition_write_blocked_parse_quality", 0) == 0
+
+
+def test_exhibition_only_invalid_parse_blocks_write(monkeypatch):
+    monkeypatch.setattr(
+        m,
+        "_target_races",
+        lambda conn, target_date, mode=m.MODE_GENERIC: [
+            {"race_id": "x", "race_date": target_date, "venue_id": "01", "race_no": 1}
+        ],
+    )
+    monkeypatch.setattr(m, "_fetch", lambda session, url, sleep_sec: "<html>ok</html>")
+    monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
+    monkeypatch.setattr(
+        m.historical_parser_v3,
+        "parse_exhibition",
+        lambda html: _valid_exhibition_rows()[:5],
+    )
+    monkeypatch.setattr(
+        m,
+        "_upsert_exhibition_time_only",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid parse must never reach DB write")
+        ),
+    )
+
+    report = m.process_day(
+        object(),
+        object(),
+        "2026-07-01",
+        write_enabled=True,
+        sleep_sec=0.0,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+    )
+    s = report["summary"]
+    assert s["exhibition_write_blocked_parse_quality"] == 1
+    assert s.get("exhibition_rows_touched", 0) == 0
+
+
+def test_parse_quality_zero_usable_target_is_fail_closed():
+    reports = [
+        {
+            "summary": {
+                "target_missing_races": 53,
+                "exhibition_time_quality_pass_races": 0,
+            }
+        }
+    ]
+    assert m._parse_quality_fail_closed(
+        reports,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        plan_only=False,
+    ) is True
+    assert m._parse_quality_fail_closed(
+        reports,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        plan_only=True,
+    ) is False
