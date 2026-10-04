@@ -61,7 +61,7 @@ jobs:
           w=Path(".github/workflows/v5-live-gates-readonly-temp.yml").read_text(encoding="utf-8").lower()
           assert "".join(("railway"," variable"," list")) not in w
           assert "".join(("list","_variables")) not in w
-          assert w.count("railway run") == 3
+          assert w.count("".join(("railway"," run"))) == 3
           print("V5_LIVE_GATES_STATIC=PASS")
           PY
       - name: Freeze provider V4 inventory before DB result access
