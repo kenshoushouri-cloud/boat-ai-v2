@@ -30,16 +30,23 @@
 - storage read-only再確認: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。persistent growthなし。
 - PR #549 mergedで1件read-only診断を追加。sample `20260701_10_08`（2026-07-01 戸田8R）は公式beforeinfoで1号艇の展示タイムが空欄、候補値は5艇分のみ。historical/realtime parserとも0行。少なくともこの例はmarkup不適合ではなく**official partial data**。
 
+## Classification safety — COMPLETE
+- PR **#550 merged / commit `0d0fd17f32d53a4f56e11a3563c34690fe6205b3`**。
+- historical parser/backfillは `complete` / `official_partial` / `parser_failure` を明示分類。
+- structured 1〜5艇の妥当な展示タイムは `official_partial` として件数可視化するが、**DB write/commit禁止**。
+- 0艇/構造不明は `parser_failure`。6艇のみ既存time/rank/diff quality gateへ進む。
+- batch fail statusも partial-only と parser-failure を区別。どちらもfail-closed。
+- safety CI PASS。candidate-v4 July plan-onlyも **HTTP=0 / DB write=0**、backfill jobはSKIP。
+
 ## 次の1作業
-**historical parser/backfillに「official partial data」と「parser failure」の判別を追加し、6艇＋time/rank/diffのwrite gateは維持したまま安全テストだけ通す。Jul 53件の再HTTPはまだしない。**
+**Jul欠損から少数サンプルだけread-only HTTP分類し、`official_partial` と `parser_failure` の実データ比率を確認する。53件全再HTTPはまだしない。**
 
 条件:
-- 1〜5艇の妥当な展示タイムが公式ページに存在する場合は`official_partial`として可視化するが、DB writeは禁止。
-- 6艇揃う場合だけ既存quality gateを通す。
-- 0艇/構造不明はparser failure側として区別する。
+- DB writeなし。Railway設定変更なし。
+- 既知sample `20260701_10_08` のほか、異なる日から最小限のサンプルを選ぶ。
 - result/odds/payout read禁止。
-- Production/LINE/purchase/Railway設定変更なし。
-- Aug/Sep禁止。分類実装PASS後にだけ、最小HTTPで次の検証方法を決める。
+- Production/LINE/purchase変更なし。
+- Aug/Sep禁止。少数sampleでparser failureが残るか確認してから次判断。
 
 ## 次チャット運用
 最初に読むのは:
@@ -50,4 +57,4 @@
 古いhandoffは履歴。必要時だけ参照。
 handoff内のSHA/run/件数/容量は固定値にせず、**次の1作業に必要なものだけlive再取得**する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JULY_REPILOT_ZERO_WRITE / OFFICIAL_PARTIAL_CONFIRMED_SAMPLE / CLASSIFY_PARTIAL_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / PARTIAL_CLASSIFICATION_MERGED / MIN_HTTP_CLASSIFY_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
