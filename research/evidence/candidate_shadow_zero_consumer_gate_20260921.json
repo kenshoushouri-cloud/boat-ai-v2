@@ -1,0 +1,136 @@
+{
+  "contract": "candidate_shadow_zero_consumer_gate_v1",
+  "checked_at_jst": "2026-09-21 12:42+09:00",
+  "code_source_of_truth": {
+    "repository": "kenshoushouri-cloud/boat-ai-v2",
+    "main_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c"
+  },
+  "production_data_source_of_truth": {
+    "railway_project_id": "268a5b17-0712-440a-884d-27f7fa887a2d",
+    "environment_id": "5ffb02f6-5ec8-4268-9bda-8e30431ff625"
+  },
+  "railway_entrypoints": [
+    {
+      "service": "cron-window-morning",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "15 23 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-window-day",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "35 0 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-window-night",
+      "source_branch": "main",
+      "start_command": "python -u run_window_pipeline_pg.py",
+      "cron_utc": "35 5 * * *",
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "cron-nightly-results",
+      "source_branch": "main",
+      "start_command": "python -u run_nightly_results_pg.py",
+      "cron_utc": "30 14 * * *",
+      "candidate_shadow_evaluator_report_variable_names_present": true,
+      "staged_changes": false
+    },
+    {
+      "service": "test-beforeinfo-extra",
+      "source_branch": "main",
+      "start_command": "python -u collect_candidate_filter_shadow_pg.py",
+      "cron_utc": null,
+      "repository_trigger_surface_present": true,
+      "candidate_shadow_variable_names_present": true,
+      "staged_changes": false
+    }
+  ],
+  "current_main_dependencies": {
+    "pre_writer_invocation": "run_pre_window_pg.py -> collect_candidate_filter_shadow_pg.py",
+    "nightly_evaluator": "run_nightly_results_pg.py -> evaluate_candidate_filter_shadow_results_pg.py",
+    "v4_same_day_reader": ".github/scripts/candidate_discovery_v4_main_feed_pg.py -> v2_candidate_filter_shadow S01-S05 legacy carryover",
+    "additional_readers_present": true
+  },
+  "natural_run_evidence_20260921": {
+    "morning": {
+      "deployment_id": "6dbbc230-806d-4345-8914-b7710c89cab0",
+      "target_date": "2026-09-21",
+      "window_name": "morning",
+      "candidate_shadow_enabled": true,
+      "collector_invoked": true,
+      "candidate_rows": 0,
+      "saved_rows": 0
+    },
+    "day": {
+      "deployment_id": "fd1bf599-0d0b-4883-a147-a264b1f1b741",
+      "target_date": "2026-09-21",
+      "window_name": "day",
+      "candidate_shadow_enabled": true,
+      "collector_invoked": true,
+      "candidate_rows": 7,
+      "saved_rows": 7
+    },
+    "formal_v4_reader": {
+      "workflow_run_id": 35549611949,
+      "legacy_shadow_rows": 7,
+      "legacy_added_races": 5,
+      "legacy_added_tickets": 7
+    },
+    "night_window_status_at_check": "NOT_YET_DUE",
+    "nightly_results_status_at_check": "NOT_YET_DUE"
+  },
+  "fallback_dispatcher_dependency_audit": {
+    "service": "candidate-discovery-v4-fallback-dispatcher",
+    "database_dependency_present": false,
+    "candidate_shadow_dependency_present": false
+  },
+  "gate": {
+    "zero_consumer": false,
+    "active_writer_invocation_present": true,
+    "same_day_writer_produced_rows": true,
+    "current_main_v4_reader_consumed_rows": true,
+    "nightly_evaluator_path_present": true,
+    "no_delete": true,
+    "no_migration": true,
+    "no_vacuum": true,
+    "purchase_action": false,
+    "github_v4_reader_present": true
+  },
+  "classification": "ZERO_CONSUMER_NOT_REACHED",
+  "github_action_entrypoints": [
+    {
+      "workflow": ".github/workflows/candidate-discovery-v4-prospective-freeze.yml",
+      "source_branch": "main",
+      "runtime_entrypoint": "research/candidate_discovery_v4_prospective_freeze_pg.py -> .github/scripts/candidate_discovery_v4_main_feed_pg.py",
+      "candidate_shadow_reader": true,
+      "role": "same-day S01-S05 legacy carryover reader"
+    }
+  ],
+  "required_before_zero_consumer_pass": [
+    "approved prospective removal/replacement of V4 same-day S01-S05 legacy carryover",
+    "current main no longer directly or indirectly reads v2_candidate_filter_shadow for live V4 generation",
+    "Production PRE writer invocation retired/disabled under explicit approval",
+    "test-beforeinfo-extra direct writer surface retired/isolated under explicit approval",
+    "nightly evaluator/report candidate-shadow readers retired or archive-adapted",
+    "remaining report/manual/research readers retired or archive-adapted where reproducibility requires them",
+    "fresh Railway Production source/branch/start-command inventory has no candidate-shadow reader or writer capability",
+    "fresh current-main and workflow scan has no candidate-shadow reader or writer capability",
+    "no ambiguous or unresolved execution surface",
+    "archive/recovery/fresh-restore/headroom gates independently pass before any destructive step",
+    "explicit approval obtained before Production DELETE/migration/VACUUM"
+  ],
+  "non_pass_evidence_examples": [
+    "a single window producing candidate_rows=0",
+    "a service having no Cron schedule",
+    "a Draft-only removal not landed on current main",
+    "the fallback dispatcher having no DB dependency",
+    "formal V4 core being structurally independent while legacy carryover reader still exists"
+  ]
+}
