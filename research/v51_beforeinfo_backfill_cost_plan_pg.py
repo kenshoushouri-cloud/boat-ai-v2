@@ -62,6 +62,15 @@ def main():
             cur.execute("set local statement_timeout='180s'")
             cur.execute(SQL,(START,END))
             rows=[dict(x) for x in cur.fetchall()]
+        with conn.cursor() as cur:
+            cur.execute("""
+                select count(*)::bigint as rows,
+                       coalesce(avg(pg_column_size(x)),0)::double precision as avg_row_bytes,
+                       pg_total_relation_size('v2_realtime_exhibition_snapshots')::bigint as relation_bytes
+                  from v2_realtime_exhibition_snapshots x
+                 where snapshot_label='historical'
+            """)
+            storage=dict(cur.fetchone())
         conn.rollback()
 
     monthly=defaultdict(Counter)
@@ -95,6 +104,9 @@ def main():
       "total":dict(total),
       "monthly":{k:dict(v) for k,v in sorted(monthly.items())},
       "daily":{k:dict(v) for k,v in sorted(daily.items())},
+      "historical_exhibition_storage": storage,
+      "estimated_exhibition_only_new_rows_max": total["ex_time_missing"]*6,
+      "estimated_exhibition_only_payload_bytes_max": total["ex_time_missing"]*6*float(storage["avg_row_bytes"]),
       "http_sleep_seconds_at_0p50":{
         "exhibition_only": total["ex_time_missing"]*0.5,
         "current_backfill_sql": total["current_backfill_http_target"]*0.5,
@@ -107,6 +119,13 @@ def main():
     print("V51_BF_PLAN_TOTAL="+json.dumps(out["total"],sort_keys=True),flush=True)
     for k,v in out["monthly"].items():
         print("V51_BF_PLAN_MONTH="+json.dumps({"month":k,**v},sort_keys=True),flush=True)
+    print("V51_BF_PLAN_STORAGE="+json.dumps({
+      "historical_rows":int(storage["rows"]),
+      "avg_row_bytes":float(storage["avg_row_bytes"]),
+      "relation_bytes":int(storage["relation_bytes"]),
+      "estimated_new_rows_max":out["estimated_exhibition_only_new_rows_max"],
+      "estimated_payload_bytes_max":out["estimated_exhibition_only_payload_bytes_max"],
+    },sort_keys=True),flush=True)
     print("V51_BF_PLAN_SLEEP="+json.dumps(out["http_sleep_seconds_at_0p50"],sort_keys=True),flush=True)
     print("V51_BF_PLAN_HTTP_PERFORMED=0 DB_WRITE=0 RESULT_READ=0",flush=True)
     print("V51_BF_PLAN_RESULT=PASS_READ_ONLY",flush=True)
