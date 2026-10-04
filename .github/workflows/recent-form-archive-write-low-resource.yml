@@ -1,0 +1,312 @@
+name: Recent Form archive write low-resource
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  ARCHIVE_SERVICE: "postgres-history-archive"
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+concurrency:
+  group: recent-form-archive-write-low-resource
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-archive-write-low-resource'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI only
+        run: npm install --global @railway/cli
+
+      - name: Export source archive payload from one read-only snapshot
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > source-export.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc '
+              set -euo pipefail
+              psql "$DATABASE_PUBLIC_URL" -X -v ON_ERROR_STOP=1 <<'"'"'SQL'"'"'
+              BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+              SET LOCAL statement_timeout='"'"'1800s'"'"';
+              SET LOCAL work_mem='"'"'8MB'"'"';
+              SET LOCAL max_parallel_workers_per_gather=0;
+
+              DO $$
+              DECLARE
+                rt text;
+                lt text;
+                jt text;
+              BEGIN
+                SELECT format_type(a.atttypid,a.atttypmod) INTO rt
+                FROM pg_attribute a
+                WHERE a.attrelid='"'"'public.v2_race_entries'"'"'::regclass
+                  AND a.attname='"'"'race_id'"'"' AND NOT a.attisdropped;
+                SELECT format_type(a.atttypid,a.atttypmod) INTO lt
+                FROM pg_attribute a
+                WHERE a.attrelid='"'"'public.v2_race_entries'"'"'::regclass
+                  AND a.attname='"'"'lane'"'"' AND NOT a.attisdropped;
+                SELECT format_type(a.atttypid,a.atttypmod) INTO jt
+                FROM pg_attribute a
+                WHERE a.attrelid='"'"'public.v2_race_entries'"'"'::regclass
+                  AND a.attname='"'"'recent_form'"'"' AND NOT a.attisdropped;
+                IF rt <> '"'"'text'"'"' OR lt <> '"'"'integer'"'"' OR jt <> '"'"'jsonb'"'"' THEN
+                  RAISE EXCEPTION '"'"'unexpected source types: %, %, %'"'"', rt, lt, jt;
+                END IF;
+              END $$;
+
+              \o /work/source-meta.txt
+              WITH x AS (
+                SELECT race_id,lane,
+                       md5(jsonb_build_array(race_id,lane,recent_form)::text) AS row_md5
+                FROM public.v2_race_entries
+                WHERE recent_form IS NOT NULL
+              ),
+              d AS (
+                SELECT coalesce(sum(n-1),0)::bigint AS dup_rows
+                FROM (
+                  SELECT count(*)::bigint AS n
+                  FROM public.v2_race_entries
+                  WHERE recent_form IS NOT NULL
+                    AND race_id IS NOT NULL AND lane IS NOT NULL
+                  GROUP BY race_id,lane
+                  HAVING count(*) > 1
+                ) q
+              )
+              SELECT
+                count(*)::bigint AS archive_rows,
+                count(*) FILTER (WHERE race_id IS NULL OR lane IS NULL)::bigint AS key_null_rows,
+                (SELECT dup_rows FROM d) AS duplicate_rows,
+                md5(string_agg(row_md5,'' ORDER BY race_id,lane)) AS payload_md5,
+                coalesce(sum(pg_column_size(recent_form)),0)::bigint AS payload_bytes
+              FROM public.v2_race_entries
+              JOIN x USING (race_id,lane)
+              WHERE recent_form IS NOT NULL;
+              \o
+
+              \copy (
+                SELECT race_id,lane,recent_form
+                FROM public.v2_race_entries
+                WHERE recent_form IS NOT NULL
+                ORDER BY race_id,lane
+              ) TO '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
+
+              COMMIT;
+              SQL
+            '
+          SH
+          chmod 700 source-export.sh
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$SOURCE_SERVICE" \
+            bash ./source-export.sh
+
+          test -s source-meta.txt
+          test -s recent_form_archive.bin
+          cat source-meta.txt
+
+      - name: Validate source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r rows nulls dups md5 bytes < <(
+            awk 'NF==5 && $1 ~ /^[0-9]+$/ {print $1,$2,$3,$4,$5}' source-meta.txt | tail -1
+          )
+          test -n "$rows"
+          test "$rows" -gt 0
+          test "$nulls" = "0"
+          test "$dups" = "0"
+          test -n "$md5"
+          test "$bytes" -gt 0
+          printf '%s\n' \
+            "SOURCE_ARCHIVE_ROWS=$rows" \
+            "SOURCE_KEY_NULL_ROWS=$nulls" \
+            "SOURCE_DUPLICATE_ROWS=$dups" \
+            "SOURCE_PAYLOAD_MD5=$md5" \
+            "SOURCE_PAYLOAD_BYTES=$bytes" > source-summary.txt
+
+      - name: Write archive in one rollback-safe transaction
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > archive-import.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc '
+              set -euo pipefail
+              psql "$DATABASE_PUBLIC_URL" -X -v ON_ERROR_STOP=1 <<'"'"'SQL'"'"'
+              BEGIN;
+              SET LOCAL statement_timeout='"'"'1800s'"'"';
+              SET LOCAL synchronous_commit=on;
+              SET LOCAL work_mem='"'"'8MB'"'"';
+              SET LOCAL max_parallel_workers_per_gather=0;
+
+              CREATE TABLE IF NOT EXISTS public.recent_form_archive_v1 (
+                race_id text NOT NULL,
+                lane integer NOT NULL,
+                recent_form jsonb NOT NULL,
+                PRIMARY KEY (race_id,lane)
+              );
+
+              TRUNCATE TABLE public.recent_form_archive_v1;
+
+              \copy public.recent_form_archive_v1(race_id,lane,recent_form)
+                FROM '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
+
+              COMMIT;
+              SQL
+            '
+          SH
+          chmod 700 archive-import.sh
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$ARCHIVE_SERVICE" \
+            bash ./archive-import.sh
+
+      - name: Verify archive parity read-only
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > archive-verify.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc '
+              set -euo pipefail
+              PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=1800000 -c work_mem=8MB -c max_parallel_workers_per_gather=0" \
+              psql "$DATABASE_PUBLIC_URL" -X -At -F "|" -v ON_ERROR_STOP=1 <<'"'"'SQL'"'"' > /work/archive-meta.txt
+              WITH x AS (
+                SELECT race_id,lane,
+                       md5(jsonb_build_array(race_id,lane,recent_form)::text) AS row_md5
+                FROM public.recent_form_archive_v1
+              ),
+              d AS (
+                SELECT coalesce(sum(n-1),0)::bigint AS dup_rows
+                FROM (
+                  SELECT count(*)::bigint AS n
+                  FROM public.recent_form_archive_v1
+                  GROUP BY race_id,lane
+                  HAVING count(*) > 1
+                ) q
+              )
+              SELECT
+                count(*)::bigint,
+                count(*) FILTER (WHERE race_id IS NULL OR lane IS NULL)::bigint,
+                (SELECT dup_rows FROM d),
+                md5(string_agg(row_md5,'' ORDER BY race_id,lane)),
+                pg_total_relation_size('public.recent_form_archive_v1')::bigint,
+                pg_database_size(current_database())::bigint
+              FROM public.recent_form_archive_v1;
+              SQL
+            '
+          SH
+          chmod 700 archive-verify.sh
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$ARCHIVE_SERVICE" \
+            bash ./archive-verify.sh
+
+          IFS='|' read -r arows anulls adups amd5 arel adb < archive-meta.txt
+          read -r srows snulls sdups smd5 sbytes < <(
+            awk 'NF==5 && $1 ~ /^[0-9]+$/ {print $1,$2,$3,$4,$5}' source-meta.txt | tail -1
+          )
+
+          test "$arows" = "$srows"
+          test "$anulls" = "0"
+          test "$adups" = "0"
+          test "$amd5" = "$smd5"
+
+          {
+            cat source-summary.txt
+            echo "ARCHIVE_ROWS=$arows"
+            echo "ARCHIVE_KEY_NULL_ROWS=$anulls"
+            echo "ARCHIVE_DUPLICATE_ROWS=$adups"
+            echo "ARCHIVE_PAYLOAD_MD5=$amd5"
+            echo "ARCHIVE_RELATION_BYTES=$arel"
+            echo "ARCHIVE_DB_BYTES=$adb"
+            echo "ROW_COUNT_MATCH=1"
+            echo "PAYLOAD_MD5_MATCH=1"
+            echo "SOURCE_WRITE=0"
+            echo "SOURCE_CLEANUP=0"
+            echo "CUTOVER=0"
+            echo "RAILWAY_RESOURCE_CREATED=0"
+            echo "RAILWAY_AI_AGENT_USED=0"
+          } > archive-summary.txt
+          cat archive-summary.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Recent Form archive write — low resource'
+            echo
+            if [ -s archive-summary.txt ] && grep -q '^PAYLOAD_MD5_MATCH=1$' archive-summary.txt; then
+              echo 'PASS: Recent Form payload was archived and source/archive parity matched.'
+              echo
+              echo '~~~text'
+              cat archive-summary.txt
+              echo '~~~'
+            else
+              echo 'FAIL: archive write/parity was not fully established.'
+              echo
+              echo 'Source cleanup/cutover/resource creation were not requested.'
+            fi
+          } > body.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file body.md
+
+      - name: Cleanup local payload
+        if: always()
+        shell: bash
+        run: |
+          rm -f recent_form_archive.bin source-meta.txt source-summary.txt archive-meta.txt archive-summary.txt \
+            source-export.sh archive-import.sh archive-verify.sh body.md
