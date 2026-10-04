@@ -1,36 +1,29 @@
 # Live Handoff — V5 Matched-Backtest Preflight
 
 ## Goal / critical path
-- 競艇AIを安全に本番運用可能な状態へ完成。運用開始目標 = **2026年10月中旬**。
-- Critical path: **V5比較仕様/time split固定 → matched-contract backtest → V4比較 → 運用方式確定 → historical archive最適化 → 運用開始**。
-- Production = **V4**。V5 = **research-only**。historical reconstructionはbacktest用でProspective gateへ加算しない。
+- 運用開始目標 = **2026年10月中旬**。Production=**V4**、V5=**research-only**。
+- Critical path: **V5 preflight → matched-contract backtest → V4比較 → 運用方式確定 → archive最適化 → 運用開始**。
+- Production data SoT = `postgres-hobby-fullhistory-candidate-v4`。Historical Recent Formは**2026-09-30まで補完済み**。
 
-## Current
-- GitHub `main` = code SoT。
-- Production data SoT = `postgres-hobby-fullhistory-candidate-v4`。
-- Historical Recent Form = **2026-09-30まで補完済み**。final read-only auditで残差がなければ取得完了扱い。
-- Draft PR **#536** = matched-contract backtest fail-closed preflight。Railway実行なし、Production変更なし、未merge。
-
-## Backtest contract
-- **current V4 / V5 candidate core / optional V5.1** を **same time split / no-leakage / same-contract** で比較。
-- V5仕様とtime splitは**結果を見る前に固定**。V5がV4と実質同一なら比較扱いにしない。
-- 評価はROIだけでなく、月間利益・購入数・購入額・的中率・最大DD・連敗も確認。
-- Economics: **100円/点、TOP2=2点=200円/レース、候補は1日1レース以上を目安、月間利益目標 +50,000円**。
-- 候補数・購入点数・stakeを水増しして目標達成しない。Backtest結果だけでProductionへ自動昇格しない。
+## Frozen backtest contract — Draft PR #536
+- V5 candidate = `V5_M2_TOP2_BOTH_POSITIVE_V1`。
+- V4 probability/structural TOP6/TOP2は維持。V4 TOP2各ticketへfrozen Motor2 score（6艇内z-score、weights 1.0/0.6/0.3、score>0）を適用し、**2点ともpassしたraceだけ採用**。
+- odds/EVはselectionに使わない。100円/点、TOP2=200円/race。
+- shared split: **2025-07..12 TRAIN_REFERENCE / 2026-01..06 VALIDATION / 2026-07..09 OOS**。window間retune禁止。
+- 実行条件: **V4>=20 resolved days / S03_M2>=100 official observations / clean evidence / historical readiness PASS**。
+- 評価: ROI、月間利益、購入数/額、的中率、最大DD、連敗。候補1日1race以上は目安、月間利益目標**+50,000円**。volume/点数/stake水増し禁止。
+- PR #536はDraft・CI SUCCESS・未merge。Railway実行なし、Production変更なし。
 
 ## Cost / safety
-- Railway cost hard target = **USD 20/month以下、安いほど良い**。不要なservice/job/DB/volume追加を避ける。
+- Railway cost <= **USD20/month、安いほど良い**。不要なservice/job/DB/volume追加を避ける。
 - **1回に1作業 / 短い出力 / read-only優先**。
-- Railway Agent / Railway AI禁止。`list_variables` / `railway variable list`禁止。
+- Railway Agent/AI、`list_variables` / `railway variable list`禁止。
 - purchase / plan / volume resize禁止。TOTO staged patchに触れない。
-- destructive/config/Production-effect変更は明示承認が必要。
-- SHA・run・件数・容量はhandoff値を固定視せず、必要時だけlive再取得。
-- 古いhandoffは特定の過去判断が必要な時だけ参照。
+- destructive/config/Production-effect変更は明示承認。live値は必要時だけ再取得。
 
 ## Next ONE task
-**V5 research candidateの比較仕様とshared chronological time splitを、結果参照前のresearch-only contractとして固定する。**
-- Production/Railway設定は変更しない。
-- PR #536のpreflight条件に適合させる。
-- backtest実行はこの固定完了後。
+**candidate-v4をread-onlyで確認し、V4 20日 / S03_M2 100件 / clean evidence / historical matched-readiness のlive gate状態だけ判定する。**
+- backtest economicsはまだ実行しない。
+- 低コスト優先。Production/Railway設定は変更しない。
 
-`MID_OCT_LAUNCH / V5_SPEC_SPLIT_FREEZE_NEXT / V4_PRODUCTION / HIST_COMPLETE / ECON_100YEN_TOP2_50K / COST_LE_20 / ONE_TASK_ONLY`
+`MID_OCT_LAUNCH / V5_SPEC_SPLIT_FROZEN_PR536 / LIVE_GATES_NEXT / ECON_100YEN_TOP2_50K / COST_LE_20 / ONE_TASK_ONLY`
