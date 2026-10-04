@@ -113,7 +113,7 @@ jobs:
           from datetime import date
           body=os.environ["COMMENT_BODY"].strip()
           if body == "/railway historical-recent-form-next":
-              start_s,end_s="2026-07-09","2026-07-22"
+              start_s,end_s="2026-07-23","2026-08-05"
           else:
               p=body.split()
               if len(p) != 4 or p[1] != "historical-recent-form-backfill":
