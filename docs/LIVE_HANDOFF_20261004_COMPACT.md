@@ -25,19 +25,21 @@
 - Exhibition-Time-only modeはPR #544で実装済み。candidate-v4対象、weather/ST/tilt/courseは書かず、time/rank/diffのみmissing-fill。
 - **Jul pilot実施済み**: target53 / HTTP53 / fetch failure0。ただし旧realtime parserでは展示parse **0行**、DB更新**0行**で安全停止。Jul missing 53は未解消。
 - Exhibition-Time-only parser修正は **PR #548 merged / commit `28c9f56bc09961e6b19dd65caa07b95d8e4914bd`** で最終化。historical parser v3へ切替え、6艇＋time/rank/diff妥当性NGはwrite禁止、**対象がある各日でusable=0ならbatch FAIL**。
-- safety run `37194597909` は **17 tests PASS**。candidate-v4 July plan-onlyも **target53 / HTTP=0 / DB write=0 / parser-v3 wired** でPASS。Jul再pilotは未実行。
-- pilot後の既知値: DB約4.389GB、WAL約83.9MB、volume約4,670.8/5,000MB。Aug/Sepは未実行。
+- safety run `37194597909` は **17 tests PASS**。candidate-v4 July plan-onlyも **target53 / HTTP=0 / DB write=0 / parser-v3 wired** でPASS。
+- **Jul 53再pilotは既に実行済み**: historical parser v3使用53/53、HTTP53、fetch failure0、usable six-lane=0、quality gate blocked=53、DB write=0、`FAIL_PARSE_QUALITY`。Aug/Sepは未実行。
+- storage read-only再確認: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。persistent growthなし。
+- PR #549 mergedで1件read-only診断を追加。sample `20260701_10_08`（2026-07-01 戸田8R）は公式beforeinfoで1号艇の展示タイムが空欄、候補値は5艇分のみ。historical/realtime parserとも0行。少なくともこの例はmarkup不適合ではなく**official partial data**。
 
 ## 次の1作業
-**Jul 53件だけをExhibition-Time-onlyで再pilotし、parser v3の実データparse成功・missing-fill・DB/WAL/volume増分を確認する。Aug/Sepはまだ実行しない。**
+**historical parser/backfillに「official partial data」と「parser failure」の判別を追加し、6艇＋time/rank/diffのwrite gateは維持したまま安全テストだけ通す。Jul 53件の再HTTPはまだしない。**
 
 条件:
-- 対象はJul missing 53件だけ。Aug/Sep禁止。
-- Exhibition-Time-onlyのまま、weather/ST/tilt/course write禁止。
-- parser quality gateはfail-closed維持。6艇＋展示タイム妥当性NGのraceはwrite禁止。
+- 1〜5艇の妥当な展示タイムが公式ページに存在する場合は`official_partial`として可視化するが、DB writeは禁止。
+- 6艇揃う場合だけ既存quality gateを通す。
+- 0艇/構造不明はparser failure側として区別する。
 - result/odds/payout read禁止。
-- Production/LINE/purchase変更なし。
-- 実行後にcoverage、HTTP、DB write件数、DB/WAL/volumeをread-only確認してから次判断。
+- Production/LINE/purchase/Railway設定変更なし。
+- Aug/Sep禁止。分類実装PASS後にだけ、最小HTTPで次の検証方法を決める。
 
 ## 次チャット運用
 最初に読むのは:
@@ -48,4 +50,4 @@
 古いhandoffは履歴。必要時だけ参照。
 handoff内のSHA/run/件数/容量は固定値にせず、**次の1作業に必要なものだけlive再取得**する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / PARSER_V3_PERDAY_FAILCLOSED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JULY_REPILOT_ZERO_WRITE / OFFICIAL_PARTIAL_CONFIRMED_SAMPLE / CLASSIFY_PARTIAL_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
