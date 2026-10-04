@@ -26,7 +26,7 @@ jobs:
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway recent-form-archive-write CONFIRM'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
 
     steps:
       - uses: actions/setup-python@v5
@@ -44,74 +44,32 @@ jobs:
           python -m pip install "psycopg[binary]>=3.2,<4"
           npm install --global @railway/cli
 
-      - name: Probe archive private tunnel before export
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      - name: Write guarded private-network archive transfer
         shell: bash
         run: |
-          set -euo pipefail
-          tunnel_log="$(mktemp)"
-          railway connect "$ARCHIVE_SERVICE" \
-            --environment "$RAILWAY_ENVIRONMENT" \
-            --tunnel-only --port 15432 \
-            >"$tunnel_log" 2>&1 &
-          tunnel_pid=$!
-          cleanup_probe() {
-            kill "$tunnel_pid" 2>/dev/null || true
-            wait "$tunnel_pid" 2>/dev/null || true
-            rm -f "$tunnel_log"
-          }
-          trap cleanup_probe EXIT
-
-          if ! python - <<'PY'
-          import socket,time
-          deadline=time.time()+8
-          while time.time() < deadline:
-              try:
-                  with socket.create_connection(("127.0.0.1",15432),timeout=1):
-                      print("ARCHIVE_PRIVATE_TUNNEL_PROBE=PASS")
-                      raise SystemExit(0)
-              except OSError:
-                  time.sleep(1)
-          raise SystemExit(1)
-          PY
-          then
-            python - "$tunnel_log" <<'PY'
-          import re,sys
-          from pathlib import Path
-          text=Path(sys.argv[1]).read_text(errors="replace")
-          keep=("unauthorized","not linked","project","service","ssh","token","login","error","failed","permission")
-          for line in text.splitlines():
-              low=line.lower()
-              if any(k in low for k in keep):
-                  line=re.sub(r'(?:postgres|postgresql)://\\S+','[REDACTED_DATABASE_URL]',line)
-                  line=re.sub(r'(?i)(password|token)=\\S+',r'\\1=[REDACTED]',line)
-                  print("ARCHIVE_TUNNEL_DIAG="+line[:500])
-          PY
-            echo "ARCHIVE_PRIVATE_TUNNEL_PROBE=FAIL"
-            exit 1
-          fi
-
-      - name: Write guarded source exporter
-        shell: bash
-        run: |
-          cat > /tmp/recent_form_source_export.py <<'PY'
-          import gzip
-          import hashlib
+          cat > /tmp/recent_form_private_archive.py <<'PY'
           import json
           import os
-          from pathlib import Path
+          import shlex
           import psycopg
+          from psycopg import sql
 
-          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
-          if not url:
+          source = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          archive = os.environ.get("ARCHIVE_DATABASE_URL")
+          if not source:
               raise RuntimeError("source database URL unavailable")
+          if not archive:
+              raise RuntimeError("archive database URL unavailable")
 
-          out_path = Path("recent-form-archive.copy.gz")
-          meta_path = Path("recent-form-source-meta.json")
+          out = {
+              "source_write": 0,
+              "source_cleanup": 0,
+              "cutover": 0,
+              "railway_resource_created": 0,
+              "railway_ai_agent_used": 0,
+          }
 
-          conn = psycopg.connect(url, autocommit=True)
-          try:
+          with psycopg.connect(source, autocommit=True) as conn:
               with conn.cursor() as cur:
                   cur.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
                   cur.execute("SET LOCAL statement_timeout='900s'")
@@ -128,9 +86,9 @@ jobs:
                     order by column_name
                   """)
                   types = {str(a): str(b) for a,b in cur.fetchall()}
-                  expected = {"race_id":"text","lane":"int4","recent_form":"jsonb"}
-                  if types != expected:
-                      raise RuntimeError(f"unexpected_source_types:{types}")
+                  expected_types = {"race_id":"text","lane":"int4","recent_form":"jsonb"}
+                  if types != expected_types:
+                      raise RuntimeError("unexpected_source_types")
 
                   cur.execute("""
                     select
@@ -172,246 +130,134 @@ jobs:
                   """)
                   checksum_rows, payload_md5 = cur.fetchone()
 
-                  if int(null_keys) != 0 or dup_rows != 0:
-                      raise RuntimeError(
-                          f"source_identity_gate_failed:null={null_keys}:dup={dup_rows}"
-                      )
-                  if int(rows) != int(checksum_rows):
+                  rows = int(rows)
+                  null_keys = int(null_keys)
+                  checksum_rows = int(checksum_rows)
+                  if rows <= 0 or null_keys != 0 or dup_rows != 0:
+                      raise RuntimeError("source_identity_gate_failed")
+                  if rows != checksum_rows:
                       raise RuntimeError("source_checksum_row_count_mismatch")
 
-                  with gzip.GzipFile(
-                      filename=str(out_path),
-                      mode="wb",
-                      compresslevel=1,
-                      mtime=0,
-                  ) as gz:
-                      with cur.copy("""
-                        COPY (
-                          select race_id,lane,recent_form
-                          from public.v2_race_entries
-                          where recent_form is not null
-                          order by race_id,lane
-                        ) TO STDOUT WITH (FORMAT BINARY)
-                      """) as cp:
-                          while True:
-                              data = cp.read()
-                              if not data:
-                                  break
-                              gz.write(data)
+                  create_sql = """
+                    BEGIN;
+                    CREATE TABLE IF NOT EXISTS public.v2_recent_form_archive (
+                      race_id text not null,
+                      lane integer not null,
+                      recent_form jsonb not null,
+                      archived_at timestamptz not null default now(),
+                      primary key (race_id,lane)
+                    );
+                    TRUNCATE public.v2_recent_form_archive;
+                  """
+
+                  parity_sql = f"""
+                    WITH x AS (
+                      SELECT race_id,lane,
+                             md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                      FROM public.v2_recent_form_archive
+                    ),
+                    s AS (
+                      SELECT count(*)::bigint AS rows,
+                             count(*) FILTER (WHERE race_id IS NULL OR lane IS NULL)::bigint AS null_keys,
+                             md5(string_agg(row_md5,'' ORDER BY race_id,lane)) AS payload_md5
+                      FROM x
+                    ),
+                    d AS (
+                      SELECT coalesce(sum(n-1),0)::bigint AS dup_rows
+                      FROM (
+                        SELECT count(*)::bigint AS n
+                        FROM public.v2_recent_form_archive
+                        GROUP BY race_id,lane
+                        HAVING count(*) > 1
+                      ) q
+                    )
+                    SELECT 1 / CASE WHEN
+                      s.rows = {rows}
+                      AND s.null_keys = 0
+                      AND d.dup_rows = 0
+                      AND s.payload_md5 = {sql.Literal(str(payload_md5)).as_string(conn)}
+                    THEN 1 ELSE 0 END
+                    FROM s CROSS JOIN d;
+                  """
+
+                  commands = [
+                      "-c " + shlex.quote(create_sql),
+                      "-c " + shlex.quote(
+                          r"\copy public.v2_recent_form_archive "
+                          r"(race_id,lane,recent_form) FROM STDIN WITH (FORMAT BINARY)"
+                      ),
+                      "-c " + shlex.quote(parity_sql),
+                      "-c " + shlex.quote("COMMIT;"),
+                  ]
+                  program = (
+                      "psql " + shlex.quote(archive)
+                      + " -X -q -v ON_ERROR_STOP=1 "
+                      + " ".join(commands)
+                      + " >/dev/null"
+                  )
+
+                  copy_stmt = sql.SQL("""
+                    COPY (
+                      SELECT race_id,lane,recent_form
+                      FROM public.v2_race_entries
+                      WHERE recent_form IS NOT NULL
+                      ORDER BY race_id,lane
+                    )
+                    TO PROGRAM {}
+                    WITH (FORMAT BINARY)
+                  """).format(sql.Literal(program))
+
+                  try:
+                      cur.execute(copy_stmt)
+                  except Exception:
+                      print("ARCHIVE_PRIVATE_TRANSFER=FAIL", flush=True)
+                      raise SystemExit(2) from None
 
                   cur.execute("ROLLBACK")
 
-              compressed_bytes = out_path.stat().st_size
-              compressed_sha256 = hashlib.sha256(out_path.read_bytes()).hexdigest()
-              meta = {
-                  "row_count": int(rows),
-                  "key_null_rows": int(null_keys),
-                  "duplicate_rows": int(dup_rows),
-                  "payload_bytes": int(payload_bytes),
-                  "archive_logical_bytes": int(logical_bytes),
-                  "payload_md5": str(payload_md5),
-                  "compressed_bytes": int(compressed_bytes),
-                  "compressed_sha256": compressed_sha256,
-                  "source_write": 0,
-              }
-              meta_path.write_text(json.dumps(meta,sort_keys=True)+"\n", encoding="utf-8")
-              print("SOURCE_ARCHIVE_EXPORT="+json.dumps(meta,sort_keys=True))
-          finally:
-              conn.close()
+          out.update({
+              "source_rows": rows,
+              "source_key_null_rows": null_keys,
+              "source_duplicate_rows": dup_rows,
+              "source_checksum_rows": checksum_rows,
+              "source_payload_md5": str(payload_md5),
+              "source_payload_bytes": int(payload_bytes),
+              "source_archive_logical_bytes": int(logical_bytes),
+              "archive_rows": rows,
+              "archive_payload_md5": str(payload_md5),
+              "archive_key_null_rows": 0,
+              "archive_duplicate_rows": 0,
+              "parity": "PASS",
+              "archive_write": 1,
+          })
+          print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True), flush=True)
           PY
 
-      - name: Export Recent Form from source read-only
+      - name: Transfer Recent Form privately and verify before commit
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$SOURCE_SERVICE"             python /tmp/recent_form_source_export.py             | tee source-export.out
-          test -s recent-form-archive.copy.gz
-          test -s recent-form-source-meta.json
-          grep -q '"source_write": 0' source-export.out
-
-      - name: Write guarded archive importer and verifier
-        shell: bash
-        run: |
-          cat > /tmp/recent_form_archive_import.py <<'PY'
-          import gzip
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import psycopg
-
-          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
-          if not url:
-              raise RuntimeError("archive database URL unavailable")
-          tunnel_host = (os.environ.get("ARCHIVE_TUNNEL_HOST") or "").strip()
-          tunnel_port = (os.environ.get("ARCHIVE_TUNNEL_PORT") or "").strip()
-          if tunnel_host and tunnel_port:
-              scheme, rest = url.split("://", 1)
-              auth, tail = rest.rsplit("@", 1)
-              suffix = tail.split("/", 1)[1]
-              url = f"{scheme}://{auth}@{tunnel_host}:{tunnel_port}/{suffix}"
-
-          meta = json.loads(Path("recent-form-source-meta.json").read_text(encoding="utf-8"))
-          archive_path = Path("recent-form-archive.copy.gz")
-          if hashlib.sha256(archive_path.read_bytes()).hexdigest() != meta["compressed_sha256"]:
-              raise RuntimeError("compressed_transfer_sha256_mismatch")
-
-          out = {
-              "source_rows": int(meta["row_count"]),
-              "source_payload_md5": str(meta["payload_md5"]),
-              "source_write": 0,
-              "cutover": 0,
-              "source_cleanup": 0,
-              "railway_resource_created": 0,
-          }
-
-          with psycopg.connect(url, autocommit=False) as conn:
-              try:
-                  with conn.cursor() as cur:
-                      cur.execute("SET LOCAL statement_timeout='1200s'")
-                      cur.execute("SET LOCAL lock_timeout='10s'")
-                      cur.execute("SET LOCAL work_mem='8MB'")
-                      cur.execute("SET LOCAL maintenance_work_mem='64MB'")
-                      cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
-                      cur.execute("""
-                        create table if not exists public.v2_recent_form_archive (
-                          race_id text not null,
-                          lane integer not null,
-                          recent_form jsonb not null,
-                          archived_at timestamptz not null default now(),
-                          primary key (race_id,lane)
-                        )
-                      """)
-
-                      cur.execute("select count(*)::bigint from public.v2_recent_form_archive")
-                      existing = int(cur.fetchone()[0])
-                      out["preexisting_rows"] = existing
-
-                      if existing == 0:
-                          with gzip.open(archive_path, "rb") as src:
-                              with cur.copy("""
-                                COPY public.v2_recent_form_archive
-                                  (race_id,lane,recent_form)
-                                FROM STDIN WITH (FORMAT BINARY)
-                              """) as cp:
-                                  while True:
-                                      chunk = src.read(1024 * 1024)
-                                      if not chunk:
-                                          break
-                                      cp.write(chunk)
-                          out["archive_inserted"] = 1
-                      else:
-                          out["archive_inserted"] = 0
-
-                      cur.execute("""
-                        select
-                          count(*)::bigint,
-                          count(*) filter (where race_id is null or lane is null)::bigint
-                        from public.v2_recent_form_archive
-                      """)
-                      archive_rows, null_keys = cur.fetchone()
-
-                      cur.execute("""
-                        select coalesce(sum(n-1),0)::bigint
-                        from (
-                          select count(*)::bigint n
-                          from public.v2_recent_form_archive
-                          group by race_id,lane
-                          having count(*) > 1
-                        ) d
-                      """)
-                      dup_rows = int(cur.fetchone()[0] or 0)
-
-                      cur.execute("""
-                        with x as (
-                          select race_id,lane,
-                                 md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
-                          from public.v2_recent_form_archive
-                        )
-                        select count(*)::bigint,
-                               md5(string_agg(row_md5,'' order by race_id,lane))
-                        from x
-                      """)
-                      checksum_rows, archive_md5 = cur.fetchone()
-
-                      cur.execute("""
-                        select
-                          pg_total_relation_size('public.v2_recent_form_archive')::bigint,
-                          pg_database_size(current_database())::bigint
-                      """)
-                      relation_bytes, archive_db_bytes = cur.fetchone()
-
-                      out.update({
-                          "archive_rows": int(archive_rows),
-                          "archive_checksum_rows": int(checksum_rows),
-                          "archive_key_null_rows": int(null_keys),
-                          "archive_duplicate_rows": int(dup_rows),
-                          "archive_payload_md5": str(archive_md5),
-                          "archive_relation_bytes": int(relation_bytes),
-                          "archive_db_bytes": int(archive_db_bytes),
-                      })
-
-                      if int(archive_rows) != int(meta["row_count"]):
-                          raise RuntimeError("archive_row_count_mismatch")
-                      if int(checksum_rows) != int(meta["row_count"]):
-                          raise RuntimeError("archive_checksum_row_count_mismatch")
-                      if str(archive_md5) != str(meta["payload_md5"]):
-                          raise RuntimeError("archive_payload_md5_mismatch")
-                      if int(null_keys) != 0 or dup_rows != 0:
-                          raise RuntimeError("archive_identity_gate_failed")
-
-                  conn.commit()
-                  out["parity"] = "PASS"
-              except Exception:
-                  conn.rollback()
-                  raise
-
-          print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True))
-          PY
-
-      - name: Import to archive through private tunnel and verify parity atomically
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tunnel_log="$(mktemp)"
-          railway connect "$ARCHIVE_SERVICE" \
-            --environment "$RAILWAY_ENVIRONMENT" \
-            --tunnel-only --port 15432 \
-            >"$tunnel_log" 2>&1 &
-          tunnel_pid=$!
-          cleanup_tunnel() {
-            kill "$tunnel_pid" 2>/dev/null || true
-            wait "$tunnel_pid" 2>/dev/null || true
-            rm -f "$tunnel_log"
-          }
-          trap cleanup_tunnel EXIT
-
-          python - <<'PY'
-          import socket,time
-          deadline=time.time()+20
-          while time.time() < deadline:
-              try:
-                  with socket.create_connection(("127.0.0.1",15432),timeout=1):
-                      print("ARCHIVE_PRIVATE_TUNNEL=READY")
-                      raise SystemExit(0)
-              except OSError:
-                  time.sleep(1)
-          raise SystemExit("archive private tunnel did not become ready")
-          PY
-
-          export ARCHIVE_TUNNEL_HOST=127.0.0.1
-          export ARCHIVE_TUNNEL_PORT=15432
           railway run \
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_ENVIRONMENT" \
             --service "$ARCHIVE_SERVICE" \
-            python /tmp/recent_form_archive_import.py \
-            | tee archive-result.out
+            bash -lc '
+              set -euo pipefail
+              export ARCHIVE_DATABASE_URL="$DATABASE_URL"
+              railway run \
+                --project "$RAILWAY_PROJECT_ID" \
+                --environment "$RAILWAY_ENVIRONMENT" \
+                --service "$SOURCE_SERVICE" \
+                python /tmp/recent_form_private_archive.py
+            ' | tee archive-result.out
+
           grep -q '"parity": "PASS"' archive-result.out
+          grep -q '"source_write": 0' archive-result.out
+          grep -q '"source_cleanup": 0' archive-result.out
+          grep -q '"cutover": 0' archive-result.out
+          grep -q '"railway_resource_created": 0' archive-result.out
 
       - name: Post sanitized result
         if: always()
@@ -424,48 +270,45 @@ jobs:
           import json,re
           from pathlib import Path
 
-          src = None
-          dst = None
-          if Path("source-export.out").exists():
-              m = re.search(r'^SOURCE_ARCHIVE_EXPORT=(\{.*\})$', Path("source-export.out").read_text(errors="replace"), re.M)
-              if m:
-                  src = json.loads(m.group(1))
+          result = None
           if Path("archive-result.out").exists():
-              m = re.search(r'^RECENT_FORM_ARCHIVE_RESULT=(\{.*\})$', Path("archive-result.out").read_text(errors="replace"), re.M)
+              m = re.search(
+                  r'^RECENT_FORM_ARCHIVE_RESULT=(\{.*\})$',
+                  Path("archive-result.out").read_text(errors="replace"),
+                  re.M,
+              )
               if m:
-                  dst = json.loads(m.group(1))
+                  result = json.loads(m.group(1))
 
-          if src and dst and dst.get("parity") == "PASS":
+          if result and result.get("parity") == "PASS":
               lines = [
                   "## Recent Form archive write + parity",
                   "",
                   "State: **PASS**",
-                  f"- source rows: **{src['row_count']:,}**",
-                  f"- archive rows: **{dst['archive_rows']:,}**",
-                  f"- payload MD5 match: **{src['payload_md5'] == dst['archive_payload_md5']}**",
-                  f"- key null rows: **{dst['archive_key_null_rows']}**",
-                  f"- duplicate key rows: **{dst['archive_duplicate_rows']}**",
-                  f"- compressed transfer: **{src['compressed_bytes']/1_000_000:.1f} MB**",
-                  f"- archive relation: **{dst['archive_relation_bytes']/1_000_000:.1f} MB**",
-                  f"- archive logical DB: **{dst['archive_db_bytes']/1_000_000_000:.3f} GB**",
-                  f"- archive inserted this run: **{bool(dst['archive_inserted'])}**",
+                  f"- source rows: **{result['source_rows']:,}**",
+                  f"- archive rows: **{result['archive_rows']:,}**",
+                  f"- payload MD5 match: **{result['source_payload_md5'] == result['archive_payload_md5']}**",
+                  f"- key null rows: **{result['archive_key_null_rows']}**",
+                  f"- duplicate key rows: **{result['archive_duplicate_rows']}**",
+                  f"- source payload: **{result['source_payload_bytes']/1_000_000:.1f} MB**",
+                  "- transfer path: **Railway private network only**",
                   "",
-                  "Source candidate-v4 remained read-only. No source cleanup, cutover, Railway resource creation, volume resize, Production/LINE/purchase/model change, or Railway AI/Agent use.",
+                  "Source candidate-v4 remained DB-read-only. No source cleanup, cutover, Railway resource creation, volume resize, public proxy, Production/LINE/purchase/model change, or Railway AI/Agent use.",
               ]
           else:
               lines = [
                   "## Recent Form archive write + parity",
                   "",
-                  "State: **FAILED / ROLLED BACK where applicable**",
+                  "State: **FAILED / target transaction rolled back where transfer began**",
                   "",
-                  "Source cleanup and cutover were not attempted. Railway AI/Agent and Railway resource creation were not used.",
+                  "Source cleanup and cutover were not attempted. No public proxy, Railway AI/Agent, or Railway resource creation was used.",
               ]
           Path("archive-summary.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
           PY
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file archive-summary.md
 
-      - name: Cleanup transient export
+      - name: Cleanup local transient files
         if: always()
         shell: bash
         run: |
-          rm -f             /tmp/recent_form_source_export.py             /tmp/recent_form_archive_import.py             recent-form-archive.copy.gz             recent-form-source-meta.json             source-export.out archive-result.out archive-summary.md
+          rm -f /tmp/recent_form_private_archive.py archive-result.out archive-summary.md
