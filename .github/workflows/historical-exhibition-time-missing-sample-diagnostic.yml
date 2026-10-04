@@ -41,8 +41,8 @@ jobs:
           assert isinstance(parsed, dict) and "jobs" in parsed
           assert "postgres-hobby-fullhistory-candidate-v4" in text
           assert "default_transaction_read_only" in text
-          assert "railway variable list" not in text
-          assert "list_variables" not in text
+          assert "railway " + "variable list" not in text
+          assert "list_" + "variables" not in text
           assert "CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE" not in text
           print("PASS missing-sample diagnostic safety")
           PY
