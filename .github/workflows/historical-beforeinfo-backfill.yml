@@ -18,7 +18,7 @@ env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
-  RAILWAY_DB_SERVICE: "postgres-recovery"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
 
 jobs:
   validate:
@@ -62,6 +62,9 @@ jobs:
           w=Path(".github/workflows/historical-beforeinfo-backfill.yml").read_text(encoding="utf-8")
           assert "historical-beforeinfo-backfill-noncommand-" in w
           assert "startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')" in w
+          assert "postgres-hobby-fullhistory-candidate-v4" in w
+          assert "postgres-recovery" not in w
+          assert "--mode exhibition-time-only" in w
           print("PASS historical beforeinfo backfill safety")
           PY
 
@@ -78,20 +81,898 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
       - run: npm install --global @railway/cli
-      - name: Production DB read-only one-day dry run
-        env:
-          HIST_BEFOREINFO_SLEEP_SEC: "0.10"
+      - name: Production DB read-only one-day plan-only check
         run: |
           set -euo pipefail
           railway run \
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; export HIST_BEFOREINFO_SLEEP_SEC="0.10"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date 2025-07-01 --end-date 2025-07-01 --output historical-beforeinfo-dry-run.json' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date 2026-07-01 --end-date 2026-07-01 --mode exhibition-time-only --plan-only --output historical-beforeinfo-dry-run.json' \
             | tee historical-beforeinfo-dry-run.txt
-          grep -q '^HIST_BEFOREINFO_WRITE_ENABLED=0$' historical-beforeinfo-dry-run.txt
-          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-dry-run.txt
-          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_WRITE_ENABLED=0
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      (
+        startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') ||
+        startsWith(github.event.comment.body, '/railway historical-exhibition-time-backfill ')
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] not in {"historical-beforeinfo-backfill","historical-exhibition-time-backfill"}:
+              raise SystemExit("command: /railway historical-beforeinfo-backfill|historical-exhibition-time-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          print("HIST_MODE="+("exhibition-time-only" if p[1]=="historical-exhibition-time-backfill" else "generic"))
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_MODE=exhibition-time-only
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_PLAN_ONLY=1
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          ! grep -q 'http_requests' historical-beforeinfo-dry-run.txt
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-backfill.txt
+          grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_MODE=exhibition-time-only
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_PLAN_ONLY=1
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0
+
+  backfill:
+    concurrency:
+      group: ${{ github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ') && 'historical-beforeinfo-write' || format('historical-beforeinfo-backfill-noncommand-{0}', github.run_id) }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-beforeinfo-backfill ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          from datetime import date
+          p=os.environ["COMMENT_BODY"].strip().split()
+          if len(p) != 4 or p[1] != "historical-beforeinfo-backfill":
+              raise SystemExit("command: /railway historical-beforeinfo-backfill YYYY-MM-DD YYYY-MM-DD")
+          a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
+          if b < a:
+              raise SystemExit("end before start")
+          if (b-a).days + 1 > 31:
+              raise SystemExit("maximum beforeinfo batch is 31 days")
+          if a < date(2025,7,1):
+              raise SystemExit("approved historical start is 2025-07-01")
+          print("HIST_START_DATE="+p[2])
+          print("HIST_END_DATE="+p[3])
+          PY
+
+      - name: Fill historical exhibition and weather snapshots
+        env:
+          CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE: "YES"
+          HIST_BEFOREINFO_SLEEP_SEC: "0.50"
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}"' \
+            | tee historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+          grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-backfill-${{ github.run_id }}
+          path: |
+            historical-beforeinfo-backfill.txt
+            historical-beforeinfo-backfill-manifest.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Comment sanitized summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Historical official beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE}"
+            echo
+            if [ -f historical-beforeinfo-backfill.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+            fi
+            echo
+            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
+          } > reply.txt
+          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
+ historical-beforeinfo-dry-run.txt
+          ! grep -q 'http_requests' historical-beforeinfo-dry-run.txt
 
   backfill:
     concurrency:
