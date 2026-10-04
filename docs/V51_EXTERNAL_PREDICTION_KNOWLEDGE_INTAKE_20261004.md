@@ -87,7 +87,7 @@ Use only as isolated research candidates after P1/P2 because:
 - the relationship can be highly venue/racer dependent;
 - manual feature mining after outcomes is prohibited.
 
-### P3 — Recent form / L-count
+### P1 — Recent form / L-count
 
 Already known deferred candidates.
 Keep behind exhibition and environment features because the current repository already has a separate historical reconstruction/evidence path and the V5 core scope lock explicitly deferred them.
@@ -112,12 +112,14 @@ Keep behind exhibition and environment features because the current repository a
 6. Require prospective Forward reproduction.
 7. Production change requires a separate explicit human approval.
 
-## Research order
+## Research order — updated 2026-10-04
 
-1. Exhibition ST existing Forward evidence checkpoint.
+1. **Recent Form last-5** — first new V5.1 candidate; preregistered separately.
 2. Exhibition time fixed incremental test.
 3. Start-exhibition course movement fixed incremental test.
 4. Small preregistered weather/water interaction test.
-5. Tilt/parts and recent-form research only if the above do not provide sufficient incremental value.
+5. Tilt/parts only after the above.
+
+Exhibition ST remains research-only but is no longer first priority: candidate-v4 read-only run `37185447967` evaluated 2,050/2,050 timing-clean rows and the frozen beta=-0.02 slightly worsened overall tri Brier, LogLoss and actual-ticket rank versus BASE. Do not retune beta after seeing this result.
 
 `V51_EXTERNAL_INTAKE / OFFICIAL_FIRST / EXHIBITION_P1 / NO_TIP_COPY / NO_POST_HOC / NO_PROD_CHANGE`
