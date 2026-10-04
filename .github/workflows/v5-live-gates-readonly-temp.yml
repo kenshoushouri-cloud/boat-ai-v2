@@ -131,6 +131,11 @@ jobs:
               jq -c '{v4_resolved_formal_days:.v4_formal.resolved_formal_days,v4_gate:.v4_formal.review_gate,s03_evaluated:.s03_m2.overall.evaluated,s03_gate:.s03_m2.review_gate,v5_core_status:.v5_core_milestone.status,v5_core_remaining:.v5_core_milestone.remaining}' forward-combined-checkpoint.json
             else
               echo 'PROSPECTIVE_GATE_RESULT=UNAVAILABLE'
+              if [ -f v4-provider-inventory.txt ]; then
+                grep -E '^(V4_INVENTORY_|Traceback|RuntimeError|gh:|HTTP)' v4-provider-inventory.txt | tail -n 30 || true
+              else
+                echo 'V4_INVENTORY_DIAGNOSTIC=no_inventory_output'
+              fi
             fi
             grep '^HIST_MATCHED_READINESS_TOTAL=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_TOTAL=UNAVAILABLE'
             grep '^HIST_MATCHED_READINESS_RESULT=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_RESULT=UNAVAILABLE'
