@@ -1,0 +1,94 @@
+name: V4 historical core with Opponent overlay
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_v4_core_readiness_pg.py"
+      - "tests/test_historical_v4_core_readiness_pg.py"
+      - ".github/workflows/research-v4-core-opponent-overlay-readiness.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  REFERENCE_RUN_ID: "37182477262"
+  REFERENCE_ARTIFACT: "opponent-ephemeral-20260901-0910-37182477262"
+  REFERENCE_SHA256: "7c050718beede6f0efbb845bd5d2a7d22ce15d0eaf63e7e304f69b6c7a183bfd"
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+
+      - name: Static safety tests
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_historical_v4_core_readiness_pg.py
+          python -m py_compile research/historical_v4_core_readiness_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_v4_core_readiness_pg.py").read_text(encoding="utf-8").lower()
+          for token in ("v2_results","v2_result_entries","v2_odds","insert into","update v2_","delete from"):
+              assert token not in p, token
+          w=Path(".github/workflows/research-v4-core-opponent-overlay-readiness.yml").read_text(encoding="utf-8").lower()
+          assert "postgres-hobby-fullhistory-candidate-v4" in w
+          assert "".join(("railway"," variable"," list")) not in w
+          assert "".join(("list","_variables")) not in w
+          assert "".join(("schedule", ":")) not in w
+          print("V4_CORE_OVERLAY_STATIC=PASS")
+          PY
+
+      - name: Download frozen Opponent reconstruction artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.REFERENCE_ARTIFACT }}
+          path: opponent-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.REFERENCE_RUN_ID }}
+
+      - name: Verify frozen artifact digest
+        run: |
+          set -euo pipefail
+          file="opponent-artifact/historical-opponent-ephemeral-20260901-0910.json"
+          test -s "$file"
+          actual="$(sha256sum "$file" | awk '{print $1}')"
+          test "$actual" = "$REFERENCE_SHA256"
+          echo "V4_CORE_OPP_ARTIFACT_SHA256=$actual"
+
+      - run: npm install --global @railway/cli
+
+      - name: Re-evaluate full V4 historical core read-only
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c max_parallel_workers_per_gather=0"; export PYTHONPATH=.; exec python -u research/historical_v4_core_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --opponent-artifact opponent-artifact/historical-opponent-ephemeral-20260901-0910.json --output historical-v4-core-readiness.json' \
+            2>&1 | tee historical-v4-core-readiness.txt
+          grep -q '^V4_CORE_RESULT=PASS_READ_ONLY$' historical-v4-core-readiness.txt
+
+      - name: Upload readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-core-opponent-overlay-readiness-${{ github.run_id }}
+          path: |
+            historical-v4-core-readiness.json
+            historical-v4-core-readiness.txt
+          retention-days: 14
+          if-no-files-found: error
