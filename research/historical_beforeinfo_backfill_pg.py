@@ -389,7 +389,7 @@ def _upsert_exhibition_time_only(
     race: dict[str, Any],
     exhibition: list[dict[str, Any]],
 ) -> int:
-    """Fill only Exhibition Time / rank / diff; never ST, tilt, course or weather."""
+    """Fill only Exhibition Time / rank / diff fields."""
     deadline_at = _deadline(race.get("deadline_at"))
     snapshot_at = _synthetic_snapshot_at(deadline_at, str(race["race_date"]))
     total = 0
