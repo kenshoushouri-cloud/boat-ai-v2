@@ -44,7 +44,10 @@ jobs:
           assert "railway " + "variable list" not in text
           assert "list_" + "variables" not in text
           assert "CONFIRM_HISTORICAL_" + "BEFOREINFO_DB_WRITE" not in text
-          print("PASS missing-sample diagnostic safety")
+          assert "/railway historical-exhibition-db-distribution" in text
+          assert "v2_" + "results" not in text
+          assert "v2_" + "odds" not in text
+          print("PASS historical exhibition diagnostics safety")
           PY
 
   diagnose:
@@ -187,3 +190,221 @@ jobs:
           else
             gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Missing-sample diagnostic failed before summary generation. No DB write or Railway setting change was requested."
           fi
+
+
+  db-distribution:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-exhibition-db-distribution'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Read July Exhibition Time distribution only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > distribution.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          )
+          SELECT 'TARGET_RACES|' || count(*) FROM targets;
+
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          )
+          SELECT 'TIME_COUNT|' || g.n || '|' || count(t.race_id)
+            FROM generate_series(0,5) AS g(n)
+            LEFT JOIN targets t ON t.time_count=g.n
+           GROUP BY g.n
+           ORDER BY g.n;
+
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
+            SELECT t.race_id,
+                   lane.n AS missing_lane
+              FROM targets t
+              CROSS JOIN generate_series(1,6) AS lane(n)
+              LEFT JOIN v2_realtime_exhibition_snapshots s
+                ON s.race_id=t.race_id
+               AND s.snapshot_label='historical'
+               AND s.lane=lane.n
+               AND s.exhibition_time IS NOT NULL
+             WHERE s.race_id IS NULL
+          )
+          SELECT 'MISSING_LANE|' || lane.n || '|' || count(m.race_id)
+            FROM generate_series(1,6) AS lane(n)
+            LEFT JOIN missing m ON m.missing_lane=lane.n
+           GROUP BY lane.n
+           ORDER BY lane.n;
+
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
+            SELECT t.race_id,
+                   lane.n AS missing_lane
+              FROM targets t
+              CROSS JOIN generate_series(1,6) AS lane(n)
+              LEFT JOIN v2_realtime_exhibition_snapshots s
+                ON s.race_id=t.race_id
+               AND s.snapshot_label='historical'
+               AND s.lane=lane.n
+               AND s.exhibition_time IS NOT NULL
+             WHERE s.race_id IS NULL
+          ),
+          patterns AS (
+            SELECT race_id,
+                   string_agg(missing_lane::text, ',' ORDER BY missing_lane) AS lanes
+              FROM missing
+             GROUP BY race_id
+          )
+          SELECT 'MISSING_PATTERN|' || lanes || '|' || count(*)
+            FROM patterns
+           GROUP BY lanes
+           ORDER BY count(*) DESC, lanes;
+
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
+            SELECT t.race_id,
+                   count(*) AS missing_count
+              FROM targets t
+              CROSS JOIN generate_series(1,6) AS lane(n)
+              LEFT JOIN v2_realtime_exhibition_snapshots s
+                ON s.race_id=t.race_id
+               AND s.snapshot_label='historical'
+               AND s.lane=lane.n
+               AND s.exhibition_time IS NOT NULL
+             WHERE s.race_id IS NULL
+             GROUP BY t.race_id
+          )
+          SELECT 'RACES_BY_MISSING_COUNT|' || missing_count || '|' || count(*)
+            FROM missing
+           GROUP BY missing_count
+           ORDER BY missing_count;
+          SQL
+
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh \
+            < distribution.sql > distribution.out
+
+          grep -E '^(TARGET_RACES|TIME_COUNT|MISSING_LANE|MISSING_PATTERN|RACES_BY_MISSING_COUNT)\|' \
+            distribution.out > distribution.sanitized
+          test -s distribution.sanitized
+
+      - name: Post sanitized distribution
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## July Exhibition Time DB distribution'
+            echo
+            if [ -s distribution.sanitized ]; then
+              echo 'Read-only candidate-v4 distribution:'
+              echo
+              echo '~~~text'
+              cat distribution.sanitized
+              echo '~~~'
+            else
+              echo 'Distribution diagnostic did not produce a sanitized result.'
+            fi
+            echo
+            echo 'No HTTP, DB write, Railway setting change, result/odds/payout read, Production/LINE/purchase change.'
+          } > summary.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
