@@ -69,15 +69,19 @@ jobs:
           from pathlib import Path
           p=Path("research/recent_form_compact_local.py").read_text(encoding="utf-8").lower()
           w=Path(".github/workflows/recent-form-compact-isolated-preflight.yml").read_text(encoding="utf-8").lower()
+          operational="\n".join(
+              line for line in w.splitlines()
+              if not line.lstrip().startswith("assert ")
+          )
           assert "recent_form=null" in p
           assert "vacuum (full, analyze) v2_race_entries" in p
-          assert "--jobs=" not in w
-          assert "railway variable list" not in w
-          assert "list_variables" not in w
-          assert "railway agent" not in w
-          assert "railway ai" not in w
-          assert "create service" not in w and "create volume" not in w
-          assert "source_write=0" in w
+          assert "--jobs=" not in operational
+          assert "railway variable list" not in operational
+          assert "list_variables" not in operational
+          assert "railway agent" not in operational
+          assert "railway ai" not in operational
+          assert "create service" not in operational and "create volume" not in operational
+          assert "source_write=0" in operational
           print("STATIC_SAFETY=PASS")
           PY
 
