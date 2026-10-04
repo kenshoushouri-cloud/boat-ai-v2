@@ -19,7 +19,7 @@
 - Opponent 2026-09-01..10は**1,488/1,488 strict prior-only再構築済み**。DB非変更。
 - Course-complete=58,412/70,170。gap=11,758だがneutral扱いでhard blockerではない。
 - Course診断: complete ROI 80.42% vs neutral 71.31%。両群ROI<100%、後付けCourse gateは禁止。
-- Prospective gate last known: V4 **9/20 days**、S03_M2 **66/100**、evidence clean。次作業でlive再取得する。
+- Prospective live gate run `37185954224` SUCCESS: V4 **9/20 days**、S03_M2 **66/100**、evidence **clean**。`V5_LIVE_GATES_RESULT=BLOCKED`。
 
 ## V5.1 feature research lane
 - First candidate=`V51_RECENT_FORM_LAST5_TOP3_V1`。現V5 coreには入れない。
@@ -32,8 +32,10 @@
 - Railway Agent/AI、`list_variables` / `railway variable list`禁止。1回1作業、read-only優先。
 
 ## Next ONE task
-**V4 resolved days / S03_M2 evaluated / evidence contractをlive再取得し、matched-backtest preflightのprospective gate状態だけを更新する。**
-- gate未達ならeconomics backtestは実行しない。
-- gate達成時のみ、次作業としてfrozen selection artifactへ結果/払戻を後付けしてV4/V5 economics比較へ進む。
+**prospective gateが増えていない原因をread-onlyで確認する。**
+- V4: 2026-10-02 / 10-03 が `UNAVAILABLE_NO_VALID_CAPTURE` の理由を確認。
+- S03_M2: 66/100で止まっている収集経路と直近eligible件数を確認。
+- gateを下げない。Production/DB/config変更は原因特定後に別判断。
+- economics backtestはまだ実行しない。
 
 `SELECTION_FROZEN_2742_V4_1522_V5 / SHARED_70164 / FREEZE_SHA_7627BE7B / LIVE_GATES_NEXT / ONE_TASK_ONLY / COST_LE_20`
