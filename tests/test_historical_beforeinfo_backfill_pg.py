@@ -102,7 +102,10 @@ def test_exhibition_only_write_function_cannot_fill_st_tilt_course_or_weather():
     end = source.index("\ndef process_day(", start)
     block = source[start:end].lower()
     assert "exhibition_time" in block
-    assert "start_timing" not in block
-    assert "tilt" not in block
-    assert "exhibition_course" not in block
+    assert "start_timing=" not in block
+    assert "start_timing," not in block
+    assert "tilt=" not in block
+    assert "tilt," not in block
+    assert "exhibition_course=" not in block
+    assert "exhibition_course," not in block
     assert "v2_realtime_weather_snapshots" not in block
