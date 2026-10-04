@@ -2,17 +2,18 @@
 """Pure preflight guard for the final matched-contract V4/V5 backtest.
 
 This module intentionally performs no database access and no Railway action.
-Its job is to prevent a comparative historical backtest from starting until:
-1. the V5 candidate specification is explicitly frozen before outcome review;
-2. a shared chronological time split is explicitly frozen;
-3. the live historical readiness audit has passed separately.
+It blocks comparative historical execution until:
+1. a V5 candidate specification is explicitly frozen before outcome review;
+2. its comparison delta from V4 is explicitly declared;
+3. a shared chronological time split is explicitly frozen;
+4. the live historical readiness audit has passed separately.
 
 Production remains V4. This module cannot promote a model, send LINE, buy,
 change stake, mutate the database, or change Railway configuration.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Mapping, Sequence
 
@@ -28,9 +29,10 @@ HISTORICAL_RECONSTRUCTION_END = date(2026, 9, 30)
 
 
 def v4_contract_snapshot() -> dict[str, Any]:
-    """Return the frozen current V4 comparison baseline from executable code."""
+    """Return the current executable V4 baseline used for comparison."""
     return {
         "generation": "V4",
+        "implementation": "research.candidate_discovery_v4_contract",
         "course_coefficient": v4.COURSE_COEF,
         "opponent_pressure_coefficient": v4.OPPONENT_COEF,
         "opponent_pressure_role": "first_place_only",
@@ -47,22 +49,6 @@ def v4_contract_snapshot() -> dict[str, Any]:
         "odds_read_for_selection": False,
         "expected_value_filter": False,
     }
-
-
-def _baseline_fingerprint() -> tuple[Any, ...]:
-    x = v4_contract_snapshot()
-    return (
-        x["course_coefficient"],
-        x["opponent_pressure_coefficient"],
-        x["opponent_pressure_role"],
-        x["motor2_beta"],
-        x["probability_temperature"],
-        tuple(x["selector_signals"]),
-        x["formal_races"],
-        x["formal_tickets_per_race"],
-        x["odds_read_for_selection"],
-        x["expected_value_filter"],
-    )
 
 
 @dataclass(frozen=True)
@@ -85,11 +71,7 @@ class SplitWindow:
 
 def validate_time_split_manifest(manifest: Mapping[str, Any] | None) -> dict[str, Any]:
     if manifest is None:
-        return {
-            "valid": False,
-            "reason": "TIME_SPLIT_NOT_FROZEN",
-            "windows": [],
-        }
+        return {"valid": False, "reason": "TIME_SPLIT_NOT_FROZEN", "windows": []}
     if str(manifest.get("contract") or "") != TIME_SPLIT_CONTRACT:
         return {
             "valid": False,
@@ -202,14 +184,23 @@ def validate_v5_candidate_manifest(manifest: Mapping[str, Any] | None) -> dict[s
             "reason": "V5_SELECTOR_MUST_NOT_USE_EV_FILTER",
         }
 
-    fp = manifest.get("comparison_fingerprint")
-    if not isinstance(fp, Sequence) or isinstance(fp, (str, bytes)):
+    candidate_id = str(manifest.get("candidate_id") or "").strip()
+    if not candidate_id:
         return {
             "valid": False,
             "comparative": False,
-            "reason": "V5_COMPARISON_FINGERPRINT_REQUIRED",
+            "reason": "V5_CANDIDATE_ID_REQUIRED",
         }
-    comparative = tuple(fp) != _baseline_fingerprint()
+
+    delta = manifest.get("comparison_delta")
+    if not isinstance(delta, Sequence) or isinstance(delta, (str, bytes)):
+        return {
+            "valid": False,
+            "comparative": False,
+            "reason": "V5_COMPARISON_DELTA_REQUIRED",
+        }
+    normalized_delta = [str(x).strip() for x in delta if str(x).strip()]
+    comparative = bool(normalized_delta)
     return {
         "valid": True,
         "comparative": comparative,
@@ -218,7 +209,8 @@ def validate_v5_candidate_manifest(manifest: Mapping[str, Any] | None) -> dict[s
             if comparative
             else "V5_SPEC_IDENTICAL_TO_V4_BASELINE"
         ),
-        "candidate_id": str(manifest.get("candidate_id") or ""),
+        "candidate_id": candidate_id,
+        "comparison_delta": normalized_delta,
     }
 
 
@@ -279,7 +271,7 @@ def build_preflight(
 
 
 def current_status() -> dict[str, Any]:
-    """Current main intentionally blocks execution until missing freezes exist."""
+    """Current branch intentionally blocks execution until missing freezes exist."""
     return build_preflight()
 
 
