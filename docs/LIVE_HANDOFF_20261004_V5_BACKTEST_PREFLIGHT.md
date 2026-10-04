@@ -1,1 +1,37 @@
-# Live Handoff — V5 Matched-Backtest Preflight\n\n## Goal / critical path\n- 運用開始目標=**2026年10月中旬**。Production=**V4**、V5=**research-only**。\n- Production data SoT=`postgres-hobby-fullhistory-candidate-v4`。\n- Critical path: **Course source recheck → historical core readiness → V5 live gates → matched-contract backtest → V4比較 → 運用方式確定**。\n\n## Frozen contract — Draft PR #536\n- V5=`V5_M2_TOP2_BOTH_POSITIVE_V1`。V4 TOP6/TOP2＋frozen Motor2、2点ともscore>0のraceだけ採用。\n- odds/EV不使用。100円/点、TOP2=200円/race。月間利益目標**+50,000円**、候補1日1race以上は目安。水増し禁止。\n- split: **2025-07..12 TRAIN_REFERENCE / 2026-01..06 VALIDATION / 2026-07..09 OOS**。retune禁止。\n\n## Historical readiness\n- Opponent 9/1..9/10は**1,488/1,488 strict prior-only再構築済み**。DB非変更。9月Opponent=4,656/4,656 usable。\n- Opponent overlay後のV4 core=**51,760/70,170=73.76%**。2026-09 core=**3,874/4,656=83.20%**。\n- V4 prospective=**9/20 days**、S03_M2=**66/100**、evidence clean。\n\n## Course gap — run 37183525738 SUCCESS\n- Course gap=**11,758 races**、missing exact Course entries=**12,741**。\n- 3 term snapshotsは全て存在・valid（rows: **9,182 / 9,209 / 9,315**）。期間丸ごとのseed欠落ではない。\n- **5,699 entries / 5,406 races**: 同term racer proxyあり＋target course rowなし。seed仕様上「prior start=0」相当で、**現契約のままfill不可**。\n- **7,042 entries / 6,878 races**: 同term racer proxy自体なし。**official prior-term source recheckが必要**。現時点ではfill可能と断定しない。\n- racer_number欠損=0。診断はread-only、result/odds/payout read=0、DB write=0。\n\n## Cost / safety\n- Railway <= **USD20/month**。1回1作業、短い出力、read-only優先。\n- Railway Agent/AI、`list_variables` / `railway variable list`禁止。purchase / plan / volume resize禁止。TOTO staged patchに触れない。\n- destructive/config/Production-effect変更は明示承認。\n\n## Next ONE task\n**no-term-racer Course 7,042 entriesをofficial K prior-term再構築とread-only照合し、本当にfill-missing-only可能なrowsだけ抽出する。**\n- DB writeなし。既存Course行をupdate/deleteしない。\n- backtest economicsはまだ実行しない。\n\n`MID_OCT_LAUNCH / V5_PR536 / CORE_73_76 / COURSE_GAP_11758 / COURSE_SOURCE_RECHECK_NEXT / COST_LE_20 / ONE_TASK_ONLY`\n
+# Live Handoff — V5 Matched-Backtest Preflight
+
+## Goal / critical path
+- 運用開始目標=**2026年10月中旬**。Production=**V4**、V5=**research-only**。
+- Production data SoT=`postgres-hobby-fullhistory-candidate-v4`。
+- Critical path: **same-contract readiness補正 → V5 live gates → matched-contract backtest → V4比較 → 運用方式確定**。
+
+## Frozen contract — Draft PR #536
+- V5=`V5_M2_TOP2_BOTH_POSITIVE_V1`。V4 TOP6/TOP2＋frozen Motor2、2点ともscore>0のraceだけ採用。
+- odds/EV不使用。100円/点、TOP2=200円/race。月間利益目標**+50,000円**、候補1日1race以上は目安。水増し禁止。
+- split: **2025-07..12 TRAIN_REFERENCE / 2026-01..06 VALIDATION / 2026-07..09 OOS**。retune禁止。
+
+## Historical readiness
+- Opponent 9/1..9/10は**1,488/1,488 strict prior-only再構築済み**。DB非変更。9月Opponent=4,656/4,656 usable。
+- 厳格な全feature-complete指標はV4 core=**51,760/70,170=73.76%**だが、これは実V4契約より厳しい。
+- V4 prospective=**9/20 days**、S03_M2=**66/100**、evidence clean。
+
+## Course gap — read-only診断
+- run `37183820418` SUCCESS。Course-complete gap=**11,758 races / 12,741 entries**。
+- 別sourceとのunique-key衝突=**0**。3 term proxy inventoryは全て存在・valid。
+- 5,699 entries: 同term racer proxyありだが対象courseのprior startなし。current seedではrowを作らない。
+- 7,042 entries: 同term racer proxy自体なし。racer_number欠損=0。
+- **重要: V4 contractはCourse欠損laneをneutral(0)扱いする。V5も同じV4 probability coreを維持するため、Course完全性はmatched-backtestのhard gateではない。**
+- よってCourseを無理にfillするDB writeは行わない。source再取得で完全率を100%へ寄せることを目的化しない。
+
+## Cost / safety
+- Railway <= **USD20/month**。1回1作業、短い出力、read-only優先。
+- Railway Agent/AI、`list_variables` / `railway variable list`禁止。purchase / plan / volume resize禁止。TOTO staged patchに触れない。
+- destructive/config/Production-effect変更は明示承認。
+
+## Next ONE task
+**historical readinessを実V4/V5のneutral-missing契約へ合わせ、結果/払戻を見ずにmatched-backtestで本当に評価可能なrace集合を確定する。**
+- Course/Opponentのmissingを誤ってhard blockerにしない。
+- V5 Motor2 overlayに必要な条件とBase必須条件だけを厳密に確認する。
+- economics/backtest結果はまだ実行しない。
+
+`MID_OCT_LAUNCH / V5_PR536 / COURSE_NEUTRAL_NOT_BLOCKER / SAME_CONTRACT_READINESS_NEXT / COST_LE_20 / ONE_TASK_ONLY`
