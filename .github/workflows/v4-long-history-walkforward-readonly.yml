@@ -1,0 +1,164 @@
+name: V4 long historical walk-forward read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_long_history_walkforward_pg.py'
+      - 'research/v4_long_history_selector_diagnostic.py'
+      - 'tests/test_v4_long_history_walkforward.py'
+      - 'docs/V4_LONG_HISTORY_WALKFORWARD_20260923.md'
+      - '.github/workflows/v4-long-history-walkforward-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate pure/read-only contracts
+        env:
+          PYTHONPATH: .
+          V4_LONG_BOOTSTRAP_SAMPLES: '200'
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_long_history_walkforward_pg.py research/v4_long_history_selector_diagnostic.py tests/test_v4_long_history_walkforward.py
+          pytest -q tests/test_v4_long_history_walkforward.py
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('research/v4_long_history_walkforward_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in src
+          assert 'no_5r_shrink' in src
+          assert 'no_replacement' in src
+          for value in ('insert into','update v2_','delete from','vacuum ','purchase_action=true'):
+              assert value not in src, value
+          print('V4_LONG_HISTORY_VALIDATE=PASS')
+          PY
+
+  long-history:
+    needs: validate
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      V4_POINTS_BT_UNIT_YEN: '100'
+      V4_POINTS_BT_BLOCKS: '10'
+      DEDICATED_DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Select read-only execution route
+        run: |
+          set -euo pipefail
+          if [ -n "${DEDICATED_DATABASE_URL:-}" ]; then
+            echo "V4_LONG_HISTORY_DB_REPLAY=DEDICATED_DATABASE_SECRET"
+          elif [ -n "${RAILWAY_TOKEN:-}" ]; then
+            echo "V4_LONG_HISTORY_DB_REPLAY=RAILWAY_RUN_NON_ENUMERATING"
+          else
+            echo "V4_LONG_HISTORY_DB_REPLAY=BLOCKED_NO_APPROVED_CONNECTION_ROUTE"
+            exit 1
+          fi
+
+      - name: Install Railway CLI for non-enumerating local env injection
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway --version
+
+      - name: Run 2025-07 onward replay with dedicated read-only connection
+        if: env.DEDICATED_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+          V4_POINTS_BT_START_DATE: '2025-07-01'
+          V4_POINTS_BT_END_DATE: '2026-09-22'
+          V4_POINTS_BT_OUTPUT_JSON: 'v4-long-history-walkforward.json'
+        run: |
+          set -euo pipefail
+          python -u research/v4_long_history_walkforward_pg.py 2>&1 | tee v4-long-history-walkforward.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-long-history-walkforward.txt
+
+      - name: Run 2025-07 onward replay via Railway local env injection
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        env:
+          V4_POINTS_BT_START_DATE: '2025-07-01'
+          V4_POINTS_BT_END_DATE: '2026-09-22'
+          V4_POINTS_BT_OUTPUT_JSON: 'v4-long-history-walkforward.json'
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_long_history_walkforward_pg.py' \
+            2>&1 | tee v4-long-history-walkforward.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-long-history-walkforward.txt
+
+      - name: Analyze selector rank and 2-vs-3 economics offline
+        env:
+          V4_LONG_INPUT_JSON: 'v4-long-history-walkforward.json'
+          V4_LONG_DIAG_JSON: 'v4-long-history-selector-diagnostic.json'
+          V4_LONG_BOOTSTRAP_SAMPLES: '20000'
+          V4_LONG_BOOTSTRAP_SEED: '20260923'
+        run: |
+          set -euo pipefail
+          test -s v4-long-history-walkforward.json
+          python -u research/v4_long_history_selector_diagnostic.py 2>&1 | tee v4-long-history-selector-diagnostic.txt
+          grep -q '^RESULT=PASS_OFFLINE_DIAGNOSTIC$' v4-long-history-selector-diagnostic.txt
+
+      - name: Upload sanitized research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-long-history-walkforward-${{ github.run_id }}
+          path: |
+            v4-long-history-walkforward.json
+            v4-long-history-walkforward.txt
+            v4-long-history-selector-diagnostic.json
+            v4-long-history-selector-diagnostic.txt
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Confirm no Railway variable-enumeration surface
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/v4-long-history-walkforward-readonly.yml').read_text(encoding='utf-8').lower()
+          forbidden = (
+              'railway' + ' variable' + ' list',
+              'railway-vars' + '.json',
+              'print' + 'env',
+              'env' + ' |',
+          )
+          for value in forbidden:
+              assert value not in text, value
+          assert 'secrets.railway_token' in text
+          assert 'railway run' in text
+          print('V4_LONG_HISTORY_SECRET_ENUMERATION=0')
+          PY
