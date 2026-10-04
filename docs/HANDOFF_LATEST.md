@@ -13,8 +13,8 @@ Current:
 - **Target operating start = mid-October 2026. Critical path: finish all required historical missing-data fills -> verify matched-contract/data integrity -> run backtest -> finalize retention/archive move -> launch review. Move quickly, but never skip leakage/fill-missing-only/OOM/disk safety checks.**
 - Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
 - Railway plan = Hobby
-- Historical Recent Form completed through 2026-07-22
-- next fixed target = 2026-07-23..2026-08-05 (14 days)
+- Historical Recent Form completed through 2026-08-05
+- next fixed target = 2026-08-06..2026-08-19 (14 days)
 - next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
 - never bulk-fetch Issue #42 comments
 - protect candidate-v4 / history archive / escrow / active writers / TOTO
