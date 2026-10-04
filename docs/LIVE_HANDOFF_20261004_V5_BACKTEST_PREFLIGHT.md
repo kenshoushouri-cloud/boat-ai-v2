@@ -143,11 +143,26 @@
 - 共通CIも全てSUCCESS。
 - **実backfillはまだ0件**。
 
-## Next ONE task
-**Jul pilot 2026-07-01..31 の53件だけを Exhibition-Time-only modeでbackfillし、直後にcoverage・disk・WALを確認する。**
-- expected target=53。大きくdriftしたらwrite前停止。
-- 0.50 sec/requestを維持。
-- result/odds/payout read=0、Production/LINE/purchase変更なし。
-- Jul pilot後の確認がPASSするまでAugへ進まない。
+## Exhibition-Time-only July pilot — BLOCKED SAFELY
+- Jul 2026-07-01..31 pilot summary comment `5978595174`。
+- target **53 / HTTP 53 / fetch_failed 0 / official_no_data 0 / parsed_beforeinfo 53**。
+- しかし `exhibition_rows_parsed=0 / exhibition_complete_races=0 / exhibition_rows_touched=0`。
+- weather parseは専用modeどおり53件すべてskip。
+- **DB writeは0**。従ってJul coverageは **4,879/4,932 (98.9254%)、missing 53のまま**。
+- 原因: historical backfill scriptの専用modeが `v21_realtime_collector_pg.parse_exhibition` を使用。一方、historical archived beforeinfo向けには既存 `historical_beforeinfo_parser_v3.parse_exhibition` があり、旧historical pilotで利用済み。markup適合parserの取り違えが主因。
+- post-pilot storage/WAL read-only diagnostic comment `5978605156`:
+  - DB_BYTES **4,389,443,263**
+  - WAL_BYTES **83,886,080**
+  - PUBLIC_TOTAL_BYTES **4,377,976,832**
+  - volume **4,670.824448 / 5,000 MB**
+  - replication slots **0** / retained bytes **0**
+- persistent data growthは発生していない。Aug/Sepは停止継続。
 
-`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / NO_BACKFILL_YET / CHECK_DISK_WAL_AFTER_PILOT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**Exhibition-Time-only modeをhistorical parser v3へ切替え、fail-closed parse quality gateを追加して安全テストだけ通す。再pilotはまだ実行しない。**
+- target>0なのにusable exhibition rows=0等ならPASS扱いにせずFAIL。
+- weather/ST/tilt/course writeなし、time/rank/diff missing-fillのみを維持。
+- candidate-v4 target、0.50 sec/request、result/odds/payout read=0を維持。
+- Aug/SepはJul再pilot成功まで禁止。
+
+`JULY_PILOT_SAFE_ZERO_WRITE / PARSER_V3_FIX_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY / COST_LE_20`

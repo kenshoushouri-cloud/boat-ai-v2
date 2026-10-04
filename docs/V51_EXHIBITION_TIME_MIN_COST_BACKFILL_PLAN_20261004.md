@@ -70,7 +70,20 @@ Safety run `37192162162`:
 
 The dedicated mode writes only Exhibition Time / rank / diff and does not parse/write weather or fill ST/tilt/course.
 
-## Next ONE task
-Run the **July 53-race pilot only**, then recheck coverage, disk and WAL before any August work.
+## July pilot result — safe block
+The 2026-07 pilot targeted exactly **53** races and made **53 HTTP requests** with zero fetch failures/no-data pages, but the realtime parser returned **0 Exhibition Time rows** and DB rows touched were **0**.
 
-`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / CHECK_DISK_WAL_AFTER_PILOT / NO_AUG_UNTIL_PASS`
+Coverage therefore remains 4,879/4,932 (53 missing).
+
+Post-pilot storage/WAL:
+- DB_BYTES 4,389,443,263
+- WAL_BYTES 83,886,080
+- volume current 4,670.824448 / 5,000 MB
+- replication slots 0
+
+Root cause is parser selection: the historical archived-page path should use the existing validated `historical_beforeinfo_parser_v3.parse_exhibition`, not the realtime parser.
+
+## Next ONE task
+Switch Exhibition-Time-only parsing to historical parser v3 and add a fail-closed parse-quality gate. Run safety tests only; **do not retry the pilot yet**.
+
+`JULY_ZERO_WRITE / HISTORICAL_PARSER_V3_NEXT / AUG_SEP_BLOCKED`

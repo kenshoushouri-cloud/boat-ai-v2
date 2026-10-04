@@ -21,6 +21,7 @@ Exhibition Time readiness: **64,297/70,170=91.63%**。TRAIN 98.30%、VALIDATION 
 Exhibition Time OOS gap診断: Jul 98.93% / Aug 57.65% / Sep 44.93%。missing **4,703**。ZERO日が連続し、その後complete日が再出現。過去long campaignもcancelledしており、主因は**backfill未完/不連続**。
 Exhibition Time min-cost plan: generic **12,424 HTTP**に対しtargeted **4,703 HTTP**（約62.15%削減）。Jul 53 / Aug 2,086 / Sep 2,564。DBは約4.67/5GBなので月別＋各回disk/WAL確認。
 Exhibition-Time-only実装済み: PR **#544** merged / candidate-v4 target / weather・ST・tilt・course writeなし / July plan-only **53件・HTTP0・DB write0** / safety全PASS。
-Next ONE task: **Jul 2026-07-01..31の53件pilotだけを実行し、直後にcoverage・disk・WAL確認。PASSまでAugへ進まない。**
+Jul pilot: target53/HTTP53/fetch失敗0だが、realtime parserでは展示parse **0行** → DB更新**0行**で安全停止。Jul coverageは53欠損のまま。post-check: DB 4,389,443,263B / WAL 83,886,080B / volume 4,670.824448/5,000MB。
+Next ONE task: **Exhibition-Time-onlyをhistorical parser v3へ切替え、parse qualityをfail-closed化して安全テストのみ。再pilotはまだしない。**
 
-`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / NO_BACKFILL_YET / ONE_TASK_ONLY / COST_LE_20`
+`JULY_PILOT_SAFE_ZERO_WRITE / PARSER_V3_FIX_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
