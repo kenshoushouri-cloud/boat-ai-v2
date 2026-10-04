@@ -1,0 +1,70 @@
+name: Aug05 Exhibition target IDs read-only
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/aug05-exhibition-target-ids-readonly.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --global @railway/cli
+      - name: Read Aug05 target IDs
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > q.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          )
+          SELECT r.race_id || '|' || r.race_date::text || '|' ||
+                 lpad(coalesce(r.venue_id,r.venue_code)::text,2,'0') || '|' ||
+                 r.race_no::text || '|time_count=' || coalesce(ex.time_count,0)::text
+            FROM v2_races r
+            LEFT JOIN ex USING(race_id)
+           WHERE r.race_date = DATE '2026-08-05'
+             AND coalesce(ex.time_count,0) < 6
+           ORDER BY r.race_id;
+          SQL
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < q.sql > out.txt
+          grep -E '^[^|]+\|2026-08-05\|[0-9]{2}\|[0-9]+\|time_count=[0-5]$' out.txt > ids.txt
+          test "$(wc -l < ids.txt | tr -d ' ')" -eq 2
+      - name: Comment result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Aug05 Exhibition target IDs — read-only'
+            echo
+            echo '~~~text'
+            cat ids.txt
+            echo '~~~'
+            echo
+            echo 'DB read-only / HTTP=0 / DB write=0 / result-odds-payout read=0.'
+          } > body.md
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --body-file body.md
