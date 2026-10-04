@@ -102,7 +102,7 @@ jobs:
           railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh \
             < diagnostic.sql > diagnostic.out
 
-          grep -E '^(SETTING|ACTIVITY|DBSTAT|CURRENT_BACKEND_MEMORY_BYTES|CGROUP|CGROUP_STAT|PENDING_RESTART)\|' diagnostic.out > diagnostic.sanitized
+          grep -E '^(SETTING|ACTIVITY|DBSTAT|CURRENT_BACKEND_MEMORY_BYTES|CGROUP|CGROUP_EVENT|CGROUP_STAT|PENDING_RESTART)\|' diagnostic.out > diagnostic.sanitized
           test -s diagnostic.sanitized
 
       - name: Post sanitized result
