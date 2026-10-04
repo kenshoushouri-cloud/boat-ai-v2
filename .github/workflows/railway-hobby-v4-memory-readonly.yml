@@ -78,8 +78,17 @@ jobs:
                  COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.current', 0, 64, true)), 'NA');
           SELECT 'CGROUP|memory.max|' ||
                  COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.max', 0, 64, true)), 'NA');
-          SELECT 'CGROUP|memory.events|' ||
-                 replace(COALESCE(trim(pg_read_file('/sys/fs/cgroup/memory.events', 0, 1024, true)), 'NA'), E'\\n', '|');
+          WITH raw_events AS (
+            SELECT pg_read_file('/sys/fs/cgroup/memory.events', 0, 1024, true) AS body
+          ),
+          event_lines AS (
+            SELECT line
+            FROM raw_events, regexp_split_to_table(COALESCE(body, ''), E'\\n') AS line
+          )
+          SELECT 'CGROUP_EVENT|' || replace(line, ' ', '|')
+          FROM event_lines
+          WHERE line <> ''
+          ORDER BY line;
 
           WITH raw AS (
             SELECT pg_read_file('/sys/fs/cgroup/memory.stat', 0, 65536, true) AS body
