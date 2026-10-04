@@ -22,18 +22,21 @@
 - Exhibition Time historical coverage: 全体91.63%、OOS67.60%。OOS missing **4,703 races**は主にbackfill未完。
 - 最小コスト方針: Exhibition-Time-onlyで **4,703 HTTP**（generic 12,424より約62%削減）、Jul 53 / Aug 2,086 / Sep 2,564。
 - Exhibition-Time-only modeはPR #544で実装済み。candidate-v4対象、weather/ST/tilt/courseは書かず、time/rank/diffのみmissing-fill。
-- **Jul pilot実施済み**: target53 / HTTP53 / fetch failure0。ただしrealtime parserでは展示parse **0行**、DB更新**0行**で安全停止。Jul missing 53は未解消。
-- pilot後: DB約4.389GB、WAL約83.9MB、volume約4,670.8/5,000MB。Aug/Sepは未実行。
+- **Jul pilot実施済み**: target53 / HTTP53 / fetch failure0。ただし旧realtime parserでは展示parse **0行**、DB更新**0行**で安全停止。Jul missing 53は未解消。
+- Exhibition-Time-only parser修正は **PR #546 merged**。historical parser v3へ切替え、6艇＋展示タイム妥当性を満たさないraceはwrite禁止、target>0かつusable=0の日はFAIL扱いにした。
+- PR #546 safety CIはPASS。candidate-v4 July plan-onlyも **HTTP=0 / DB write=0** でPASS。Jul再pilotは未実行。
+- pilot後の既知値: DB約4.389GB、WAL約83.9MB、volume約4,670.8/5,000MB。Aug/Sepは未実行。
 
 ## 次の1作業
-**Exhibition-Time-onlyをhistorical parser v3へ切替え、parse qualityをfail-closed化して安全テストだけ通す。再pilotはまだ実行しない。**
+**Jul 53件だけをExhibition-Time-onlyで再pilotし、parser v3の実データparse成功・missing-fill・DB/WAL/volume増分を確認する。Aug/Sepはまだ実行しない。**
 
 条件:
-- 既存53件へ再HTTP/DB writeしない安全テストを優先。
-- parser出力が6艇・展示タイム妥当値を満たさなければwrite禁止。
+- 対象はJul missing 53件だけ。Aug/Sep禁止。
+- Exhibition-Time-onlyのまま、weather/ST/tilt/course write禁止。
+- parser quality gateはfail-closed維持。6艇＋展示タイム妥当性NGのraceはwrite禁止。
 - result/odds/payout read禁止。
 - Production/LINE/purchase変更なし。
-- parser修正PASS後にのみJul 53再pilotを別作業として検討。Aug/SepはそれまでBLOCK。
+- 実行後にcoverage、HTTP、DB write件数、DB/WAL/volumeをread-only確認してから次判断。
 
 ## 次チャット運用
 最初に読むのは:
@@ -44,4 +47,4 @@
 古いhandoffは履歴。必要時だけ参照。
 handoff内のSHA/run/件数/容量は固定値にせず、**次の1作業に必要なものだけlive再取得**する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_LE_20 / JULY_PILOT_ZERO_WRITE / PARSER_V3_FIX_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_LE_20 / PARSER_V3_FIXED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
