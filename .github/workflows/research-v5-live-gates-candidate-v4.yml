@@ -1,0 +1,151 @@
+name: V5 live gates candidate-v4 read-only
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-v5-live-gates-candidate-v4.yml'
+      - 'research/v4_formal_artifact_inventory.py'
+      - 'research/v4_formal_artifact_settlement_pg.py'
+      - 'research/s03_m2_common_economics_pg.py'
+      - 'research/historical_matched_contract_readiness_pg.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-hobby-fullhistory-candidate-v4'
+      V4_INVENTORY_END: '2026-10-03'
+      V4_INVENTORY_RUN_LIST: 'v4-run-list.json'
+      V4_INVENTORY_OUTPUT: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_INVENTORY_MANIFEST: 'v4-formal-artifact-inventory.json'
+      V4_FORMAL_ARTIFACT_DIR: 'v4-artifacts'
+      V4_FORMAL_SETTLEMENT_OUTPUT: 'v4-provider-selected-forward-settlement.json'
+      S03_FORWARD_START: '2026-09-13'
+      S03_FORWARD_END: '2026-10-03'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Verify fail-closed read-only contract
+        run: |
+          set -euo pipefail
+          grep -q 'set transaction read only' research/v4_formal_artifact_settlement_pg.py
+          grep -q 'set transaction read only' research/s03_m2_common_economics_pg.py
+          grep -q 'set transaction read only' research/historical_matched_contract_readiness_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-v5-live-gates-candidate-v4.yml').read_text(encoding='utf-8').lower()
+          assert 'postgres-hobby-fullhistory-candidate-v4' in w
+          assert ''.join(('railway',' variable',' list')) not in w
+          assert 'list_variables' not in w
+          assert 'railway run' in w
+          PY
+
+      - name: Freeze current provider-selected V4 inventory
+        run: |
+          set -euo pipefail
+          gh run list --workflow candidate-discovery-v4-prospective-freeze.yml --limit 100 --json databaseId,event,createdAt,status,conclusion,headSha > "${V4_INVENTORY_RUN_LIST}"
+          python -u research/v4_formal_artifact_inventory.py | tee v4-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-inventory.txt
+
+      - name: Materialize selected immutable V4 artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
+          : > v4-provider-selected-sha256.txt
+          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date, .selected.artifact_id, .selected.archive_sha256] | @tsv' "${V4_FORMAL_INVENTORY_MANIFEST}" |
+            while IFS=$'\t' read -r day artifact_id sha; do
+              test -n "$day"; test -n "$artifact_id"; test -n "$sha"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
+              printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-provider-selected-sha256.txt
+            done
+          test -s v4-provider-selected-sha256.txt
+          sha256sum -c v4-provider-selected-sha256.txt
+
+      - name: Settle frozen V4 against candidate-v4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' 2>&1 | tee v4-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_ARTIFACT_SET_MODE=FROZEN_PROVIDER_INVENTORY$' v4-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0$' v4-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-settlement.txt
+
+      - name: Run frozen S03_M2 against candidate-v4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/s03_m2_common_economics_pg.py' 2>&1 | tee s03-m2.txt
+          grep -q '^S03_M2_COMMON_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0$' s03-m2.txt
+          grep -Eq '^S03_M2_COMMON_RESULT=PASS_(EXACT_FROZEN_SUBSET|READ_ONLY_CHECKPOINT)$' s03-m2.txt
+
+      - name: Historical matched readiness through 2026-09-30
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --output historical-readiness.json' 2>&1 | tee historical-readiness.txt
+          grep -q '^HIST_MATCHED_READINESS_RESULT=PASS_READ_ONLY$' historical-readiness.txt
+
+      - name: Build live gate summary
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          v4=json.loads(Path('v4-provider-selected-forward-settlement.json').read_text())
+          s=Path('s03-m2.txt').read_text()
+          h=json.loads(Path('historical-readiness.json').read_text())
+          m=re.search(r'^S03_M2_COMMON_COVERAGE=(\{.*\})$', s, re.M)
+          if not m: raise SystemExit('S03 coverage line missing')
+          s03=json.loads(m.group(1))
+          v4_days=int(v4['complete_day_count'])
+          s03_eval=int(s03['evaluated'])
+          hist_total=int(h['totals']['races'])
+          hist_core=int(h['totals']['v4_full_reconstructed_core'])
+          evidence_clean=bool(v4['safety']['artifact_first'] and not v4['safety']['odds_read'] and not v4['safety']['db_write'])
+          ready=(v4_days>=20 and s03_eval>=100 and evidence_clean and hist_total>0 and hist_core==hist_total)
+          out={
+            'v4_resolved_formal_days':v4_days,
+            'v4_gate_20':v4_days>=20,
+            's03_m2_officially_evaluated':s03_eval,
+            's03_gate_100':s03_eval>=100,
+            'evidence_contract_clean':evidence_clean,
+            'historical_races':hist_total,
+            'historical_v4_full_reconstructed_core':hist_core,
+            'historical_full_core_pct':h['totals']['v4_full_reconstructed_core_pct'],
+            'historical_readiness_full_core_all_races':hist_core==hist_total,
+            'all_live_gates_ready':ready,
+          }
+          Path('v5-live-gates.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
+          print('V5_LIVE_GATES='+json.dumps(out,sort_keys=True))
+          print('V5_LIVE_GATES_RESULT='+('READY' if ready else 'BLOCKED'))
+          PY
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-live-gates-candidate-v4-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-inventory.json
+            v4-settlement.txt
+            v4-provider-selected-forward-settlement.json
+            s03-m2.txt
+            historical-readiness.txt
+            historical-readiness.json
+            v5-live-gates.json
+          retention-days: 30
+          if-no-files-found: warn
