@@ -566,10 +566,15 @@ def _batch_parse_quality_status(
             official_partial = int(
                 summary.get("exhibition_official_partial_races", 0)
             )
+            official_absent = int(
+                summary.get("exhibition_official_absent_races", 0)
+            )
             if parser_failures > 0:
                 return "FAIL_DAY_PARSER_FAILURE"
             if official_partial > 0:
                 return "FAIL_DAY_OFFICIAL_PARTIAL_ONLY"
+            if official_absent > 0:
+                return "FAIL_DAY_OFFICIAL_ABSENT_ONLY"
             return "FAIL_DAY_ZERO_USABLE"
 
     return "PASS" if any_target else "PASS_NO_TARGET"
@@ -624,6 +629,10 @@ def process_day(
                 counts["exhibition_official_partial_rows"] += int(
                     inspection.get("valid_time_count") or 0
                 )
+                counts["exhibition_parse_rejected_races"] += 1
+                continue
+            if status == historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_ABSENT:
+                counts["exhibition_official_absent_races"] += 1
                 counts["exhibition_parse_rejected_races"] += 1
                 continue
             if status != historical_parser_v3.EXHIBITION_STATUS_COMPLETE:

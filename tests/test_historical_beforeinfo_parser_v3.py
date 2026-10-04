@@ -85,17 +85,27 @@ class HistoricalBeforeinfoParserV3Tests(unittest.TestCase):
         self.assertEqual(inspection["lanes"], [2, 3, 4, 5, 6])
         self.assertEqual(parser.parse_exhibition(html), [])
 
-    def test_inspection_classifies_no_valid_times_as_parser_failure(self):
+    def test_inspection_classifies_six_structured_rows_without_times_as_official_absent(self):
         html = make_html()
         for value in ("6.71", "6.72", "6.73", "6.74", "6.75", "6.76"):
             html = html.replace(value, "")
         inspection = parser.inspect_exhibition_time_page(html)
         self.assertEqual(
             inspection["status"],
+            parser.EXHIBITION_STATUS_OFFICIAL_ABSENT,
+        )
+        self.assertEqual(inspection["valid_time_count"], 0)
+        self.assertEqual(inspection["lanes"], [1, 2, 3, 4, 5, 6])
+        self.assertEqual(parser.parse_exhibition(html), [])
+
+    def test_inspection_classifies_unrecognized_page_as_parser_failure(self):
+        inspection = parser.inspect_exhibition_time_page("<html><body>unknown</body></html>")
+        self.assertEqual(
+            inspection["status"],
             parser.EXHIBITION_STATUS_PARSER_FAILURE,
         )
         self.assertEqual(inspection["valid_time_count"], 0)
-        self.assertEqual(parser.parse_exhibition(html), [])
+        self.assertEqual(parser.parse_exhibition("<html><body>unknown</body></html>"), [])
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 VERSION = "2026-08-22 historical-beforeinfo-parser-v3"
 EXHIBITION_STATUS_COMPLETE = "complete"
 EXHIBITION_STATUS_OFFICIAL_PARTIAL = "official_partial"
+EXHIBITION_STATUS_OFFICIAL_ABSENT = "official_absent"
 EXHIBITION_STATUS_PARSER_FAILURE = "parser_failure"
 
 
@@ -226,6 +227,23 @@ def inspect_exhibition_time_page(html: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     text = _norm(soup.get_text(" ", strip=True))
     primary = _parse_primary_boat_rows(soup)
+    structured_lanes = set()
+    for tbody in soup.select("tbody.is-fs12"):
+        trs = tbody.find_all("tr", recursive=False)
+        if not trs:
+            continue
+        lane = _lane_from_cells(_direct_cells(trs[0]))
+        if lane is not None:
+            structured_lanes.add(lane)
+
+    if not primary and structured_lanes == set(range(1, 7)):
+        return {
+            "status": EXHIBITION_STATUS_OFFICIAL_ABSENT,
+            "valid_time_count": 0,
+            "lanes": [1, 2, 3, 4, 5, 6],
+            "rows": [],
+            "source": "primary_structured_rows_no_times",
+        }
 
     if 1 <= len(primary) <= 5:
         lanes = sorted(primary)
