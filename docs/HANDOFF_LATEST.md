@@ -14,7 +14,7 @@
 - Exhibition Time OOS missing=4,703。Jul 53再pilotはwrite 0で停止。
 - PR #555 merged。historical parser/backfillは `complete / official_partial / official_absent / parser_failure` をfail-closed分類。`official_absent`は6艇行あり＋展示値0件でwrite禁止。
 - Jul 53件は **39 partial / 14 absent** で確定。PR #561でterminal/unfillable manifest化し、Exhibition-Time-onlyではHTTP前に除外。July plan-onlyはtarget=0 / HTTP=0 / DB write=0でPASS。Aug/Sep未実行。
-- Aug 2026-08-01 plan-only: **target=1 / HTTP=0 / DB write=0 / PASS**。
-- **Next ONE task:** 2026-08-01のtarget 1件だけをExhibition-Time-onlyで実データpilotする。Aug全体はまだ実行しない。
+- Aug 01 plan-onlyはtarget1。実pilotは **official_partial 1（5艇）/ HTTP1 / DB write0** でfail-closed停止。
+- **Next ONE task:** 2026-08-02をExhibition-Time-only plan-onlyでtarget件数だけ確認。HTTP/DB writeなし。
 
-`COMPACT_ONLY / AUG01_TARGET_1 / AUG01_ONE_RACE_PILOT_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / AUG01_PARTIAL_WRITE0 / AUG02_PLAN_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
