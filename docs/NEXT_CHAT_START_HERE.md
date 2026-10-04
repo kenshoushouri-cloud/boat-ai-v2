@@ -16,7 +16,9 @@
 handoff内のSHA・run・件数・容量は固定値とせず、次の1作業に必要なものだけlive再取得してください。
 
 1回に1作業だけ進め、出力は短くしてください。
-Production=V4、V5/V5.1=research-only、Railway費用は月USD20以下を維持してください。
+Production=V4、V5/V5.1=research-onlyです。
+Railway費用は**月USD20以下を上限**とし、精度・安定性・必要なデータ取得を損なわない範囲で**可能な限り安くしてください**。USD15以下にできる場合も積極的に削減してください。
+不要なservice/job/DB/volume/常時稼働/重い再計算を増やさないでください。
 `list_variables` / `railway variable list` / Railway Agent / Railway AIは禁止です。
 purchase / LINE / stake / plan / volume resize / TOTO staged patchは変更しないでください。
 
