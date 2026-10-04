@@ -39,7 +39,7 @@ proxy_any as (
 ),
 entry_status as (
   select r.race_id,r.race_date,r.term,r.snapshot_date,e.lane,e.racer_number,
-         (x.top3_rate between 0 and 100) as exact_ok,
+         coalesce((x.top3_rate between 0 and 100),false) as exact_ok,
          coalesce(a.valid_rows,0) as racer_proxy_rows
     from races r
     join v2_race_entries e on e.race_id=r.race_id and e.lane between 1 and 6
