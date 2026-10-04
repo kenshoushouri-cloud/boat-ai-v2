@@ -1,0 +1,197 @@
+name: Recent Form compact isolated preflight
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  BRIDGE_ISSUE: "42"
+
+concurrency:
+  group: recent-form-compact-isolated-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-compact-isolated-preflight'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: compacttest
+          POSTGRES_DB: compact_preflight
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d compact_preflight"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install minimal tooling
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<3.4"
+          npm install --global @railway/cli
+          railway run --help >/dev/null
+
+      - name: Static safety guard
+        run: |
+          set -euo pipefail
+          python -m py_compile research/recent_form_compact_local.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/recent_form_compact_local.py").read_text(encoding="utf-8").lower()
+          w=Path(".github/workflows/recent-form-compact-isolated-preflight.yml").read_text(encoding="utf-8").lower()
+          assert "recent_form=null" in p
+          assert "vacuum (full, analyze) v2_race_entries" in p
+          assert "--jobs=" not in w
+          assert "railway variable list" not in w
+          assert "list_variables" not in w
+          assert "railway agent" not in w
+          assert "railway ai" not in w
+          assert "create service" not in w and "create volume" not in w
+          assert "source_write=0" in w
+          print("STATIC_SAFETY=PASS")
+          PY
+
+      - name: Read-only source dump
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > dump-source.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?}"
+          export PGOPTIONS='-c default_transaction_read_only=on -c max_parallel_workers_per_gather=0 -c work_mem=8MB -c statement_timeout=0'
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL -e PGOPTIONS \
+            -v "$PWD:/work" postgres:18 \
+            pg_dump "$DATABASE_PUBLIC_URL" --format=custom --compress=6 --no-owner --no-acl --file=/work/source.dump
+          SH
+          chmod 700 dump-source.sh
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$SOURCE_SERVICE" \
+            bash ./dump-source.sh
+          test -s source.dump
+          echo "SOURCE_WRITE=0"
+
+      - name: Restore source locally single-threaded
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_restore --no-owner --no-acl --exit-on-error \
+            --dbname="postgresql://postgres:compacttest@127.0.0.1:5432/compact_preflight" \
+            /work/source.dump
+
+      - name: Capture source-local evidence
+        run: |
+          set -euo pipefail
+          python -u research/recent_form_compact_local.py capture \
+            --dsn "postgresql://postgres:compacttest@127.0.0.1:5432/compact_preflight" \
+            --out source-local.json
+
+      - name: Compact Recent Form locally only
+        run: |
+          set -euo pipefail
+          python -u research/recent_form_compact_local.py compact \
+            --dsn "postgresql://postgres:compacttest@127.0.0.1:5432/compact_preflight"
+          python -u research/recent_form_compact_local.py capture \
+            --dsn "postgresql://postgres:compacttest@127.0.0.1:5432/compact_preflight" \
+            --out compact-local.json
+
+      - name: Dump compact DB single-threaded
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_dump "postgresql://postgres:compacttest@127.0.0.1:5432/compact_preflight" \
+            --format=custom --compress=6 --no-owner --no-acl --file=/work/compact.dump
+          test -s compact.dump
+
+      - name: Recreate local DB and restore compact dump
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            dropdb --force -h 127.0.0.1 -U postgres compact_preflight
+          docker run --rm --network host -e PGPASSWORD=compacttest postgres:18 \
+            createdb -h 127.0.0.1 -U postgres compact_verify
+          docker run --rm --network host -e PGPASSWORD=compacttest -v "$PWD:/work" postgres:18 \
+            pg_restore --no-owner --no-acl --exit-on-error \
+            --dbname="postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" \
+            /work/compact.dump
+
+      - name: Verify compact restore parity
+        run: |
+          set -euo pipefail
+          python -u research/recent_form_compact_local.py capture \
+            --dsn "postgresql://postgres:compacttest@127.0.0.1:5432/compact_verify" \
+            --out verify-local.json
+          python -u research/recent_form_compact_local.py verify \
+            --source source-local.json --compacted compact-local.json --restored verify-local.json \
+            | tee result.txt
+          grep -q '^LOCAL_PARITY=PASS$' result.txt
+          echo "RAILWAY_RESOURCE_CREATE=0"
+          echo "RAILWAY_SOURCE_WRITE=0"
+          echo "RAILWAY_AI_USAGE=0"
+          echo "RAILWAY_AGENT_USAGE=0"
+          echo "PARALLEL_RESTORE_JOBS=0"
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Recent Form compact isolated preflight'
+            echo
+            if [ -s result.txt ] && grep -q '^LOCAL_PARITY=PASS$' result.txt; then
+              echo 'PASS: Recent Form was removed only inside isolated GitHub Actions PostgreSQL, compacted, re-dumped, restored again, and parity checks passed.'
+              echo
+              echo '~~~text'
+              grep -E '^(LOCAL_|SOURCE_|COMPACT_|VERIFY_|SCHEMA_|ALL_PUBLIC_|V2_RACE_|RAILWAY_|PARALLEL_)' result.txt || true
+              echo 'RAILWAY_RESOURCE_CREATE=0'
+              echo 'RAILWAY_SOURCE_WRITE=0'
+              echo 'RAILWAY_AI_USAGE=0'
+              echo 'RAILWAY_AGENT_USAGE=0'
+              echo '~~~'
+            else
+              echo 'FAIL: isolated compact preflight did not complete. No Railway source mutation or resource creation was requested.'
+            fi
+            echo
+            echo 'Source candidate-v4 was pg_dump read-only only. No Railway service/volume/plan/staged-patch/cutover/LINE/purchase change.'
+          } > summary.md
+          gh issue comment "$BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+
+      - name: Cleanup local dumps
+        if: always()
+        run: |
+          rm -f source.dump compact.dump dump-source.sh source-local.json compact-local.json verify-local.json result.txt
