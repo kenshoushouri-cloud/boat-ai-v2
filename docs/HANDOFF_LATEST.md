@@ -12,7 +12,7 @@
 - Railwayは月USD20以下、可能ならUSD15以下。1回に1作業。
 - candidate-v4は5GB上限近く。**不足データ補完は一時停止し、容量確保を優先**。
 - motor/boat固定OOSアブレーションは改善側で、現時点のarchive候補ではない。
-- Recent Form last5はblind VAL/OOS不採用、容量整理候補。**Next ONE taskは依存関係のread-only確認**。まだ移動/削除しない。
+- Recent Form last5はblind VAL/OOS不採用、容量整理候補。archive退避前read-only設計は確定済み。**Next ONE taskはfresh値のlow-resource read-only audit**。まだ移動/削除しない。
 
 古いhandoffは履歴。SHA/run/件数/容量は必要時だけlive再取得。
 
