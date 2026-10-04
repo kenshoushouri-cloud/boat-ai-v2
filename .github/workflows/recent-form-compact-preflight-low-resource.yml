@@ -1,0 +1,298 @@
+name: Recent Form compact preflight low-resource
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+concurrency:
+  group: recent-form-compact-preflight-low-resource
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-compact-preflight-low-resource'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: compacttest
+          POSTGRES_DB: compact_preflight
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d compact_preflight"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI only
+        run: |
+          set -euo pipefail
+          npm install --global @railway/cli
+          railway run --help >/dev/null
+
+      - name: Build source export script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > source-export.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
+
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=900000 -c work_mem=8MB -c max_parallel_workers_per_gather=0'
+
+          docker run --rm \
+            -e DATABASE_PUBLIC_URL -e PGOPTIONS \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc '
+              set -euo pipefail
+
+              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+                select string_agg(format('%I',a.attname),',' order by a.attnum)
+                from pg_attribute a
+                where a.attrelid='public.v2_race_entries'::regclass
+                  and a.attnum>0 and not a.attisdropped;
+              " > /work/columns.txt
+
+              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+                select string_agg(
+                  case
+                    when a.attname='recent_form'
+                    then format('NULL::%s AS %I',format_type(a.atttypid,a.atttypmod),a.attname)
+                    else format('%I',a.attname)
+                  end,
+                  ',' order by a.attnum
+                )
+                from pg_attribute a
+                where a.attrelid='public.v2_race_entries'::regclass
+                  and a.attnum>0 and not a.attisdropped;
+              " > /work/select-list.txt
+
+              test -s /work/columns.txt
+              test -s /work/select-list.txt
+              grep -q recent_form /work/columns.txt
+
+              pg_dump "$DATABASE_PUBLIC_URL" \
+                --schema-only --section=pre-data --no-owner --no-acl \
+                --file=/work/pre-data.sql
+
+              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+                select indexdef || ';'
+                from pg_indexes
+                where schemaname='public' and tablename='v2_race_entries'
+                order by indexname;
+              " > /work/race-entry-indexes.sql
+
+              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+                select 'SOURCE_DB_BYTES|' || pg_database_size(current_database())
+                union all
+                select 'SOURCE_RELATION_BYTES|' || pg_total_relation_size('public.v2_race_entries')
+                union all
+                select 'SOURCE_TABLE_BYTES|' || pg_table_size('public.v2_race_entries')
+                union all
+                select 'SOURCE_INDEX_BYTES|' || pg_indexes_size('public.v2_race_entries')
+                union all
+                select 'SOURCE_ROWS|' || count(*) from public.v2_race_entries
+                union all
+                select 'SOURCE_RECENT_FORM_NONEMPTY|' || count(*) filter (where recent_form is not null)
+                  from public.v2_race_entries;
+              " > /work/source-meta.txt
+
+              cols="$(cat /work/select-list.txt)"
+              psql "$DATABASE_PUBLIC_URL" -v ON_ERROR_STOP=1 \
+                -c "\\copy (select $cols from public.v2_race_entries order by race_id,lane) to '/work/race_entries_compact.bin' with (format binary)"
+            '
+
+          test -s pre-data.sql
+          test -s race_entries_compact.bin
+          test -s source-meta.txt
+          sha256sum race_entries_compact.bin | awk '{print $1}' > source-stream.sha256
+          stat -c %s race_entries_compact.bin > source-stream.bytes
+          SH
+          chmod 700 source-export.sh
+
+      - name: Export only compactable race-entry payload from candidate-v4 read-only
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$SOURCE_SERVICE" \
+            bash ./source-export.sh
+
+          grep -E '^SOURCE_(DB|RELATION|TABLE|INDEX|ROWS|RECENT_FORM)' source-meta.txt
+          echo "SOURCE_STREAM_BYTES=$(cat source-stream.bytes)"
+          echo "SOURCE_STREAM_SHA256=$(cat source-stream.sha256)"
+
+      - name: Rebuild compact race-entry relation locally
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest \
+            -v "$PWD:/work" \
+            postgres:18 \
+            psql "postgresql://postgres@127.0.0.1:5432/compact_preflight" \
+              -v ON_ERROR_STOP=1 -f /work/pre-data.sql >/dev/null
+
+          cols="$(cat columns.txt)"
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc "
+              set -euo pipefail
+              psql 'postgresql://postgres@127.0.0.1:5432/compact_preflight' -v ON_ERROR_STOP=1 \
+                -c \"\\copy public.v2_race_entries($cols) from '/work/race_entries_compact.bin' with (format binary)\"
+            "
+
+          {
+            echo "SET maintenance_work_mem='64MB';"
+            echo "SET max_parallel_maintenance_workers=0;"
+            cat race-entry-indexes.sql
+            echo "ANALYZE public.v2_race_entries;"
+          } > local-index-build.sql
+
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest \
+            -v "$PWD:/work" \
+            postgres:18 \
+            psql "postgresql://postgres@127.0.0.1:5432/compact_preflight" \
+              -v ON_ERROR_STOP=1 -f /work/local-index-build.sql >/dev/null
+
+      - name: Verify exact non-Recent-Form payload and size locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          cols="$(cat columns.txt)"
+
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest \
+            -v "$PWD:/work" \
+            postgres:18 bash -lc "
+              set -euo pipefail
+              psql 'postgresql://postgres@127.0.0.1:5432/compact_preflight' -v ON_ERROR_STOP=1 \
+                -c \"\\copy (select $cols from public.v2_race_entries order by race_id,lane) to '/work/local_verify.bin' with (format binary)\"
+            "
+
+          sha256sum local_verify.bin | awk '{print $1}' > local-stream.sha256
+          diff -u source-stream.sha256 local-stream.sha256
+
+          docker run --rm --network host \
+            -e PGPASSWORD=compacttest \
+            postgres:18 \
+            psql "postgresql://postgres@127.0.0.1:5432/compact_preflight" \
+              -At -v ON_ERROR_STOP=1 -c "
+                select 'LOCAL_RELATION_BYTES|' || pg_total_relation_size('public.v2_race_entries')
+                union all
+                select 'LOCAL_TABLE_BYTES|' || pg_table_size('public.v2_race_entries')
+                union all
+                select 'LOCAL_INDEX_BYTES|' || pg_indexes_size('public.v2_race_entries')
+                union all
+                select 'LOCAL_ROWS|' || count(*) from public.v2_race_entries
+                union all
+                select 'LOCAL_RECENT_FORM_NONEMPTY|' || count(*) filter (where recent_form is not null)
+                  from public.v2_race_entries;
+              " > local-meta.txt
+
+          grep -E '^LOCAL_' local-meta.txt
+          grep -qx 'LOCAL_RECENT_FORM_NONEMPTY|0' local-meta.txt
+
+          source_rows="$(awk -F'|' '$1=="SOURCE_ROWS"{print $2}' source-meta.txt)"
+          local_rows="$(awk -F'|' '$1=="LOCAL_ROWS"{print $2}' local-meta.txt)"
+          test "$source_rows" = "$local_rows"
+
+          source_db="$(awk -F'|' '$1=="SOURCE_DB_BYTES"{print $2}' source-meta.txt)"
+          source_rel="$(awk -F'|' '$1=="SOURCE_RELATION_BYTES"{print $2}' source-meta.txt)"
+          local_rel="$(awk -F'|' '$1=="LOCAL_RELATION_BYTES"{print $2}' local-meta.txt)"
+          projected_db="$((source_db - source_rel + local_rel))"
+          projected_saved="$((source_rel - local_rel))"
+
+          {
+            echo "SOURCE_DB_BYTES=$source_db"
+            echo "SOURCE_RACE_ENTRIES_RELATION_BYTES=$source_rel"
+            echo "COMPACT_RACE_ENTRIES_RELATION_BYTES=$local_rel"
+            echo "PROJECTED_DB_BYTES=$projected_db"
+            echo "PROJECTED_RECLAIM_BYTES=$projected_saved"
+            echo "PROJECTED_RECLAIM_MB=$((projected_saved / 1000000))"
+            echo "STREAM_SHA256_MATCH=1"
+            echo "ROW_COUNT_MATCH=1"
+            echo "RECENT_FORM_NONEMPTY_LOCAL=0"
+            echo "SOURCE_WRITE=0"
+            echo "RAILWAY_AI_AGENT_USED=0"
+            echo "PARALLEL_RESTORE_JOBS=0"
+            echo "MAX_PARALLEL_QUERY_WORKERS=0"
+            echo "MAINTENANCE_WORK_MEM_MB=64"
+            echo "RAILWAY_RESOURCE_CREATED=0"
+            echo "CUTOVER=0"
+            echo "ARCHIVE_WRITE=0"
+          } > compact-summary.txt
+
+          cat compact-summary.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Recent Form compact preflight — low resource'
+            echo
+            if [ -s compact-summary.txt ] && grep -q '^STREAM_SHA256_MATCH=1$' compact-summary.txt; then
+              echo 'PASS: source candidate-v4 remained read-only; a compact v2_race_entries relation with recent_form=NULL was rebuilt locally and non-Recent-Form binary payload matched exactly.'
+              echo
+              echo '~~~text'
+              cat source-meta.txt
+              cat local-meta.txt
+              cat compact-summary.txt
+              echo "SOURCE_STREAM_BYTES=$(cat source-stream.bytes)"
+              echo '~~~'
+            else
+              echo 'FAIL: compact preflight did not establish exact payload parity.'
+              echo
+              echo 'No source DB write, Railway resource creation, cutover, archive write, Production/LINE/purchase/model change, or Railway AI/Agent use was requested.'
+            fi
+          } > body.md
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file body.md
+
+      - name: Cleanup large local files
+        if: always()
+        shell: bash
+        run: |
+          rm -f \
+            race_entries_compact.bin local_verify.bin \
+            pre-data.sql race-entry-indexes.sql local-index-build.sql \
+            columns.txt select-list.txt source-meta.txt local-meta.txt \
+            source-stream.sha256 local-stream.sha256 source-stream.bytes \
+            source-export.sh compact-summary.txt body.md
