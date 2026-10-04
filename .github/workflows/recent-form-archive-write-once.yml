@@ -207,8 +207,12 @@ jobs:
                     where table_schema='public'
                       and table_name='v2_recent_form_archive'
                   ""","schema_text text")[0]
-                  if schema!="race_id:text:NO,lane:int4:NO,recent_form:jsonb:NO":
-                      raise RuntimeError("archive_schema_mismatch")
+                  allowed_schemas={
+                      "race_id:text:NO,lane:int4:NO,recent_form:jsonb:NO",
+                      "race_id:text:NO,lane:int4:NO,recent_form:jsonb:NO,archived_at:timestamptz:NO",
+                  }
+                  if schema not in allowed_schemas:
+                      raise RuntimeError("archive_schema_mismatch:"+schema)
 
                   pk=rone("""
                     select coalesce(pg_get_constraintdef(oid,true),'')
