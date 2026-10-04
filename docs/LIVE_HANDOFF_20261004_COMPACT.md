@@ -16,21 +16,20 @@
 - Exhibition Time OOS missing **4,703**。低コストExhibition-Time-only modeを使用。
 - Jul missing **53**は再pilot済み: HTTP53 / fetch failure0 / DB write0。6艇quality gateを満たさずfail-closed停止。Aug/Sep未実行。
 - PR #550でhistorical parser/backfillを `complete / official_partial / parser_failure` に分類。1〜5艇partialは可視化のみでwrite禁止、6艇のみtime/rank/diff gateへ進む。
-- 実データread-only診断: **6/6 official_partial、各5艇、parser_failure=0**。
-- Jul DB分布read-only: **53/53でexhibition_time=0艇**、欠損patternは全件 `1,2,3,4,5,6`。DBにはpartial値が保存されていないため、残り47件はDBだけでは分類不可。
+- Jul 53件のread-only分類: **official_partial 39 / parser_failure 14 / complete 0**。partialは各5艇。DB write0。
+- parser failure内訳: **7/29 venue09全12R**、7/28 venue09 12R、7/17 venue01 12R。DB側53件は全てexhibition_time=0艇。
 - 直近storage read-only: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。
 
 ## 次の1作業
-**既知6件を除くJul残り47件だけをread-only HTTP分類し、53件すべてがofficial partialかを確定する。**
+**parser failureの代表3件（7/17 venue01 12R、7/28 venue09 12R、7/29 venue09 1R）だけ公式beforeinfo構造をread-only診断し、実データ欠損かparser不適合か判別する。**
 
 条件:
-- 最大HTTP47 / DB writeなし / Railway設定変更なし。
+- 最大HTTP3 / DB writeなし / Railway設定変更なし。
 - result・odds・payout read禁止。Production/LINE/purchase変更なし。
 - Aug/Sepはまだ実行しない。
-- 53/53がofficial partialならJulはunfillableとして再取得対象から外す判断へ進む。
 
 ## 次チャット
 最初に読むのは `HANDOFF_LATEST.md` → current compact → `NEXT_CHAT_START_HERE.md` の3点だけ。
 古いhandoffは履歴。SHA/run/件数/容量は必要時のみlive再取得。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_DB_ALL_ZERO / REMAINING_47_CLASSIFY_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_39_PARTIAL_14_FAILURE / FAILURE_SAMPLE_DIAG_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
