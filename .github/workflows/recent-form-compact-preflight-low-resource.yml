@@ -60,74 +60,79 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > source-export.sh <<'SH'
+          cat > source-inner.sh <<'INNER'
           #!/usr/bin/env bash
           set -euo pipefail
           : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
 
           export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=900000 -c work_mem=8MB -c max_parallel_workers_per_gather=0'
 
+          psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+            select string_agg(format('%I',a.attname),',' order by a.attnum)
+            from pg_attribute a
+            where a.attrelid='public.v2_race_entries'::regclass
+              and a.attnum>0 and not a.attisdropped;
+          " > /work/columns.txt
+
+          psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+            select string_agg(
+              case
+                when a.attname='recent_form'
+                then format('NULL::%s AS %I',format_type(a.atttypid,a.atttypmod),a.attname)
+                else format('%I',a.attname)
+              end,
+              ',' order by a.attnum
+            )
+            from pg_attribute a
+            where a.attrelid='public.v2_race_entries'::regclass
+              and a.attnum>0 and not a.attisdropped;
+          " > /work/select-list.txt
+
+          test -s /work/columns.txt
+          test -s /work/select-list.txt
+          grep -q recent_form /work/columns.txt
+
+          pg_dump "$DATABASE_PUBLIC_URL" \
+            --schema-only --section=pre-data --no-owner --no-acl \
+            --file=/work/pre-data.sql
+
+          psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+            select indexdef || ';'
+            from pg_indexes
+            where schemaname='public' and tablename='v2_race_entries'
+            order by indexname;
+          " > /work/race-entry-indexes.sql
+
+          psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
+            select 'SOURCE_DB_BYTES|' || pg_database_size(current_database())
+            union all
+            select 'SOURCE_RELATION_BYTES|' || pg_total_relation_size('public.v2_race_entries')
+            union all
+            select 'SOURCE_TABLE_BYTES|' || pg_table_size('public.v2_race_entries')
+            union all
+            select 'SOURCE_INDEX_BYTES|' || pg_indexes_size('public.v2_race_entries')
+            union all
+            select 'SOURCE_ROWS|' || count(*) from public.v2_race_entries
+            union all
+            select 'SOURCE_RECENT_FORM_NONEMPTY|' || count(*) filter (where recent_form is not null)
+              from public.v2_race_entries;
+          " > /work/source-meta.txt
+
+          cols="$(cat /work/select-list.txt)"
+          psql "$DATABASE_PUBLIC_URL" -v ON_ERROR_STOP=1 \
+            -c "\\copy (select $cols from public.v2_race_entries order by race_id,lane) to '/work/race_entries_compact.bin' with (format binary)"
+          INNER
+          chmod 700 source-inner.sh
+
+          cat > source-export.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          : "${DATABASE_PUBLIC_URL:?DATABASE_PUBLIC_URL required}"
+
           docker run --rm \
-            -e DATABASE_PUBLIC_URL -e PGOPTIONS \
+            -e DATABASE_PUBLIC_URL \
             -v "$PWD:/work" \
-            postgres:18 bash -lc '
-              set -euo pipefail
-
-              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
-                select string_agg(format('%I',a.attname),',' order by a.attnum)
-                from pg_attribute a
-                where a.attrelid='public.v2_race_entries'::regclass
-                  and a.attnum>0 and not a.attisdropped;
-              " > /work/columns.txt
-
-              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
-                select string_agg(
-                  case
-                    when a.attname='recent_form'
-                    then format('NULL::%s AS %I',format_type(a.atttypid,a.atttypmod),a.attname)
-                    else format('%I',a.attname)
-                  end,
-                  ',' order by a.attnum
-                )
-                from pg_attribute a
-                where a.attrelid='public.v2_race_entries'::regclass
-                  and a.attnum>0 and not a.attisdropped;
-              " > /work/select-list.txt
-
-              test -s /work/columns.txt
-              test -s /work/select-list.txt
-              grep -q recent_form /work/columns.txt
-
-              pg_dump "$DATABASE_PUBLIC_URL" \
-                --schema-only --section=pre-data --no-owner --no-acl \
-                --file=/work/pre-data.sql
-
-              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
-                select indexdef || ';'
-                from pg_indexes
-                where schemaname='public' and tablename='v2_race_entries'
-                order by indexname;
-              " > /work/race-entry-indexes.sql
-
-              psql "$DATABASE_PUBLIC_URL" -At -v ON_ERROR_STOP=1 -c "
-                select 'SOURCE_DB_BYTES|' || pg_database_size(current_database())
-                union all
-                select 'SOURCE_RELATION_BYTES|' || pg_total_relation_size('public.v2_race_entries')
-                union all
-                select 'SOURCE_TABLE_BYTES|' || pg_table_size('public.v2_race_entries')
-                union all
-                select 'SOURCE_INDEX_BYTES|' || pg_indexes_size('public.v2_race_entries')
-                union all
-                select 'SOURCE_ROWS|' || count(*) from public.v2_race_entries
-                union all
-                select 'SOURCE_RECENT_FORM_NONEMPTY|' || count(*) filter (where recent_form is not null)
-                  from public.v2_race_entries;
-              " > /work/source-meta.txt
-
-              cols="$(cat /work/select-list.txt)"
-              psql "$DATABASE_PUBLIC_URL" -v ON_ERROR_STOP=1 \
-                -c "\\copy (select $cols from public.v2_race_entries order by race_id,lane) to '/work/race_entries_compact.bin' with (format binary)"
-            '
+            postgres:18 bash /work/source-inner.sh
 
           test -s pre-data.sql
           test -s race_entries_compact.bin
@@ -295,4 +300,4 @@ jobs:
             pre-data.sql race-entry-indexes.sql local-index-build.sql \
             columns.txt select-list.txt source-meta.txt local-meta.txt \
             source-stream.sha256 local-stream.sha256 source-stream.bytes \
-            source-export.sh compact-summary.txt body.md
+            source-export.sh source-inner.sh compact-summary.txt body.md
