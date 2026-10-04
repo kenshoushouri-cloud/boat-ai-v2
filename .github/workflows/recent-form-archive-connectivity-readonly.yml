@@ -15,7 +15,7 @@ jobs:
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway recent-form-archive-connectivity-readonly'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -23,69 +23,71 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: |
+      - name: Install minimal clients
+        run: |
+          set -euo pipefail
           python -m pip install "psycopg[binary]>=3.2,<4"
           npm install --global @railway/cli
-          mkdir -p ~/.ssh
-          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
-      - name: Probe archive through Railway temporary tunnel
+
+      - name: Probe source-server private archive connection read-only
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          railway link             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment "5ffb02f6-5ec8-4268-9bda-8e30431ff625"             --service "f2586b91-9381-4269-b473-42b121782c4e"             --json > /dev/null
-
-          railway connect postgres-history-archive             --environment production             --tunnel-only             --port 55432             > tunnel.out 2> tunnel.err &
-          tunnel_pid=$!
-          trap 'kill "$tunnel_pid" 2>/dev/null || true' EXIT
-
-          ready=0
-          for _ in $(seq 1 20); do
-            if (echo >/dev/tcp/127.0.0.1/55432) >/dev/null 2>&1; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$tunnel_pid" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          echo "TUNNEL_READY=$ready" > tunnel-status.out
-          test "$ready" = "1"
-
-          cat > /tmp/tunnel_probe.py <<'PY'
-          import json, os, urllib.parse
+          cat > /tmp/archive_server_probe.py <<'PY'
+          import os, shlex
           import psycopg
-          raw=os.environ.get("DATABASE_URL")
-          if not raw:
-              raise RuntimeError("DATABASE_URL unavailable")
-          u=urllib.parse.urlsplit(raw)
-          dbname=u.path.lstrip("/") or "railway"
-          with psycopg.connect(
-              host="127.0.0.1",
-              port=55432,
-              user=urllib.parse.unquote(u.username or ""),
-              password=urllib.parse.unquote(u.password or ""),
-              dbname=dbname,
-              connect_timeout=8,
-          ) as conn:
+          from psycopg import sql
+
+          source = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          archive = os.environ.get("ARCHIVE_DATABASE_URL")
+          if not source:
+              raise RuntimeError("source database URL unavailable")
+          if not archive:
+              raise RuntimeError("archive database URL was not preserved")
+
+          with psycopg.connect(source, autocommit=True) as conn:
               with conn.cursor() as cur:
-                  cur.execute("begin read only")
-                  cur.execute("""
-                    select current_setting('transaction_read_only'),
-                           to_regclass('public.v2_recent_form_archive') is not null
-                  """)
-                  ro,exists=cur.fetchone()
-                  out={"connected":True,"transaction_read_only":ro,"archive_table_exists":bool(exists)}
-                  if exists:
-                      cur.execute("select count(*)::bigint from public.v2_recent_form_archive")
-                      out["archive_rows"]=int(cur.fetchone()[0])
-                  conn.rollback()
-          print("ARCHIVE_TUNNEL="+json.dumps(out,sort_keys=True))
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("SET LOCAL statement_timeout='30000ms'")
+                  cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
+                  check_sql = "select current_setting('transaction_read_only'), current_database()"
+                  program = (
+                      "psql " + shlex.quote(archive)
+                      + " -X -v ON_ERROR_STOP=1 -Atqc "
+                      + shlex.quote(check_sql)
+                      + " >/dev/null"
+                  )
+                  cur.execute(
+                      sql.SQL("COPY (SELECT 1) TO PROGRAM {}")
+                      .format(sql.Literal(program))
+                  )
+                  cur.execute("ROLLBACK")
+
+          print("SOURCE_SERVER_PROGRAM=PASS")
+          print("ARCHIVE_PRIVATE_CONNECTIVITY=PASS")
+          print("SOURCE_DB_WRITE=0 ARCHIVE_DB_WRITE=0")
           PY
 
-          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-history-archive             python /tmp/tunnel_probe.py | tee probe.out
+          railway run \
+            --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+            --environment production \
+            --service postgres-history-archive \
+            bash -lc '
+              set -euo pipefail
+              export ARCHIVE_DATABASE_URL="$DATABASE_URL"
+              railway run \
+                --project "268a5b17-0712-440a-884d-27f7fa887a2d" \
+                --environment production \
+                --service postgres-hobby-fullhistory-candidate-v4 \
+                python /tmp/archive_server_probe.py
+            ' | tee probe.out
+
+          grep -q '^SOURCE_SERVER_PROGRAM=PASS$' probe.out
+          grep -q '^ARCHIVE_PRIVATE_CONNECTIVITY=PASS$' probe.out
+          grep -q '^SOURCE_DB_WRITE=0 ARCHIVE_DB_WRITE=0$' probe.out
+
       - name: Post result
         if: always()
         env:
@@ -93,17 +95,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## Recent Form archive temporary tunnel — read only'
+            echo '## Recent Form archive private connectivity — read only'
             echo
-            cat tunnel-status.out 2>/dev/null || echo 'TUNNEL_READY=0'
-            grep '^ARCHIVE_TUNNEL=' probe.out 2>/dev/null || true
-            if [ -s tunnel.out ] || [ -s tunnel.err ]; then
-              echo
-              echo 'Tunnel command summary:'
-              { tail -6 tunnel.out 2>/dev/null; tail -6 tunnel.err 2>/dev/null; } |
-                sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted>#g; s#(password=)[^[:space:]]+#\1<redacted>#g'
+            if [ -s probe.out ] && grep -q '^ARCHIVE_PRIVATE_CONNECTIVITY=PASS$' probe.out; then
+              grep -E '^(SOURCE_SERVER_PROGRAM|ARCHIVE_PRIVATE_CONNECTIVITY|SOURCE_DB_WRITE=)' probe.out
+            else
+              echo 'ARCHIVE_PRIVATE_CONNECTIVITY=FAIL'
             fi
             echo
-            echo 'No variable values/list, DB writes, source reads, resource creation, public proxy, cutover, cleanup, Railway AI/Agent.'
+            echo 'No variable values/list, DB writes, resource creation, public proxy, cutover, cleanup, Railway AI/Agent.'
           } > body.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file body.md
