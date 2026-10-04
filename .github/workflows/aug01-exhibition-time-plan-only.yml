@@ -1,0 +1,55 @@
+name: Aug 01 Exhibition Time plan-only diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/aug01-exhibition-time-plan-only.yml"
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  plan-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Aug 01 plan-only target count
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date 2026-08-01 --end-date 2026-08-01 --mode exhibition-time-only --plan-only --output aug01-plan-only.json' \
+            | tee aug01-plan-only.txt
+          grep -q '^HIST_BEFOREINFO_WRITE_ENABLED=0$' aug01-plan-only.txt
+          grep -q '^HIST_BEFOREINFO_MODE=exhibition-time-only$' aug01-plan-only.txt
+          grep -q '^HIST_BEFOREINFO_PLAN_ONLY=1$' aug01-plan-only.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' aug01-plan-only.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' aug01-plan-only.txt
+          python - <<'PY'
+          import json
+          x=json.load(open("aug01-plan-only.json",encoding="utf-8"))
+          totals=x["totals"]
+          assert x["write_enabled"] is False
+          assert x["plan_only"] is True
+          assert "http_requests" not in totals
+          print("AUG01_TARGET_MISSING_RACES="+str(totals.get("target_missing_races",0)))
+          print("AUG01_PLAN_ONLY_NO_HTTP="+str(totals.get("plan_only_no_http",0)))
+          print("AUG01_DB_WRITE=0")
+          PY
