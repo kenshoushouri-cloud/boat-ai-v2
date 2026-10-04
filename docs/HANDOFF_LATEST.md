@@ -13,7 +13,8 @@
 - Live gatesはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げず、economics未実行。
 - Recent Formはblind VAL/OOSで不採用、収集継続。
 - Exhibition Time OOS missing=4,703。低コスト専用mode実装済み。
-- Jul旧pilotはparser 0行→DB write 0で安全停止。parser修正は **PR #548** で最終化: historical parser v3 + 6艇/time/rank/diff妥当性 + **per-day fail-closed**。run `37194597909` は17 tests/Jul plan-onlyともPASS、HTTP=0・DB write=0。Aug/Sep未実行。
-- **Next ONE task:** Jul missing 53件だけ再pilotし、parse成功・missing-fill・DB/WAL/volume増分を確認。Aug/Sepはまだしない。
+- Jul 53件再pilotは既に実行済み。historical parser v3使用53/53、HTTP53、fetch失敗0だがusable 6艇=0、quality gateで53件すべてwrite禁止、DB write=0、FAIL_PARSE_QUALITY。Aug/Sep未実行。
+- PR #549で1件read-only診断を追加。sample `20260701_10_08` は公式beforeinfo自体が1号艇展示タイム空欄で候補値5艇分のみ。少なくともこの例はparser故障ではなく**official partial data**でfail-closedが正しい。
+- **Next ONE task:** historical parser/backfillに「official partial data」と「parser failure」の判別を追加し、6艇write gateは維持したまま安全テストのみ。53件再HTTPはまだしない。
 
-`COMPACT_ONLY / PARSER_V3_PERDAY_FAILCLOSED / JULY_53_REPILOT_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / JULY_REPILOT_ZERO_WRITE / OFFICIAL_PARTIAL_CONFIRMED_SAMPLE / CLASSIFY_PARTIAL_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
