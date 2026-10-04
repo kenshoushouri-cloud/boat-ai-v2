@@ -35,15 +35,17 @@
 - `/railway historical-recent-form-next` had become stale and re-ran 2026-04-16..04-29 with 0 updates. Workflow was corrected so the next range is 2026-05-14..05-27.
 - Backfill concurrency was corrected so manual ranges and `/railway historical-recent-form-next` share one `historical-production-write` group, preventing overlapping Production backfills.
 
+- Latest post-batch storage diagnostic: volume current size 4450.64MB / 5000MB, WAL 184,549,376 bytes, replication slots 0; continue per-batch disk/WAL checks.
+
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
-- Completed through **2026-07-22**.
-- Latest substantive batch: 2026-07-09..2026-07-22 run `37170108703`: SUCCESS, db_rows_updated=13,535, fillable_rows=13,535, target_empty_rows=13,536, official_k_rows_added_after_build=13,524, PASS.
+- Completed through **2026-08-05**.
+- Latest substantive batch: 2026-07-23..2026-08-05 run `37171659569`: SUCCESS, db_rows_updated=12,887, fillable_rows=12,887, target_empty_rows=12,888, official_k_rows_added_after_build=12,804, PASS.
 - Latest run confirmed SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1.
 - A stale `/railway historical-recent-form-next` run rechecked 2026-04-16..04-29 and updated 0 rows; no harmful overwrite occurred because fill-missing-only remained enforced.
-- Fixed command target is now **2026-07-23..2026-08-05 (14 days)**.
-- Workflow update commit: `045a262d69956be53db63a172a8aed04e82ba8bd`.
+- Fixed command target is now **2026-08-06..2026-08-19 (14 days)**.
+- Workflow update commit: `8d6be09aaf3471a541155dff28e208884c99963e`.
 
 ## Mid-October operating-start priority
 - **Target: begin operational use around mid-October 2026.**
