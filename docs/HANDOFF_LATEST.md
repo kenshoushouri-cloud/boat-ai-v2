@@ -12,8 +12,8 @@ Do not load old handoffs by default. Re-fetch only live state needed for the nex
 Current:
 - Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
 - Railway plan = Hobby
-- Historical Recent Form completed through 2026-06-24
-- next fixed target = 2026-06-25..2026-07-08 (14 days)
+- Historical Recent Form completed through 2026-07-08
+- next fixed target = 2026-07-09..2026-07-22 (14 days)
 - next = user posts `/railway historical-recent-form-next` to Issue #42, then verify only latest run
 - never bulk-fetch Issue #42 comments
 - protect candidate-v4 / history archive / escrow / active writers / TOTO
