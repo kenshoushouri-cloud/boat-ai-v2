@@ -16,6 +16,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup
 
 VERSION = "2026-08-22 historical-beforeinfo-parser-v3"
+EXHIBITION_STATUS_COMPLETE = "complete"
+EXHIBITION_STATUS_OFFICIAL_PARTIAL = "official_partial"
+EXHIBITION_STATUS_PARSER_FAILURE = "parser_failure"
 
 
 def _norm(value: Any) -> str:
@@ -204,29 +207,80 @@ def _fallback_times(text: str) -> Dict[int, Dict[str, Any]]:
     }
 
 
-def parse_exhibition(html: str) -> List[Dict[str, Any]]:
+def inspect_exhibition_time_page(html: str) -> Dict[str, Any]:
+    """Classify complete, official-partial, and parser-failure pages.
+
+    Official partial means the structured per-boat table yielded 1..5 valid
+    Exhibition Time values. Partial rows are observable for diagnostics only
+    and must never be written by the backfill path.
+    """
     if not html:
-        return []
+        return {
+            "status": EXHIBITION_STATUS_PARSER_FAILURE,
+            "valid_time_count": 0,
+            "lanes": [],
+            "rows": [],
+            "source": "empty_html",
+        }
 
     soup = BeautifulSoup(html, "html.parser")
     text = _norm(soup.get_text(" ", strip=True))
+    primary = _parse_primary_boat_rows(soup)
 
-    by_lane = _parse_primary_boat_rows(soup)
-    if len(by_lane) != 6:
+    if 1 <= len(primary) <= 5:
+        lanes = sorted(primary)
+        return {
+            "status": EXHIBITION_STATUS_OFFICIAL_PARTIAL,
+            "valid_time_count": len(primary),
+            "lanes": lanes,
+            "rows": [primary[lane] for lane in lanes],
+            "source": "primary_structured_rows",
+        }
+
+    if len(primary) == 6:
+        by_lane = primary
+        source = "primary_structured_rows"
+    else:
         by_lane = _fallback_times(text)
-    if len(by_lane) != 6:
-        return []
+        if len(by_lane) != 6:
+            return {
+                "status": EXHIBITION_STATUS_PARSER_FAILURE,
+                "valid_time_count": 0,
+                "lanes": [],
+                "rows": [],
+                "source": "unrecognized_or_no_valid_times",
+            }
+        source = "fallback_text_times"
 
     start_pairs = _parse_start_exhibition(text)
     if start_pairs:
         for course, (lane, st) in enumerate(start_pairs, 1):
             row = by_lane.get(lane)
             if row is None:
-                return []
+                return {
+                    "status": EXHIBITION_STATUS_PARSER_FAILURE,
+                    "valid_time_count": 0,
+                    "lanes": [],
+                    "rows": [],
+                    "source": "start_exhibition_lane_mismatch",
+                }
             row["exhibition_course"] = course
             row["start_timing"] = st
 
     rows = [by_lane[lane] for lane in range(1, 7)]
     _rank_diff(rows, "exhibition_time", "exhibition_time_rank", "exhibition_time_diff")
     _rank_diff(rows, "start_timing", "start_timing_rank", "start_timing_diff")
-    return rows
+    return {
+        "status": EXHIBITION_STATUS_COMPLETE,
+        "valid_time_count": 6,
+        "lanes": [1, 2, 3, 4, 5, 6],
+        "rows": rows,
+        "source": source,
+    }
+
+
+def parse_exhibition(html: str) -> List[Dict[str, Any]]:
+    inspection = inspect_exhibition_time_page(html)
+    if inspection["status"] != EXHIBITION_STATUS_COMPLETE:
+        return []
+    return list(inspection["rows"])
