@@ -13,7 +13,7 @@
 - Live gateはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げない。
 - Exhibition Time OOS missing=4,703。Jul 53再pilotはwrite 0で停止。
 - PR #550で `complete / official_partial / parser_failure` をfail-closed分類。
-- read-only実データsampleは既知1件+追加5件=**6/6 official_partial（各5艇）、parser_failure=0**。追加診断はHTTP5、DB write 0。Aug/Sep未実行。
-- **Next ONE task:** Jul missing 53のDB側 `exhibition_time` 件数/欠損lane分布だけread-only確認。追加HTTPなし、DB writeなし。
+- read-only実データsampleは**6/6 official_partial（各5艇）**。DB分布はJul 53件すべて `exhibition_time=0艇`、全6lane未保持。DB単独では残り47件のofficial partial判定は不可。DB write 0、Aug/Sep未実行。
+- **Next ONE task:** 既知6件を除くJul残り47件だけをread-only HTTP分類し、53/53を確定する。DB writeなし。
 
-`COMPACT_ONLY / JUL_SAMPLE_6_OF_6_PARTIAL / NO_MORE_HTTP_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / JUL_DB_ALL_ZERO / REMAINING_47_CLASSIFY_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
