@@ -27,6 +27,12 @@
 - Existing `railway-current-usage-readonly.yml` was tried without Railway Agent, but `railway usage` exited 1 under the current GitHub Railway token before JSON was produced; do not repeatedly retry unless token/billing scope is deliberately changed.
 - Candidate-v4 currently has an 8GB memory limit. A lower per-replica memory cap (candidate: ~1GB) may bound page-cache-driven billing, but it is a Production resource-limit change and requires explicit approval plus post-change monitoring before use.
 
+## Cost change 2026-10-04
+- candidate-v4 RAM cap = 1GB. Verified live cgroup `memory.max=999997440` bytes.
+- Post-change sample: `memory.current=653467648`, `anon=9334784`, `file=635535360`, `shmem=78368768` bytes.
+- candidate-v4 remained Online/SUCCESS; no OOM/crash seen; recent `cron-learning-all` and `cron-final-check` completed normally.
+- Keep the 1GB cap for now. Do not lower further without explicit approval and representative workload evidence.
+
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
