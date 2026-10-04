@@ -5,4 +5,10 @@
 - Priority: **Recent Form last5 → Exhibition time → start-exhibition course movement → weather/water**。
 - 現V5 coreはscope-lock維持。V5.1はTRAINで1回freeze→VALIDATION/OOS no-retune→Forward再現後のみ採用検討。
 
+## Collection/adoption separation
+- 精度向上が確認できたfeatureだけV4/V5.xへ採用する。
+- 不採用featureでも、将来再検証価値があり**低コスト・deadline前・provenance明確**なら取得は継続する。
+- 「使わない」≠「収集停止」。collector停止はcost/storage/将来価値を別途判断する。
+- baselineやsample数が変わった時にunused featureを再評価可能にする。
+
 ## Safety\n- DB write / Production change / LINE / purchase / stake changeなし。\n- Railway Agent/AI、`list_variables` / `railway variable list`禁止。1回1作業、read-only優先。\n\n## Next ONE task\n**frozen neutral-missing V4/V5契約のまま、matched-backtestで本当に評価可能なrace集合を結果参照前に確定する。**\n- Course完全性をhard gate化しない。\n- economics本体はprospective gate条件とpreflightを守る。\n\n`COURSE_DIAG_DONE / COMPLETE_ROI_80_42 / NEUTRAL_ROI_71_31 / NO_POST_OUTCOME_RETUNE / SAME_CONTRACT_READINESS_NEXT / ONE_TASK_ONLY`\n
