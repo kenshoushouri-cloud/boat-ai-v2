@@ -1,0 +1,192 @@
+name: Historical Exhibition Time minimal HTTP classification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-exhibition-time-min-http-classify.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - name: Validate read-only contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          p=Path('.github/workflows/historical-exhibition-time-min-http-classify.yml')
+          text=p.read_text(encoding='utf-8')
+          parsed=yaml.safe_load(text)
+          assert isinstance(parsed, dict) and 'jobs' in parsed
+          assert 'postgres-hobby-fullhistory-candidate-v4' in text
+          assert 'default_transaction_read_only' in text
+          assert 'LIMIT 5' in text
+          assert 'historical-exhibition-min-http-classify' in text
+          assert 'railway ' + 'variable list' not in text
+          assert 'list_' + 'variables' not in text
+          assert 'CONFIRM_HISTORICAL_' + 'BEFOREINFO_DB_WRITE' not in text
+          print('PASS minimal HTTP classification safety')
+          PY
+
+  classify:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-exhibition-min-http-classify'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Select five July missing races on distinct dates read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > samples.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          candidates AS (
+            SELECT DISTINCT ON (r.race_date)
+                   r.race_id,
+                   r.race_date,
+                   lpad(coalesce(r.venue_id,r.venue_code)::text,2,'0') AS venue,
+                   r.race_no
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+               AND r.race_id <> '20260701_10_08'
+             ORDER BY r.race_date, r.deadline_at NULLS LAST, r.race_id
+          )
+          SELECT race_id || '|' || race_date::text || '|' || venue || '|' || race_no::text
+            FROM candidates
+           ORDER BY race_date
+           LIMIT 5;
+          SQL
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < samples.sql > samples.out
+          grep -E '^[^|]+\|2026-07-[0-9]{2}\|[0-9]{2}\|[0-9]+$' samples.out > samples.clean
+          test "$(wc -l < samples.clean)" -eq 5
+
+      - name: Classify five official pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+          import requests
+          import historical_beforeinfo_parser_v3 as hp
+          import v21_realtime_collector_pg as rt
+
+          samples=[]
+          for line in Path('samples.clean').read_text(encoding='utf-8').splitlines():
+              race_id, race_date, venue, race_no = line.split('|')
+              samples.append((race_id, race_date, venue, int(race_no)))
+
+          session=requests.Session()
+          session.headers.update({
+              'User-Agent':'Mozilla/5.0 (compatible; boat-ai-v2-min-http-classifier/1.0)'
+          })
+          counts=Counter()
+          rows=[]
+          for race_id, race_date, venue, race_no in samples:
+              hd=race_date.replace('-','')
+              url=(
+                  'https://www.boatrace.jp/owpc/pc/race/beforeinfo'
+                  f'?rno={race_no}&jcd={venue}&hd={hd}'
+              )
+              response=session.get(url,timeout=35)
+              response.raise_for_status()
+              response.encoding=response.apparent_encoding or 'utf-8'
+              html=response.text
+              if rt._looks_no_data(html):
+                  status='official_no_data'
+                  valid=0
+              else:
+                  inspection=hp.inspect_exhibition_time_page(html)
+                  status=str(inspection.get('status') or 'parser_failure')
+                  valid=int(inspection.get('valid_time_count') or 0)
+              counts[status]+=1
+              rows.append(
+                  f'{race_id} {race_date} venue={venue} race={race_no}R '
+                  f'status={status} valid_times={valid}'
+              )
+
+          lines=[
+              '## Historical Exhibition Time minimal HTTP classification',
+              '',
+              'Read-only sample: 5 July missing races from 5 distinct dates; known sample excluded.',
+              '',
+              '```text',
+              *rows,
+              '```',
+              '',
+              'Summary:',
+              f"- complete={counts['complete']}",
+              f"- official_partial={counts['official_partial']}",
+              f"- parser_failure={counts['parser_failure']}",
+              f"- official_no_data={counts['official_no_data']}",
+              '- http_requests=5',
+              '- db_write=0',
+              '',
+              'No result/odds/payout read, Railway setting change, Production/LINE/purchase change, or Aug/Sep execution.',
+          ]
+          Path('summary.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          PY
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Minimal HTTP classification failed before summary generation. No DB write or Railway setting change was requested."
+          fi
