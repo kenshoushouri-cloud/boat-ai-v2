@@ -1,0 +1,189 @@
+name: Historical Exhibition Time missing-sample diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-exhibition-time-missing-sample-diagnostic.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_ENVIRONMENT: "production"
+  TARGET_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - name: Validate diagnostic workflow safety
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          p=Path(".github/workflows/historical-exhibition-time-missing-sample-diagnostic.yml")
+          text=p.read_text(encoding="utf-8")
+          parsed=yaml.safe_load(text)
+          assert isinstance(parsed, dict) and "jobs" in parsed
+          assert "postgres-hobby-fullhistory-candidate-v4" in text
+          assert "default_transaction_read_only" in text
+          assert "railway variable list" not in text
+          assert "list_variables" not in text
+          assert "CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE" not in text
+          print("PASS missing-sample diagnostic safety")
+          PY
+
+  diagnose:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-exhibition-missing-sample'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Select one July missing race read-only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > missing.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '30s';
+          \pset tuples_only on
+          \pset format unaligned
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          )
+          SELECT r.race_id || '|' ||
+                 r.race_date::text || '|' ||
+                 lpad(coalesce(r.venue_id,r.venue_code)::text,2,'0') || '|' ||
+                 r.race_no::text
+            FROM v2_races r
+            LEFT JOIN ex USING(race_id)
+           WHERE r.race_date >= DATE '2026-07-01'
+             AND r.race_date <= DATE '2026-07-31'
+             AND coalesce(ex.time_count,0) < 6
+           ORDER BY r.race_date, r.race_id
+           LIMIT 1;
+          SQL
+          railway connect "$TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < missing.sql > missing.out
+          line="$(grep -E '^[^|]+\|2026-07-[0-9]{2}\|[0-9]{2}\|[0-9]+$' missing.out | head -n1)"
+          test -n "$line"
+          IFS='|' read -r race_id race_date venue race_no <<< "$line"
+          {
+            echo "SAMPLE_RACE_ID=$race_id"
+            echo "SAMPLE_RACE_DATE=$race_date"
+            echo "SAMPLE_VENUE=$venue"
+            echo "SAMPLE_RACE_NO=$race_no"
+          } >> "$GITHUB_ENV"
+
+      - name: Inspect official page and parser structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          import requests
+          from bs4 import BeautifulSoup
+          import historical_beforeinfo_parser_v3 as hp
+          import v21_realtime_collector_pg as rt
+
+          race_id=os.environ["SAMPLE_RACE_ID"]
+          date=os.environ["SAMPLE_RACE_DATE"]
+          venue=os.environ["SAMPLE_VENUE"].zfill(2)
+          race_no=int(os.environ["SAMPLE_RACE_NO"])
+          hd=date.replace("-","")
+          url=("https://www.boatrace.jp/owpc/pc/race/beforeinfo"
+               f"?rno={race_no}&jcd={venue}&hd={hd}")
+          s=requests.Session()
+          s.headers.update({"User-Agent":"Mozilla/5.0 (compatible; boat-ai-v2-missing-sample/1.0)"})
+          r=s.get(url,timeout=35)
+          r.raise_for_status()
+          r.encoding=r.apparent_encoding or "utf-8"
+          html=r.text
+          soup=BeautifulSoup(html,"html.parser")
+          text=" ".join(soup.get_text(" ",strip=True).split())
+          parsed=hp.parse_exhibition(html)
+          realtime=rt.parse_exhibition(html)
+          before_start=text.split("スタート展示",1)[0]
+          times=re.findall(r"(?<!\d)([67]\.\d{2})(?!\d)", before_start)
+          tbodies=soup.select("tbody.is-fs12")
+          direct=[]
+          for tbody in tbodies[:8]:
+              trs=tbody.find_all("tr",recursive=False)
+              if not trs:
+                  continue
+              cells=[" ".join(c.get_text(" ",strip=True).split())[:80]
+                     for c in trs[0].find_all(["th","td"],recursive=False)]
+              direct.append(cells[:9])
+          keys={}
+          for key in ("展示タイム","スタート展示","水面気象情報","直前情報"):
+              pos=text.find(key)
+              keys[key]=(text[max(0,pos-100):pos+260] if pos>=0 else "NOT_FOUND")
+          lines=[
+              "## Historical Exhibition Time missing-sample diagnostic",
+              "",
+              f"sample={race_id} date={date} venue={venue} race={race_no}R",
+              f"http_status={r.status_code} html_bytes={len(html.encode('utf-8'))}",
+              f"looks_no_data={rt._looks_no_data(html)}",
+              f"historical_parser_rows={len(parsed)} realtime_parser_rows={len(realtime)}",
+              f"tbody_is_fs12={len(tbodies)} candidate_times_before_start={len(times)}",
+              f"candidate_times={times[:12]}",
+              f"first_direct_rows={direct}",
+              "",
+              "keyword_context:",
+          ]
+          for key,val in keys.items():
+              lines.append(f"- {key}: {val[:360]}")
+          lines += [
+              "",
+              "Read-only DB selection + one official HTTP GET. No DB write, Railway setting change, Production/LINE/purchase change.",
+          ]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Missing-sample diagnostic failed before summary generation. No DB write or Railway setting change was requested."
+          fi
