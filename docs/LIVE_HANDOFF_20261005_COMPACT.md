@@ -30,7 +30,7 @@
 - Motor/Boat fixed OOSは改善側 → 保持。
 
 ## Current capacity facts
-- candidate-v4直近約 **4.674GB / 5GB**。archive約 **0.523GB / 5GB**。
+- candidate-v4 live disk約 **4.675GB / 5GB**。archive live disk約 **2.184GB / 5GB**（Recent Form write後、WAL/physical overhead込み）。
 - Recent Formは唯一の主要REJECT専用容量候補。
 - Recent Form relation約 **933MB**、payload列約 **659MB**。
 - Production主要entrypoint / frozen V5 coreはRecent Form直接依存なし。schema/column自体は残す。
@@ -58,25 +58,29 @@ Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - current-refresh direct restoreは過去のpartial --clean問題でSafety Hold。現candidateへ直接restoreしない。
 - fresh disposable target方式を使う場合も、事前にarchive/parity/cost確認してから。
 
-## Recent Form archive read-only audit — PASS
-- Design doc: `docs/RECENT_FORM_ARCHIVE_READONLY_DESIGN.md`
-- source candidate-v4 read-only / AI・Agent=0 / Railway resource create=0。
+## Recent Form archive write + parity — PASS
+- Target=`postgres-history-archive.public.v2_recent_form_archive`。
+- source candidate-v4はread-onlyのまま。AI/Agent=0 / public proxy=0 / new Railway resource=0。
+- rows **425,772 = 425,772**。
 - identity=`(race_id,lane)`; key null=0; duplicate=0。
-- archive rows=425,772; deterministic payload_md5=`8580889f8cfb449e1656a943f30da350`。
-- recent_form payload=659,381,918 bytes; key込みlogical estimate=667,471,586 bytes。
-- archive live disk=0.523173888GB / 5GB。
-- logical追加想定で約1.190645474GB、conservative boundで<=1.333460992GB。
-- 値は固定扱いせず、write直前/直後に必要分だけlive再取得する。
+- deterministic payload_md5=`8580889f8cfb449e1656a943f30da350` exact match。
+- source recent_form payload=659,381,918 bytes。
+- archive relation=863,928,320 bytes; archive logical DB=1,118,164,671 bytes。
+- archive live volume diskはwrite直後 **2.18402816GB / 5GB**。WAL/physical overheadを含むためlogicalより大きい。
+- source live diskは **4.675084288GB / 5GB** でwrite前後ほぼ不変。
+- temporary bridge=`candidate-v4-size-audit-temp` を既存resourceとして使用し、完了後idle化・bridge参照変数を空へ戻した。
+- 既存Production staged patch 3件は未変更。
+- source direct UPDATE/VACUUM FULL/rewriteは禁止継続。
 
 ## Next ONE task
-**Recent Formを `postgres-history-archive` の専用narrow tableへ1回だけ退避し、直後にparity確認する。**
-必須条件:
-- source candidate-v4はread-onlyのまま
-- archive key=`PRIMARY KEY (race_id,lane)`
-- source/archive row count一致
-- source/archive deterministic payload_md5一致
-- archive key null=0 / duplicate=0
-- source cleanup / cutover / volume resize / Railway resource作成はまだしない。
+**fresh disposable compact targetを作る前のlow-resource read-only cost/headroom gateを1回だけ実施する。**
+確認するもの:
+- candidate-v4 current live disk / logical DB
+- archive parity保持とlive disk
+- compact後 projected DB（約3.58GBの見込みをlive値で再計算）
+- temporary 5GB targetを作る場合の必要時間・概算cost・作業後即削除方針
+- candidate-v3は再利用しない
+- source mutation / cutover / Railway resource作成はまだしない。
 
 ## Chat-capacity対策
 - 次チャットで読むのは **3点だけ**:
