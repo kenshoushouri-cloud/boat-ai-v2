@@ -542,7 +542,7 @@ def _validated_exhibition_time_rows(
 def _batch_parse_quality_status(
     *,
     mode: str,
-    totals: Counter[str],
+    reports: list[dict[str, Any]],
     plan_only: bool,
 ) -> str:
     if mode != MODE_EXHIBITION_TIME_ONLY:
@@ -550,15 +550,19 @@ def _batch_parse_quality_status(
     if plan_only:
         return "NOT_APPLICABLE_PLAN_ONLY"
 
-    targets = int(totals.get("target_missing_races", 0))
-    if targets == 0:
-        return "PASS_NO_TARGET"
+    any_target = False
+    for report in reports:
+        summary = report.get("summary") or {}
+        targets = int(summary.get("target_missing_races", 0))
+        if targets <= 0:
+            continue
+        any_target = True
+        usable = int(summary.get("exhibition_rows_usable", 0))
+        complete = int(summary.get("exhibition_complete_races", 0))
+        if usable < 6 or complete < 1:
+            return "FAIL_DAY_ZERO_USABLE"
 
-    usable = int(totals.get("exhibition_rows_usable", 0))
-    complete = int(totals.get("exhibition_complete_races", 0))
-    if usable >= 6 and complete >= 1:
-        return "PASS"
-    return "FAIL_ZERO_USABLE"
+    return "PASS" if any_target else "PASS_NO_TARGET"
 
 
 def process_day(
@@ -734,7 +738,7 @@ def main() -> None:
 
     parse_quality_status = _batch_parse_quality_status(
         mode=args.mode,
-        totals=totals,
+        reports=reports,
         plan_only=args.plan_only,
     )
 
@@ -771,7 +775,7 @@ def main() -> None:
         flush=True,
     )
     print(f"HIST_BEFOREINFO_PARSE_QUALITY={parse_quality_status}", flush=True)
-    if parse_quality_status == "FAIL_ZERO_USABLE":
+    if parse_quality_status == "FAIL_DAY_ZERO_USABLE":
         print("HIST_BEFOREINFO_RESULT=FAIL_PARSE_QUALITY", flush=True)
         raise SystemExit(2)
     print("HIST_BEFOREINFO_RESULT=PASS", flush=True)

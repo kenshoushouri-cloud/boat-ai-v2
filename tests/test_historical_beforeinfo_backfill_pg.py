@@ -226,30 +226,55 @@ def test_invalid_historical_parse_never_writes(monkeypatch):
     assert report["summary"].get("exhibition_rows_touched", 0) == 0
 
 
-def test_batch_parse_quality_fails_when_targets_have_zero_usable_rows():
-    from collections import Counter
-
+def test_batch_parse_quality_fails_per_day_when_target_has_zero_usable_rows():
     status = m._batch_parse_quality_status(
         mode=m.MODE_EXHIBITION_TIME_ONLY,
-        totals=Counter({"target_missing_races": 53, "exhibition_rows_usable": 0}),
+        reports=[
+            {
+                "target_date": "2026-07-01",
+                "summary": {
+                    "target_missing_races": 4,
+                    "exhibition_rows_usable": 0,
+                    "exhibition_complete_races": 0,
+                },
+            },
+            {
+                "target_date": "2026-07-02",
+                "summary": {
+                    "target_missing_races": 1,
+                    "exhibition_rows_usable": 6,
+                    "exhibition_complete_races": 1,
+                },
+            },
+        ],
         plan_only=False,
     )
-    assert status == "FAIL_ZERO_USABLE"
+    assert status == "FAIL_DAY_ZERO_USABLE"
 
     status = m._batch_parse_quality_status(
         mode=m.MODE_EXHIBITION_TIME_ONLY,
-        totals=Counter({
-            "target_missing_races": 53,
-            "exhibition_rows_usable": 6,
-            "exhibition_complete_races": 1,
-        }),
+        reports=[
+            {
+                "target_date": "2026-07-01",
+                "summary": {
+                    "target_missing_races": 4,
+                    "exhibition_rows_usable": 24,
+                    "exhibition_complete_races": 4,
+                },
+            },
+            {
+                "target_date": "2026-07-02",
+                "summary": {"target_missing_races": 0},
+            },
+        ],
         plan_only=False,
     )
     assert status == "PASS"
 
     status = m._batch_parse_quality_status(
         mode=m.MODE_EXHIBITION_TIME_ONLY,
-        totals=Counter({"target_missing_races": 53}),
+        reports=[{"target_date": "2026-07-01", "summary": {"target_missing_races": 53}}],
         plan_only=True,
     )
     assert status == "NOT_APPLICABLE_PLAN_ONLY"
+
