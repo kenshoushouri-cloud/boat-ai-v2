@@ -15,6 +15,7 @@ V4 prospective-freeze修正済み: PR **#537** merged / candidate-v4 SoT参照 /
 S03は停止せず収集中で、positive+official条件により増加が遅い。
 Recent Form readiness: **69,477/70,170=99.01%**、shared母集団 **69,471/70,164=99.01%**。same-day/future/bad-source/>5履歴すべて0、provenance clean。
 Recent Form coefficient lock済み: **-0.50..+0.50 / 0.10刻み / 11候補**。TRAIN LogLossだけで1回選択し、VAL/OOSはfreeze後までblind。
-Next ONE task: **TRAIN_REFERENCEだけでRecent Form係数をfitし、artifact/hashで凍結する。**
+Recent Form TRAIN fit: **coef +0.30** がLogLoss最良でfreeze。TRAINではLogLoss/Brier改善、mean rankは僅かに悪化。VAL/OOSは未読。
+Next ONE task: **coef +0.30を固定したままVALIDATION/OOSをblind評価して採否判定する。**
 
-`V51_RF_GRID_LOCKED / TRAIN_FIT_ONLY_NEXT / ONE_TASK_ONLY / COST_LE_20`
+`V51_RF_COEF_POS030_FROZEN / BLIND_VAL_OOS_NEXT / ONE_TASK_ONLY / COST_LE_20`

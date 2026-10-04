@@ -68,10 +68,22 @@
 - adoption gate: VALIDATION/OOSの両方で LogLoss改善 + Brier改善 + official trifecta mean rank非悪化。
 - 0.00がTRAIN勝者、またはVAL/OOSどちらか失敗なら不採用。情報収集は継続。
 
+## Recent Form TRAIN fit — COEFFICIENT FROZEN
+- PR `#539` / run `37188106418` SUCCESS / artifact `11297696908`。
+- pre-outcome TRAIN population=**26,801**、population SHA256=`2f62e64fbfec7cadec98af76ec6284ba92c15e40fc6e6aba6c860f9ce1af1a04`。
+- official label available=**26,610 / 26,801**、unavailable=191。
+- frozen grid 11候補のTRAIN mean LogLoss最小は **Recent Form coefficient = +0.30**。
+- baseline coef 0.00: LogLoss **4.2263311279** / Brier **0.9787454838** / official mean rank **25.71665**。
+- chosen coef +0.30: LogLoss **4.2002454391** / Brier **0.9777969808** / official mean rank **25.78963**。
+- TRAINではLogLoss/Brier改善、mean rankは僅かに悪化。TRAINのprimary objectiveはLogLossなので規定どおり+0.30をfreezeし、採用判定はまだ行わない。
+- freeze SHA256=`7b53c68c22ef351b85293205395938c12705ca87f03b50be9d87f196a95c3c9c`。
+- VALIDATION/OOS read=0 / odds/payout read=0 / DB write=0 / Production change=0。
+
 ## Next ONE task
-**TRAIN_REFERENCEだけを読み、11係数からRecent Form係数を1回fitしてartifact/hashで凍結する。**
-- VALIDATION/OOSの結果はこの作業では読まない。
-- prospective V4/S03 gateは自然蓄積を継続。
+**frozen coefficient +0.30を変更せず、VALIDATIONとOOSをblind評価して採否gateを判定する。**
+- VAL/OOSの両方で LogLoss改善 + Brier改善 + official trifecta mean rank非悪化 が必要。
+- どちらか失敗ならRecent Formは不採用。ただし収集は継続。
+- 係数retune/grid拡張/場別調整は禁止。
 - matched economicsはlive gates達成まで実行しない。
 
-`V51_RF_GRID_LOCKED_11 / TRAIN_FIT_ONLY_NEXT / BLIND_VAL_OOS / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+`V51_RF_COEF_POS030_FROZEN / BLIND_VAL_OOS_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
