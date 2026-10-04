@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """Result-blind read-only historical matched-contract input readiness audit.
 
-This audit measures input availability only. It intentionally does not read
-outcomes, payouts, odds, predictions, or economic results.
+This audit measures input availability only. It never reads outcomes, payouts,
+odds, predictions, or economic results.
 
-Historical reconstructed Course and Opponent evidence remain separately
-labeled and are never treated as prospective evidence.
+Opponent provenance is explicit:
+- model_version=102: historical reconstruction, strict prior-only;
+- model_version=2: original Forward row, accepted only when its stored timing
+  proves it existed before both 08:15 JST and the race deadline.
+
+Neither source receives prospective-gate credit in this historical audit.
 """
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ import json
 import math
 import os
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 import psycopg
@@ -22,6 +26,9 @@ from psycopg.rows import dict_row
 
 COURSE_PROXY_SOURCE = "boatrace_official_k_applied_term_proxy"
 HISTORICAL_OPPONENT_MODEL_VERSION = 102
+FORWARD_OPPONENT_MODEL_VERSION = 2
+JST = timezone(timedelta(hours=9))
+FORWARD_CUTOFF = time(8, 15)
 
 
 def expected_course_snapshot(race_date: date) -> date | None:
@@ -41,18 +48,31 @@ def _finite(v: Any) -> bool:
         return False
 
 
-def opponent_valid(row: dict[str, Any]) -> bool:
-    if int(row.get("model_version") or 0) != HISTORICAL_OPPONENT_MODEL_VERSION:
-        return False
-    race_date = row.get("race_date")
-    train_end = row.get("train_end")
-    if isinstance(race_date, str):
-        race_date = date.fromisoformat(race_date)
-    if isinstance(train_end, str):
-        train_end = date.fromisoformat(train_end)
-    if not isinstance(race_date, date) or not isinstance(train_end, date):
-        return False
-    if train_end >= race_date:
+def _as_date(v: Any) -> date | None:
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str):
+        try:
+            return date.fromisoformat(v[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _aware_jst(v: Any) -> datetime | None:
+    if not isinstance(v, datetime):
+        return None
+    if v.tzinfo is None or v.utcoffset() is None:
+        v = v.replace(tzinfo=JST)
+    return v.astimezone(JST)
+
+
+def _opponent_payload_valid(row: dict[str, Any]) -> bool:
+    race_date = _as_date(row.get("race_date"))
+    train_end = _as_date(row.get("train_end"))
+    if race_date is None or train_end is None or train_end >= race_date:
         return False
     matched = row.get("matched_opponents")
     base = row.get("base_win")
@@ -67,6 +87,36 @@ def opponent_valid(row: dict[str, Any]) -> bool:
     return all(_finite(x) for x in base) and all(_finite(x) for x in adj)
 
 
+def opponent_provenance(row: dict[str, Any]) -> str | None:
+    """Return accepted provenance label, or None when the row is unusable."""
+    if not _opponent_payload_valid(row):
+        return None
+
+    version = int(row.get("model_version") or 0)
+    if version == HISTORICAL_OPPONENT_MODEL_VERSION:
+        return "historical102"
+
+    if version != FORWARD_OPPONENT_MODEL_VERSION:
+        return None
+
+    race_date = _as_date(row.get("race_date"))
+    created = _aware_jst(row.get("created_at"))
+    updated = _aware_jst(row.get("updated_at"))
+    deadline = _aware_jst(row.get("deadline_at"))
+    if race_date is None or created is None or updated is None or deadline is None:
+        return None
+    cutoff = datetime.combine(race_date, FORWARD_CUTOFF, tzinfo=JST)
+    if created >= cutoff or updated >= cutoff:
+        return None
+    if created >= deadline or updated >= deadline:
+        return None
+    return "forward_v2_timing_clean"
+
+
+def opponent_valid(row: dict[str, Any]) -> bool:
+    return opponent_provenance(row) is not None
+
+
 def audit(start_date: str, end_date: str) -> dict[str, Any]:
     db = (os.getenv("DATABASE_URL") or "").strip()
     if not db:
@@ -79,7 +129,7 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
             cur.execute(
                 """
                 with races as (
-                  select race_id,race_date
+                  select race_id,race_date,deadline_at
                     from v2_races
                    where race_date between %s and %s
                 ),
@@ -165,7 +215,7 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
                     join races r using(race_id)
                    group by w.race_id
                 )
-                select r.race_id,r.race_date,
+                select r.race_id,r.race_date,r.deadline_at,
                        coalesce(ent.entry_rows,0) as entry_rows,
                        coalesce(ent.lane_count,0) as lane_count,
                        coalesce(ent.base_n,0) as base_n,
@@ -192,19 +242,24 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
 
             cur.execute(
                 """
-                select race_id,race_date,model_version,train_end,
-                       matched_opponents,base_win,adj_win
-                  from v2_opponent_pressure_shadow_v2
-                 where race_date between %s and %s
-                   and model_version=%s
-                 order by race_date,race_id
+                select s.race_id,s.race_date,s.model_version,s.train_end,
+                       s.matched_opponents,s.base_win,s.adj_win,
+                       s.created_at,s.updated_at,r.deadline_at
+                  from v2_opponent_pressure_shadow_v2 s
+                  join v2_races r on r.race_id=s.race_id
+                 where s.race_date between %s and %s
+                 order by s.race_date,s.race_id
                 """,
-                (start_date, end_date, HISTORICAL_OPPONENT_MODEL_VERSION),
+                (start_date, end_date),
             )
             opponent_rows = [dict(x) for x in cur.fetchall()]
         conn.rollback()
 
-    valid_opp = {str(x["race_id"]) for x in opponent_rows if opponent_valid(x)}
+    opponent_by = {str(x["race_id"]): x for x in opponent_rows}
+    provenance_by = {
+        rid: opponent_provenance(row)
+        for rid, row in opponent_by.items()
+    }
     monthly: dict[str, dict[str, int]] = defaultdict(
         lambda: {
             "races": 0,
@@ -215,6 +270,10 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
             "fcount6": 0,
             "course_proxy6": 0,
             "opponent_replay": 0,
+            "opponent_historical102": 0,
+            "opponent_forward_v2": 0,
+            "opponent_no_row": 0,
+            "opponent_invalid_existing": 0,
             "v4_full_reconstructed_core": 0,
             "complete_beforeinfo": 0,
             "core_plus_beforeinfo": 0,
@@ -227,9 +286,9 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
 
     for row in race_rows:
         race_id = str(row["race_id"])
-        race_date = row["race_date"]
-        if isinstance(race_date, str):
-            race_date = date.fromisoformat(race_date)
+        race_date = _as_date(row["race_date"])
+        if race_date is None:
+            raise RuntimeError(f"invalid race_date: {race_id}")
         month = race_date.strftime("%Y-%m")
         m = monthly[month]
         m["races"] += 1
@@ -240,7 +299,14 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
         fcount6 = exact6 and int(row["fcount_n"]) == 6
         recent6 = exact6 and int(row["recent_n"]) == 6
         course6 = exact6 and int(row["course_n"]) == 6 and expected_course_snapshot(race_date) is not None
-        opp = race_id in valid_opp
+
+        provenance = provenance_by.get(race_id)
+        opp = provenance is not None
+        m["opponent_historical102"] += int(provenance == "historical102")
+        m["opponent_forward_v2"] += int(provenance == "forward_v2_timing_clean")
+        m["opponent_no_row"] += int(race_id not in opponent_by)
+        m["opponent_invalid_existing"] += int(race_id in opponent_by and provenance is None)
+
         beforeinfo = (
             int(row["exhibition_time_n"]) == 6
             and int(row["exhibition_st_n"]) == 6
@@ -278,6 +344,9 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
         row["core_plus_beforeinfo_pct"] = round(
             100.0 * row["core_plus_beforeinfo"] / races, 2
         )
+        row["opponent_usable_pct"] = round(
+            100.0 * row["opponent_replay"] / races, 2
+        )
         months.append(row)
         for key, value in monthly[month].items():
             totals[key] += int(value)
@@ -290,13 +359,18 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
     summary["core_plus_beforeinfo_pct"] = round(
         100.0 * totals["core_plus_beforeinfo"] / total_races, 2
     )
+    summary["opponent_usable_pct"] = round(
+        100.0 * totals["opponent_replay"] / total_races, 2
+    )
 
     return {
-        "contract": "HISTORICAL_MATCHED_CONTRACT_READINESS_V1",
+        "contract": "HISTORICAL_MATCHED_CONTRACT_READINESS_V2",
         "period": [start_date, end_date],
         "labels": {
             "course": "historical_reconstruction",
-            "opponent": "historical_reconstruction",
+            "opponent": "historical102_or_timing_clean_forward_v2",
+            "opponent_historical102": "historical_reconstruction",
+            "opponent_forward_v2": "original_forward_timing_clean",
             "beforeinfo": "historical",
             "fcount": "historical_pre_race_input",
             "prospective_gate_credit": False,
@@ -309,6 +383,7 @@ def audit(start_date: str, end_date: str) -> dict[str, Any]:
             "db_write": False,
             "production_change": False,
             "purchase_action": False,
+            "forward_v2_requires_pre_cutoff_and_pre_deadline": True,
         },
         "months": months,
         "totals": summary,
