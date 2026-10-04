@@ -1,0 +1,89 @@
+name: V4 entry input novelty one-shot read-only audit
+on:
+  pull_request:
+    paths:
+      - 'research/.v4-entry-input-novelty-run-once-20260927'
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'research/v4-entry-input-novelty-20260927' &&\n      github.event.pull_request.head.sha == '05cbc5e2ff5f4af71fdeb66510964711317de3fd'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      DEDICATED_DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_ENTRY_NOVELTY_OUTPUT_JSON: 'v4-entry-input-novelty.json'
+      PGOPTIONS: '-c default_transaction_read_only=on'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact trigger
+        run: test "$(cat research/.v4-entry-input-novelty-run-once-20260927)" = "RUN_ONCE_20260927_V4_ENTRY_INPUT_NOVELTY"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Select read-only route
+        run: |
+          if [ -n "${DEDICATED_DATABASE_URL:-}" ]; then
+            echo "V4_ENTRY_NOVELTY_DB_AUDIT=DEDICATED_DATABASE_SECRET"
+          elif [ -n "${RAILWAY_TOKEN:-}" ]; then
+            echo "V4_ENTRY_NOVELTY_DB_AUDIT=RAILWAY_RUN_NON_ENUMERATING"
+          else
+            exit 1
+          fi
+      - name: Install Railway CLI
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: npm install --global @railway/cli
+      - name: Run dedicated
+        if: env.DEDICATED_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.V4_BACKTEST_DATABASE_URL }}
+        run: |
+          python -u research/v4_entry_input_novelty_pg.py 2>&1 | tee v4-entry-input-novelty.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-entry-input-novelty.txt
+      - name: Run Railway non-enumerating
+        if: env.DEDICATED_DATABASE_URL == '' && env.RAILWAY_TOKEN != ''
+        run: |
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; exec python -u research/v4_entry_input_novelty_pg.py' 2>&1 | tee v4-entry-input-novelty.txt
+          grep -q '^RESULT=PASS_READ_ONLY$' v4-entry-input-novelty.txt
+      - name: Hash
+        if: success()
+        run: |
+          test -s v4-entry-input-novelty.json
+          sha256sum v4-entry-input-novelty.json | tee v4-entry-input-novelty.sha256
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-entry-input-novelty-${{ github.run_id }}
+          path: |
+            v4-entry-input-novelty.json
+            v4-entry-input-novelty.txt
+            v4-entry-input-novelty.sha256
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Confirm safety
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          wf=Path('.github/workflows/v4-entry-input-novelty-one-shot.yml').read_text(encoding='utf-8').lower()
+          code=Path('research/v4_entry_input_novelty_pg.py').read_text(encoding='utf-8').lower()
+          for x in ('railway'+' variable'+' list','print'+'env','env'+' |','railway-vars'+'.json','collect_'+'beforeinfo'):
+              assert x not in wf,x
+          for x in ('v2_'+'results','v2_'+'result_entries','v2_'+'odds','v2_'+'payout','send_'+'line'):
+              assert x not in code,x
+          print('V4_ENTRY_NOVELTY_SECRET_ENUMERATION=0')
+          print('V4_ENTRY_NOVELTY_OUTCOME_READ=0')
+          PY
