@@ -17,34 +17,75 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - run: |
+          python -m pip install "psycopg[binary]>=3.2,<4"
           npm install --global @railway/cli
           mkdir -p ~/.ssh
-          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/railway_ephemeral
-      - name: Probe archive over Railway SSH
+          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
+      - name: Probe archive through Railway temporary tunnel
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         shell: bash
         run: |
-          set +e
-          railway ssh             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-history-archive             -- sh -lc '
-              set -eu
-              test -n "${DATABASE_URL:-}"
-              psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 <<SQL
-              BEGIN READ ONLY;
-              SELECT
-                ''SSH_ARCHIVE_OK|'' ||
-                current_setting(''transaction_read_only'') || ''|'' ||
-                CASE WHEN to_regclass(''public.v2_recent_form_archive'') IS NULL THEN ''absent'' ELSE ''present'' END;
-              ROLLBACK;
-              SQL
-            ' > ssh.out 2> ssh.err
-          rc=$?
-          echo "SSH_RC=$rc" > ssh-status.out
-          exit "$rc"
+          set -euo pipefail
+          railway link             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment "5ffb02f6-5ec8-4268-9bda-8e30431ff625"             --service "f2586b91-9381-4269-b473-42b121782c4e"             --json > /dev/null
+
+          railway connect postgres-history-archive             --environment production             --tunnel-only             --port 55432             > tunnel.out 2> tunnel.err &
+          tunnel_pid=$!
+          trap 'kill "$tunnel_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 20); do
+            if (echo >/dev/tcp/127.0.0.1/55432) >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          echo "TUNNEL_READY=$ready" > tunnel-status.out
+          test "$ready" = "1"
+
+          cat > /tmp/tunnel_probe.py <<'PY'
+          import json, os, urllib.parse
+          import psycopg
+          raw=os.environ.get("DATABASE_URL")
+          if not raw:
+              raise RuntimeError("DATABASE_URL unavailable")
+          u=urllib.parse.urlsplit(raw)
+          dbname=u.path.lstrip("/") or "railway"
+          with psycopg.connect(
+              host="127.0.0.1",
+              port=55432,
+              user=urllib.parse.unquote(u.username or ""),
+              password=urllib.parse.unquote(u.password or ""),
+              dbname=dbname,
+              connect_timeout=8,
+          ) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("begin read only")
+                  cur.execute("""
+                    select current_setting('transaction_read_only'),
+                           to_regclass('public.v2_recent_form_archive') is not null
+                  """)
+                  ro,exists=cur.fetchone()
+                  out={"connected":True,"transaction_read_only":ro,"archive_table_exists":bool(exists)}
+                  if exists:
+                      cur.execute("select count(*)::bigint from public.v2_recent_form_archive")
+                      out["archive_rows"]=int(cur.fetchone()[0])
+                  conn.rollback()
+          print("ARCHIVE_TUNNEL="+json.dumps(out,sort_keys=True))
+          PY
+
+          railway run             --project "268a5b17-0712-440a-884d-27f7fa887a2d"             --environment production             --service postgres-history-archive             python /tmp/tunnel_probe.py | tee probe.out
       - name: Post result
         if: always()
         env:
@@ -52,16 +93,16 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## Recent Form archive SSH connectivity — read only'
+            echo '## Recent Form archive temporary tunnel — read only'
             echo
-            cat ssh-status.out 2>/dev/null || echo 'SSH_RC=unknown'
-            grep '^SSH_ARCHIVE_OK|' ssh.out 2>/dev/null || true
-            if [ -s ssh.err ]; then
+            cat tunnel-status.out 2>/dev/null || echo 'TUNNEL_READY=0'
+            grep '^ARCHIVE_TUNNEL=' probe.out 2>/dev/null || true
+            if [ -s tunnel.err ]; then
               echo
-              echo 'Error summary:'
-              sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted>#g; s#(password=)[^[:space:]]+#\1<redacted>#g' ssh.err | tail -5
+              echo 'Tunnel error summary:'
+              sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted>#g; s#(password=)[^[:space:]]+#\1<redacted>#g' tunnel.err | tail -6
             fi
             echo
-            echo 'No variable values/list, DB writes, source reads, resource creation, cutover, cleanup, Railway AI/Agent.'
+            echo 'No variable values/list, DB writes, source reads, resource creation, public proxy, cutover, cleanup, Railway AI/Agent.'
           } > body.md
           gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file body.md
