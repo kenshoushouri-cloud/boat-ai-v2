@@ -97,10 +97,25 @@
 - Recent Formは**現仕様ではV5.1に採用しない**。後付けretune/場別抽出は禁止。データ収集は継続。
 - odds/payout read=0 / DB write=0 / Production change=0。
 
-## Next ONE task
-**次の精度向上候補として、Exhibition time（展示タイム）のhistorical coverage / pre-race provenanceをread-onlyで確認し、結果を見る前に評価可能母集団を確定する。**
-- Recent Formは不採用のまま収集継続。
-- prospective V4/S03 gateは自然蓄積を継続。
-- matched economicsはlive gates達成まで実行しない。
+## Exhibition Time readiness — PRE-OUTCOME
+- PR `#541` / run `37188984885` SUCCESS / artifact `11298441054`。
+- official historical Exhibition Time 6-lane complete = **64,297 / 70,170 = 91.6303%**。
+- shared Motor2-complete母集団では **64,297 / 70,164 = 91.6382%**。
+- TRAIN_REFERENCE: **26,989 / 27,456 = 98.2991%**。
+- VALIDATION: **27,497 / 28,200 = 97.5071%**。
+- OOS: **9,811 / 14,514 = 67.5968%**。OOS欠損=**4,703 races**。
+- 64,297 racesすべてで exhibition_time_rank / diff も6艇完備。duplicate lane=0。
+- source: legacy `official_beforeinfo_historical` **62,205 races**、explicit reconstruction **2,092 races**。
+- provenance unknown rows=0。全保存行はBOAT RACE公式historical beforeinfo由来として `PREDEADLINE_BY_NATURE`。
+- exact original fetch timestampは不明/不要（historical policy）。prospective evidenceには数えない。
+- result/odds/payout read=0 / DB write=0 / Production change=0。
 
-`V51_RF_REJECT_CONTINUE_COLLECTION / EXHIBITION_TIME_READINESS_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**OOSで展示タイムcoverageが67.60%まで落ちる原因を、月別・日付境界・source別にread-only診断する。**
+- outcomeはまだ読まない。
+- missingを理由に後付け対象抽出しない。
+- 追加backfillが必要でも、費用/取得量を確認するまで実行しない。
+- Recent Formは不採用のまま収集継続。
+- prospective V4/S03 gateは自然蓄積を継続し、matched economicsはlive gates達成まで実行しない。
+
+`EX_TIME_READY_64297_70170 / OOS_COVERAGE_67P60_DIAG_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`

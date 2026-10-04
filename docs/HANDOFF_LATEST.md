@@ -17,6 +17,7 @@ Recent Form readiness: **69,477/70,170=99.01%**、shared母集団 **69,471/70,16
 Recent Form coefficient lock済み: **-0.50..+0.50 / 0.10刻み / 11候補**。TRAIN LogLossだけで1回選択し、VAL/OOSはfreeze後までblind。
 Recent Form TRAIN fit: **coef +0.30** がLogLoss最良でfreeze。TRAINではLogLoss/Brier改善、mean rankは僅かに悪化。VAL/OOSは未読。
 Recent Form blind result: **LogLoss/BrierはVAL/OOS両方改善したが、mean official-ticket rankが両方悪化**。事前gateに従い **不採用・収集継続**。
-Next ONE task: **Exhibition timeのhistorical coverage / pre-race provenanceをread-only確定する。**
+Exhibition Time readiness: **64,297/70,170=91.63%**。TRAIN 98.30%、VALIDATION 97.51%、OOS **67.60%**。unknown source=0、全て公式historical beforeinfo由来。
+Next ONE task: **OOS展示タイムcoverage低下を月別・日付境界・source別にread-only診断する。**
 
-`V51_RF_REJECT / EXHIBITION_TIME_READINESS_NEXT / ONE_TASK_ONLY / COST_LE_20`
+`EX_TIME_READY / OOS_COVERAGE_DIAG_NEXT / ONE_TASK_ONLY / COST_LE_20`
