@@ -59,7 +59,7 @@ jobs:
               assert "set transaction read only" in p, path
           w=Path(".github/workflows/v5-live-gates-readonly-temp.yml").read_text(encoding="utf-8").lower()
           assert "".join(("railway"," variable"," list")) not in w
-          assert "list_variables" not in w
+          assert "".join(("list","_variables")) not in w
           assert w.count("railway run") == 3
           print("V5_LIVE_GATES_STATIC=PASS")
           PY
