@@ -1,0 +1,56 @@
+name: V4 economic reranker contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_economic_reranker_contract.py'
+      - 'research/v4_economic_reranker_walkforward.py'
+      - 'tests/test_v4_economic_reranker_contract.py'
+      - 'tests/test_v4_economic_reranker_walkforward.py'
+      - 'docs/V4_ECONOMIC_RERANKER_PREREG_20260924.md'
+      - '.github/workflows/v4-economic-reranker-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen reranker contract and offline evaluator
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/v4_economic_reranker_contract.py             research/v4_economic_reranker_walkforward.py             tests/test_v4_economic_reranker_contract.py             tests/test_v4_economic_reranker_walkforward.py
+          python -m pip install pytest
+          pytest -q             tests/test_v4_economic_reranker_contract.py             tests/test_v4_economic_reranker_walkforward.py
+          python - <<'PY'
+          from pathlib import Path
+          from research.v4_economic_reranker_contract import contract_metadata
+          import research.v4_economic_reranker_walkforward as ev
+
+          meta=contract_metadata()
+          assert meta['core_races_per_day'] == 6
+          assert meta['points_per_race'] == 2
+          assert meta['candidate_skip_allowed'] is False
+          assert meta['market_input_allowed'] is False
+          assert meta['production_change_allowed'] is False
+          assert meta['purchase_action'] is False
+
+          assert ev.EXPECTED_EVALUATED_DAYS == 432
+          assert ev.EXPECTED_EVALUATED_RACES == 2592
+          assert ev.EXPECTED_SOURCE_JSON_SHA256 == '4f814a4c5a89e7f014ca32a91ef9e477ce076ebd1527eeab306c96be5759b286'
+
+          source=Path('research/v4_economic_reranker_walkforward.py').read_text(encoding='utf-8').lower()
+          for forbidden in ('psycopg','database_url','v2_realtime_odds','market_rank','purchase_action=true'):
+              assert forbidden not in source, forbidden
+          print('V4_ECONOMIC_RERANKER_CONTRACT=PASS')
+          PY
