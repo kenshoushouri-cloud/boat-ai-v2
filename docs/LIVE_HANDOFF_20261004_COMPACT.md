@@ -24,8 +24,8 @@
 - 最小コスト方針: Exhibition-Time-onlyで **4,703 HTTP**（generic 12,424より約62%削減）、Jul 53 / Aug 2,086 / Sep 2,564。
 - Exhibition-Time-only modeはPR #544で実装済み。candidate-v4対象、weather/ST/tilt/courseは書かず、time/rank/diffのみmissing-fill。
 - **Jul pilot実施済み**: target53 / HTTP53 / fetch failure0。ただし旧realtime parserでは展示parse **0行**、DB更新**0行**で安全停止。Jul missing 53は未解消。
-- Exhibition-Time-only parser修正は **PR #546 merged**。historical parser v3へ切替え、6艇＋展示タイム妥当性を満たさないraceはwrite禁止、target>0かつusable=0の日はFAIL扱いにした。
-- PR #546 safety CIはPASS。candidate-v4 July plan-onlyも **HTTP=0 / DB write=0** でPASS。Jul再pilotは未実行。
+- Exhibition-Time-only parser修正は **PR #548 merged / commit `28c9f56bc09961e6b19dd65caa07b95d8e4914bd`** で最終化。historical parser v3へ切替え、6艇＋time/rank/diff妥当性NGはwrite禁止、**対象がある各日でusable=0ならbatch FAIL**。
+- safety run `37194597909` は **17 tests PASS**。candidate-v4 July plan-onlyも **target53 / HTTP=0 / DB write=0 / parser-v3 wired** でPASS。Jul再pilotは未実行。
 - pilot後の既知値: DB約4.389GB、WAL約83.9MB、volume約4,670.8/5,000MB。Aug/Sepは未実行。
 
 ## 次の1作業
@@ -48,4 +48,4 @@
 古いhandoffは履歴。必要時だけ参照。
 handoff内のSHA/run/件数/容量は固定値にせず、**次の1作業に必要なものだけlive再取得**する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / PARSER_V3_FIXED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / PARSER_V3_PERDAY_FAILCLOSED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`

@@ -13,7 +13,7 @@
 - Live gatesはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げず、economics未実行。
 - Recent Formはblind VAL/OOSで不採用、収集継続。
 - Exhibition Time OOS missing=4,703。低コスト専用mode実装済み。
-- Jul旧pilotはparser 0行→DB write 0で安全停止。その後PR #546でhistorical parser v3 + fail-closed quality gateへ修正し、安全CI/Jul plan-onlyはPASS。Aug/Sep未実行。
+- Jul旧pilotはparser 0行→DB write 0で安全停止。parser修正は **PR #548** で最終化: historical parser v3 + 6艇/time/rank/diff妥当性 + **per-day fail-closed**。run `37194597909` は17 tests/Jul plan-onlyともPASS、HTTP=0・DB write=0。Aug/Sep未実行。
 - **Next ONE task:** Jul missing 53件だけ再pilotし、parse成功・missing-fill・DB/WAL/volume増分を確認。Aug/Sepはまだしない。
 
-`COMPACT_ONLY / PARSER_V3_FIXED / JULY_53_REPILOT_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / PARSER_V3_PERDAY_FAILCLOSED / JULY_53_REPILOT_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`

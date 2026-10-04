@@ -158,11 +158,20 @@
   - replication slots **0** / retained bytes **0**
 - persistent data growthは発生していない。Aug/Sepは停止継続。
 
-## Next ONE task
-**Exhibition-Time-only modeをhistorical parser v3へ切替え、fail-closed parse quality gateを追加して安全テストだけ通す。再pilotはまだ実行しない。**
-- target>0なのにusable exhibition rows=0等ならPASS扱いにせずFAIL。
+## Exhibition-Time parser-v3 safety — FINALIZED
+- PR `#548` merged / commit `28c9f56bc09961e6b19dd65caa07b95d8e4914bd`。
+- Exhibition-Time-onlyは `historical_beforeinfo_parser_v3.parse_exhibition` を使用。
+- write前にexact 6 lanes + Exhibition Time 6.0..8.0 + rank/diff妥当性を検証。NG raceはwrite/commit禁止。
+- **per-day fail-closed**: 対象raceがある日にusable six-lane parseが0ならbatch FAIL。全体の別日成功で救済しない。
 - weather/ST/tilt/course writeなし、time/rank/diff missing-fillのみを維持。
-- candidate-v4 target、0.50 sec/request、result/odds/payout read=0を維持。
-- Aug/SepはJul再pilot成功まで禁止。
+- safety run `37194597909`: validate SUCCESS / **17 tests PASS** / candidate-v4 Jul plan-only SUCCESS / target53 / HTTP=0 / DB write=0 / backfill SKIPPED。
+- 共通CIも全てSUCCESS。Jul再pilotは未実行、Aug/SepはBLOCK継続。
 
-`JULY_PILOT_SAFE_ZERO_WRITE / PARSER_V3_FIX_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**Jul missing 53件だけをExhibition-Time-onlyで再pilotし、parser v3実データparse・missing-fill・coverage・DB/WAL/volume増分を確認する。Aug/Sepはまだ実行しない。**
+- 0.50 sec/request。
+- fail-closedを維持。各日usable=0なら停止。
+- result/odds/payout read=0、Production/LINE/purchase変更なし。
+- pilot確認PASSまでAugへ進まない。
+
+`PARSER_V3_PERDAY_FAILCLOSED_READY / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
