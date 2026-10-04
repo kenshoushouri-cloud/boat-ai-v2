@@ -4,12 +4,12 @@ on:
   pull_request:
     paths:
       - ".github/workflows/recent-form-storage-readonly.yml"
+      - "research/recent_form_storage_readonly.py"
   issue_comment:
     types: [created]
 
 permissions:
   contents: read
-  pull-requests: write
   issues: write
 
 env:
@@ -18,13 +18,39 @@ env:
   RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
 
 jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate read-only audit
+        run: |
+          set -euo pipefail
+          python -m py_compile research/recent_form_storage_readonly.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/recent_form_storage_readonly.py").read_text(encoding="utf-8")
+          assert "default_transaction_read_only" in p
+          assert "v2_race_entries" in p and "recent_form" in p
+          assert "v2_results" not in p and "v2_odds" not in p
+          assert "insert " not in p.lower()
+          assert "update " not in p.lower()
+          assert "delete " not in p.lower()
+          print("RECENT_FORM_STORAGE_AUDIT_VALIDATE=PASS")
+          PY
+
   audit:
     if: >-
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.number == 42 &&
-       github.actor == github.repository_owner &&
-       github.event.comment.body == '/railway recent-form-storage-readonly')
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-storage-readonly'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -41,44 +67,15 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           set -euo pipefail
-          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_DB_SERVICE" bash -lc '
-            test -n "${DATABASE_PUBLIC_URL:-}";
-            export DATABASE_URL="$DATABASE_PUBLIC_URL";
-            export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000";
-            python - <<"PY"
-import os
-import psycopg
-db=os.environ["DATABASE_URL"]
-with psycopg.connect(db) as conn:
-    with conn.cursor() as cur:
-        cur.execute("set default_transaction_read_only=on")
-        cur.execute("""
-          select
-            pg_total_relation_size('v2_race_entries')::bigint,
-            pg_table_size('v2_race_entries')::bigint,
-            pg_indexes_size('v2_race_entries')::bigint,
-            count(*)::bigint,
-            count(*) filter (where recent_form is not null and recent_form::text not in ('null','[]','{}','\"\"',''))::bigint,
-            coalesce(sum(pg_column_size(recent_form)) filter (where recent_form is not null),0)::bigint,
-            coalesce(avg(pg_column_size(recent_form)) filter (where recent_form is not null),0)::numeric(18,2),
-            coalesce(max(pg_column_size(recent_form)) filter (where recent_form is not null),0)::bigint
-          from v2_race_entries
-        """)
-        total, table, idx, rows, recent_rows, recent_bytes, recent_avg, recent_max = cur.fetchone()
-        print(f"RFE_TOTAL_RELATION_BYTES={total}")
-        print(f"RFE_TABLE_BYTES={table}")
-        print(f"RFE_INDEX_BYTES={idx}")
-        print(f"RFE_ROWS={rows}")
-        print(f"RECENT_FORM_NONEMPTY_ROWS={recent_rows}")
-        print(f"RECENT_FORM_COLUMN_BYTES={recent_bytes}")
-        print(f"RECENT_FORM_COLUMN_MB={recent_bytes/1_000_000:.3f}")
-        print(f"RECENT_FORM_AVG_BYTES={recent_avg}")
-        print(f"RECENT_FORM_MAX_BYTES={recent_max}")
-        print("DB_READ_ONLY=1 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
-PY
-          ' | tee audit.txt
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; exec python -u research/recent_form_storage_readonly.py' \
+            | tee audit.txt
           grep -q '^DB_READ_ONLY=1 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0$' audit.txt
       - name: Comment result
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -86,13 +83,13 @@ PY
             echo '## Recent Form storage read-only'
             echo
             echo '```text'
-            grep -E '^(RFE_|RECENT_FORM_|DB_READ_ONLY=)' audit.txt
+            if [ -s audit.txt ]; then
+              grep -E '^(RFE_|RECENT_FORM_|DB_READ_ONLY=)' audit.txt || true
+            else
+              echo 'FAILED: no audit output'
+            fi
             echo '```'
             echo
             echo 'Read-only capacity audit only. No DB/Railway/Production/LINE/purchase change.'
           } > body.md
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file body.md
-          else
-            gh pr comment "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --body-file body.md
-          fi
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file body.md
