@@ -44,6 +44,7 @@ jobs:
           assert 'LIMIT 47' in text
           assert 'historical-exhibition-classify-remaining-july' in text
           assert 'historical-exhibition-verify-official-absent-3' in text
+          assert 'historical-exhibition-verify-official-absent-11' in text
           assert 'railway ' + 'variable list' not in text
           assert 'list_' + 'variables' not in text
           assert 'CONFIRM_HISTORICAL_' + 'BEFOREINFO_DB_WRITE' not in text
@@ -273,4 +274,85 @@ jobs:
             gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
           else
             gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Official-absent verification failed before summary generation. No DB write or Railway setting change was requested."
+          fi
+
+
+  verify-official-absent-11:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-exhibition-verify-official-absent-11'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Verify remaining eleven zero-value official pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+          import requests
+          import historical_beforeinfo_parser_v3 as hp
+          import v21_realtime_collector_pg as rt
+
+          samples=[
+              (f"20260729_09_{race_no:02d}", "2026-07-29", "09", race_no)
+              for race_no in range(2, 13)
+          ]
+          s=requests.Session()
+          s.headers.update({
+              "User-Agent":"Mozilla/5.0 (compatible; boat-ai-v2-official-absent-remaining/1.0)"
+          })
+          counts=Counter()
+          rows=[]
+          for race_id,race_date,venue,race_no in samples:
+              url=("https://www.boatrace.jp/owpc/pc/race/beforeinfo"
+                   f"?rno={race_no}&jcd={venue}&hd=20260729")
+              r=s.get(url,timeout=35)
+              r.raise_for_status()
+              r.encoding=r.apparent_encoding or "utf-8"
+              html=r.text
+              if rt._looks_no_data(html):
+                  status,valid="official_no_data",0
+              else:
+                  inspection=hp.inspect_exhibition_time_page(html)
+                  status=str(inspection.get("status") or "parser_failure")
+                  valid=int(inspection.get("valid_time_count") or 0)
+              counts[status]+=1
+              rows.append(f"{race_id} status={status} valid_times={valid}")
+
+          lines=[
+              "## Official-absent remaining 11 verification","",
+              "~~~text",*rows,"~~~","",
+              "Summary:",
+              f"- official_absent={counts['official_absent']}",
+              f"- official_partial={counts['official_partial']}",
+              f"- parser_failure={counts['parser_failure']}",
+              f"- official_no_data={counts['official_no_data']}",
+              "- http_requests=11",
+              "- db_write=0","",
+              "No DB access/write, Railway setting change, result/odds/payout read, Production/LINE/purchase change, or Aug/Sep execution.",
+          ]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Post sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Remaining official-absent verification failed before summary generation. No DB write or Railway setting change was requested."
           fi
