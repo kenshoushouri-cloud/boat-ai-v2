@@ -10,6 +10,7 @@ Read only:
 Do not load old handoffs by default. Re-fetch only live state needed for the next single task.
 
 Current:
+- **Target operating start = mid-October 2026. Critical path: finish all required historical missing-data fills -> verify matched-contract/data integrity -> run backtest -> finalize retention/archive move -> launch review. Move quickly, but never skip leakage/fill-missing-only/OOM/disk safety checks.**
 - Production data SoT = `postgres-hobby-fullhistory-candidate-v4`
 - Railway plan = Hobby
 - Historical Recent Form completed through 2026-07-22
