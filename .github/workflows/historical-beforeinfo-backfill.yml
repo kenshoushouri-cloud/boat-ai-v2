@@ -45,7 +45,7 @@ jobs:
           assert {"validate","live-read-only-plan","backfill"} <= set(parsed["jobs"])
           text=p.read_text(encoding="utf-8")
           assert "postgres-hobby-fullhistory-candidate-v4" in text
-          assert "postgres-recovery" not in text
+          assert "".join(("postgres-","recovery")) not in text
           assert "historical-exhibition-time-backfill" in text
           assert "--mode exhibition-time-only --plan-only" in text
           print("PASS workflow YAML")
