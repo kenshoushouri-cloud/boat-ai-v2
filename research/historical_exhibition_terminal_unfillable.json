@@ -4,9 +4,9 @@
   "source": "official archived beforeinfo read-only verification",
   "rule": "Skip repeat HTTP for verified terminal races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
   "counts": {
-    "official_partial": 41,
+    "official_partial": 43,
     "official_absent": 14,
-    "total": 55
+    "total": 57
   },
   "races": {
     "20260701_10_08": "official_partial",
@@ -63,6 +63,8 @@
     "20260729_09_11": "official_absent",
     "20260729_09_12": "official_absent",
     "20260804_04_09": "official_partial",
-    "20260804_12_10": "official_partial"
+    "20260804_12_10": "official_partial",
+    "20260805_10_10": "official_partial",
+    "20260805_17_11": "official_partial"
   }
 }
