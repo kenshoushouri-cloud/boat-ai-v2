@@ -1,0 +1,84 @@
+name: Research V4 Formal Artifact Settlement 20260927
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_formal_artifact_settlement_pg.py'
+      - '.github/workflows/research-v4-formal-artifact-settlement-20260927.yml'
+      - 'docs/V4_FORMAL_ARTIFACT_SETTLEMENT_20260927.md'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: '268a5b17-0712-440a-884d-27f7fa887a2d'
+      RAILWAY_ENVIRONMENT: 'production'
+      RAILWAY_DB_SERVICE: 'postgres-recovery'
+      V4_FORMAL_ARTIFACT_DIR: 'v4-artifacts'
+      V4_FORMAL_SETTLEMENT_OUTPUT: 'v4-formal-artifact-settlement.json'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install -r requirements.txt
+      - name: Verify read-only artifact-first contract
+        run: |
+          set -euo pipefail
+          grep -q 'set transaction read only' research/v4_formal_artifact_settlement_pg.py
+          grep -q 'RECONSTRUCT_CANDIDATES=0 ODDS_READ=0' research/v4_formal_artifact_settlement_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('.github/workflows/research-v4-formal-artifact-settlement-20260927.yml').read_text(encoding='utf-8').lower()
+          assert ''.join(('railway',' variable',' list')) not in w
+          assert 'actions: read' in w
+          assert 'railway run' in w
+          PY
+      - name: Download exact immutable formal artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p v4-artifacts
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10617384166/zip > v4-artifacts/2026-09-21.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10670080150/zip > v4-artifacts/2026-09-22.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10724298102/zip > v4-artifacts/2026-09-23.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10782581362/zip > v4-artifacts/2026-09-24.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10838744179/zip > v4-artifacts/2026-09-25.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10891628808/zip > v4-artifacts/2026-09-26.zip
+          gh api repos/"$GITHUB_REPOSITORY"/actions/artifacts/10918742073/zip > v4-artifacts/2026-09-27.zip
+          cat > v4-artifacts/SHA256SUMS <<'EOF'
+          b40c34f99c42685ebbee330c90eeab0f45a829cfc18513d2517d9fc9da9da666  v4-artifacts/2026-09-21.zip
+          60ae93e3758679fc0109fd180bbd66a54978c0b483514a724bb5ace376c5a94c  v4-artifacts/2026-09-22.zip
+          9b7bb37e8d91753923774acb728499b499a3b12f2919c91ff321a7369d1c7a32  v4-artifacts/2026-09-23.zip
+          4527b05e320dfcf546d2d9604edbbc5721cc50b4de2da723935eec5e7b5a0997  v4-artifacts/2026-09-24.zip
+          6abac7b17061dd8e6449c98ec7cba21f2b2ae708804890076c7304e7f52bcca1  v4-artifacts/2026-09-25.zip
+          59812eb598a48965621f4b9b4842c65312c4c7914200754627dc71f2d8f120af  v4-artifacts/2026-09-26.zip
+          d251c0d918964e3dc8c467b8f43038cae0571892a2b0539ad8ccf27a39d98da0  v4-artifacts/2026-09-27.zip
+          EOF
+          sha256sum -c v4-artifacts/SHA256SUMS
+      - run: npm install --global @railway/cli
+      - name: Settle frozen formal core against official results
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' \
+            2>&1 | tee v4-formal-artifact-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0$' v4-formal-artifact-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-formal-artifact-settlement.txt
+      - name: Upload settlement evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-formal-artifact-settlement-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-settlement.json
+            v4-formal-artifact-settlement.txt
+            v4-artifacts/SHA256SUMS
+          retention-days: 90
+          if-no-files-found: error
