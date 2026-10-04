@@ -46,6 +46,15 @@ USER_AGENT = "boat-ai-v2-historical-beforeinfo-backfill/1.0"
 MODE_GENERIC = "generic"
 MODE_EXHIBITION_TIME_ONLY = "exhibition-time-only"
 MODES = (MODE_GENERIC, MODE_EXHIBITION_TIME_ONLY)
+TERMINAL_UNFILLABLE_PATH = Path(__file__).with_name(
+    "historical_exhibition_terminal_unfillable_202607.txt"
+)
+JULY_2026_EXHIBITION_TERMINAL_UNFILLABLE = frozenset(
+    line.strip()
+    for line in TERMINAL_UNFILLABLE_PATH.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+)
+
 
 
 def _date_range(start_date: str, end_date: str) -> list[str]:
@@ -143,7 +152,13 @@ def _target_races(
                 """,
                 (target_date,),
             )
-            return [dict(row) for row in cur.fetchall()]
+            rows = [dict(row) for row in cur.fetchall()]
+            return [
+                row
+                for row in rows
+                if str(row.get("race_id") or "")
+                not in JULY_2026_EXHIBITION_TERMINAL_UNFILLABLE
+            ]
 
     with conn.cursor() as cur:
         cur.execute(
