@@ -19,6 +19,7 @@ Recent Form TRAIN fit: **coef +0.30** がLogLoss最良でfreeze。TRAINではLog
 Recent Form blind result: **LogLoss/BrierはVAL/OOS両方改善したが、mean official-ticket rankが両方悪化**。事前gateに従い **不採用・収集継続**。
 Exhibition Time readiness: **64,297/70,170=91.63%**。TRAIN 98.30%、VALIDATION 97.51%、OOS **67.60%**。unknown source=0、全て公式historical beforeinfo由来。
 Exhibition Time OOS gap診断: Jul 98.93% / Aug 57.65% / Sep 44.93%。missing **4,703**。ZERO日が連続し、その後complete日が再出現。過去long campaignもcancelledしており、主因は**backfill未完/不連続**。
-Next ONE task: **4,703 missing racesの最小コストbackfill計画を事前見積りする（まだ実行しない）。**
+Exhibition Time min-cost plan: generic **12,424 HTTP**に対しtargeted **4,703 HTTP**（約62.15%削減）。Jul 53 / Aug 2,086 / Sep 2,564。DBは約4.67/5GBなので月別＋各回disk/WAL確認。
+Next ONE task: **Exhibition-Time-only mode + candidate-v4 targetingを実装し、安全テストのみ。まだbackfillしない。**
 
-`EX_TIME_OOS_GAP_DIAG_DONE / BACKFILL_COST_PLAN_NEXT / ONE_TASK_ONLY / COST_LE_20`
+`EX_TIME_MIN_COST_PLAN_DONE / IMPLEMENT_ONLY_NEXT / NO_BACKFILL_YET / ONE_TASK_ONLY / COST_LE_20`

@@ -121,12 +121,20 @@
 - 過去long campaign run `36667954064` は segment 1/2/3 のbackfill jobsが全てcancelled。後続の部分backfillで一部埋まったが、OOSに未完区間が残ったと判断。
 - outcome/odds/payout read=0 / DB write=0 / Production change=0。
 
-## Next ONE task
-**4,703 missing racesを埋める最小コストbackfill計画を作り、HTTP件数・分割範囲・Railway/GitHub実行量を事前見積りする。**
-- この次作業ではまだbackfillを実行しない。
-- cost target <=USD20/monthを優先。
-- outcomeは読まない。
-- Recent Formは不採用のまま収集継続。
-- prospective V4/S03 gateは自然蓄積を継続し、matched economicsはlive gates達成まで実行しない。
+## Exhibition Time minimal-cost backfill plan — NO EXECUTION
+- plan=`docs/V51_EXHIBITION_TIME_MIN_COST_BACKFILL_PLAN_20261004.md`。
+- run `37190834004` / artifact `11299500355`。
+- targeted Exhibition-Time-only=**4,703 HTTP**、generic current SQL=**12,424 HTTP**。**7,721件 / 約62.15%削減**。
+- 0.50s sleep floor: **103.53分 → 39.19分**。
+- Jul **53** / Aug **2,086** / Sep **2,564**。Julをpilotにする。
+- max new rows=28,218、payload約6.14MB、relation増分目安約10.2MB + transient WAL。
+- candidate-v4 disk current≈4.670/5GB、24h max≈4.769GB。毎batch後にdisk/WAL確認。
+- generic beforeinfo workflowはstale `postgres-recovery` のため、そのまま実行しない。
 
-`EX_TIME_OOS_GAP_BACKFILL_INCOMPLETE / MISSING_4703 / PLAN_COST_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**Exhibition-Time-only mode + candidate-v4 targetingを実装し、安全テストだけ通す。backfillはまだ実行しない。**
+- weather等を理由にHTTP対象を増やさない。
+- existing non-null preserve / missing-only。
+- result/odds/payout read=0、LINE/purchase/Production change=0。
+
+`EX_TIME_BACKFILL_PLAN_LOCKED_4703 / IMPLEMENT_SAFE_MODE_NEXT / NO_BACKFILL_YET / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
