@@ -25,23 +25,25 @@
 - 2026-10-04 post-redeploy live cgroup read-only diagnostic: `memory.current=83,251,200 bytes (~0.083GB)`; `anon=9,699,328`, `file=67,502,080`, `shmem=42,029,056`, `kernel=5,914,624`. This strongly supports that prior 1-3GB memory growth was dominated by reclaimable file/page cache rather than PostgreSQL private/anon memory.
 - The 08:00 JST `cron-learning-all` and `cron-final-check` executions completed normally after the redeploy; candidate-v4 remained around 0.08GB immediately afterward.
 - Existing `railway-current-usage-readonly.yml` was tried without Railway Agent, but `railway usage` exited 1 under the current GitHub Railway token before JSON was produced; do not repeatedly retry unless token/billing scope is deliberately changed.
-- Candidate-v4 currently has an 8GB memory limit. A lower per-replica memory cap (candidate: ~1GB) may bound page-cache-driven billing, but it is a Production resource-limit change and requires explicit approval plus post-change monitoring before use.
 
 ## Cost change 2026-10-04
 - candidate-v4 RAM cap = 1GB. Verified live cgroup `memory.max=999997440` bytes.
-- Post-change sample: `memory.current=653467648`, `anon=9334784`, `file=635535360`, `shmem=78368768` bytes.
-- candidate-v4 remained Online/SUCCESS; no OOM/crash seen; recent `cron-learning-all` and `cron-final-check` completed normally.
+- Representative 14-day backfill under the 1GB cap completed successfully: run `37164188656`, 2026-04-30..2026-05-13, 14,380 rows updated, PASS.
+- During that run, candidate-v4 memory peaked around 0.985GB; cgroup `memory.events` showed `max=17`, but `oom=0`, `oom_kill=0`, `oom_group_kill=0`. Memory remained dominated by reclaimable file cache.
+- After completion, candidate-v4 stayed Online/SUCCESS; latest checked disk was ~4.448GB, below the 5GB Hobby volume limit.
 - Keep the 1GB cap for now. Do not lower further without explicit approval and representative workload evidence.
+- `/railway historical-recent-form-next` had become stale and re-ran 2026-04-16..04-29 with 0 updates. Workflow was corrected so the next range is 2026-05-14..05-27.
+- Backfill concurrency was corrected so manual ranges and `/railway historical-recent-form-next` share one `historical-production-write` group, preventing overlapping Production backfills.
 
 ## Historical Recent Form status
 - Method: Official K prior-day only / fill-missing-only.
 - Required invariants: SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1, BUY=0, PROD_MODEL_CHANGE=0.
-- Completed through 2026-02-18.
-- 2026-02-05..2026-02-18 run `37099767217`: SUCCESS, 12,095 rows updated, fillable_rows=12,095, target_empty_rows=12,096, PASS.
-- A prior run `37003791680` failed during Railway CLI download with ECONNRESET before parse/DB work; no DB write occurred.
-- After the 14-day PASS, candidate-v4 DISK_USAGE_GB was ~4.4714 current / 4.5053 24h max, below 5GB.
-- Fixed command target is now **2026-02-19..2026-03-04 (14 days)**.
-- Target update commit: `8fbaf37eb522781a4b99cc7b45dc06916e332fd8`.
+- Completed through **2026-05-13**.
+- Latest substantive batch: 2026-04-30..2026-05-13 run `37164188656`: SUCCESS, db_rows_updated=14,380, fillable_rows=14,380, target_empty_rows=14,400, official_k_rows_added_after_build=14,112, PASS.
+- Latest run confirmed SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1.
+- A stale `/railway historical-recent-form-next` run rechecked 2026-04-16..04-29 and updated 0 rows; no harmful overwrite occurred because fill-missing-only remained enforced.
+- Fixed command target is now **2026-05-14..2026-05-27 (14 days)**.
+- Workflow update commit: `bfc08a2e91fa2decc12d909b1e716ef1205e6897`.
 
 ## V5 status
 - V5 is a **research candidate only**; there is no V5 Production Railway database/service to run or pay for. Production remains V4.
