@@ -47,3 +47,8 @@ Model integration protocol:
 - the latest Exhibition ST Forward checkpoint (run 37185447967) had 2,050/2,050 valid evaluations but slightly worsened overall tri LogLoss/Brier/rank, so Exhibition ST is not the first adoption candidate.
 
 `V51_RF5_TOP3 / PRIOR_DAY_ONLY / TRAIN_FIT_ONCE / VALIDATION_OOS_NO_RETUNE / FORWARD_REQUIRED / PROD_UNCHANGED`
+
+## Coefficient search lock
+
+Frozen in `docs/V51_RECENT_FORM_COEFFICIENT_SEARCH_LOCK_20261004.md`.
+TRAIN-only grid selection must follow that document exactly before VALIDATION/OOS are read.

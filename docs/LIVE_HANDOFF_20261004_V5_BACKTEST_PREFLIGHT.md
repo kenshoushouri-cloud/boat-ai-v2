@@ -59,11 +59,19 @@
 - outcome/odds/payout read=0 / DB write=0 / Production change=0。
 - PR #538はresearch audit用。Production採用を意味しない。
 
-## Next ONE task
-**Recent Form係数探索の範囲・grid・採否判定を結果を見る前に固定する。**
-- TRAIN_REFERENCEだけで係数を1回fit。
-- VALIDATION/OOSは係数freeze後にのみ読む。retune禁止。
-- probability quality（LogLoss/Brier/calibration）を主判定、economicsは副判定。
-- prospective V4/S03 gateは自然蓄積を継続し、matched economicsはlive gates達成まで実行しない。
+## Recent Form coefficient search — PRE-OUTCOME LOCKED
+- lock=`docs/V51_RECENT_FORM_COEFFICIENT_SEARCH_LOCK_20261004.md`。
+- gridは **-0.50..+0.50の0.10刻み、11候補のみ**。後から拡張/細分化禁止。
+- V4 course-adjusted rawへ `coef * within-race RecentForm z` を加え、それ以外のV4/V5 contractは不変。
+- TRAIN_REFERENCE **26,801 races**のみでmean trifecta LogLoss最小の係数を1回選択。
+- 係数freeze後にだけVALIDATION **28,178** / OOS **14,492**を評価。retune禁止。
+- adoption gate: VALIDATION/OOSの両方で LogLoss改善 + Brier改善 + official trifecta mean rank非悪化。
+- 0.00がTRAIN勝者、またはVAL/OOSどちらか失敗なら不採用。情報収集は継続。
 
-`V51_RF_READY_69477_70170 / PROVENANCE_CLEAN / COEFFICIENT_GRID_FREEZE_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**TRAIN_REFERENCEだけを読み、11係数からRecent Form係数を1回fitしてartifact/hashで凍結する。**
+- VALIDATION/OOSの結果はこの作業では読まない。
+- prospective V4/S03 gateは自然蓄積を継続。
+- matched economicsはlive gates達成まで実行しない。
+
+`V51_RF_GRID_LOCKED_11 / TRAIN_FIT_ONLY_NEXT / BLIND_VAL_OOS / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
