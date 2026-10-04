@@ -131,10 +131,23 @@
 - candidate-v4 disk current≈4.670/5GB、24h max≈4.769GB。毎batch後にdisk/WAL確認。
 - generic beforeinfo workflowはstale `postgres-recovery` のため、そのまま実行しない。
 
-## Next ONE task
-**Exhibition-Time-only mode + candidate-v4 targetingを実装し、安全テストだけ通す。backfillはまだ実行しない。**
-- weather等を理由にHTTP対象を増やさない。
-- existing non-null preserve / missing-only。
-- result/odds/payout read=0、LINE/purchase/Production change=0。
+## Exhibition-Time-only implementation — READY / NO BACKFILL YET
+- PR `#544` merged / commit `0e9dc77127eb38ccfa47a009e70f492879cb95f4`。
+- `exhibition-time-only` mode追加。対象はhistorical `exhibition_time` 6艇未完raceのみ。
+- 専用modeではweather parse/writeなし。ST/tilt/courseも書かず、**exhibition_time / rank / diffのみmissing-fill**。
+- single-batch workflowのDB targetを `postgres-hobby-fullhistory-candidate-v4` に修正。
+- 専用command: `/railway historical-exhibition-time-backfill YYYY-MM-DD YYYY-MM-DD`。
+- writer concurrencyはgenericと共通で直列化。
+- safety run `37192162162` SUCCESS。validate SUCCESS / live plan-only SUCCESS / backfill job SKIPPED。
+- plan-onlyでJul 2026-07-01..31 target **53**、HTTP=0、DB write=0を確認。
+- 共通CIも全てSUCCESS。
+- **実backfillはまだ0件**。
 
-`EX_TIME_BACKFILL_PLAN_LOCKED_4703 / IMPLEMENT_SAFE_MODE_NEXT / NO_BACKFILL_YET / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**Jul pilot 2026-07-01..31 の53件だけを Exhibition-Time-only modeでbackfillし、直後にcoverage・disk・WALを確認する。**
+- expected target=53。大きくdriftしたらwrite前停止。
+- 0.50 sec/requestを維持。
+- result/odds/payout read=0、Production/LINE/purchase変更なし。
+- Jul pilot後の確認がPASSするまでAugへ進まない。
+
+`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / NO_BACKFILL_YET / CHECK_DISK_WAL_AFTER_PILOT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`

@@ -57,7 +57,20 @@ Before any write:
 
 If the actual target count materially differs, stop before writes.
 
-## Next ONE task
-Implement Exhibition-Time-only mode + candidate-v4 targeting and run safety tests only. **No backfill yet.**
+## Implementation status
+Completed in PR `#544`, merged as `0e9dc77127eb38ccfa47a009e70f492879cb95f4`.
 
-`EX_TIME_ONLY_4703 / SAVE_HTTP_7721 / JULY_PILOT_FIRST / CHECK_DISK_WAL_EACH_BATCH / NO_BACKFILL_YET`
+Safety run `37192162162`:
+- validate: SUCCESS
+- candidate-v4 July plan-only: SUCCESS
+- July target: **53**
+- HTTP requests: **0**
+- DB writes: **0**
+- actual backfill job: SKIPPED
+
+The dedicated mode writes only Exhibition Time / rank / diff and does not parse/write weather or fill ST/tilt/course.
+
+## Next ONE task
+Run the **July 53-race pilot only**, then recheck coverage, disk and WAL before any August work.
+
+`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / CHECK_DISK_WAL_AFTER_PILOT / NO_AUG_UNTIL_PASS`

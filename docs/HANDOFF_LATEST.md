@@ -20,6 +20,7 @@ Recent Form blind result: **LogLoss/BrierはVAL/OOS両方改善したが、mean 
 Exhibition Time readiness: **64,297/70,170=91.63%**。TRAIN 98.30%、VALIDATION 97.51%、OOS **67.60%**。unknown source=0、全て公式historical beforeinfo由来。
 Exhibition Time OOS gap診断: Jul 98.93% / Aug 57.65% / Sep 44.93%。missing **4,703**。ZERO日が連続し、その後complete日が再出現。過去long campaignもcancelledしており、主因は**backfill未完/不連続**。
 Exhibition Time min-cost plan: generic **12,424 HTTP**に対しtargeted **4,703 HTTP**（約62.15%削減）。Jul 53 / Aug 2,086 / Sep 2,564。DBは約4.67/5GBなので月別＋各回disk/WAL確認。
-Next ONE task: **Exhibition-Time-only mode + candidate-v4 targetingを実装し、安全テストのみ。まだbackfillしない。**
+Exhibition-Time-only実装済み: PR **#544** merged / candidate-v4 target / weather・ST・tilt・course writeなし / July plan-only **53件・HTTP0・DB write0** / safety全PASS。
+Next ONE task: **Jul 2026-07-01..31の53件pilotだけを実行し、直後にcoverage・disk・WAL確認。PASSまでAugへ進まない。**
 
-`EX_TIME_MIN_COST_PLAN_DONE / IMPLEMENT_ONLY_NEXT / NO_BACKFILL_YET / ONE_TASK_ONLY / COST_LE_20`
+`EX_TIME_ONLY_IMPLEMENTED / JULY_53_PILOT_NEXT / NO_BACKFILL_YET / ONE_TASK_ONLY / COST_LE_20`
