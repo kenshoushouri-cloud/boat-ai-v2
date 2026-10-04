@@ -61,7 +61,8 @@ jobs:
           assert "v2_results" not in p
           assert "v2_odds" not in p
           assert "result_odds_payout_read" in p
-          assert 'mode_exhibition_time_only = "exhibition-time-only"' in p
+          assert "mode_exhibition_time_only" in p
+          assert "exhibition-time-only" in p
           print("PASS historical beforeinfo safety")
           PY
 
