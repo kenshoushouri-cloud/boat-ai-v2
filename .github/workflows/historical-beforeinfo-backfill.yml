@@ -106,10 +106,10 @@ jobs:
           assert x["write_enabled"] is False
           assert x["parse_quality_status"]=="NOT_APPLICABLE_PLAN_ONLY"
           assert x["historical_parser_version"]=="2026-08-22 historical-beforeinfo-parser-v3"
-          assert x["totals"]["target_missing_races"]==53, x["totals"]
+          assert x["totals"]["target_missing_races"]==0, x["totals"]
           assert "http_requests" not in x["totals"]
-          assert x["totals"]["plan_only_no_http"]==53
-          print("PASS July target=53 / parser-v3 wired / HTTP=0 / DB_WRITE=0")
+          assert x["totals"]["plan_only_no_http"]==0
+          print("PASS July terminal-skip target=0 / HTTP=0 / DB_WRITE=0")
           PY
 
   backfill:
