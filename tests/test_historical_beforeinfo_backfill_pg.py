@@ -195,8 +195,14 @@ def test_invalid_historical_parse_never_writes(monkeypatch):
     monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
     monkeypatch.setattr(
         m.historical_parser_v3,
-        "parse_exhibition",
-        lambda html: [],
+        "inspect_exhibition_time_page",
+        lambda html: {
+            "status": m.historical_parser_v3.EXHIBITION_STATUS_PARSER_FAILURE,
+            "valid_time_count": 0,
+            "lanes": [],
+            "rows": [],
+            "source": "test",
+        },
     )
     monkeypatch.setattr(
         m,
@@ -278,3 +284,95 @@ def test_batch_parse_quality_fails_per_day_when_target_has_zero_usable_rows():
     )
     assert status == "NOT_APPLICABLE_PLAN_ONLY"
 
+
+
+
+def test_official_partial_is_visible_but_never_written(monkeypatch):
+    monkeypatch.setattr(
+        m,
+        "_target_races",
+        lambda conn, target_date, mode=m.MODE_GENERIC: [
+            {
+                "race_id": "x",
+                "race_date": "2026-07-01",
+                "venue_id": "01",
+                "race_no": 1,
+                "deadline_at": None,
+            }
+        ],
+    )
+    monkeypatch.setattr(m, "_fetch", lambda session, url, sleep_sec: "<html/>")
+    monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
+    partial_rows = [
+        {"lane": lane, "exhibition_time": 6.70 + lane / 100}
+        for lane in range(2, 7)
+    ]
+    monkeypatch.setattr(
+        m.historical_parser_v3,
+        "inspect_exhibition_time_page",
+        lambda html: {
+            "status": m.historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_PARTIAL,
+            "valid_time_count": 5,
+            "lanes": [2, 3, 4, 5, 6],
+            "rows": partial_rows,
+            "source": "primary_structured_rows",
+        },
+    )
+    monkeypatch.setattr(
+        m,
+        "_upsert_exhibition_time_only",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("official partial must never write")
+        ),
+    )
+
+    class Conn:
+        def commit(self):
+            raise AssertionError("official partial must not commit")
+        def rollback(self):
+            pass
+
+    report = m.process_day(
+        Conn(),
+        object(),
+        "2026-07-01",
+        write_enabled=True,
+        sleep_sec=0.0,
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        plan_only=False,
+    )
+    s = report["summary"]
+    assert s["exhibition_official_partial_races"] == 1
+    assert s["exhibition_official_partial_rows"] == 5
+    assert s["exhibition_parse_rejected_races"] == 1
+    assert s.get("exhibition_rows_touched", 0) == 0
+
+
+def test_batch_status_distinguishes_official_partial_from_parser_failure():
+    partial = m._batch_parse_quality_status(
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        reports=[{
+            "summary": {
+                "target_missing_races": 1,
+                "exhibition_rows_usable": 0,
+                "exhibition_complete_races": 0,
+                "exhibition_official_partial_races": 1,
+            }
+        }],
+        plan_only=False,
+    )
+    assert partial == "FAIL_DAY_OFFICIAL_PARTIAL_ONLY"
+
+    failure = m._batch_parse_quality_status(
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+        reports=[{
+            "summary": {
+                "target_missing_races": 1,
+                "exhibition_rows_usable": 0,
+                "exhibition_complete_races": 0,
+                "exhibition_parser_failure_races": 1,
+            }
+        }],
+        plan_only=False,
+    )
+    assert failure == "FAIL_DAY_PARSER_FAILURE"
