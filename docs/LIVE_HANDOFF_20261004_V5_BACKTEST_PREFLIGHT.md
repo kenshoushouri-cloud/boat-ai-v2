@@ -39,11 +39,16 @@
 - latest gate audit: source S03 rows=142、timing rejected=3、missing motor=0、Motor2 score>0=68、official evaluated=66、pending=1、invalid result=1。
 - よってS03 66/100の主因はcollector停止ではなく、frozen S03条件＋Motor2 positive条件＋official settlement待ちで自然増加が遅いこと。
 
-## Next ONE task
-**V4 prospective-freeze workflowのDB service参照だけを `postgres-recovery` → `postgres-hobby-fullhistory-candidate-v4` に修正し、安全テストでread-only・no-purchase/no-writeを確認する。**
-- gateは下げない。
-- 過去10/02・10/03をprospectiveとして再構築しない。
-- S03 collectorは変更しない。
-- economics backtestはまだ実行しない。
+## V4 prospective-freeze fix
+- PR `#537` merged, commit `49202477ee3a32bf14a3d2206173ad465f9d2368`。
+- `RAILWAY_DB_SERVICE`: stale `postgres-recovery` → `postgres-hobby-fullhistory-candidate-v4`。
+- safety run `37186947543` SUCCESS。Critical Python / Production shadow isolation / V21 parser / mojibake guardも全てSUCCESS。
+- gate/selector/S03/購入/LINEは変更なし。10/02・10/03をprospectiveとして再構築しない。
+- 10/04のscheduled/fallbackはfix merge前に実行済みのため、後からprospective creditを付けない。次の新規正式captureはfuture runのみ。
 
-`SELECTION_FROZEN_2742_V4_1522_V5 / SHARED_70164 / FREEZE_SHA_7627BE7B / LIVE_GATES_NEXT / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**V5.1 first candidate `V51_RECENT_FORM_LAST5_TOP3_V1` のhistorical coverage / prior-day provenanceをread-only確認し、結果を見る前に評価可能母集団を確定する。**
+- prospective V4/S03 gateは自然蓄積を継続。
+- economics matched-backtestはlive gates達成まで実行しない。
+
+`V4_CAPTURE_FIX_MERGED / LIVE_GATES_BLOCKED_9_20_66_100 / V51_RECENT_FORM_COVERAGE_NEXT / ONE_TASK_ONLY / COST_LE_20`
