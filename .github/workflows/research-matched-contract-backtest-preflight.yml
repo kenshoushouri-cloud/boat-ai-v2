@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'research/matched_contract_backtest_preflight.py'
+      - 'research/v5_matched_backtest_contract.py'
       - 'tests/test_matched_contract_backtest_preflight.py'
       - '.github/workflows/research-matched-contract-backtest-preflight.yml'
 
@@ -28,25 +29,31 @@ jobs:
         run: |
           python -m pip install pytest
           pytest -q tests/test_matched_contract_backtest_preflight.py
-      - name: Confirm current state fails closed
+      - name: Confirm frozen contract is fail-closed until live checks
         run: |
+          python -m research.v5_matched_backtest_contract > v5-matched-contract.txt
+          grep -q '^V5_MATCHED_BACKTEST_CONTRACT_RESULT=FROZEN_RESEARCH_ONLY$' v5-matched-contract.txt
           python -m research.matched_contract_backtest_preflight | tee matched-contract-preflight.txt
           grep -q '^MATCHED_CONTRACT_BACKTEST_PREFLIGHT_RESULT=BLOCKED$' matched-contract-preflight.txt
       - name: Enforce no infrastructure execution path
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('research/matched_contract_backtest_preflight.py').read_text(encoding='utf-8').lower()
-          for forbidden in (
-              'import psycopg',
-              'database_url',
-              'subprocess',
-              'railway run',
-              'railway variable list',
-              'list_variables',
-              'insert into',
-              'update v2_',
-              'delete from',
+          for name in (
+              'research/matched_contract_backtest_preflight.py',
+              'research/v5_matched_backtest_contract.py',
           ):
-              assert forbidden not in p, forbidden
+              p = Path(name).read_text(encoding='utf-8').lower()
+              for forbidden in (
+                  'import psycopg',
+                  'database_url',
+                  'subprocess',
+                  'railway run',
+                  'railway variable list',
+                  'list_variables',
+                  'insert into',
+                  'update v2_',
+                  'delete from',
+              ):
+                  assert forbidden not in p, (name, forbidden)
           PY
