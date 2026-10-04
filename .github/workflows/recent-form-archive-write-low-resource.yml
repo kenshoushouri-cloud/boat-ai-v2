@@ -55,7 +55,7 @@ jobs:
             -v "$PWD:/work" \
             postgres:18 bash -lc '
               set -euo pipefail
-              psql "$DATABASE_PUBLIC_URL" -X -v ON_ERROR_STOP=1 <<'"'"'SQL'"'"'
+              psql "$DATABASE_PUBLIC_URL" -X -At -F "|" -v ON_ERROR_STOP=1 <<'"'"'SQL'"'"'
               BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
               SET LOCAL statement_timeout='"'"'1800s'"'"';
               SET LOCAL work_mem='"'"'8MB'"'"';
@@ -140,9 +140,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          read -r rows nulls dups md5 bytes < <(
-            awk 'NF==5 && $1 ~ /^[0-9]+$/ {print $1,$2,$3,$4,$5}' source-meta.txt | tail -1
-          )
+          IFS='|' read -r rows nulls dups md5 bytes < source-meta.txt
           test -n "$rows"
           test "$rows" -gt 0
           test "$nulls" = "0"
@@ -253,9 +251,7 @@ jobs:
             bash ./archive-verify.sh
 
           IFS='|' read -r arows anulls adups amd5 arel adb < archive-meta.txt
-          read -r srows snulls sdups smd5 sbytes < <(
-            awk 'NF==5 && $1 ~ /^[0-9]+$/ {print $1,$2,$3,$4,$5}' source-meta.txt | tail -1
-          )
+          IFS='|' read -r srows snulls sdups smd5 sbytes < source-meta.txt
 
           test "$arows" = "$srows"
           test "$anulls" = "0"
