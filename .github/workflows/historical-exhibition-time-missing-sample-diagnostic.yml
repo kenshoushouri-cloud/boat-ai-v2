@@ -220,7 +220,6 @@ jobs:
           \pset tuples_only on
           \pset format unaligned
 
-          CREATE TEMP VIEW jul_ex_targets AS
           WITH ex AS (
             SELECT race_id,
                    count(*) FILTER (
@@ -229,27 +228,64 @@ jobs:
                    ) AS time_count
               FROM v2_realtime_exhibition_snapshots
              GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
           )
-          SELECT r.race_id,
-                 coalesce(ex.time_count,0)::int AS time_count
-            FROM v2_races r
-            LEFT JOIN ex USING(race_id)
-           WHERE r.race_date >= DATE '2026-07-01'
-             AND r.race_date <= DATE '2026-07-31'
-             AND coalesce(ex.time_count,0) < 6;
+          SELECT 'TARGET_RACES|' || count(*) FROM targets;
 
-          SELECT 'TARGET_RACES|' || count(*) FROM jul_ex_targets;
-
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          )
           SELECT 'TIME_COUNT|' || g.n || '|' || count(t.race_id)
             FROM generate_series(0,5) AS g(n)
-            LEFT JOIN jul_ex_targets t ON t.time_count=g.n
+            LEFT JOIN targets t ON t.time_count=g.n
            GROUP BY g.n
            ORDER BY g.n;
 
-          WITH missing AS (
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
             SELECT t.race_id,
                    lane.n AS missing_lane
-              FROM jul_ex_targets t
+              FROM targets t
               CROSS JOIN generate_series(1,6) AS lane(n)
               LEFT JOIN v2_realtime_exhibition_snapshots s
                 ON s.race_id=t.race_id
@@ -264,10 +300,28 @@ jobs:
            GROUP BY lane.n
            ORDER BY lane.n;
 
-          WITH missing AS (
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
             SELECT t.race_id,
                    lane.n AS missing_lane
-              FROM jul_ex_targets t
+              FROM targets t
               CROSS JOIN generate_series(1,6) AS lane(n)
               LEFT JOIN v2_realtime_exhibition_snapshots s
                 ON s.race_id=t.race_id
@@ -287,10 +341,28 @@ jobs:
            GROUP BY lanes
            ORDER BY count(*) DESC, lanes;
 
-          WITH missing AS (
+          WITH ex AS (
+            SELECT race_id,
+                   count(*) FILTER (
+                     WHERE snapshot_label='historical'
+                       AND exhibition_time IS NOT NULL
+                   ) AS time_count
+              FROM v2_realtime_exhibition_snapshots
+             GROUP BY race_id
+          ),
+          targets AS (
+            SELECT r.race_id,
+                   coalesce(ex.time_count,0)::int AS time_count
+              FROM v2_races r
+              LEFT JOIN ex USING(race_id)
+             WHERE r.race_date >= DATE '2026-07-01'
+               AND r.race_date <= DATE '2026-07-31'
+               AND coalesce(ex.time_count,0) < 6
+          ),
+          missing AS (
             SELECT t.race_id,
                    count(*) AS missing_count
-              FROM jul_ex_targets t
+              FROM targets t
               CROSS JOIN generate_series(1,6) AS lane(n)
               LEFT JOIN v2_realtime_exhibition_snapshots s
                 ON s.race_id=t.race_id
