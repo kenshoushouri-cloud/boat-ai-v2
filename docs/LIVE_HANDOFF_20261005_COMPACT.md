@@ -18,11 +18,22 @@
 - **精度悪化または採用gate FAILが確認された特徴量/使い方だけを、全期間でmodel/backtest入力から除外**する。
 - 「ある補正式が悪化」≠「raw情報自体を削除」。rawが別の有効用途を持つ場合は保持する。
 - 不採用情報も、低コストで取得可能なら収集継続し、将来再検証できるようarchive優先。削除は最後。
-- 現時点の除外:
-  - Recent Form last5 current spec: blind VAL/OOS gate FAIL → **全期間のmodel入力から除外**。収集継続。payloadはarchive候補。
-  - Exhibition ST current residual/frozen use: overallで悪化/NOT_YET_ROBUST → **現仕様を全期間のmodel入力から除外**。ただしExhibition Time/course等とraw tableを共有するため、exhibition raw全体は削除しない。
-  - Wave residual / wind-speed residual / individual racer×course/opponent affinity / global shrinkage: **その補正・特徴量設計のみ除外**。wave/wind/course/motor raw自体は除外しない。
-- Motor/Boat fixed OOSは改善側なので保持・評価継続。
+- **分類を混同しない**:
+  - **除外確定（現仕様REJECT）**:
+    - Recent Form last5 current spec: blind VAL/OOS gate FAIL → 現仕様はmodel入力から除外。収集継続。payloadはarchive候補。
+    - Wave residual after market+Motor2+exhibition: rejected。**そのresidual設計のみ除外**。
+    - Wind-speed residual after market+Motor2+exhibition: rejected。**そのresidual設計のみ除外**。
+    - Global motor shrinkage: REJECT_GLOBAL_SHRINKAGE。**一律補正だけ除外**。
+    - Naive prob*odds EV / high model-vs-market edge: reliability/ROI悪化が確認された**そのselector設計だけ除外**。
+  - **未採用・研究継続（削除/archive対象にしない）**:
+    - Exhibition ST: frozen historical OOSはPROMISING、Forward最新はoverall悪化でNOT_YET_ROBUST。**REJECT確定ではない**。
+    - Exhibition Time: robust historical/OOS candidate。Forward evidence待ち。
+    - Individual racer×own course×opponent course/class affinity: unstable OOS / do not use yet。**未採用保留**。
+    - Relative wind-direction: historical coverage不足。**未評価保留**。
+    - frozen V5 deferred items（l_count / exhibition_st / exhibition_time / weather_water / odds_ev_selector等）は、deferred=不採用ではない。
+  - **採用・保持/評価継続**:
+    - Motor/Boat fixed OOSは改善側。
+- raw情報と派生補正を分離する。特定residualがREJECTでも、wave/wind/course/motor/odds等のrawは正式backtest用に保持する。
 
 ## 現在地
 - Live gate: V4 **9/20**、S03_M2 **66/100** → BLOCKED。gateは下げない。
@@ -43,7 +54,7 @@
 - `v2_realtime_odds_snapshots`等は全期間backtest保持対象なので、容量目的の期間archiveはしない。
 
 ## Next ONE task
-**全期間除外が確定している情報のうち、Recent Form以外で物理容量を安全に減らせるpayloadをread-onlyで計測する。最初はExhibition ST専用列/派生shadowを対象にし、Exhibition Time/course等の有効rawは保護する。**
+**容量整理対象は「明確なREJECT確定」だけに限定する。未採用/研究途中は触らない。Recent Form current-spec payload以外に、REJECT確定の派生情報で物理容量を減らせる対象があるかread-onlyで確認する。**
 
 条件:
 - まだ移動・削除しない。
