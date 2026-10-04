@@ -123,3 +123,14 @@ Keep behind exhibition and environment features because the current repository a
 Exhibition ST remains research-only but is no longer first priority: candidate-v4 read-only run `37185447967` evaluated 2,050/2,050 timing-clean rows and the frozen beta=-0.02 slightly worsened overall tri Brier, LogLoss and actual-ticket rank versus BASE. Do not retune beta after seeing this result.
 
 `V51_EXTERNAL_INTAKE / OFFICIAL_FIRST / EXHIBITION_P1 / NO_TIP_COPY / NO_POST_HOC / NO_PROD_CHANGE`
+
+## Collection vs adoption policy
+
+- **Collection and model adoption are separate decisions.**
+- Continue collecting potentially useful pre-race information even when it is not currently used by V4/V5, provided collection is timestamp-safe, low-cost, and does not require a new paid service/material Railway expansion without approval.
+- A collected feature enters the prediction model only when frozen TRAIN/VALIDATION/OOS and prospective Forward evidence show incremental improvement versus the frozen baseline.
+- If a feature worsens probability quality or fails to reproduce Forward, keep collecting it for future research but do not use it in Production prediction.
+- Do not stop a useful collector merely because the current coefficient/model use is rejected; first assess storage/cost and future research value.
+- Periodically re-evaluate stored unused features when the baseline model, sample size, or interaction set materially changes.
+
+`COLLECT_BROADLY_LOW_COST / ADOPT_ONLY_IF_INCREMENTAL / KEEP_UNUSED_EVIDENCE / NO_AUTO_PROMOTION`
