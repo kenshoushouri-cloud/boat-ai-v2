@@ -33,6 +33,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 import v21_realtime_collector_pg as rt
+import historical_beforeinfo_parser_v3 as historical_parser_v3
 
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -491,6 +492,75 @@ def _upsert_exhibition_time_only(
     return total
 
 
+
+def _parse_exhibition_for_mode(
+    html: str,
+    *,
+    mode: str,
+) -> list[dict[str, Any]]:
+    if mode == MODE_EXHIBITION_TIME_ONLY:
+        return historical_parser_v3.parse_exhibition(html)
+    return rt.parse_exhibition(html)
+
+
+def _validated_exhibition_time_rows(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if len(rows) != 6:
+        return []
+
+    by_lane: dict[int, dict[str, Any]] = {}
+    ranks: set[int] = set()
+    for row in rows:
+        try:
+            lane = int(row.get("lane") or 0)
+            ex_time = float(row.get("exhibition_time"))
+            rank = int(row.get("exhibition_time_rank"))
+            diff = float(row.get("exhibition_time_diff"))
+        except (TypeError, ValueError):
+            return []
+
+        if lane not in (1, 2, 3, 4, 5, 6) or lane in by_lane:
+            return []
+        if not (6.0 <= ex_time < 8.0):
+            return []
+        if rank not in (1, 2, 3, 4, 5, 6) or rank in ranks:
+            return []
+        if not (0.0 <= diff < 2.0):
+            return []
+
+        by_lane[lane] = row
+        ranks.add(rank)
+
+    if set(by_lane) != {1, 2, 3, 4, 5, 6}:
+        return []
+    if ranks != {1, 2, 3, 4, 5, 6}:
+        return []
+    return [by_lane[lane] for lane in range(1, 7)]
+
+
+def _batch_parse_quality_status(
+    *,
+    mode: str,
+    totals: Counter[str],
+    plan_only: bool,
+) -> str:
+    if mode != MODE_EXHIBITION_TIME_ONLY:
+        return "NOT_APPLICABLE_MODE"
+    if plan_only:
+        return "NOT_APPLICABLE_PLAN_ONLY"
+
+    targets = int(totals.get("target_missing_races", 0))
+    if targets == 0:
+        return "PASS_NO_TARGET"
+
+    usable = int(totals.get("exhibition_rows_usable", 0))
+    complete = int(totals.get("exhibition_complete_races", 0))
+    if usable >= 6 and complete >= 1:
+        return "PASS"
+    return "FAIL_ZERO_USABLE"
+
+
 def process_day(
     conn: psycopg.Connection,
     session: requests.Session,
@@ -526,9 +596,18 @@ def process_day(
             counts["official_no_data"] += 1
             continue
 
-        exhibition = rt.parse_exhibition(html)
+        exhibition = _parse_exhibition_for_mode(html, mode=mode)
         counts["parsed_beforeinfo"] += 1
         counts["exhibition_rows_parsed"] += len(exhibition)
+
+        if mode == MODE_EXHIBITION_TIME_ONLY:
+            counts["weather_parse_skipped"] += 1
+            exhibition = _validated_exhibition_time_rows(exhibition)
+            if not exhibition:
+                counts["exhibition_parse_rejected_races"] += 1
+                continue
+            counts["exhibition_rows_usable"] += len(exhibition)
+
         counts["exhibition_complete_races"] += int(
             sorted(int(x.get("lane") or 0) for x in exhibition)
             == [1, 2, 3, 4, 5, 6]
@@ -544,9 +623,6 @@ def process_day(
                     "wind_speed_m","wind_direction","wave_height_cm",
                 )
             ))
-        else:
-            counts["weather_parse_skipped"] += 1
-
         if not write_enabled:
             continue
 
@@ -621,6 +697,7 @@ def main() -> None:
     print(f"HIST_BEFOREINFO_WRITE_ENABLED={int(write_enabled)}", flush=True)
     print(f"HIST_BEFOREINFO_MODE={args.mode}", flush=True)
     print(f"HIST_BEFOREINFO_PLAN_ONLY={int(args.plan_only)}", flush=True)
+    print(f"HIST_BEFOREINFO_HISTORICAL_PARSER={historical_parser_v3.VERSION}", flush=True)
 
     reports: list[dict[str, Any]] = []
     session = requests.Session()
@@ -655,6 +732,12 @@ def main() -> None:
     for report in reports:
         totals.update(report["summary"])
 
+    parse_quality_status = _batch_parse_quality_status(
+        mode=args.mode,
+        totals=totals,
+        plan_only=args.plan_only,
+    )
+
     payload = {
         "contract": "HISTORICAL_OFFICIAL_BEFOREINFO_BACKFILL_V1",
         "source_contract": SOURCE_CONTRACT,
@@ -671,6 +754,8 @@ def main() -> None:
         "write_enabled": write_enabled,
         "mode": args.mode,
         "plan_only": args.plan_only,
+        "historical_parser_version": historical_parser_v3.VERSION,
+        "parse_quality_status": parse_quality_status,
         "totals": dict(sorted(totals.items())),
         "days": reports,
         "production_model_change": False,
@@ -685,6 +770,10 @@ def main() -> None:
         + json.dumps(payload["totals"], sort_keys=True),
         flush=True,
     )
+    print(f"HIST_BEFOREINFO_PARSE_QUALITY={parse_quality_status}", flush=True)
+    if parse_quality_status == "FAIL_ZERO_USABLE":
+        print("HIST_BEFOREINFO_RESULT=FAIL_PARSE_QUALITY", flush=True)
+        raise SystemExit(2)
     print("HIST_BEFOREINFO_RESULT=PASS", flush=True)
 
 
