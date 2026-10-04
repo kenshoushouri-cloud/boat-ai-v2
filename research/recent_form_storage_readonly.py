@@ -36,13 +36,7 @@ def main() -> None:
                   coalesce(avg(pg_column_size(recent_form))
                     filter (where recent_form is not null),0)::numeric(18,2),
                   coalesce(max(pg_column_size(recent_form))
-                    filter (where recent_form is not null),0)::bigint,
-                  coalesce(bit_xor(hashtextextended(
-                    concat_ws(E'\\x1f', race_id, lane::text, recent_form::text), 0
-                  )) filter (where recent_form is not null),0)::bigint,
-                  coalesce(bit_xor(hashtextextended(
-                    concat_ws(E'\\x1f', race_id, lane::text, recent_form::text), 20261005
-                  )) filter (where recent_form is not null),0)::bigint
+                    filter (where recent_form is not null),0)::bigint
                 from v2_race_entries
             """)
             (
@@ -57,8 +51,6 @@ def main() -> None:
                 archive_logical_bytes,
                 recent_avg,
                 recent_max,
-                fingerprint0,
-                fingerprint1,
             ) = cur.fetchone()
 
             cur.execute("""
@@ -66,12 +58,30 @@ def main() -> None:
                 from (
                   select count(*)::bigint as n
                   from v2_race_entries
-                  where race_id is not null and lane is not null
+                  where recent_form is not null
+                    and race_id is not null
+                    and lane is not null
                   group by race_id,lane
                   having count(*) > 1
                 ) d
             """)
             identity_duplicate_rows = int(cur.fetchone()[0] or 0)
+
+            cur.execute("""
+                with x as (
+                  select
+                    race_id,
+                    lane,
+                    md5(jsonb_build_array(race_id, lane, recent_form)::text) as row_md5
+                  from v2_race_entries
+                  where recent_form is not null
+                )
+                select
+                  count(*)::bigint,
+                  md5(string_agg(row_md5, '' order by race_id, lane))
+                from x
+            """)
+            checksum_rows, payload_md5 = cur.fetchone()
 
             cur.execute("""
                 select
@@ -93,14 +103,14 @@ def main() -> None:
     print("RFE_IDENTITY_KEY=race_id,lane")
     print(f"RECENT_FORM_NONEMPTY_ROWS={recent_rows}")
     print(f"RECENT_FORM_NONNULL_ROWS={recent_nonnull_rows}")
+    print(f"RECENT_FORM_CHECKSUM_ROWS={checksum_rows}")
+    print(f"RECENT_FORM_PAYLOAD_MD5={payload_md5}")
     print(f"RECENT_FORM_COLUMN_BYTES={recent_bytes}")
     print(f"RECENT_FORM_COLUMN_MB={recent_bytes/1_000_000:.3f}")
     print(f"RECENT_FORM_ARCHIVE_LOGICAL_BYTES={archive_logical_bytes}")
     print(f"RECENT_FORM_ARCHIVE_LOGICAL_MB={archive_logical_bytes/1_000_000:.3f}")
     print(f"RECENT_FORM_AVG_BYTES={recent_avg}")
     print(f"RECENT_FORM_MAX_BYTES={recent_max}")
-    print(f"RECENT_FORM_FINGERPRINT_XOR_SEED0={fingerprint0}")
-    print(f"RECENT_FORM_FINGERPRINT_XOR_SEED20261005={fingerprint1}")
     print("DB_READ_ONLY=1 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
 
 
