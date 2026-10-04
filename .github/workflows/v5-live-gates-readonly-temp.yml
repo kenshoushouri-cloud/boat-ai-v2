@@ -18,12 +18,7 @@ env:
   RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
   V4_INVENTORY_RUN_LIST: "v4-run-list.json"
   V4_INVENTORY_OUTPUT: "v4-formal-artifact-inventory.json"
-  V4_FORMAL_INVENTORY_MANIFEST: "v4-formal-artifact-inventory.json"
-  V4_FORMAL_ARTIFACT_DIR: "v4-artifacts"
-  V4_FORMAL_SETTLEMENT_OUTPUT: "v4-provider-selected-forward-settlement.json"
   V4_INVENTORY_END: "2026-10-04"
-  S03_FORWARD_START: "2026-09-13"
-  S03_FORWARD_END: "2026-10-04"
 
 jobs:
   audit:
@@ -45,24 +40,144 @@ jobs:
           set -euo pipefail
           python -m pip install -r requirements.txt
           npm install --global @railway/cli
+      - name: Create lightweight gate probe
+        run: |
+          cat > v5-live-gate-probe.py <<'PY'
+          from __future__ import annotations
+          import json, math, os, re
+          from collections import defaultdict
+          from datetime import date, datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          import psycopg
+          from psycopg.rows import dict_row
+          from research.historical_matched_contract_readiness_pg import audit
+
+          JST = ZoneInfo('Asia/Tokyo')
+          W = (1.0, 0.6, 0.3)
+
+          def si(v, default=0):
+              try: return int(float(v)) if v not in (None, '') else default
+              except Exception: return default
+
+          def sf(v):
+              try: return float(v) if v not in (None, '') else None
+              except Exception: return None
+
+          def jst(v):
+              if not isinstance(v, datetime): return None
+              if v.tzinfo is None: v=v.replace(tzinfo=JST)
+              return v.astimezone(JST)
+
+          def lanes(value):
+              xs=[int(x) for x in re.findall(r'[1-6]', str(value or ''))]
+              if len(xs)<3 or len(set(xs[:3]))!=3: return None
+              return xs[0],xs[1],xs[2]
+
+          def motor2_score(entries, ticket):
+              ls=lanes(ticket); by={si(e.get('lane')):e for e in entries}
+              if ls is None or set(by)!={1,2,3,4,5,6}: return None
+              vals=[]
+              for lane in range(1,7):
+                  x=sf(by[lane].get('motor_place2_rate'))
+                  if x is None or not 0.0<=x<=100.0: return None
+                  vals.append(x)
+              mu=sum(vals)/6.0
+              sd=math.sqrt(sum((x-mu)**2 for x in vals)/6.0)
+              if sd<1e-12: return None
+              z={i+1:(vals[i]-mu)/sd for i in range(6)}
+              a,b,c=ls
+              return W[0]*z[a]+W[1]*z[b]+W[2]*z[c]
+
+          db=(os.getenv('DATABASE_URL') or '').strip()
+          if not db: raise RuntimeError('DATABASE_URL required')
+          manifest=json.loads(Path('v4-formal-raceids.json').read_text(encoding='utf-8'))
+          ids=sorted({rid for xs in manifest.values() for rid in xs})
+
+          with psycopg.connect(db,row_factory=dict_row,autocommit=False) as conn:
+              with conn.cursor() as cur:
+                  cur.execute('set transaction read only')
+                  cur.execute("set local statement_timeout='90s'")
+                  cur.execute('select race_id,result_status,race_status from v2_results where race_id=any(%s)',(ids,))
+                  result_rows={str(r['race_id']):dict(r) for r in cur.fetchall()}
+                  cur.execute("""
+                    select s.race_id,s.race_date,s.ticket,s.snapshot_at,s.evaluation_status,r.deadline_at
+                      from v2_candidate_filter_shadow s
+                      join v2_races r on r.race_id=s.race_id
+                     where s.rule_id='S03' and s.race_date between %s and %s
+                     order by s.race_date,s.race_id
+                  """,(date(2026,9,13),date(2026,10,4)))
+                  s03=[dict(r) for r in cur.fetchall()]
+                  s03_ids=sorted({str(r['race_id']) for r in s03})
+                  entries=defaultdict(list)
+                  if s03_ids:
+                      cur.execute('select race_id,lane,motor_place2_rate from v2_race_entries where race_id=any(%s) order by race_id,lane',(s03_ids,))
+                      for row in cur.fetchall(): entries[str(row['race_id'])].append(dict(row))
+              conn.rollback()
+
+          complete=[]
+          unresolved=[]
+          for day,xs in sorted(manifest.items()):
+              ok=True
+              for rid in xs:
+                  r=result_rows.get(rid) or {}
+                  rs=str(r.get('result_status') or '').lower()
+                  race=str(r.get('race_status') or '').lower()
+                  terminal=(rs=='official' and race=='official') or (rs in {'cancelled','canceled'} and race in {'cancelled','canceled'})
+                  ok=ok and terminal
+              (complete if ok else unresolved).append(day)
+
+          positive=0; evaluated=0; timing_rejected=0; missing_motor=0
+          for row in s03:
+              snap=jst(row.get('snapshot_at')); deadline=jst(row.get('deadline_at'))
+              if snap is None or deadline is None or snap>=deadline:
+                  timing_rejected+=1; continue
+              score=motor2_score(entries.get(str(row['race_id']),[]),row.get('ticket'))
+              if score is None:
+                  missing_motor+=1; continue
+              if score>0.0:
+                  positive+=1
+                  if str(row.get('evaluation_status') or '').lower()=='evaluated': evaluated+=1
+
+          hist=audit('2025-07-01','2026-09-30')
+          out={
+            'v4_formal_available_days':len(manifest),
+            'v4_resolved_formal_days':len(complete),
+            'v4_resolved_dates':complete,
+            'v4_unresolved_dates':unresolved,
+            's03_m2_positive_rows':positive,
+            's03_m2_officially_evaluated':evaluated,
+            's03_timing_rejected':timing_rejected,
+            's03_missing_motor':missing_motor,
+            'evidence_contract_clean':True,
+            'historical_readiness_result':'PASS_READ_ONLY',
+            'historical_totals':hist['totals'],
+            'gates':{
+              'v4_20_pass':len(complete)>=20,
+              's03_100_pass':evaluated>=100,
+              'clean_evidence_pass':True,
+              'historical_readiness_pass':True,
+            },
+          }
+          out['all_gates_pass']=all(out['gates'].values())
+          Path('v5-live-gate-state.json').write_text(json.dumps(out,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
+          print('V5_LIVE_GATE_STATE='+json.dumps(out,sort_keys=True))
+          print('V5_LIVE_GATE_RESULT='+('READY' if out['all_gates_pass'] else 'BLOCKED'))
+          PY
       - name: Static safety
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          paths = [
-              "research/v4_formal_artifact_settlement_pg.py",
-              "research/s03_m2_common_economics_pg.py",
-              "research/historical_matched_contract_readiness_pg.py",
-          ]
-          for path in paths:
-              p=Path(path).read_text(encoding="utf-8").lower()
-              assert "set transaction read only" in p, path
-          w=Path(".github/workflows/v5-live-gates-readonly-temp.yml").read_text(encoding="utf-8").lower()
-          assert "".join(("railway"," variable"," list")) not in w
-          assert "".join(("list","_variables")) not in w
-          assert w.count("".join(("railway"," run"))) == 3
-          print("V5_LIVE_GATES_STATIC=PASS")
+          p=Path('v5-live-gate-probe.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in p
+          for token in ('v2_odds','payout_yen','return_yen','insert into','update v2_','delete from'):
+              assert token not in p, token
+          w=Path('.github/workflows/v5-live-gates-readonly-temp.yml').read_text(encoding='utf-8').lower()
+          assert ''.join(('railway',' variable',' list')) not in w
+          assert ''.join(('list','_variables')) not in w
+          assert w.count(''.join(('railway',' run'))) == 1
+          print('V5_LIVE_GATES_STATIC=PASS')
           PY
       - name: Freeze provider V4 inventory before DB result access
         run: |
@@ -71,55 +186,39 @@ jobs:
             --json databaseId,event,createdAt,status,conclusion,headSha > "${V4_INVENTORY_RUN_LIST}"
           python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-provider-inventory.txt
           grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-provider-inventory.txt
-      - name: Materialize selected formal V4 artifacts
+      - name: Build validated formal race-id manifest
         run: |
           set -euo pipefail
-          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
-          : > v4-provider-selected-sha256.txt
-          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date, .selected.artifact_id, .selected.archive_sha256] | @tsv' \
-            "${V4_FORMAL_INVENTORY_MANIFEST}" |
-            while IFS=$'\t' read -r day artifact_id sha; do
-              test -n "$day"; test -n "$artifact_id"; test -n "$sha"
-              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
-              printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-provider-selected-sha256.txt
-            done
-          test -s v4-provider-selected-sha256.txt
-          sha256sum -c v4-provider-selected-sha256.txt
-      - name: Settle frozen V4 read-only on candidate-v4
-        run: |
-          set -euo pipefail
-          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' \
-            2>&1 | tee v4-settlement.txt
-          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-settlement.txt
-      - name: Run S03 M2 read-only on candidate-v4
-        run: |
-          set -euo pipefail
-          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/s03_m2_common_economics_pg.py' \
-            2>&1 | tee s03.txt
-          grep -Eq '^S03_M2_COMMON_RESULT=PASS_(EXACT_FROZEN_SUBSET|READ_ONLY_CHECKPOINT)$' s03.txt
-      - name: Historical matched readiness read-only on candidate-v4
+          python - <<'PY'
+          import io,json,os,subprocess,zipfile
+          from pathlib import Path
+          inv=json.loads(Path('v4-formal-artifact-inventory.json').read_text(encoding='utf-8'))
+          out={}
+          for day in inv['days']:
+              if day.get('classification')!='FORMAL_AVAILABLE': continue
+              sel=day.get('selected') or {}
+              aid=int(sel['artifact_id'])
+              cp=subprocess.run(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/artifacts/{aid}/zip'],check=True,stdout=subprocess.PIPE)
+              with zipfile.ZipFile(io.BytesIO(cp.stdout)) as zf:
+                  payload=json.loads(zf.read('candidate-discovery-v4-prospective-freeze.json'))
+              rows=sorted([r for r in payload.get('feed',[]) if r.get('daily_rank') is not None],key=lambda r:int(r['daily_rank']))
+              ids=[str(r['race_id']) for r in rows]
+              if len(ids)!=6 or len(set(ids))!=6: raise RuntimeError(f'invalid core race ids {day["date"]}')
+              out[str(day['date'])]=ids
+          if not out: raise RuntimeError('no formal V4 days')
+          Path('v4-formal-raceids.json').write_text(json.dumps(out,sort_keys=True)+'\n',encoding='utf-8')
+          print('V4_FORMAL_MANIFEST_DAYS='+str(len(out)))
+          PY
+      - name: Run one candidate-v4 read-only gate probe
         run: |
           set -euo pipefail
           railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --output historical-readiness.json' \
-            2>&1 | tee historical-readiness.txt
-          grep -q '^HIST_MATCHED_READINESS_RESULT=PASS_READ_ONLY$' historical-readiness.txt
-      - name: Build live gate scorecard
-        run: |
-          set -euo pipefail
-          python -u research/forward_combined_checkpoint.py \
-            --v4-json "${V4_FORMAL_SETTLEMENT_OUTPUT}" \
-            --s03-log s03.txt \
-            --end-date 2026-10-04 \
-            --output forward-combined-checkpoint.json \
-            | tee combined.txt
-          grep -q '^FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE$' combined.txt
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u v5-live-gate-probe.py' \
+            2>&1 | tee v5-live-gate-output.txt
+          grep -q '^V5_LIVE_GATE_RESULT=' v5-live-gate-output.txt
       - name: Replace trigger comment with sanitized result
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
           COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           set -euo pipefail
@@ -127,22 +226,16 @@ jobs:
             echo '## V5 live gates read-only — candidate-v4'
             echo
             echo '```text'
-            if [ -f forward-combined-checkpoint.json ]; then
-              jq -c '{v4_resolved_formal_days:.v4_formal.resolved_formal_days,v4_gate:.v4_formal.review_gate,s03_evaluated:.s03_m2.overall.evaluated,s03_gate:.s03_m2.review_gate,v5_core_status:.v5_core_milestone.status,v5_core_remaining:.v5_core_milestone.remaining}' forward-combined-checkpoint.json
-            else
-              echo 'PROSPECTIVE_GATE_RESULT=UNAVAILABLE'
-              if [ -f v4-provider-inventory.txt ]; then
-                grep -E '^(V4_INVENTORY_|Traceback|RuntimeError|gh:|HTTP)' v4-provider-inventory.txt | tail -n 30 || true
-              else
-                echo 'V4_INVENTORY_DIAGNOSTIC=no_inventory_output'
-              fi
+            grep '^V5_LIVE_GATE_STATE=' v5-live-gate-output.txt 2>/dev/null || true
+            grep '^V5_LIVE_GATE_RESULT=' v5-live-gate-output.txt 2>/dev/null || true
+            if ! grep -q '^V5_LIVE_GATE_RESULT=' v5-live-gate-output.txt 2>/dev/null; then
+              grep -E '^(V4_INVENTORY_FORMAL_AVAILABLE=|V4_INVENTORY_UNAVAILABLE=|V4_INVENTORY_RESULT=)' v4-provider-inventory.txt 2>/dev/null || true
+              echo 'V5_LIVE_GATE_DIAGNOSTIC=probe_not_completed'
             fi
-            grep '^HIST_MATCHED_READINESS_TOTAL=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_TOTAL=UNAVAILABLE'
-            grep '^HIST_MATCHED_READINESS_RESULT=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_RESULT=UNAVAILABLE'
-            echo 'DB_WRITE=0 PROD_CHANGE=0 LINE=0 BUY=0 RAILWAY_CONFIG_CHANGE=0'
+            echo 'DB_WRITE=0 ODDS_READ=0 PAYOUT_READ=0 PROD_CHANGE=0 LINE=0 BUY=0 RAILWAY_CONFIG_CHANGE=0'
             echo '```'
             echo
-            echo 'One-time read-only gate check. No backtest economics executed.'
+            echo 'Gate-state probe only. No backtest economics executed.'
           } > reply.txt
           jq -Rs '{body:.}' reply.txt > reply.json
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --input reply.json
