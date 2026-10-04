@@ -45,6 +45,7 @@ jobs:
           assert "list_" + "variables" not in text
           assert "CONFIRM_HISTORICAL_" + "BEFOREINFO_DB_WRITE" not in text
           assert "/railway historical-exhibition-db-distribution" in text
+          assert "/railway historical-exhibition-failure-samples" in text
           assert "v2_" + "results" not in text
           assert "v2_" + "odds" not in text
           print("PASS historical exhibition diagnostics safety")
@@ -408,3 +409,160 @@ jobs:
             echo 'No HTTP, DB write, Railway setting change, result/odds/payout read, Production/LINE/purchase change.'
           } > summary.md
           gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+
+
+  failure-samples:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-exhibition-failure-samples'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+
+      - name: Diagnose three representative parser-failure pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          import requests
+          from bs4 import BeautifulSoup
+
+          import historical_beforeinfo_parser_v3 as hp
+          import v21_realtime_collector_pg as rt
+
+          cases = [
+              ("2026-07-17", "01", 12),
+              ("2026-07-28", "09", 12),
+              ("2026-07-29", "09", 1),
+          ]
+
+          session = requests.Session()
+          session.headers.update({
+              "User-Agent": "Mozilla/5.0 (compatible; boat-ai-v2-failure-sample/1.0)"
+          })
+
+          lines = [
+              "## Exhibition Time parser-failure representative diagnosis",
+              "",
+              "Read-only official beforeinfo GETs: 3.",
+              "",
+              "~~~text",
+          ]
+
+          diagnoses = {}
+          for date_str, venue, race_no in cases:
+              hd = date_str.replace("-", "")
+              race_id = f"{hd}_{venue}_{race_no:02d}"
+              url = (
+                  "https://www.boatrace.jp/owpc/pc/race/beforeinfo"
+                  f"?rno={race_no}&jcd={venue}&hd={hd}"
+              )
+              response = session.get(url, timeout=35)
+              response.raise_for_status()
+              response.encoding = response.apparent_encoding or "utf-8"
+              html = response.text
+
+              soup = BeautifulSoup(html, "html.parser")
+              text = " ".join(soup.get_text(" ", strip=True).split())
+              inspection = hp.inspect_exhibition_time_page(html)
+
+              boat_rows = []
+              structured_valid_times = []
+              structured_blank_times = []
+              for tbody in soup.select("tbody.is-fs12"):
+                  trs = tbody.find_all("tr", recursive=False)
+                  if not trs:
+                      continue
+                  cells = [
+                      " ".join(cell.get_text(" ", strip=True).split())
+                      for cell in trs[0].find_all(["th", "td"], recursive=False)
+                  ]
+                  lane = None
+                  for value in cells[:3]:
+                      if re.fullmatch(r"[1-6]", value):
+                          lane = int(value)
+                          break
+                  if lane is None:
+                      continue
+                  time_cell = cells[4] if len(cells) > 4 else ""
+                  boat_rows.append((lane, time_cell))
+                  if re.fullmatch(r"[67]\.\d{2}", time_cell):
+                      structured_valid_times.append((lane, time_cell))
+                  elif time_cell == "":
+                      structured_blank_times.append(lane)
+
+              before_start = text.split("スタート展示", 1)[0]
+              text_times = re.findall(
+                  r"(?<!\d)([67]\.\d{2})(?!\d)",
+                  before_start,
+              )
+
+              if (
+                  len(boat_rows) == 6
+                  and len(structured_valid_times) == 0
+                  and len(text_times) == 0
+              ):
+                  diagnosis = "official_exhibition_values_absent"
+              elif len(structured_valid_times) > 0 or len(text_times) > 0:
+                  diagnosis = "parser_or_markup_mismatch"
+              else:
+                  diagnosis = "official_or_markup_unknown"
+
+              diagnoses[diagnosis] = diagnoses.get(diagnosis, 0) + 1
+              markers = [
+                  key for key in ("中止", "欠場", "不成立", "順延")
+                  if key in text
+              ]
+              lines.append(
+                  f"{race_id} status={inspection.get('status')} "
+                  f"structured_boat_rows={len(boat_rows)} "
+                  f"structured_valid_times={len(structured_valid_times)} "
+                  f"structured_blank_time_lanes={structured_blank_times} "
+                  f"text_times={len(text_times)} "
+                  f"looks_no_data={rt._looks_no_data(html)} "
+                  f"markers={markers} diagnosis={diagnosis}"
+              )
+
+          lines += [
+              "~~~",
+              "",
+              "Summary:",
+              *[
+                  f"- {key}={value}"
+                  for key, value in sorted(diagnoses.items())
+              ],
+              "- http_requests=3",
+              "- db_write=0",
+              "",
+              "No DB access/write, Railway setting change, result/odds/payout read, Production/LINE/purchase change, or Aug/Sep execution.",
+          ]
+          Path("failure-samples-summary.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Post sanitized failure-sample diagnosis
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -s failure-samples-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file failure-samples-summary.md
+          else
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body "Failure-sample diagnostic did not produce a summary. No DB or Railway mutation was requested."
+          fi
