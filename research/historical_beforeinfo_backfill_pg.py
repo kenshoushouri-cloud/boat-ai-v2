@@ -560,6 +560,16 @@ def _batch_parse_quality_status(
         usable = int(summary.get("exhibition_rows_usable", 0))
         complete = int(summary.get("exhibition_complete_races", 0))
         if usable < 6 or complete < 1:
+            parser_failures = int(
+                summary.get("exhibition_parser_failure_races", 0)
+            )
+            official_partial = int(
+                summary.get("exhibition_official_partial_races", 0)
+            )
+            if parser_failures > 0:
+                return "FAIL_DAY_PARSER_FAILURE"
+            if official_partial > 0:
+                return "FAIL_DAY_OFFICIAL_PARTIAL_ONLY"
             return "FAIL_DAY_ZERO_USABLE"
 
     return "PASS" if any_target else "PASS_NO_TARGET"
@@ -600,17 +610,39 @@ def process_day(
             counts["official_no_data"] += 1
             continue
 
-        exhibition = _parse_exhibition_for_mode(html, mode=mode)
-        counts["parsed_beforeinfo"] += 1
-        counts["exhibition_rows_parsed"] += len(exhibition)
-
         if mode == MODE_EXHIBITION_TIME_ONLY:
+            inspection = historical_parser_v3.inspect_exhibition_time_page(html)
+            status = str(inspection.get("status") or "")
+            counts["parsed_beforeinfo"] += 1
             counts["weather_parse_skipped"] += 1
+            counts["exhibition_rows_observed"] += int(
+                inspection.get("valid_time_count") or 0
+            )
+
+            if status == historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_PARTIAL:
+                counts["exhibition_official_partial_races"] += 1
+                counts["exhibition_official_partial_rows"] += int(
+                    inspection.get("valid_time_count") or 0
+                )
+                counts["exhibition_parse_rejected_races"] += 1
+                continue
+            if status != historical_parser_v3.EXHIBITION_STATUS_COMPLETE:
+                counts["exhibition_parser_failure_races"] += 1
+                counts["exhibition_parse_rejected_races"] += 1
+                continue
+
+            exhibition = list(inspection.get("rows") or [])
+            counts["exhibition_rows_parsed"] += len(exhibition)
             exhibition = _validated_exhibition_time_rows(exhibition)
             if not exhibition:
+                counts["exhibition_quality_rejected_races"] += 1
                 counts["exhibition_parse_rejected_races"] += 1
                 continue
             counts["exhibition_rows_usable"] += len(exhibition)
+        else:
+            exhibition = _parse_exhibition_for_mode(html, mode=mode)
+            counts["parsed_beforeinfo"] += 1
+            counts["exhibition_rows_parsed"] += len(exhibition)
 
         counts["exhibition_complete_races"] += int(
             sorted(int(x.get("lane") or 0) for x in exhibition)
@@ -775,7 +807,7 @@ def main() -> None:
         flush=True,
     )
     print(f"HIST_BEFOREINFO_PARSE_QUALITY={parse_quality_status}", flush=True)
-    if parse_quality_status == "FAIL_DAY_ZERO_USABLE":
+    if parse_quality_status.startswith("FAIL_"):
         print("HIST_BEFOREINFO_RESULT=FAIL_PARSE_QUALITY", flush=True)
         raise SystemExit(2)
     print("HIST_BEFOREINFO_RESULT=PASS", flush=True)
