@@ -52,6 +52,18 @@
 - archive側にはRecent Form payload全量を受ける容量余裕あり。ただしcandidate側の物理回収にはrewriteが必要で、現在空き約327MBではWAL/一時領域込みで危険。まだ移動・削除しない。
 - `v2_v24_motor2_forward_shadow`等research/shadowだけでは、安全に即時400MB超を空ける候補は未発見。
 - `v2_realtime_odds_snapshots`等は全期間backtest保持対象なので、容量目的の期間archiveはしない。
+- Recent Form low-resource compact preflight **PASS**（GitHub Actions local rebuild / Railway source read-only）:
+  - source DB bytes **4,392,974,015**
+  - source `v2_race_entries` relation **933,183,488 bytes**
+  - compact relation **122,896,384 bytes**
+  - projected DB bytes **3,582,686,911**（約3.58GB）
+  - projected reclaim **810,287,104 bytes**（約810MB）
+  - source/compact non-Recent-Form binary payload SHA256 **MATCH**
+  - rows **425,772 = 425,772**
+  - compact Recent Form nonempty **0**
+  - source export stream **155,952,460 bytes**（約156MB）
+  - source write=0 / Railway resource create=0 / AI/Agent=0 / query parallel=0 / restore parallel=0 / maintenance_work_mem=64MB。
+- full DB dump preflightはNetwork TXが大きくなったため途中停止。今後は**full dumpを繰り返さず low-resource方式を標準**とする。
 - REJECT確定の専用storage再監査:
   - Wave residual / Wind-speed residual: rejected版はread-only in-memory計算で専用永続payloadなし。wave/wind名の既存派生relation合計も約0.295MBで、しかも別研究を含むため削除対象にしない。
   - Global motor shrinkage: read-only backtest計算のみ。専用table/payloadなし。
