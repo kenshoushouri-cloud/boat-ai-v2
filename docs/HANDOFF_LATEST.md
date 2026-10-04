@@ -13,7 +13,7 @@
 - Live gateはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げない。
 - Exhibition Time OOS missing=4,703。Jul 53再pilotはwrite 0で停止。
 - PR #555 merged。historical parser/backfillは `complete / official_partial / official_absent / parser_failure` をfail-closed分類。`official_absent`は6艇行あり＋展示値0件でwrite禁止。
-- Jul 53件: **official_partial 39 / zero-value 14 / complete 0**。zero-value代表3件は新parserで**3/3 official_absent**。HTTP3 / DB write0。Aug/Sep未実行。
-- **Next ONE task:** zero-value未確認11件だけread-only再分類し、14/14を確定。最大HTTP11。
+- Jul 53件は確定: **official_partial 39 / official_absent 14 / complete 0 / parser_failure 0**。追加11件も11/11 official_absent。DB write0、Aug/Sep未実行。
+- **Next ONE task:** Jul 53を再取得対象から外せる低コストなterminal/unfillable扱いを実装し、安全テストのみ。
 
-`COMPACT_ONLY / OFFICIAL_ABSENT_3_OF_3 / VERIFY_11_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / JUL_53_UNFILLABLE_CONFIRMED / TERMINAL_SKIP_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
