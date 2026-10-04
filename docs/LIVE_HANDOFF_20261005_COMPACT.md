@@ -58,8 +58,24 @@
   - Naive prob*odds / model-vs-market edge: `v2_candidate_filter_shadow`をread-only評価。専用tableではなく、S01-S05/N01/N02等の他研究と共有し、raw_ev等もルール評価で使用されるため容量整理対象にしない。
   - よって現時点で**物理容量に効く明確なREJECT専用payloadはRecent Form current-spec（約659MB）が唯一の主要候補**。
 
+## Recent Form compact rebuild design
+- **同一candidate-v4 volume内のUPDATE/VACUUM FULL/rewriteは禁止**。空き約326MBでWAL/一時領域リスクが高い。
+- 既存 `railway-hobby-v4-current-refresh.yml` は、partial `--clean` restoreでcandidate-v4が不完全になった履歴のためSafety Hold中。現candidateへの直接restore方式は再利用しない。
+- safest preflight:
+  1. candidate-v4からread-only consistent logical dumpをGitHub Actions runnerへ取得。
+  2. isolated PostgreSQL 18へrestore。
+  3. **isolated側だけ** `v2_race_entries.recent_form=NULL` → VACUUM FULL等で物理compact化。
+  4. compact DBを再dumpし、別のisolated PostgreSQLへ再restore。
+  5. 全table row count、schema/constraint/index/sequence、`v2_race_entries`のrecent_form以外の全列parity、Recent Form nonempty=0、DB bytes<5GBを検証。
+  6. source candidate-v4は全工程write=0。
+- このlocal preflightはRailway resource追加なしで実施でき、既存Production staged patchにも触れない。
+- preflight PASS後にだけ、Recent Form payloadをarchiveへcopy+hash/count/restore検証し、fresh disposable Railway targetへcompact dumpをrestoreする。
+- fresh targetはProduction環境の既存3件staged patchと混在させないこと。現在のstaged patchは触らない。
+- candidate-v3はsleepingだが約4.553GB使用中。explicit approvalなしにwipe/reuseしない。
+- Railway current Hobby limits上、volumeはproject最大10個・各5GB、現在live volumeは3個。storage単価は$0.15/GB-month。temporary overlapは短くし、費用<=USD20を守る。
+
 ## Next ONE task
-**Recent Form current-specが唯一の主要なREJECT容量候補と確認できたため、同一5GB volume内rewriteを避けて物理容量を安全に回収する方法をread-onlyで設計する。Railway内の短命なcompact rebuild/cutover案を、費用<=USD20・復元/parity・全期間backtest保持条件で比較する。**
+**GitHub Actions isolated PostgreSQLだけを使うRecent Form compact-rebuild preflight workflowを作成し、source candidate-v4 read-onlyのままcompact後DB容量とexact parityを検証する。Railway resource追加/cutover/archive writeはまだ行わない。**
 
 条件:
 - まだ移動・削除しない。
