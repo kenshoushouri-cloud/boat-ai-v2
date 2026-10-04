@@ -54,7 +54,7 @@ jobs:
           w=Path('.github/workflows/research-v5-live-gates-candidate-v4.yml').read_text(encoding='utf-8').lower()
           assert 'postgres-hobby-fullhistory-candidate-v4' in w
           assert ''.join(('railway',' variable',' list')) not in w
-          assert 'list_variables' not in w
+          assert ''.join(('list','_variables')) not in w
           assert 'railway run' in w
           PY
 
