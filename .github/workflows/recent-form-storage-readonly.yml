@@ -1,0 +1,85 @@
+name: Recent Form storage read-only
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/recent-form-storage-readonly.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Measure Recent Form storage read-only
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_DB_SERVICE" bash -lc '
+            test -n "${DATABASE_PUBLIC_URL:-}";
+            export DATABASE_URL="$DATABASE_PUBLIC_URL";
+            export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000";
+            python - <<"PY"
+import os
+import psycopg
+db=os.environ["DATABASE_URL"]
+with psycopg.connect(db) as conn:
+    with conn.cursor() as cur:
+        cur.execute("set default_transaction_read_only=on")
+        cur.execute("""
+          select
+            pg_total_relation_size('v2_race_entries')::bigint,
+            pg_table_size('v2_race_entries')::bigint,
+            pg_indexes_size('v2_race_entries')::bigint,
+            count(*)::bigint,
+            count(*) filter (where recent_form is not null and recent_form::text not in ('null','[]','{}','\"\"',''))::bigint,
+            coalesce(sum(pg_column_size(recent_form)) filter (where recent_form is not null),0)::bigint,
+            coalesce(avg(pg_column_size(recent_form)) filter (where recent_form is not null),0)::numeric(18,2),
+            coalesce(max(pg_column_size(recent_form)) filter (where recent_form is not null),0)::bigint
+          from v2_race_entries
+        """)
+        total, table, idx, rows, recent_rows, recent_bytes, recent_avg, recent_max = cur.fetchone()
+        print(f"RFE_TOTAL_RELATION_BYTES={total}")
+        print(f"RFE_TABLE_BYTES={table}")
+        print(f"RFE_INDEX_BYTES={idx}")
+        print(f"RFE_ROWS={rows}")
+        print(f"RECENT_FORM_NONEMPTY_ROWS={recent_rows}")
+        print(f"RECENT_FORM_COLUMN_BYTES={recent_bytes}")
+        print(f"RECENT_FORM_COLUMN_MB={recent_bytes/1_000_000:.3f}")
+        print(f"RECENT_FORM_AVG_BYTES={recent_avg}")
+        print(f"RECENT_FORM_MAX_BYTES={recent_max}")
+        print("DB_READ_ONLY=1 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
+PY
+          ' | tee audit.txt
+          grep -q '^DB_READ_ONLY=1 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0$' audit.txt
+      - name: Comment result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Recent Form storage read-only'
+            echo
+            echo '```text'
+            grep -E '^(RFE_|RECENT_FORM_|DB_READ_ONLY=)' audit.txt
+            echo '```'
+            echo
+            echo 'Read-only capacity audit only. No DB/Railway/Production/LINE/purchase change.'
+          } > body.md
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --body-file body.md
