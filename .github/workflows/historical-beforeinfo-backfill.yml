@@ -109,8 +109,8 @@ jobs:
           assert x["totals"]["target_missing_races"]==0, x["totals"]
           assert x["totals"]["plan_only_no_http"]==0, x["totals"]
           assert "http_requests" not in x["totals"]
-          assert x["totals"]["plan_only_no_http"]==53
-          print("PASS July target=53 / parser-v3 wired / HTTP=0 / DB_WRITE=0")
+          assert x["totals"]["plan_only_no_http"]==0
+          print("PASS July terminal-skip target=0 / parser-v3 wired / HTTP=0 / DB_WRITE=0")
           PY
 
   backfill:
