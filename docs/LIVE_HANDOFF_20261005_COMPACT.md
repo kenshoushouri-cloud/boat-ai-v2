@@ -30,22 +30,23 @@
 - Motor/Boat fixed OOSは改善側 → 保持。
 
 ## Current capacity facts
-- candidate-v4 live disk約 **4.675GB / 5GB**。archive live disk約 **2.184GB / 5GB**（Recent Form write後、WAL/physical overhead込み）。
+- candidate-v4 live disk **4.675166208GB / 5GB**。source direct rewrite禁止継続。
+- archive live disk **2.33127936GB / 5GB**（Recent Form write後のWAL/physical overhead込み）。
 - Recent Formは唯一の主要REJECT専用容量候補。
 - Recent Form relation約 **933MB**、payload列約 **659MB**。
 - Production主要entrypoint / frozen V5 coreはRecent Form直接依存なし。schema/column自体は残す。
-- 同一volume内UPDATE/VACUUM FULL/rewriteは禁止（空き不足＋WALリスク）。
 - duplicate/same-key index=0。Exhibition ST約9.4MB、Wave/Wind派生約0.3MBで容量効果小。
 
 ## Low-resource compact preflight — PASS
 Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - source candidate-v4 **read-only**
 - Railway resource create=0 / archive write=0 / cutover=0 / AI/Agent=0
-- source DB **4,392,974,015 bytes**
+- fresh source DB **4,393,621,183 bytes**
 - source `v2_race_entries` relation **933,183,488 bytes**
 - compact relation（recent_form=NULL） **122,896,384 bytes**
 - projected reclaim **810,287,104 bytes ≈ 810MB**
-- projected DB **3,582,686,911 bytes ≈ 3.58GB**
+- fresh projected compact DB **3,583,334,079 bytes ≈ 3.583GB**
+- 5GB logical headroom **約1.417GB**
 - rows **425,772 = 425,772**
 - non-Recent-Form binary SHA256 exact match
 - transfer stream約 **156MB**
@@ -72,15 +73,25 @@ Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - 既存Production staged patch 3件は未変更。
 - source direct UPDATE/VACUUM FULL/rewriteは禁止継続。
 
+## Compact target cost/headroom gate — PASS
+- archive parityをidempotent read/verifyで再確認: **425,772 rows / MD5 exact / null=0 / duplicate=0**。追加insert=0。
+- archive live disk **2.33127936GB / 5GB**。
+- candidate-v4 live disk **4.675166208GB / 5GB**。
+- fresh projected compact DB **3.583334079GB**、5GB内logical headroom **約1.416666GB**。
+- 5GB volumeのfilesystem metadataを見ても1GB超の余裕を見込める。
+- temporary target計画時間: **30〜60分枠**。完了後はparity確認して即削除。
+- Railwayのactual-use課金前提で、30〜60分のtemporary DBは**期待追加cost <$0.10、safety budget <=$0.20**を目安。AI/Agent=0。
+- candidate-v3は再利用しない。
+
 ## Next ONE task
-**fresh disposable compact targetを作る前のlow-resource read-only cost/headroom gateを1回だけ実施する。**
-確認するもの:
-- candidate-v4 current live disk / logical DB
-- archive parity保持とlive disk
-- compact後 projected DB（約3.58GBの見込みをlive値で再計算）
-- temporary 5GB targetを作る場合の必要時間・概算cost・作業後即削除方針
-- candidate-v3は再利用しない
-- source mutation / cutover / Railway resource作成はまだしない。
+**fresh disposable 5GB compact targetを1個だけ作成し、Recent Formを除いたcompact DBをrestoreしてparity確認する。**
+必須条件:
+- source candidate-v4はread-onlyのまま
+- candidate-v3は触らない
+- targetはtemporary / 5GB / low-resource
+- restore後 DB size <5GB、全public table row-count parity、schema/index/constraint parity、non-Recent-Form exact parityを確認
+- まだProduction cutover / source cleanupはしない
+- verification完了後、cutover未実施ならtemporary targetの保持/削除を次の1作業として判断する。
 
 ## Chat-capacity対策
 - 次チャットで読むのは **3点だけ**:
