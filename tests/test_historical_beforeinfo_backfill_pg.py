@@ -480,11 +480,25 @@ def test_july_terminal_unfillable_set_is_exact_and_exhibition_only_filter_skips_
 
 
 def test_generic_mode_does_not_use_terminal_exhibition_skip():
-    source = Path("research/historical_beforeinfo_backfill_pg.py").read_text(
-        encoding="utf-8"
-    )
-    ex_start = source.index("if mode == MODE_EXHIBITION_TIME_ONLY:")
-    generic_start = source.index("with conn.cursor() as cur:", ex_start + 1)
-    generic_end = source.index("\ndef _historical_raw(", generic_start)
-    generic_block = source[generic_start:generic_end]
-    assert "EXHIBITION_TIME_TERMINAL_UNFILLABLE" not in generic_block
+    class Cur:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, sql, params):
+            pass
+        def fetchall(self):
+            return [
+                {"race_id": "20260701_10_08", "race_date": "2026-07-01"},
+                {"race_id": "keep_me", "race_date": "2026-07-01"},
+            ]
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+    rows = m._target_races(Conn(), "2026-07-01", mode=m.MODE_GENERIC)
+    assert [row["race_id"] for row in rows] == [
+        "20260701_10_08",
+        "keep_me",
+    ]
