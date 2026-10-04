@@ -83,24 +83,30 @@ Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - Railwayのactual-use課金前提で、30〜60分のtemporary DBは**期待追加cost <$0.10、safety budget <=$0.20**を目安。AI/Agent=0。
 - candidate-v3は再利用しない。
 
-## Next ONE task
-**fresh disposable 5GB compact targetを1個だけ作成し、Recent Formを除いたcompact DBをrestoreしてparity確認する。**
-必須条件:
-- source candidate-v4はread-onlyのまま
-- candidate-v3は触らない
-- targetはtemporary / 5GB / low-resource
-- restore後 DB size <5GB、全public table row-count parity、schema/index/constraint parity、non-Recent-Form exact parityを確認
-- まだProduction cutover / source cleanupはしない
-- verification完了後、cutover未実施ならtemporary targetの保持/削除を次の1作業として判断する。
+## Next ONE task — timeout split
+**fresh disposable compact targetを1個だけ作成し、5GB volume / PostgreSQL 18 / temporaryであることだけ確認する。**
+- このターンでは **restoreを開始しない**。
+- source candidate-v4 / archive / candidate-v3へ書き込まない。
+- staged patch 3件を触らない。
+- Railway Agent/AI禁止。
+- target作成確認後すぐ終了する。
+- 次ターンで restore のみ、その次ターンで parity verification のみに分離する。
 
-## Chat-capacity対策
-- 次チャットで読むのは **3点だけ**:
-  1. `docs/HANDOFF_LATEST.md`
-  2. そこが指すcurrent compact handoff全文
-  3. `docs/NEXT_CHAT_START_HERE.md`
-- 古いhandoff・PROJECT_HISTORY・長いworkflow全文は、次の1作業に必要な箇所だけ読む。
-- GitHub/Railwayは巨大一覧を避け、exact path・限定検索・必要行だけ取得。
-- 1ターン原則1～3 tool call。中間ログは最小。
-- SHA/run/count/capacityは固定値扱いせず、行動直前に必要なものだけlive再取得。
+## Timeout / chat-capacity strict rules
+- **長時間処理をチャット内で待たない。** workflow/restore等を開始したら、そのターンは起動確認だけで終了。結果確認は次ターン。
+- **巨大一覧禁止:** `describe_environment` 全量、Actions `/runs` 全量、全service一覧、全log、古いissue comments全量を取得しない。
+- 必ず exact service / exact workflow / exact file / latest result に限定する。
+- workflow結果はIssue #42の**最新botコメントだけ**確認。run一覧を探し回らない。
+- polling/sleepは原則しない。必要でも1回だけ。
+- 1ターン **1作業 / 原則1〜3 tool call**。中間説明・生ログ・tool discovery出力は最小化。
+- 過去handoff / PROJECT_HISTORY / 長いworkflow全文は読まない。必要なexact fileだけ読む。
+- SHA/run/count/capacityは固定値扱いせず、実行直前に必要な1項目だけlive再取得。
+- タイムアウトした処理は同じターンで連続再実行しない。状態確認を次ターンへ分離する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / FULL_BACKTEST_FROM_202507 / REJECT_NE_NOT_YET_ADOPTED / RECENT_FORM_COMPACT_PASS / LOW_RESOURCE / COST_LE_20 / ONE_TASK_ONLY`
+## Next chat bootstrap
+読むのは3点だけ:
+1. `docs/HANDOFF_LATEST.md`
+2. current compact handoff
+3. `docs/NEXT_CHAT_START_HERE.md`
+
+`PROD_V4 / V5_RESEARCH_ONLY / FULL_BACKTEST_FROM_202507 / RECENT_FORM_ARCHIVED_PASS / TIMEOUT_SPLIT / LOW_RESOURCE / COST_LE_20 / ONE_TASK_ONLY`
