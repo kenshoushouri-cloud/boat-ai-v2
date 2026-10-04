@@ -79,11 +79,28 @@
 - freeze SHA256=`7b53c68c22ef351b85293205395938c12705ca87f03b50be9d87f196a95c3c9c`。
 - VALIDATION/OOS read=0 / odds/payout read=0 / DB write=0 / Production change=0。
 
+## Recent Form blind VALIDATION/OOS — REJECT
+- PR `#540` / run `37188634434` SUCCESS / artifact `11297559218`。
+- frozen coefficient **+0.30**、TRAIN freeze SHA検証PASS。retune/search=0。
+- VALIDATION population **28,178** / official labels **27,725**:
+  - baseline LogLoss **4.2126907283** → +0.30 **4.1816792387** = 改善
+  - baseline Brier **0.9783780067** → +0.30 **0.9772222647** = 改善
+  - baseline mean rank **25.28739** → +0.30 **25.29897** = **0.01158悪化**
+  - preregistered gate = **FAIL**
+- OOS population **14,492** / official labels **14,397**:
+  - baseline LogLoss **4.2005819746** → +0.30 **4.1779239233** = 改善
+  - baseline Brier **0.9780025146** → +0.30 **0.9771265313** = 改善
+  - baseline mean rank **25.04466** → +0.30 **25.33417** = **0.28950悪化**
+  - preregistered gate = **FAIL**
+- decision=`REJECT_DO_NOT_ADOPT_CONTINUE_COLLECTION`。
+- artifact SHA256=`cb438a9920048ad893d4655144d17848dfb723f0313e6d5c9ef107e1bf33b57d`。
+- Recent Formは**現仕様ではV5.1に採用しない**。後付けretune/場別抽出は禁止。データ収集は継続。
+- odds/payout read=0 / DB write=0 / Production change=0。
+
 ## Next ONE task
-**frozen coefficient +0.30を変更せず、VALIDATIONとOOSをblind評価して採否gateを判定する。**
-- VAL/OOSの両方で LogLoss改善 + Brier改善 + official trifecta mean rank非悪化 が必要。
-- どちらか失敗ならRecent Formは不採用。ただし収集は継続。
-- 係数retune/grid拡張/場別調整は禁止。
+**次の精度向上候補として、Exhibition time（展示タイム）のhistorical coverage / pre-race provenanceをread-onlyで確認し、結果を見る前に評価可能母集団を確定する。**
+- Recent Formは不採用のまま収集継続。
+- prospective V4/S03 gateは自然蓄積を継続。
 - matched economicsはlive gates達成まで実行しない。
 
-`V51_RF_COEF_POS030_FROZEN / BLIND_VAL_OOS_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
+`V51_RF_REJECT_CONTINUE_COLLECTION / EXHIBITION_TIME_READINESS_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`
