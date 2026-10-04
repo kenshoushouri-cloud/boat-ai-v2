@@ -1,0 +1,383 @@
+name: Recent Form archive write verified
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  SOURCE_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  ARCHIVE_SERVICE: "postgres-history-archive"
+  RAILWAY_BRIDGE_ISSUE: "42"
+
+concurrency:
+  group: recent-form-archive-write-verified
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway recent-form-archive-write CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install minimal dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]>=3.2,<4"
+          npm install --global @railway/cli
+
+      - name: Write guarded source exporter
+        shell: bash
+        run: |
+          cat > /tmp/recent_form_source_export.py <<'PY'
+          import gzip
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import psycopg
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise RuntimeError("source database URL unavailable")
+
+          out_path = Path("recent-form-archive.copy.gz")
+          meta_path = Path("recent-form-source-meta.json")
+
+          conn = psycopg.connect(url, autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                  cur.execute("SET LOCAL statement_timeout='900s'")
+                  cur.execute("SET LOCAL work_mem='8MB'")
+                  cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
+                  cur.execute("SET LOCAL temp_file_limit='96MB'")
+
+                  cur.execute("""
+                    select column_name, udt_name
+                    from information_schema.columns
+                    where table_schema='public'
+                      and table_name='v2_race_entries'
+                      and column_name in ('race_id','lane','recent_form')
+                    order by column_name
+                  """)
+                  types = {str(a): str(b) for a,b in cur.fetchall()}
+                  expected = {"race_id":"text","lane":"int4","recent_form":"jsonb"}
+                  if types != expected:
+                      raise RuntimeError(f"unexpected_source_types:{types}")
+
+                  cur.execute("""
+                    select
+                      count(*)::bigint,
+                      count(*) filter (where race_id is null or lane is null)::bigint,
+                      coalesce(sum(pg_column_size(recent_form)),0)::bigint,
+                      coalesce(sum(
+                        coalesce(pg_column_size(race_id),0)
+                        + coalesce(pg_column_size(lane),0)
+                        + coalesce(pg_column_size(recent_form),0)
+                      ),0)::bigint
+                    from public.v2_race_entries
+                    where recent_form is not null
+                  """)
+                  rows, null_keys, payload_bytes, logical_bytes = cur.fetchone()
+
+                  cur.execute("""
+                    select coalesce(sum(n-1),0)::bigint
+                    from (
+                      select count(*)::bigint n
+                      from public.v2_race_entries
+                      where recent_form is not null
+                      group by race_id,lane
+                      having count(*) > 1
+                    ) d
+                  """)
+                  dup_rows = int(cur.fetchone()[0] or 0)
+
+                  cur.execute("""
+                    with x as (
+                      select race_id,lane,
+                             md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                      from public.v2_race_entries
+                      where recent_form is not null
+                    )
+                    select count(*)::bigint,
+                           md5(string_agg(row_md5,'' order by race_id,lane))
+                    from x
+                  """)
+                  checksum_rows, payload_md5 = cur.fetchone()
+
+                  if int(null_keys) != 0 or dup_rows != 0:
+                      raise RuntimeError(
+                          f"source_identity_gate_failed:null={null_keys}:dup={dup_rows}"
+                      )
+                  if int(rows) != int(checksum_rows):
+                      raise RuntimeError("source_checksum_row_count_mismatch")
+
+                  with gzip.GzipFile(
+                      filename=str(out_path),
+                      mode="wb",
+                      compresslevel=1,
+                      mtime=0,
+                  ) as gz:
+                      with cur.copy("""
+                        COPY (
+                          select race_id,lane,recent_form
+                          from public.v2_race_entries
+                          where recent_form is not null
+                          order by race_id,lane
+                        ) TO STDOUT WITH (FORMAT BINARY)
+                      """) as cp:
+                          while True:
+                              data = cp.read()
+                              if not data:
+                                  break
+                              gz.write(data)
+
+                  cur.execute("ROLLBACK")
+
+              compressed_bytes = out_path.stat().st_size
+              compressed_sha256 = hashlib.sha256(out_path.read_bytes()).hexdigest()
+              meta = {
+                  "row_count": int(rows),
+                  "key_null_rows": int(null_keys),
+                  "duplicate_rows": int(dup_rows),
+                  "payload_bytes": int(payload_bytes),
+                  "archive_logical_bytes": int(logical_bytes),
+                  "payload_md5": str(payload_md5),
+                  "compressed_bytes": int(compressed_bytes),
+                  "compressed_sha256": compressed_sha256,
+                  "source_write": 0,
+              }
+              meta_path.write_text(json.dumps(meta,sort_keys=True)+"\n", encoding="utf-8")
+              print("SOURCE_ARCHIVE_EXPORT="+json.dumps(meta,sort_keys=True))
+          finally:
+              conn.close()
+          PY
+
+      - name: Export Recent Form from source read-only
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$SOURCE_SERVICE"             python /tmp/recent_form_source_export.py             | tee source-export.out
+          test -s recent-form-archive.copy.gz
+          test -s recent-form-source-meta.json
+          grep -q '"source_write": 0' source-export.out
+
+      - name: Write guarded archive importer and verifier
+        shell: bash
+        run: |
+          cat > /tmp/recent_form_archive_import.py <<'PY'
+          import gzip
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import psycopg
+
+          url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
+          if not url:
+              raise RuntimeError("archive database URL unavailable")
+
+          meta = json.loads(Path("recent-form-source-meta.json").read_text(encoding="utf-8"))
+          archive_path = Path("recent-form-archive.copy.gz")
+          if hashlib.sha256(archive_path.read_bytes()).hexdigest() != meta["compressed_sha256"]:
+              raise RuntimeError("compressed_transfer_sha256_mismatch")
+
+          out = {
+              "source_rows": int(meta["row_count"]),
+              "source_payload_md5": str(meta["payload_md5"]),
+              "source_write": 0,
+              "cutover": 0,
+              "source_cleanup": 0,
+              "railway_resource_created": 0,
+          }
+
+          with psycopg.connect(url, autocommit=False) as conn:
+              try:
+                  with conn.cursor() as cur:
+                      cur.execute("SET LOCAL statement_timeout='1200s'")
+                      cur.execute("SET LOCAL lock_timeout='10s'")
+                      cur.execute("SET LOCAL work_mem='8MB'")
+                      cur.execute("SET LOCAL maintenance_work_mem='64MB'")
+                      cur.execute("SET LOCAL max_parallel_workers_per_gather=0")
+                      cur.execute("""
+                        create table if not exists public.v2_recent_form_archive (
+                          race_id text not null,
+                          lane integer not null,
+                          recent_form jsonb not null,
+                          archived_at timestamptz not null default now(),
+                          primary key (race_id,lane)
+                        )
+                      """)
+
+                      cur.execute("select count(*)::bigint from public.v2_recent_form_archive")
+                      existing = int(cur.fetchone()[0])
+                      out["preexisting_rows"] = existing
+
+                      if existing == 0:
+                          with gzip.open(archive_path, "rb") as src:
+                              with cur.copy("""
+                                COPY public.v2_recent_form_archive
+                                  (race_id,lane,recent_form)
+                                FROM STDIN WITH (FORMAT BINARY)
+                              """) as cp:
+                                  while True:
+                                      chunk = src.read(1024 * 1024)
+                                      if not chunk:
+                                          break
+                                      cp.write(chunk)
+                          out["archive_inserted"] = 1
+                      else:
+                          out["archive_inserted"] = 0
+
+                      cur.execute("""
+                        select
+                          count(*)::bigint,
+                          count(*) filter (where race_id is null or lane is null)::bigint
+                        from public.v2_recent_form_archive
+                      """)
+                      archive_rows, null_keys = cur.fetchone()
+
+                      cur.execute("""
+                        select coalesce(sum(n-1),0)::bigint
+                        from (
+                          select count(*)::bigint n
+                          from public.v2_recent_form_archive
+                          group by race_id,lane
+                          having count(*) > 1
+                        ) d
+                      """)
+                      dup_rows = int(cur.fetchone()[0] or 0)
+
+                      cur.execute("""
+                        with x as (
+                          select race_id,lane,
+                                 md5(jsonb_build_array(race_id,lane,recent_form)::text) row_md5
+                          from public.v2_recent_form_archive
+                        )
+                        select count(*)::bigint,
+                               md5(string_agg(row_md5,'' order by race_id,lane))
+                        from x
+                      """)
+                      checksum_rows, archive_md5 = cur.fetchone()
+
+                      cur.execute("""
+                        select
+                          pg_total_relation_size('public.v2_recent_form_archive')::bigint,
+                          pg_database_size(current_database())::bigint
+                      """)
+                      relation_bytes, archive_db_bytes = cur.fetchone()
+
+                      out.update({
+                          "archive_rows": int(archive_rows),
+                          "archive_checksum_rows": int(checksum_rows),
+                          "archive_key_null_rows": int(null_keys),
+                          "archive_duplicate_rows": int(dup_rows),
+                          "archive_payload_md5": str(archive_md5),
+                          "archive_relation_bytes": int(relation_bytes),
+                          "archive_db_bytes": int(archive_db_bytes),
+                      })
+
+                      if int(archive_rows) != int(meta["row_count"]):
+                          raise RuntimeError("archive_row_count_mismatch")
+                      if int(checksum_rows) != int(meta["row_count"]):
+                          raise RuntimeError("archive_checksum_row_count_mismatch")
+                      if str(archive_md5) != str(meta["payload_md5"]):
+                          raise RuntimeError("archive_payload_md5_mismatch")
+                      if int(null_keys) != 0 or dup_rows != 0:
+                          raise RuntimeError("archive_identity_gate_failed")
+
+                  conn.commit()
+                  out["parity"] = "PASS"
+              except Exception:
+                  conn.rollback()
+                  raise
+
+          print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True))
+          PY
+
+      - name: Import to archive and verify parity atomically
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$ARCHIVE_SERVICE"             python /tmp/recent_form_archive_import.py             | tee archive-result.out
+          grep -q '"parity": "PASS"' archive-result.out
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+
+          src = None
+          dst = None
+          if Path("source-export.out").exists():
+              m = re.search(r'^SOURCE_ARCHIVE_EXPORT=(\{.*\})$', Path("source-export.out").read_text(errors="replace"), re.M)
+              if m:
+                  src = json.loads(m.group(1))
+          if Path("archive-result.out").exists():
+              m = re.search(r'^RECENT_FORM_ARCHIVE_RESULT=(\{.*\})$', Path("archive-result.out").read_text(errors="replace"), re.M)
+              if m:
+                  dst = json.loads(m.group(1))
+
+          if src and dst and dst.get("parity") == "PASS":
+              lines = [
+                  "## Recent Form archive write + parity",
+                  "",
+                  "State: **PASS**",
+                  f"- source rows: **{src['row_count']:,}**",
+                  f"- archive rows: **{dst['archive_rows']:,}**",
+                  f"- payload MD5 match: **{src['payload_md5'] == dst['archive_payload_md5']}**",
+                  f"- key null rows: **{dst['archive_key_null_rows']}**",
+                  f"- duplicate key rows: **{dst['archive_duplicate_rows']}**",
+                  f"- compressed transfer: **{src['compressed_bytes']/1_000_000:.1f} MB**",
+                  f"- archive relation: **{dst['archive_relation_bytes']/1_000_000:.1f} MB**",
+                  f"- archive logical DB: **{dst['archive_db_bytes']/1_000_000_000:.3f} GB**",
+                  f"- archive inserted this run: **{bool(dst['archive_inserted'])}**",
+                  "",
+                  "Source candidate-v4 remained read-only. No source cleanup, cutover, Railway resource creation, volume resize, Production/LINE/purchase/model change, or Railway AI/Agent use.",
+              ]
+          else:
+              lines = [
+                  "## Recent Form archive write + parity",
+                  "",
+                  "State: **FAILED / ROLLED BACK where applicable**",
+                  "",
+                  "Source cleanup and cutover were not attempted. Railway AI/Agent and Railway resource creation were not used.",
+              ]
+          Path("archive-summary.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
+          PY
+          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file archive-summary.md
+
+      - name: Cleanup transient export
+        if: always()
+        shell: bash
+        run: |
+          rm -f             /tmp/recent_form_source_export.py             /tmp/recent_form_archive_import.py             recent-form-archive.copy.gz             recent-form-source-meta.json             source-export.out archive-result.out archive-summary.md
