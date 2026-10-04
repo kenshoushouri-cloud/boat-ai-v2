@@ -58,7 +58,7 @@ jobs:
               assert bad not in p
           print("V5_MATCHED_BASELINE_STATIC=PASS")
           PY
-          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export MATCHED_BT_START_DATE=2025-07-01 MATCHED_BT_END_DATE=2026-09-29 MATCHED_BT_OUTPUT_JSON=v5-matched-contract-baseline.json; python -u research/v5_matched_contract_baseline_pg.py' | tee v5-matched-contract-baseline.txt
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export MATCHED_BT_START_DATE=2025-07-01 MATCHED_BT_END_DATE=2026-09-29 MATCHED_BT_OUTPUT_JSON=v5-matched-contract-baseline.json; python -u research/v5_matched_contract_baseline_pg.py' | tee v5-matched-contract-baseline.txt
           grep -q '^V5_MATCHED_BASELINE_RESULT=PASS_READ_ONLY$' v5-matched-contract-baseline.txt
       - uses: actions/upload-artifact@v4
         if: always()
