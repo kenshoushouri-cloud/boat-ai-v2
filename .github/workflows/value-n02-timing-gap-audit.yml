@@ -1,0 +1,82 @@
+name: Value N02 Timing Gap Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/value-n02-timing-gap-audit.yml'
+      - 'analyze_candidate_walkforward_phase4_pg.py'
+      - 'report_n02_forward_performance_pg.py'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  BT_START_DATE: '2026-08-14'
+  BT_END_DATE: '2026-09-12'
+  N02_FORWARD_START_DATE: '2026-08-14'
+  TARGET_DATE: '2026-09-12'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only reports
+        run: |
+          python -m py_compile analyze_candidate_walkforward_phase4_pg.py
+          python -m py_compile report_n02_forward_performance_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          for path in ('analyze_candidate_walkforward_phase4_pg.py','report_n02_forward_performance_pg.py'):
+              text=Path(path).read_text(encoding='utf-8').lower()
+              for token in ('execute(', 'upsert', 'insert into', 'delete from', 'update v2_', 'alter table', 'drop table', 'truncate ', 'vacuum ', 'send_line'):
+                  assert token not in text,(path,token)
+          PY
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run recent structural N02 screen
+        run: |
+          python -u analyze_candidate_walkforward_phase4_pg.py | tee n02-recent-structural.txt
+          grep -q '^PERIOD=2026-08-14..2026-09-12$' n02-recent-structural.txt
+      - name: Run actual PRE N02 report
+        run: |
+          python -u report_n02_forward_performance_pg.py | tee n02-actual-pre.txt
+          grep -q '^RESULT=PASS$' n02-actual-pre.txt
+      - name: Upload aggregate reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: n02-timing-gap-${{ github.run_id }}
+          path: |
+            n02-recent-structural.txt
+            n02-actual-pre.txt
+          retention-days: 30
+          if-no-files-found: error
