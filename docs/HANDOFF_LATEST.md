@@ -1,1 +1,16 @@
-# Handoff Latest\n\n**Current compact handoff:** `docs/LIVE_HANDOFF_20261004_V5_BACKTEST_PREFLIGHT.md`\n\n次チャットで読むのは3点だけ:\n1. `docs/HANDOFF_LATEST.md`\n2. 上記current compact handoff\n3. `docs/NEXT_CHAT_START_HERE.md`\n\n古いhandoffは大量参照しない。live値は次の1作業に必要なものだけ再取得。\n\nCurrent: Production=V4 / V5=research-only / target=2026年10月中旬 / Railway<=USD20/month。\nCore=51,760/70,170(73.76%)。Course gap=11,758 races。\nCourse内訳: 5,699 entriesは現proxy契約でfill不可、7,042 entriesはofficial prior-term source recheck対象。\nNext ONE task: **7,042 Course entriesをofficial K再構築とread-only照合し、真のfill-missing-only対象を確定する。**\n\n`COURSE_SOURCE_RECHECK_NEXT / ONE_TASK_ONLY / COST_LE_20`\n
+# Handoff Latest
+
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261004_V5_BACKTEST_PREFLIGHT.md`
+
+次チャットで読むのは3点だけ:
+1. `docs/HANDOFF_LATEST.md`
+2. 上記current compact handoff
+3. `docs/NEXT_CHAT_START_HERE.md`
+
+古いhandoffは大量参照しない。live値は次の1作業に必要なものだけ再取得。
+
+Current: Production=V4 / V5=research-only / target=2026年10月中旬 / Railway<=USD20/month。
+Course gap=11,758 racesだが、**V4/V5契約ではCourse missingはneutralでhard blockerではない**。DB fill不要。
+Next ONE task: **neutral-missing契約に合わせてmatched-backtestの真の評価可能race集合をread-only確定する。**
+
+`SAME_CONTRACT_READINESS_NEXT / ONE_TASK_ONLY / COST_LE_20`
