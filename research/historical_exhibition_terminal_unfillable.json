@@ -2,11 +2,11 @@
   "contract": "HISTORICAL_EXHIBITION_TERMINAL_UNFILLABLE_V1",
   "verified_at": "2026-10-04",
   "source": "official archived beforeinfo read-only verification",
-  "rule": "Skip repeat HTTP for these July races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
+  "rule": "Skip repeat HTTP for verified terminal races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
   "counts": {
-    "official_partial": 39,
+    "official_partial": 41,
     "official_absent": 14,
-    "total": 53
+    "total": 55
   },
   "races": {
     "20260701_10_08": "official_partial",
@@ -61,6 +61,8 @@
     "20260729_09_09": "official_absent",
     "20260729_09_10": "official_absent",
     "20260729_09_11": "official_absent",
-    "20260729_09_12": "official_absent"
+    "20260729_09_12": "official_absent",
+    "20260804_04_09": "official_partial",
+    "20260804_12_10": "official_partial"
   }
 }
