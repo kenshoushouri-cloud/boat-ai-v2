@@ -7,10 +7,10 @@
 2. 上記 current compact handoff
 3. `docs/NEXT_CHAT_START_HERE.md`
 
-古いhandoffは履歴扱い。大量参照しない。SHA・run・件数・容量は固定値にせず、次の1作業に必要なものだけlive再取得する。
+古いhandoffは履歴扱い。大量参照しない。live値は次の1作業に必要なものだけ再取得。
 
-Current: Production=V4 / V5=research-only / target=2026年10月中旬 / PR#536でV5比較仕様+time split固定済み(Draft) / Railway cost<=USD20/month。
-Live gates: V4=9/20、S03_M2=66/100、evidence clean、historical full core=67.59%。
-Next ONE task: **2026-09 Opponent replay不足の原因とfill-missing-only補完経路を特定する。**
+Current: Production=V4 / V5=research-only / target=2026年10月中旬 / Railway cost<=USD20/month。
+Opponent finding: current readinessはhistorical model_version=102のみを数え、既存timing-clean v2を除外している。replayはrace_id conflictをoverwriteしない。
+Next ONE task: **Opponent readinessを102+timing-clean v2のprovenance-aware判定へ拡張し、真のmissingをread-only再計測する。**
 
-`OPPONENT_REPLAY_NEXT / ONE_TASK_ONLY / COST_LE_20`
+`OPP_PROVENANCE_FIX_NEXT / ONE_TASK_ONLY / COST_LE_20`
