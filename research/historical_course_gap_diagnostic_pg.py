@@ -39,7 +39,8 @@ proxy_any as (
 ),
 entry_status as (
   select r.race_id,r.race_date,r.term,r.snapshot_date,e.lane,e.racer_number,
-         coalesce((x.top3_rate between 0 and 100),false) as exact_ok,
+         coalesce((x.source=%s and x.top3_rate between 0 and 100),false) as exact_ok,
+         x.source as exact_source,
          coalesce(a.valid_rows,0) as racer_proxy_rows
     from races r
     join v2_race_entries e on e.race_id=r.race_id and e.lane between 1 and 6
@@ -47,7 +48,6 @@ entry_status as (
       on x.racer_number=e.racer_number
      and x.snapshot_date=r.snapshot_date
      and x.course=e.lane
-     and x.source=%s
     left join proxy_any a
       on a.racer_number=e.racer_number
      and a.snapshot_date=r.snapshot_date
@@ -58,8 +58,9 @@ race_status as (
          count(*) filter(where exact_ok) as exact_ok_entries,
          count(*) filter(where not exact_ok) as missing_entries,
          count(*) filter(where not exact_ok and racer_number is null) as missing_racer_number_entries,
-         count(*) filter(where not exact_ok and racer_number is not null and racer_proxy_rows>0) as zero_target_course_prior_entries,
-         count(*) filter(where not exact_ok and racer_number is not null and racer_proxy_rows=0) as no_term_racer_proxy_entries
+         count(*) filter(where not exact_ok and racer_number is not null and exact_source is not null and exact_source<>%s) as exact_other_source_entries,
+         count(*) filter(where not exact_ok and racer_number is not null and exact_source is null and racer_proxy_rows>0) as zero_target_course_prior_entries,
+         count(*) filter(where not exact_ok and racer_number is not null and exact_source is null and racer_proxy_rows=0) as no_term_racer_proxy_entries
     from entry_status
    group by race_id,race_date,term
 )
@@ -75,9 +76,11 @@ def _summarize(rows):
             "course_ready": 0,
             "course_gap": 0,
             "missing_entries": 0,
+            "exact_other_source_entries": 0,
             "zero_target_course_prior_entries": 0,
             "no_term_racer_proxy_entries": 0,
             "missing_racer_number_entries": 0,
+            "gap_races_exact_other_source": 0,
             "gap_races_zero_target_course": 0,
             "gap_races_no_term_racer": 0,
             "gap_races_missing_racer_number": 0,
@@ -96,9 +99,11 @@ def _summarize(rows):
             g["course_ready"] += int(ready)
             g["course_gap"] += int(not ready)
             g["missing_entries"] += int(row["missing_entries"])
+            g["exact_other_source_entries"] += int(row["exact_other_source_entries"])
             g["zero_target_course_prior_entries"] += int(row["zero_target_course_prior_entries"])
             g["no_term_racer_proxy_entries"] += int(row["no_term_racer_proxy_entries"])
             g["missing_racer_number_entries"] += int(row["missing_racer_number_entries"])
+            g["gap_races_exact_other_source"] += int(int(row["exact_other_source_entries"]) > 0)
             g["gap_races_zero_target_course"] += int(int(row["zero_target_course_prior_entries"]) > 0)
             g["gap_races_no_term_racer"] += int(int(row["no_term_racer_proxy_entries"]) > 0)
             g["gap_races_missing_racer_number"] += int(int(row["missing_racer_number_entries"]) > 0)
@@ -118,7 +123,7 @@ def audit():
             cur.execute("set transaction read only")
             cur.execute("set local statement_timeout='120s'")
             cur.execute("set local max_parallel_workers_per_gather=0")
-            cur.execute(SQL, (START_DATE, END_DATE, SOURCE, SOURCE))
+            cur.execute(SQL, (START_DATE, END_DATE, SOURCE, SOURCE, SOURCE))
             rows = [dict(x) for x in cur.fetchall()]
             cur.execute(
                 """
@@ -147,6 +152,10 @@ def audit():
         "terms": by_term,
         "months": by_month,
         "interpretation": {
+            "exact_other_source_entries": (
+                "required unique key exists with another source; current fill-missing-only seed "
+                "cannot insert the proxy without overwrite/schema change"
+            ),
             "zero_target_course_prior_entries": (
                 "racer has same-term proxy data but no exact target-course row; "
                 "the frozen seed emits rows only for courses with >=1 prior start, "
