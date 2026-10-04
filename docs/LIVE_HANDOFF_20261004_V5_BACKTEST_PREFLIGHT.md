@@ -46,9 +46,24 @@
 - gate/selector/S03/購入/LINEは変更なし。10/02・10/03をprospectiveとして再構築しない。
 - 10/04のscheduled/fallbackはfix merge前に実行済みのため、後からprospective creditを付けない。次の新規正式captureはfuture runのみ。
 
-## Next ONE task
-**V5.1 first candidate `V51_RECENT_FORM_LAST5_TOP3_V1` のhistorical coverage / prior-day provenanceをread-only確認し、結果を見る前に評価可能母集団を確定する。**
-- prospective V4/S03 gateは自然蓄積を継続。
-- economics matched-backtestはlive gates達成まで実行しない。
+## V5.1 Recent Form readiness — PRE-OUTCOME
+- PR `#538` / run `37187444850` SUCCESS / artifact `11297159857`。
+- 全 **70,170 races** / exact6=70,170。Recent Form非neutral評価可能=**69,477 (99.0124%)**。
+- V4/V5 shared Motor2-complete母集団 **70,164** 中、Recent Form評価可能=**69,471 (99.0123%)**。
+- TRAIN_REFERENCE: **26,801 / 27,456 = 97.6144%**。
+- VALIDATION: **28,178 / 28,200 = 99.9220%**。
+- OOS: **14,498 / 14,514 = 99.8898%**。
+- lane feature usable=**415,482 / 421,020 = 98.6846%**。
+- stored recent_form provenance valid=418,442 entries。history items=2,076,922。
+- **bad source=0 / bad date=0 / same-day=0 / future=0 / >5 history=0 / bad race_id=0** → prior-day provenance clean。
+- outcome/odds/payout read=0 / DB write=0 / Production change=0。
+- PR #538はresearch audit用。Production採用を意味しない。
 
-`V4_CAPTURE_FIX_MERGED / LIVE_GATES_BLOCKED_9_20_66_100 / V51_RECENT_FORM_COVERAGE_NEXT / ONE_TASK_ONLY / COST_LE_20`
+## Next ONE task
+**Recent Form係数探索の範囲・grid・採否判定を結果を見る前に固定する。**
+- TRAIN_REFERENCEだけで係数を1回fit。
+- VALIDATION/OOSは係数freeze後にのみ読む。retune禁止。
+- probability quality（LogLoss/Brier/calibration）を主判定、economicsは副判定。
+- prospective V4/S03 gateは自然蓄積を継続し、matched economicsはlive gates達成まで実行しない。
+
+`V51_RF_READY_69477_70170 / PROVENANCE_CLEAN / COEFFICIENT_GRID_FREEZE_NEXT / LIVE_GATES_BLOCKED / ONE_TASK_ONLY / COST_LE_20`

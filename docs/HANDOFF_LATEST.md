@@ -13,6 +13,7 @@ Matched selectionは結果参照前に凍結済み: shared **70,164** / V4 **2,7
 Live gates: V4 **9/20** / S03_M2 **66/100** / evidence clean → **BLOCKED**。economics未実行。
 V4 prospective-freeze修正済み: PR **#537** merged / candidate-v4 SoT参照 / safety全PASS。過去日のprospective再構築はしない。
 S03は停止せず収集中で、positive+official条件により増加が遅い。
-Next ONE task: **V5.1 Recent Form last5のhistorical coverage / prior-day provenanceをread-only確定する。**
+Recent Form readiness: **69,477/70,170=99.01%**、shared母集団 **69,471/70,164=99.01%**。same-day/future/bad-source/>5履歴すべて0、provenance clean。
+Next ONE task: **Recent Form係数探索の範囲・grid・採否基準を結果参照前に固定する。**
 
-`V4_CAPTURE_FIX_MERGED / V51_RECENT_FORM_COVERAGE_NEXT / ONE_TASK_ONLY / COST_LE_20`
+`V51_RF_READY / COEFFICIENT_GRID_FREEZE_NEXT / ONE_TASK_ONLY / COST_LE_20`
