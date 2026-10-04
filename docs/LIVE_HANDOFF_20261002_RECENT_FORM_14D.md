@@ -43,7 +43,7 @@
 - Latest run confirmed SAME_DAY_RESULT_USED=0, FUTURE_RESULT_USED=0, FILL_MISSING_ONLY=1.
 - A stale `/railway historical-recent-form-next` run rechecked 2026-04-16..04-29 and updated 0 rows; no harmful overwrite occurred because fill-missing-only remained enforced.
 - Fixed command target is now **2026-07-09..2026-07-22 (14 days)**.
-- Workflow update commit: `PENDING_THIS_TURN`.
+- Workflow update commit: `d82d29be4661816ddf7ffae92db2c05017e49402`.
 
 ## V5 status
 - V5 is a **research candidate only**; there is no V5 Production Railway database/service to run or pay for. Production remains V4.
