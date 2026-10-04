@@ -58,26 +58,25 @@ Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - current-refresh direct restoreは過去のpartial --clean問題でSafety Hold。現candidateへ直接restoreしない。
 - fresh disposable target方式を使う場合も、事前にarchive/parity/cost確認してから。
 
-## Recent Form archive read-only design — DONE
+## Recent Form archive read-only audit — PASS
 - Design doc: `docs/RECENT_FORM_ARCHIVE_READONLY_DESIGN.md`
-- row identity=`(race_id,lane)`
-- exact row count / deterministic payload hash / restore verification / capacity estimate methodを確定。
-- live archive disk observation: 0.523173888GB。
-- latest validated conservative archive-growth bound: <=810,287,104 bytes; projected archive <=1.333460992GB。
-- 値は固定扱いせず、write直前に再取得する。
+- source candidate-v4 read-only / AI・Agent=0 / Railway resource create=0。
+- identity=`(race_id,lane)`; key null=0; duplicate=0。
+- archive rows=425,772; deterministic payload_md5=`8580889f8cfb449e1656a943f30da350`。
+- recent_form payload=659,381,918 bytes; key込みlogical estimate=667,471,586 bytes。
+- archive live disk=0.523173888GB / 5GB。
+- logical追加想定で約1.190645474GB、conservative boundで<=1.333460992GB。
+- 値は固定扱いせず、write直前/直後に必要分だけlive再取得する。
 
 ## Next ONE task
-**Recent Form archive用のlow-resource read-only auditを1回だけ実施し、設計のfresh値を確定する。**
-取得するもの:
-- key null count
-- exact row count
-- distinct `(race_id,lane)` count
-- deterministic payload_md5
-- payload_bytes
-- archive live disk usage
-- projected archive disk usage
-
-まだ archive write / source cleanup / cutover / Railway resource作成はしない。
+**Recent Formを `postgres-history-archive` の専用narrow tableへ1回だけ退避し、直後にparity確認する。**
+必須条件:
+- source candidate-v4はread-onlyのまま
+- archive key=`PRIMARY KEY (race_id,lane)`
+- source/archive row count一致
+- source/archive deterministic payload_md5一致
+- archive key null=0 / duplicate=0
+- source cleanup / cutover / volume resize / Railway resource作成はまだしない。
 
 ## Chat-capacity対策
 - 次チャットで読むのは **3点だけ**:
