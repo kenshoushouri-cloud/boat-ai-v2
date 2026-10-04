@@ -86,7 +86,7 @@ jobs:
 
               \o /work/source-meta.txt
               WITH x AS (
-                SELECT race_id,lane,
+                SELECT race_id,lane,recent_form,
                        md5(jsonb_build_array(race_id,lane,recent_form)::text) AS row_md5
                 FROM public.v2_race_entries
                 WHERE recent_form IS NOT NULL
@@ -108,17 +108,10 @@ jobs:
                 (SELECT dup_rows FROM d) AS duplicate_rows,
                 md5(string_agg(row_md5,'' ORDER BY race_id,lane)) AS payload_md5,
                 coalesce(sum(pg_column_size(recent_form)),0)::bigint AS payload_bytes
-              FROM public.v2_race_entries
-              JOIN x USING (race_id,lane)
-              WHERE recent_form IS NOT NULL;
+              FROM x;
               \o
 
-              \copy (
-                SELECT race_id,lane,recent_form
-                FROM public.v2_race_entries
-                WHERE recent_form IS NOT NULL
-                ORDER BY race_id,lane
-              ) TO '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
+              \copy (SELECT race_id,lane,recent_form FROM public.v2_race_entries WHERE recent_form IS NOT NULL ORDER BY race_id,lane) TO '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
 
               COMMIT;
               SQL
@@ -185,8 +178,7 @@ jobs:
 
               TRUNCATE TABLE public.recent_form_archive_v1;
 
-              \copy public.recent_form_archive_v1(race_id,lane,recent_form)
-                FROM '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
+              \copy public.recent_form_archive_v1(race_id,lane,recent_form) FROM '"'"'/work/recent_form_archive.bin'"'"' WITH (FORMAT binary);
 
               COMMIT;
               SQL
