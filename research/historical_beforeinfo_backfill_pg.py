@@ -32,6 +32,7 @@ import requests
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+import historical_beforeinfo_parser_v3 as historical_parser_v3
 import v21_realtime_collector_pg as rt
 
 
@@ -204,6 +205,43 @@ def _target_races(
             (target_date,),
         )
         return [dict(row) for row in cur.fetchall()]
+
+
+def _exhibition_time_quality_ok(exhibition: list[dict[str, Any]]) -> bool:
+    """Require exactly six unique lanes with plausible Exhibition Time values."""
+    if len(exhibition) != 6:
+        return False
+    lanes: list[int] = []
+    for row in exhibition:
+        try:
+            lane = int(row.get("lane") or 0)
+            ex_time = float(row.get("exhibition_time"))
+        except (TypeError, ValueError):
+            return False
+        if lane not in (1, 2, 3, 4, 5, 6):
+            return False
+        if not (6.0 <= ex_time < 8.0):
+            return False
+        lanes.append(lane)
+    return sorted(lanes) == [1, 2, 3, 4, 5, 6]
+
+
+def _parse_quality_fail_closed(
+    reports: list[dict[str, Any]],
+    *,
+    mode: str,
+    plan_only: bool,
+) -> bool:
+    if mode != MODE_EXHIBITION_TIME_ONLY or plan_only:
+        return False
+    for report in reports:
+        summary = report.get("summary") or {}
+        if (
+            int(summary.get("target_missing_races", 0)) > 0
+            and int(summary.get("exhibition_time_quality_pass_races", 0)) == 0
+        ):
+            return True
+    return False
 
 
 def _historical_raw(
@@ -526,13 +564,21 @@ def process_day(
             counts["official_no_data"] += 1
             continue
 
-        exhibition = rt.parse_exhibition(html)
+        if mode == MODE_EXHIBITION_TIME_ONLY:
+            exhibition = historical_parser_v3.parse_exhibition(html)
+            counts["historical_parser_v3_used"] += 1
+        else:
+            exhibition = rt.parse_exhibition(html)
+        quality_ok = _exhibition_time_quality_ok(exhibition)
         counts["parsed_beforeinfo"] += 1
         counts["exhibition_rows_parsed"] += len(exhibition)
         counts["exhibition_complete_races"] += int(
             sorted(int(x.get("lane") or 0) for x in exhibition)
             == [1, 2, 3, 4, 5, 6]
         )
+        counts["exhibition_time_quality_pass_races"] += int(quality_ok)
+        if mode == MODE_EXHIBITION_TIME_ONLY and not quality_ok:
+            counts["exhibition_write_blocked_parse_quality"] += 1
 
         weather: dict[str, Any] = {}
         if mode == MODE_GENERIC:
@@ -547,6 +593,8 @@ def process_day(
         else:
             counts["weather_parse_skipped"] += 1
 
+        if mode == MODE_EXHIBITION_TIME_ONLY and not quality_ok:
+            continue
         if not write_enabled:
             continue
 
@@ -675,6 +723,11 @@ def main() -> None:
         "days": reports,
         "production_model_change": False,
         "purchase_action": False,
+        "parse_quality_fail_closed": _parse_quality_fail_closed(
+            reports,
+            mode=args.mode,
+            plan_only=args.plan_only,
+        ),
     }
     Path(args.output).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -685,6 +738,9 @@ def main() -> None:
         + json.dumps(payload["totals"], sort_keys=True),
         flush=True,
     )
+    if payload["parse_quality_fail_closed"]:
+        print("HIST_BEFOREINFO_RESULT=FAIL_PARSE_QUALITY", flush=True)
+        raise SystemExit("exhibition-time-only parse quality fail-closed")
     print("HIST_BEFOREINFO_RESULT=PASS", flush=True)
 
 
