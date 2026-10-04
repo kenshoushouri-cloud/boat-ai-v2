@@ -17,9 +17,10 @@ handoff内のSHA・run・件数・容量は固定値とせず、次の1作業に
 
 1回に1作業だけ進め、出力は短くしてください。
 Production=V4、V5/V5.1=research-onlyです。
-Railway費用は**月USD20以下を上限**とし、精度・安定性・必要なデータ取得を損なわない範囲で**可能な限り安くしてください**。USD15以下にできる場合も積極的に削減してください。
+Railway費用は月USD20以下を上限とし、精度・安定性・必要なデータ取得を損なわない範囲で可能な限り安くしてください。USD15以下にできる場合も積極的に削減してください。
 不要なservice/job/DB/volume/常時稼働/重い再計算を増やさないでください。
 `list_variables` / `railway variable list` / Railway Agent / Railway AIは禁止です。
 purchase / LINE / stake / plan / volume resize / TOTO staged patchは変更しないでください。
 
+現在は容量確保を優先し、不足データ補完は一時停止中です。
 確認後、current compact handoffの **Next ONE task** だけ実施してください。
