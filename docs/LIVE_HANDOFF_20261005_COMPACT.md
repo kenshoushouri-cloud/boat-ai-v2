@@ -58,14 +58,24 @@ Workflow: `.github/workflows/recent-form-compact-preflight-low-resource.yml`
 - current-refresh direct restoreは過去のpartial --clean問題でSafety Hold。現candidateへ直接restoreしない。
 - fresh disposable target方式を使う場合も、事前にarchive/parity/cost確認してから。
 
+## Recent Form archive read-only design — DONE
+- Design doc: `docs/RECENT_FORM_ARCHIVE_READONLY_DESIGN.md`
+- row identity=`(race_id,lane)`
+- exact row count / deterministic payload hash / restore verification / capacity estimate methodを確定。
+- live archive disk observation: 0.523173888GB。
+- latest validated conservative archive-growth bound: <=810,287,104 bytes; projected archive <=1.333460992GB。
+- 値は固定扱いせず、write直前に再取得する。
+
 ## Next ONE task
-**Recent Form payloadをarchiveへ退避する前のread-only設計を確定する。**
-定義するもの:
-- row identity
+**Recent Form archive用のlow-resource read-only auditを1回だけ実施し、設計のfresh値を確定する。**
+取得するもの:
+- key null count
 - exact row count
-- deterministic checksum/hash
-- restore verification
-- archive追加容量見積り
+- distinct `(race_id,lane)` count
+- deterministic payload_md5
+- payload_bytes
+- archive live disk usage
+- projected archive disk usage
 
 まだ archive write / source cleanup / cutover / Railway resource作成はしない。
 
