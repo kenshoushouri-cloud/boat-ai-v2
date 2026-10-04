@@ -3,7 +3,8 @@
 ## 目的 / 期限
 - 新競艇AIのProduction運用開始目標: **2026年10月中旬**。
 - Productionは **V4**。V5/V5.1は**research-only**で、明示承認なしにProductionへ昇格しない。
-- Railway費用目標: **月USD20以下**。不要なservice/job/DB/volume/重い再計算を増やさない。
+- Railway費用方針: **月USD20以下を上限**とし、精度・安定性・必要なデータ取得を損なわない範囲で**可能な限り低コスト化する**。USD15以下にできる場合も積極的に削減する。
+- 不要なservice/job/DB/volume/常時稼働/重い再計算を増やさず、新たなコスト増は必要性を確認してから行う。
 
 ## 固定運用ルール
 - 1回に1作業。出力は短くする。
@@ -47,4 +48,4 @@
 古いhandoffは履歴。必要時だけ参照。
 handoff内のSHA/run/件数/容量は固定値にせず、**次の1作業に必要なものだけlive再取得**する。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_LE_20 / PARSER_V3_FIXED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / PARSER_V3_FIXED / JULY_53_REPILOT_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
