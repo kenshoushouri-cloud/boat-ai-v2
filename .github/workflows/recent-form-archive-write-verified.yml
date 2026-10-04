@@ -197,6 +197,13 @@ jobs:
           url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
           if not url:
               raise RuntimeError("archive database URL unavailable")
+          tunnel_host = (os.environ.get("ARCHIVE_TUNNEL_HOST") or "").strip()
+          tunnel_port = (os.environ.get("ARCHIVE_TUNNEL_PORT") or "").strip()
+          if tunnel_host and tunnel_port:
+              scheme, rest = url.split("://", 1)
+              auth, tail = rest.rsplit("@", 1)
+              suffix = tail.split("/", 1)[1]
+              url = f"{scheme}://{auth}@{tunnel_host}:{tunnel_port}/{suffix}"
 
           meta = json.loads(Path("recent-form-source-meta.json").read_text(encoding="utf-8"))
           archive_path = Path("recent-form-archive.copy.gz")
@@ -316,13 +323,52 @@ jobs:
           print("RECENT_FORM_ARCHIVE_RESULT="+json.dumps(out,sort_keys=True))
           PY
 
-      - name: Import to archive and verify parity atomically
+      - name: Import to archive through private tunnel and verify parity atomically
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          railway run             --project "$RAILWAY_PROJECT_ID"             --environment "$RAILWAY_ENVIRONMENT"             --service "$ARCHIVE_SERVICE"             python /tmp/recent_form_archive_import.py             | tee archive-result.out
+          railway link \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$ARCHIVE_SERVICE" \
+            --json >/dev/null
+
+          tunnel_log="$(mktemp)"
+          railway connect "$ARCHIVE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --tunnel-only --port 15432 \
+            >"$tunnel_log" 2>&1 &
+          tunnel_pid=$!
+          cleanup_tunnel() {
+            kill "$tunnel_pid" 2>/dev/null || true
+            wait "$tunnel_pid" 2>/dev/null || true
+            rm -f "$tunnel_log"
+          }
+          trap cleanup_tunnel EXIT
+
+          python - <<'PY'
+          import socket,time
+          deadline=time.time()+20
+          while time.time() < deadline:
+              try:
+                  with socket.create_connection(("127.0.0.1",15432),timeout=1):
+                      print("ARCHIVE_PRIVATE_TUNNEL=READY")
+                      raise SystemExit(0)
+              except OSError:
+                  time.sleep(1)
+          raise SystemExit("archive private tunnel did not become ready")
+          PY
+
+          export ARCHIVE_TUNNEL_HOST=127.0.0.1
+          export ARCHIVE_TUNNEL_PORT=15432
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$ARCHIVE_SERVICE" \
+            python /tmp/recent_form_archive_import.py \
+            | tee archive-result.out
           grep -q '"parity": "PASS"' archive-result.out
 
       - name: Post sanitized result
