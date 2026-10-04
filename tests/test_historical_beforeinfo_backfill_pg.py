@@ -379,71 +379,59 @@ def test_batch_status_distinguishes_official_partial_from_parser_failure():
 
 
 
-def test_official_absent_is_visible_but_never_written(monkeypatch):
-    monkeypatch.setattr(
-        m,
-        "_target_races",
-        lambda conn, target_date, mode=m.MODE_GENERIC: [{
-            "race_id": "x",
-            "race_date": "2026-07-29",
-            "venue_id": "09",
-            "race_no": 1,
-            "deadline_at": None,
-        }],
-    )
-    monkeypatch.setattr(m, "_fetch", lambda session, url, sleep_sec: "<html/>")
-    monkeypatch.setattr(m.rt, "_looks_no_data", lambda html: False)
-    monkeypatch.setattr(
-        m.historical_parser_v3,
-        "inspect_exhibition_time_page",
-        lambda html: {
-            "status": m.historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_ABSENT,
-            "valid_time_count": 0,
-            "lanes": [1, 2, 3, 4, 5, 6],
-            "rows": [],
-            "source": "primary_structured_rows_no_times",
-        },
-    )
-    monkeypatch.setattr(
-        m,
-        "_upsert_exhibition_time_only",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("official absent must never write")
-        ),
-    )
+def test_terminal_unfillable_manifest_has_exact_verified_july_53():
+    ids = m._terminal_unfillable_exhibition_ids()
+    assert len(ids) == 53
+    assert "20260701_10_08" in ids
+    assert "20260729_09_12" in ids
+
+
+def test_exhibition_only_target_excludes_terminal_unfillable(monkeypatch):
+    class Cur:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, sql, params):
+            pass
+        def fetchall(self):
+            return [
+                {
+                    "race_id": "20260701_10_08",
+                    "race_date": "2026-07-01",
+                    "venue_id": "10",
+                    "race_no": 8,
+                },
+                {
+                    "race_id": "keep_me",
+                    "race_date": "2026-07-01",
+                    "venue_id": "10",
+                    "race_no": 9,
+                },
+            ]
 
     class Conn:
-        def commit(self):
-            raise AssertionError("official absent must not commit")
-        def rollback(self):
-            pass
+        def cursor(self):
+            return Cur()
 
-    report = m.process_day(
+    monkeypatch.setattr(
+        m,
+        "_terminal_unfillable_exhibition_ids",
+        lambda: {"20260701_10_08"},
+    )
+    rows = m._target_races(
         Conn(),
-        object(),
-        "2026-07-29",
-        write_enabled=True,
-        sleep_sec=0.0,
+        "2026-07-01",
         mode=m.MODE_EXHIBITION_TIME_ONLY,
-        plan_only=False,
     )
-    s = report["summary"]
-    assert s["exhibition_official_absent_races"] == 1
-    assert s["exhibition_parse_rejected_races"] == 1
-    assert s.get("exhibition_rows_touched", 0) == 0
+    assert [row["race_id"] for row in rows] == ["keep_me"]
 
 
-def test_batch_status_distinguishes_official_absent():
-    status = m._batch_parse_quality_status(
-        mode=m.MODE_EXHIBITION_TIME_ONLY,
-        reports=[{
-            "summary": {
-                "target_missing_races": 1,
-                "exhibition_rows_usable": 0,
-                "exhibition_complete_races": 0,
-                "exhibition_official_absent_races": 1,
-            }
-        }],
-        plan_only=False,
+def test_terminal_unfillable_filter_does_not_apply_to_generic_mode(monkeypatch):
+    source = Path("research/historical_beforeinfo_backfill_pg.py").read_text(
+        encoding="utf-8"
     )
-    assert status == "FAIL_DAY_OFFICIAL_ABSENT_ONLY"
+    ex_start = source.index("if mode == MODE_EXHIBITION_TIME_ONLY:")
+    generic_start = source.index("with conn.cursor() as cur:", ex_start + 1)
+    generic_block = source[generic_start:]
+    assert "_terminal_unfillable_exhibition_ids()" not in generic_block
