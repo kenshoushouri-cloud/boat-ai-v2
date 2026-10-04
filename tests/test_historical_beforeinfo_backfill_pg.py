@@ -447,3 +447,44 @@ def test_batch_status_distinguishes_official_absent():
         plan_only=False,
     )
     assert status == "FAIL_DAY_OFFICIAL_ABSENT_ONLY"
+
+
+def test_july_terminal_unfillable_set_is_exact_and_exhibition_only_filter_skips_it():
+    assert len(m.EXHIBITION_TIME_TERMINAL_UNFILLABLE) == 53
+    assert "20260701_10_08" in m.EXHIBITION_TIME_TERMINAL_UNFILLABLE
+    assert "20260729_09_12" in m.EXHIBITION_TIME_TERMINAL_UNFILLABLE
+
+    class Cur:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, sql, params):
+            pass
+        def fetchall(self):
+            return [
+                {"race_id": "20260701_10_08", "race_date": "2026-07-01"},
+                {"race_id": "keep_me", "race_date": "2026-07-01"},
+            ]
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+    rows = m._target_races(
+        Conn(),
+        "2026-07-01",
+        mode=m.MODE_EXHIBITION_TIME_ONLY,
+    )
+    assert [row["race_id"] for row in rows] == ["keep_me"]
+
+
+def test_generic_mode_does_not_use_terminal_exhibition_skip():
+    source = Path("research/historical_beforeinfo_backfill_pg.py").read_text(
+        encoding="utf-8"
+    )
+    ex_start = source.index("if mode == MODE_EXHIBITION_TIME_ONLY:")
+    generic_start = source.index("with conn.cursor() as cur:", ex_start + 1)
+    generic_end = source.index("\ndef _historical_raw(", generic_start)
+    generic_block = source[generic_start:generic_end]
+    assert "EXHIBITION_TIME_TERMINAL_UNFILLABLE" not in generic_block
