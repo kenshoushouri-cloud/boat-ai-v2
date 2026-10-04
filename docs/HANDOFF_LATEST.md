@@ -15,6 +15,7 @@
 - Exhibition Time OOS missing=4,703。低コスト専用mode実装済み。
 - Jul 53件再pilotは既に実行済み。historical parser v3使用53/53、HTTP53、fetch失敗0だがusable 6艇=0、quality gateで53件すべてwrite禁止、DB write=0、FAIL_PARSE_QUALITY。Aug/Sep未実行。
 - PR #549で1件read-only診断を追加。sample `20260701_10_08` は公式beforeinfo自体が1号艇展示タイム空欄で候補値5艇分のみ。少なくともこの例はparser故障ではなく**official partial data**でfail-closedが正しい。
-- **Next ONE task:** historical parser/backfillに「official partial data」と「parser failure」の判別を追加し、6艇write gateは維持したまま安全テストのみ。53件再HTTPはまだしない。
+- PR #550 merged。historical parser/backfillで `complete` / `official_partial` / `parser_failure` を明示分類。1〜5艇のpartialは可視化のみでwrite禁止、6艇＋time/rank/diff gateは維持。安全CIとJuly plan-onlyはPASS、HTTP=0・DB write=0。
+- **Next ONE task:** Jul欠損から少数サンプルだけread-only HTTP分類し、`official_partial` と `parser_failure` の実データ比率を確認。DB writeなし、53件全再HTTPはまだしない。
 
-`COMPACT_ONLY / JULY_REPILOT_ZERO_WRITE / OFFICIAL_PARTIAL_CONFIRMED_SAMPLE / CLASSIFY_PARTIAL_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / PARTIAL_CLASSIFICATION_MERGED / MIN_HTTP_CLASSIFY_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
