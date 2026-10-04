@@ -1,0 +1,100 @@
+name: Historical source acquisition pilot
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_official_archive_capture.py"
+      - "research/teikoku_historical_raw_capture.py"
+      - "research/teikoku_policy_pilot_urls.txt"
+      - "tests/test_historical_source_acquisition.py"
+      - "docs/HISTORICAL_DATA_SOURCE_POLICY_20260930.md"
+      - ".github/workflows/historical-source-acquisition-pilot.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest
+      - run: pytest -q tests/test_historical_source_acquisition.py
+      - name: Static guards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          off=Path("research/historical_official_archive_capture.py").read_text(encoding="utf-8").lower()
+          tei=Path("research/teikoku_historical_raw_capture.py").read_text(encoding="utf-8").lower()
+          assert "db_write" in off and "production_change" in off
+          assert "upsert" not in off and "insert into" not in off
+          assert "min_interval_sec = 3.0" in tei
+          assert "threadpoolexecutor" not in tei
+          assert "asyncio" not in tei
+          assert "result_parse" in tei
+          assert "upsert" not in tei and "insert into" not in tei
+          print("PASS historical acquisition safety")
+          PY
+
+  official-bk-raw-2025-07-forward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture official B/K raw archives
+        run: |
+          python -u research/historical_official_archive_capture.py \
+            --start-date 2025-07-01 \
+            --end-date 2026-09-29 \
+            --out-dir historical-official-raw \
+            --sleep-sec 0.20 | tee historical-official-capture.log
+          grep -q '^HIST_OFFICIAL_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0$' historical-official-capture.log
+          grep -q '^HIST_OFFICIAL_RESULT=PASS_RAW_CAPTURE$' historical-official-capture.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-official-bk-raw-20250701-20260929
+          path: |
+            historical-official-raw
+            historical-official-capture.log
+          retention-days: 90
+          if-no-files-found: error
+
+  teikoku-policy-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture two historical race pages sequentially
+        continue-on-error: true
+        run: |
+          python -u research/teikoku_historical_raw_capture.py \
+            --url-file research/teikoku_policy_pilot_urls.txt \
+            --out-dir historical-teikoku-raw \
+            --interval-sec 3.2 | tee historical-teikoku-capture.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-teikoku-policy-pilot
+          path: |
+            historical-teikoku-raw
+            historical-teikoku-capture.log
+          retention-days: 30
+          if-no-files-found: warn
