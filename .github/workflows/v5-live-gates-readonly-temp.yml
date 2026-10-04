@@ -1,0 +1,142 @@
+name: V5 live gates read-only temporary
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  V4_INVENTORY_RUN_LIST: "v4-run-list.json"
+  V4_INVENTORY_OUTPUT: "v4-formal-artifact-inventory.json"
+  V4_FORMAL_INVENTORY_MANIFEST: "v4-formal-artifact-inventory.json"
+  V4_FORMAL_ARTIFACT_DIR: "v4-artifacts"
+  V4_FORMAL_SETTLEMENT_OUTPUT: "v4-provider-selected-forward-settlement.json"
+  V4_INVENTORY_END: "2026-10-04"
+  S03_FORWARD_START: "2026-09-13"
+  S03_FORWARD_END: "2026-10-04"
+
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-live-gates-readonly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Static safety
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          paths = [
+              "research/v4_formal_artifact_settlement_pg.py",
+              "research/s03_m2_common_economics_pg.py",
+              "research/historical_matched_contract_readiness_pg.py",
+          ]
+          for path in paths:
+              p=Path(path).read_text(encoding="utf-8").lower()
+              assert "set transaction read only" in p, path
+          w=Path(".github/workflows/v5-live-gates-readonly-temp.yml").read_text(encoding="utf-8").lower()
+          assert "".join(("railway"," variable"," list")) not in w
+          assert "list_variables" not in w
+          assert w.count("railway run") == 3
+          print("V5_LIVE_GATES_STATIC=PASS")
+          PY
+      - name: Freeze provider V4 inventory before DB result access
+        run: |
+          set -euo pipefail
+          gh run list --workflow candidate-discovery-v4-prospective-freeze.yml --limit 100 \
+            --json databaseId,event,createdAt,status,conclusion,headSha > "${V4_INVENTORY_RUN_LIST}"
+          python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-provider-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-provider-inventory.txt
+      - name: Materialize selected formal V4 artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "${V4_FORMAL_ARTIFACT_DIR}"
+          : > v4-provider-selected-sha256.txt
+          jq -r '.days[] | select(.classification=="FORMAL_AVAILABLE") | [.date, .selected.artifact_id, .selected.archive_sha256] | @tsv' \
+            "${V4_FORMAL_INVENTORY_MANIFEST}" |
+            while IFS=$'\t' read -r day artifact_id sha; do
+              test -n "$day"; test -n "$artifact_id"; test -n "$sha"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "${V4_FORMAL_ARTIFACT_DIR}/$day.zip"
+              printf '%s  %s/%s.zip\n' "$sha" "${V4_FORMAL_ARTIFACT_DIR}" "$day" >> v4-provider-selected-sha256.txt
+            done
+          test -s v4-provider-selected-sha256.txt
+          sha256sum -c v4-provider-selected-sha256.txt
+      - name: Settle frozen V4 read-only on candidate-v4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u research/v4_formal_artifact_settlement_pg.py' \
+            2>&1 | tee v4-settlement.txt
+          grep -q '^V4_FORMAL_SETTLEMENT_RESULT=PASS_READ_ONLY$' v4-settlement.txt
+      - name: Run S03 M2 read-only on candidate-v4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/s03_m2_common_economics_pg.py' \
+            2>&1 | tee s03.txt
+          grep -Eq '^S03_M2_COMMON_RESULT=PASS_(EXACT_FROZEN_SUBSET|READ_ONLY_CHECKPOINT)$' s03.txt
+      - name: Historical matched readiness read-only on candidate-v4
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --output historical-readiness.json' \
+            2>&1 | tee historical-readiness.txt
+          grep -q '^HIST_MATCHED_READINESS_RESULT=PASS_READ_ONLY$' historical-readiness.txt
+      - name: Build live gate scorecard
+        run: |
+          set -euo pipefail
+          python -u research/forward_combined_checkpoint.py \
+            --v4-json "${V4_FORMAL_SETTLEMENT_OUTPUT}" \
+            --s03-log s03.txt \
+            --end-date 2026-10-04 \
+            --output forward-combined-checkpoint.json \
+            | tee combined.txt
+          grep -q '^FORWARD_COMBINED_RESULT=PASS_PURE_COMBINE$' combined.txt
+      - name: Replace trigger comment with sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 live gates read-only — candidate-v4'
+            echo
+            echo '```text'
+            if [ -f forward-combined-checkpoint.json ]; then
+              jq -c '{v4_resolved_formal_days:.v4_formal.resolved_formal_days,v4_gate:.v4_formal.review_gate,s03_evaluated:.s03_m2.overall.evaluated,s03_gate:.s03_m2.review_gate,v5_core_status:.v5_core_milestone.status,v5_core_remaining:.v5_core_milestone.remaining}' forward-combined-checkpoint.json
+            else
+              echo 'PROSPECTIVE_GATE_RESULT=UNAVAILABLE'
+            fi
+            grep '^HIST_MATCHED_READINESS_TOTAL=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_TOTAL=UNAVAILABLE'
+            grep '^HIST_MATCHED_READINESS_RESULT=' historical-readiness.txt 2>/dev/null || echo 'HIST_MATCHED_READINESS_RESULT=UNAVAILABLE'
+            echo 'DB_WRITE=0 PROD_CHANGE=0 LINE=0 BUY=0 RAILWAY_CONFIG_CHANGE=0'
+            echo '```'
+            echo
+            echo 'One-time read-only gate check. No backtest economics executed.'
+          } > reply.txt
+          jq -Rs '{body:.}' reply.txt > reply.json
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --input reply.json
