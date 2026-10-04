@@ -70,6 +70,33 @@ class HistoricalBeforeinfoParserV3Tests(unittest.TestCase):
         self.assertAlmostEqual(by_lane[2]["exhibition_time_diff"], 0.01)
         self.assertEqual(by_lane[2]["start_timing_rank"], 1)
 
+    def test_inspection_classifies_structured_five_lane_time_page_as_official_partial(self):
+        html = make_html().replace(
+            "<td>52.0kg</td><td>6.71</td><td>0.0</td>",
+            "<td>52.0kg</td><td></td><td>0.0</td>",
+            1,
+        )
+        inspection = parser.inspect_exhibition_time_page(html)
+        self.assertEqual(
+            inspection["status"],
+            parser.EXHIBITION_STATUS_OFFICIAL_PARTIAL,
+        )
+        self.assertEqual(inspection["valid_time_count"], 5)
+        self.assertEqual(inspection["lanes"], [2, 3, 4, 5, 6])
+        self.assertEqual(parser.parse_exhibition(html), [])
+
+    def test_inspection_classifies_no_valid_times_as_parser_failure(self):
+        html = make_html()
+        for value in ("6.71", "6.72", "6.73", "6.74", "6.75", "6.76"):
+            html = html.replace(value, "")
+        inspection = parser.inspect_exhibition_time_page(html)
+        self.assertEqual(
+            inspection["status"],
+            parser.EXHIBITION_STATUS_PARSER_FAILURE,
+        )
+        self.assertEqual(inspection["valid_time_count"], 0)
+        self.assertEqual(parser.parse_exhibition(html), [])
+
 
 if __name__ == "__main__":
     unittest.main()
