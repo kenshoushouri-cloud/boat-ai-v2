@@ -16,20 +16,21 @@
 - Exhibition Time OOS missing **4,703**。低コストExhibition-Time-only modeを使用。
 - Jul missing **53**は再pilot済み: HTTP53 / fetch failure0 / DB write0。6艇quality gateを満たさずfail-closed停止。Aug/Sep未実行。
 - PR #550でhistorical parser/backfillを `complete / official_partial / parser_failure` に分類。1〜5艇partialは可視化のみでwrite禁止、6艇のみtime/rank/diff gateへ進む。
-- 実データread-only診断: 既知1件 + 異なる日5件 = **6/6 official_partial、すべてvalid_times=5、parser_failure=0**。追加診断はHTTP5 / DB write0。
+- 実データread-only診断: **6/6 official_partial、各5艇、parser_failure=0**。
+- Jul DB分布read-only: **53/53でexhibition_time=0艇**、欠損patternは全件 `1,2,3,4,5,6`。DBにはpartial値が保存されていないため、残り47件はDBだけでは分類不可。
 - 直近storage read-only: DB **4,390,311,615B** / WAL **83,886,080B** / volume **4,670.824448/5,000MB**。
 
 ## 次の1作業
-**Jul missing 53のDB側 `exhibition_time` 件数分布と欠損lane分布だけをread-only確認する。追加HTTPはしない。**
+**既知6件を除くJul残り47件だけをread-only HTTP分類し、53件すべてがofficial partialかを確定する。**
 
 条件:
-- DB writeなし / Railway設定変更なし / result・odds・payout readなし。
-- Production/LINE/purchase変更なし。
+- 最大HTTP47 / DB writeなし / Railway設定変更なし。
+- result・odds・payout read禁止。Production/LINE/purchase変更なし。
 - Aug/Sepはまだ実行しない。
-- この確認でJul 53を「official partial由来のunfillable」と扱えるか判断し、次の最小コスト手順を決める。
+- 53/53がofficial partialならJulはunfillableとして再取得対象から外す判断へ進む。
 
 ## 次チャット
 最初に読むのは `HANDOFF_LATEST.md` → current compact → `NEXT_CHAT_START_HERE.md` の3点だけ。
 古いhandoffは履歴。SHA/run/件数/容量は必要時のみlive再取得。
 
-`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_SAMPLE_6_OF_6_PARTIAL / DB_DISTRIBUTION_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
+`PROD_V4 / V5_RESEARCH_ONLY / COST_MINIMIZE_LE_20 / JUL_DB_ALL_ZERO / REMAINING_47_CLASSIFY_NEXT / AUG_SEP_BLOCKED / ONE_TASK_ONLY`
