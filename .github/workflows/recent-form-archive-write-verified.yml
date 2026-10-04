@@ -44,6 +44,38 @@ jobs:
           python -m pip install "psycopg[binary]>=3.2,<4"
           npm install --global @railway/cli
 
+      - name: Probe archive private tunnel before export
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tunnel_log="$(mktemp)"
+          railway connect "$ARCHIVE_SERVICE" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --tunnel-only --port 15432 \
+            >"$tunnel_log" 2>&1 &
+          tunnel_pid=$!
+          cleanup_probe() {
+            kill "$tunnel_pid" 2>/dev/null || true
+            wait "$tunnel_pid" 2>/dev/null || true
+            rm -f "$tunnel_log"
+          }
+          trap cleanup_probe EXIT
+
+          python - <<'PY'
+          import socket,time
+          deadline=time.time()+8
+          while time.time() < deadline:
+              try:
+                  with socket.create_connection(("127.0.0.1",15432),timeout=1):
+                      print("ARCHIVE_PRIVATE_TUNNEL_PROBE=PASS")
+                      raise SystemExit(0)
+              except OSError:
+                  time.sleep(1)
+          raise SystemExit("ARCHIVE_PRIVATE_TUNNEL_PROBE=FAIL")
+          PY
+
       - name: Write guarded source exporter
         shell: bash
         run: |
@@ -329,12 +361,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway link \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT" \
-            --service "$ARCHIVE_SERVICE" \
-            --json >/dev/null
-
           tunnel_log="$(mktemp)"
           railway connect "$ARCHIVE_SERVICE" \
             --environment "$RAILWAY_ENVIRONMENT" \
