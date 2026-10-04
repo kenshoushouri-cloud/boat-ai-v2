@@ -1,6 +1,13 @@
 name: Candidate v4 matched readiness audit
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "research/historical_matched_contract_readiness_pg.py"
+      - "research/candidate_v4_matched_readiness_combined_pg.py"
+      - "research/_v4_long_history_walkforward_reference_20260923.py"
+      - "research/v5_matched_contract_baseline_pg.py"
+      - ".github/workflows/candidate-v4-matched-readiness-readonly.yml"
 permissions:
   contents: read
 env:
@@ -11,6 +18,7 @@ env:
 jobs:
   audit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +28,44 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
       - run: npm install --global @railway/cli
-      - name: Verify candidate-v4 read-only connection
+      - name: Verify historical-only candidate-v4 read-only readiness
         run: |
           set -euo pipefail
           railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-10-02'
+      - name: Verify evidence-class candidate-v4 matched readiness
+        run: |
+          set -euo pipefail
+          python -m py_compile research/candidate_v4_matched_readiness_combined_pg.py
+          grep -q 'set transaction read only' research/candidate_v4_matched_readiness_combined_pg.py
+          ! grep -Eiq 'v2_results|v2_odds|payout|insert into|update v2_|delete from|create table|alter table|drop table' research/candidate_v4_matched_readiness_combined_pg.py
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; python -u research/candidate_v4_matched_readiness_combined_pg.py --start-date 2025-07-01 --end-date 2026-09-29'
+      - name: Run V5 review matched-contract baseline backtest
+        env:
+          MATCHED_BT_START_DATE: "2025-07-01"
+          MATCHED_BT_END_DATE: "2026-09-29"
+          MATCHED_BT_OUTPUT_JSON: "v5-matched-contract-baseline.json"
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/_v4_long_history_walkforward_reference_20260923.py             research/v5_matched_contract_baseline_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/v5_matched_contract_baseline_pg.py").read_text(encoding="utf-8").lower()
+          assert "set transaction read only" in p
+          assert "fetch_selected_results(cur, day, selected_ids)" in p
+          assert p.index("freeze_matched_day(cur, day)") < p.index("fetch_selected_results(cur, day, selected_ids)")
+          assert "v2_odds" not in p
+          for bad in ("insert into", "delete from", "update v2_", "alter table", "drop table", "create table"):
+              assert bad not in p
+          print("V5_MATCHED_BASELINE_STATIC=PASS")
+          PY
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export PGOPTIONS="-c default_transaction_read_only=on"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export MATCHED_BT_START_DATE=2025-07-01 MATCHED_BT_END_DATE=2026-09-29 MATCHED_BT_OUTPUT_JSON=v5-matched-contract-baseline.json; python -u research/v5_matched_contract_baseline_pg.py' | tee v5-matched-contract-baseline.txt
+          grep -q '^V5_MATCHED_BASELINE_RESULT=PASS_READ_ONLY$' v5-matched-contract-baseline.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v5-matched-contract-baseline-${{ github.run_id }}
+          path: |
+            v5-matched-contract-baseline.json
+            v5-matched-contract-baseline.txt
+          if-no-files-found: ignore
+          retention-days: 90
