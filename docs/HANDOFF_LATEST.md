@@ -2,20 +2,18 @@
 
 **Current compact handoff:** `docs/LIVE_HANDOFF_20261004_COMPACT.md`
 
-次チャットでは次の3点だけ読む:
+次チャットで読むのは次の3点だけ:
 1. `docs/HANDOFF_LATEST.md`
-2. 上記current compact handoff
+2. current compact handoff
 3. `docs/NEXT_CHAT_START_HERE.md`
 
 要点:
-- Production=V4 / V5・V5.1=research-only / 運用開始目標=2026年10月中旬。
-- Railway費用は**月USD20以下を上限**とし、精度・安定性・必要なデータ取得を損なわない範囲で**可能な限り安くする**。USD15以下にできる場合も積極的に削減する。
-- Live gatesはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げず、economics未実行。
-- Recent Formはblind VAL/OOSで不採用、収集継続。
-- Exhibition Time OOS missing=4,703。低コスト専用mode実装済み。
-- Jul 53件再pilotは既に実行済み。historical parser v3使用53/53、HTTP53、fetch失敗0だがusable 6艇=0、quality gateで53件すべてwrite禁止、DB write=0、FAIL_PARSE_QUALITY。Aug/Sep未実行。
-- PR #549で1件read-only診断を追加。sample `20260701_10_08` は公式beforeinfo自体が1号艇展示タイム空欄で候補値5艇分のみ。少なくともこの例はparser故障ではなく**official partial data**でfail-closedが正しい。
-- PR #550 merged。historical parser/backfillで `complete` / `official_partial` / `parser_failure` を明示分類。1〜5艇のpartialは可視化のみでwrite禁止、6艇＋time/rank/diff gateは維持。安全CIとJuly plan-onlyはPASS、HTTP=0・DB write=0。
-- **Next ONE task:** Jul欠損から少数サンプルだけread-only HTTP分類し、`official_partial` と `parser_failure` の実データ比率を確認。DB writeなし、53件全再HTTPはまだしない。
+- Production=V4。V5/V5.1=research-only。運用開始目標=2026年10月中旬。
+- Railwayは月USD20を上限に、必要品質を損なわない範囲で可能な限り安くする。
+- Live gateはV4 9/20、S03_M2 66/100でBLOCKED。gateは下げない。
+- Exhibition Time OOS missing=4,703。Jul 53再pilotはwrite 0で停止。
+- PR #550で `complete / official_partial / parser_failure` をfail-closed分類。
+- read-only実データsampleは既知1件+追加5件=**6/6 official_partial（各5艇）、parser_failure=0**。追加診断はHTTP5、DB write 0。Aug/Sep未実行。
+- **Next ONE task:** Jul missing 53のDB側 `exhibition_time` 件数/欠損lane分布だけread-only確認。追加HTTPなし、DB writeなし。
 
-`COMPACT_ONLY / PARTIAL_CLASSIFICATION_MERGED / MIN_HTTP_CLASSIFY_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
+`COMPACT_ONLY / JUL_SAMPLE_6_OF_6_PARTIAL / NO_MORE_HTTP_NEXT / ONE_TASK_ONLY / COST_MINIMIZE_LE_20`
