@@ -450,11 +450,13 @@ def test_batch_status_distinguishes_official_absent():
 
 
 
-def test_terminal_unfillable_manifest_has_exact_verified_july_53():
+def test_terminal_unfillable_manifest_has_exact_verified_55():
     ids = m._terminal_unfillable_exhibition_ids()
-    assert len(ids) == 53
+    assert len(ids) == 55
     assert "20260701_10_08" in ids
     assert "20260729_09_12" in ids
+    assert "20260804_04_09" in ids
+    assert "20260804_12_10" in ids
 
 
 def test_exhibition_only_target_excludes_terminal_unfillable(monkeypatch):
