@@ -45,8 +45,8 @@ jobs:
           assert "list_" + "variables" not in text
           assert "CONFIRM_HISTORICAL_" + "BEFOREINFO_DB_WRITE" not in text
           assert "/railway historical-exhibition-db-distribution" in text
-          assert "v2_results" not in text
-          assert "v2_odds" not in text
+          assert "v2_" + "results" not in text
+          assert "v2_" + "odds" not in text
           print("PASS historical exhibition diagnostics safety")
           PY
 
