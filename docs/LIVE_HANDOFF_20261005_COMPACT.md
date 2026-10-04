@@ -52,9 +52,14 @@
 - archive側にはRecent Form payload全量を受ける容量余裕あり。ただしcandidate側の物理回収にはrewriteが必要で、現在空き約327MBではWAL/一時領域込みで危険。まだ移動・削除しない。
 - `v2_v24_motor2_forward_shadow`等research/shadowだけでは、安全に即時400MB超を空ける候補は未発見。
 - `v2_realtime_odds_snapshots`等は全期間backtest保持対象なので、容量目的の期間archiveはしない。
+- REJECT確定の専用storage再監査:
+  - Wave residual / Wind-speed residual: rejected版はread-only in-memory計算で専用永続payloadなし。wave/wind名の既存派生relation合計も約0.295MBで、しかも別研究を含むため削除対象にしない。
+  - Global motor shrinkage: read-only backtest計算のみ。専用table/payloadなし。
+  - Naive prob*odds / model-vs-market edge: `v2_candidate_filter_shadow`をread-only評価。専用tableではなく、S01-S05/N01/N02等の他研究と共有し、raw_ev等もルール評価で使用されるため容量整理対象にしない。
+  - よって現時点で**物理容量に効く明確なREJECT専用payloadはRecent Form current-spec（約659MB）が唯一の主要候補**。
 
 ## Next ONE task
-**容量整理対象は「明確なREJECT確定」だけに限定する。未採用/研究途中は触らない。Recent Form current-spec payload以外に、REJECT確定の派生情報で物理容量を減らせる対象があるかread-onlyで確認する。**
+**Recent Form current-specが唯一の主要なREJECT容量候補と確認できたため、同一5GB volume内rewriteを避けて物理容量を安全に回収する方法をread-onlyで設計する。Railway内の短命なcompact rebuild/cutover案を、費用<=USD20・復元/parity・全期間backtest保持条件で比較する。**
 
 条件:
 - まだ移動・削除しない。
