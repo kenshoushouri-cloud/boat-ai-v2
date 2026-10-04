@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: recent-form-compact-preflight
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
