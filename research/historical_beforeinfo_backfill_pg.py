@@ -384,6 +384,113 @@ def _upsert_exhibition(
     return total
 
 
+def _upsert_exhibition_time_only(
+    conn: psycopg.Connection,
+    race: dict[str, Any],
+    exhibition: list[dict[str, Any]],
+) -> int:
+    """Fill only Exhibition Time / rank / diff; never ST, tilt, course or weather."""
+    deadline_at = _deadline(race.get("deadline_at"))
+    snapshot_at = _synthetic_snapshot_at(deadline_at, str(race["race_date"]))
+    total = 0
+    for row in exhibition:
+        lane = int(row.get("lane") or 0)
+        ex_time = row.get("exhibition_time")
+        if lane not in (1, 2, 3, 4, 5, 6) or ex_time is None:
+            continue
+        raw = _historical_raw(
+            target_date=str(race["race_date"]),
+            deadline_at=deadline_at,
+            kind="exhibition_time_only",
+            parsed_raw={"cells": row.get("raw_cells") or []},
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into v2_realtime_exhibition_snapshots(
+                    race_id,race_date,venue_id,venue_code,race_no,
+                    snapshot_label,snapshot_at,source,lane,
+                    exhibition_time,exhibition_time_rank,exhibition_time_diff,
+                    raw,updated_at
+                )
+                values(
+                    %s,%s,%s,%s,%s,
+                    'historical',%s,%s,%s,
+                    %s,%s,%s,%s,now()
+                )
+                on conflict(race_id,snapshot_label,lane) do update set
+                    exhibition_time=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time,
+                        excluded.exhibition_time
+                    ),
+                    exhibition_time_rank=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time_rank,
+                        excluded.exhibition_time_rank
+                    ),
+                    exhibition_time_diff=coalesce(
+                        v2_realtime_exhibition_snapshots.exhibition_time_diff,
+                        excluded.exhibition_time_diff
+                    ),
+                    source=coalesce(
+                        v2_realtime_exhibition_snapshots.source,
+                        excluded.source
+                    ),
+                    snapshot_at=coalesce(
+                        v2_realtime_exhibition_snapshots.snapshot_at,
+                        excluded.snapshot_at
+                    ),
+                    raw=coalesce(
+                        v2_realtime_exhibition_snapshots.raw,
+                        excluded.raw
+                    ),
+                    updated_at=now()
+                where
+                       (
+                         v2_realtime_exhibition_snapshots.exhibition_time is null
+                         and excluded.exhibition_time is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.exhibition_time_rank is null
+                         and excluded.exhibition_time_rank is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.exhibition_time_diff is null
+                         and excluded.exhibition_time_diff is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.source is null
+                         and excluded.source is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.snapshot_at is null
+                         and excluded.snapshot_at is not null
+                       )
+                    or (
+                         v2_realtime_exhibition_snapshots.raw is null
+                         and excluded.raw is not null
+                       )
+                returning 1
+                """,
+                (
+                    str(race["race_id"]),
+                    race["race_date"],
+                    str(race.get("venue_id") or "").zfill(2),
+                    str(race.get("venue_id") or "").zfill(2),
+                    int(race.get("race_no") or 0),
+                    snapshot_at,
+                    SOURCE,
+                    lane,
+                    ex_time,
+                    row.get("exhibition_time_rank"),
+                    row.get("exhibition_time_diff"),
+                    Jsonb(raw),
+                ),
+            )
+            if cur.fetchone():
+                total += 1
+    return total
+
+
 def process_day(
     conn: psycopg.Connection,
     session: requests.Session,
@@ -456,9 +563,14 @@ def process_day(
                     counts["weather_rows_touched"] += _upsert_weather(
                         conn, race, weather
                     )
-            counts["exhibition_rows_touched"] += _upsert_exhibition(
-                conn, race, exhibition
-            )
+            if mode == MODE_EXHIBITION_TIME_ONLY:
+                counts["exhibition_rows_touched"] += _upsert_exhibition_time_only(
+                    conn, race, exhibition
+                )
+            else:
+                counts["exhibition_rows_touched"] += _upsert_exhibition(
+                    conn, race, exhibition
+                )
             conn.commit()
         except Exception:
             conn.rollback()
