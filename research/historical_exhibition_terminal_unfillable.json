@@ -4,9 +4,9 @@
   "source": "official archived beforeinfo read-only verification",
   "rule": "Skip repeat HTTP for verified terminal races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
   "counts": {
-    "official_partial": 44,
+    "official_partial": 49,
     "official_absent": 14,
-    "total": 81,
+    "total": 86,
     "verified_terminal_unfillable": 23
   },
   "races": {
@@ -90,7 +90,12 @@
     "20260812_19_07": "verified_terminal_unfillable",
     "20260813_03_05": "verified_terminal_unfillable",
     "20260813_22_11": "verified_terminal_unfillable",
-    "20260813_01_11": "verified_terminal_unfillable"
+    "20260813_01_11": "verified_terminal_unfillable",
+    "20260814_21_10": "official_partial",
+    "20260814_02_11": "official_partial",
+    "20260814_17_09": "official_partial",
+    "20260815_11_11": "official_partial",
+    "20260815_06_07": "official_partial"
   },
   "verified_batches": {
     "2026-08-07..2026-08-13": {
@@ -98,6 +103,12 @@
       "official_absent": 12,
       "race_ids_recorded_as": "verified_terminal_unfillable",
       "note": "Per-race partial/absent mapping was not re-fetched; batch aggregate came from the guarded backfill result."
+    },
+    "2026-08-14..2026-08-15": {
+      "official_partial": 5,
+      "official_absent": 0,
+      "race_ids_recorded_as": "official_partial",
+      "note": "All 5 target races returned official archived beforeinfo with 5 lanes only; exact batch mapping is therefore official_partial for every target."
     }
   }
 }
