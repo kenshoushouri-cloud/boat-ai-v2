@@ -200,14 +200,78 @@ jobs:
             for block in $(seq 1 "${HIST_FAST_BLOCKS}"); do
               block_txt="historical-beforeinfo-backfill-block-${block}.txt"
               block_json="historical-beforeinfo-backfill-block-${block}.json"
+
               railway run \
                 --project "${RAILWAY_PROJECT_ID}" \
                 --environment "${RAILWAY_ENVIRONMENT}" \
                 --service "${RAILWAY_DB_SERVICE}" \
-                bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races 48 --output "'"$block_json"'"' \
-                | tee "$block_txt"
-              cat "$block_txt" >> historical-beforeinfo-backfill.txt
-              grep -q '^HIST_BEFOREINFO_RESULT=PASS
+                bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races 48' \
+                | tee "${block_txt}"
+
+              cat "${block_txt}" >> historical-beforeinfo-backfill.txt
+              cp historical-beforeinfo-backfill-manifest.json "${block_json}"
+
+              grep -q '^HIST_BEFOREINFO_RESULT=PASS$' "${block_txt}"
+              grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" "${block_txt}"
+              grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' "${block_txt}"
+              grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' "${block_txt}"
+
+              python - "${block_json}" "${block}" <<'PY' | tee -a historical-beforeinfo-backfill.txt
+          import json
+          import sys
+          from pathlib import Path
+
+          payload=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          block=int(sys.argv[2])
+          totals=payload.get("totals") or {}
+          bad_keys=(
+              "fetch_failed",
+              "official_no_data",
+              "exhibition_parse_rejected_races",
+              "exhibition_parser_failure_races",
+              "exhibition_quality_rejected_races",
+              "exhibition_official_partial_races",
+              "exhibition_official_absent_races",
+          )
+          bad={
+              k:int(totals.get(k,0) or 0)
+              for k in bad_keys
+              if int(totals.get(k,0) or 0)>0
+          }
+          available=int(totals.get("available_target_missing_races",0) or 0)
+          target=int(totals.get("target_missing_races",0) or 0)
+          complete=int(totals.get("exhibition_complete_races",0) or 0)
+          print(
+              f"HIST_FAST_BLOCK=block:{block} available:{available} "
+              f"target:{target} complete:{complete} anomalies:{sum(bad.values())}"
+          )
+          if bad:
+              print("HIST_FAST_STOP_ANOMALY="+json.dumps(bad,sort_keys=True))
+              raise SystemExit(3)
+          if target == 0 or available <= target:
+              Path("historical-beforeinfo-fast-stop").write_text(
+                  "drained\n", encoding="utf-8"
+              )
+          PY
+
+              if [ -f historical-beforeinfo-fast-stop ]; then
+                break
+              fi
+            done
+          else
+            railway run \
+              --project "${RAILWAY_PROJECT_ID}" \
+              --environment "${RAILWAY_ENVIRONMENT}" \
+              --service "${RAILWAY_DB_SERVICE}" \
+              bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races "${HIST_MAX_RACES}"' \
+              | tee historical-beforeinfo-backfill.txt
+
+            grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
+            grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" historical-beforeinfo-backfill.txt
+            grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' historical-beforeinfo-backfill.txt
+            grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0$' historical-beforeinfo-backfill.txt
+          fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -229,209 +293,7 @@ jobs:
             echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
             echo
             if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- "$block_txt"
-              grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" "$block_txt"
-              grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- "$block_txt"
-              grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- "$block_txt"
-
-              python - "$block_json" "$block" <<'PY' | tee -a historical-beforeinfo-backfill.txt
-          import json
-          import sys
-          from pathlib import Path
-
-          payload=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          block=int(sys.argv[2])
-          totals=payload.get("totals") or {}
-          bad_keys=(
-              "fetch_failed",
-              "official_no_data",
-              "exhibition_parse_rejected_races",
-              "exhibition_parser_failure_races",
-              "exhibition_quality_rejected_races",
-              "exhibition_official_partial_races",
-              "exhibition_official_absent_races",
-          )
-          bad={k:int(totals.get(k,0) or 0) for k in bad_keys if int(totals.get(k,0) or 0)>0}
-          available=int(totals.get("available_target_missing_races",0) or 0)
-          target=int(totals.get("target_missing_races",0) or 0)
-          complete=int(totals.get("exhibition_complete_races",0) or 0)
-          print(
-              f"HIST_FAST_BLOCK=block:{block} available:{available} "
-              f"target:{target} complete:{complete} anomalies:{sum(bad.values())}"
-          )
-          if bad:
-              print("HIST_FAST_STOP_ANOMALY="+json.dumps(bad,sort_keys=True))
-              raise SystemExit(3)
-          if target == 0 or available <= target:
-              Path("historical-beforeinfo-fast-stop").write_text("drained\n",encoding="utf-8")
-          PY
-              if [ -f historical-beforeinfo-fast-stop ]; then
-                break
-              fi
-            done
-          else
-            railway run \
-              --project "${RAILWAY_PROJECT_ID}" \
-              --environment "${RAILWAY_ENVIRONMENT}" \
-              --service "${RAILWAY_DB_SERVICE}" \
-              bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races "${HIST_MAX_RACES}"' \
-              | tee historical-beforeinfo-backfill.txt
-            grep -q '^HIST_BEFOREINFO_RESULT=PASS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- historical-beforeinfo-backfill.txt
-            grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" historical-beforeinfo-backfill.txt
-            grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- historical-beforeinfo-backfill.txt
-            grep -q '^HIST_BEFOREINFO_LINE=0 BUY=0 PROD_MODEL_CHANGE=0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
-            fi
-            echo
-            echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
-          } > reply.txt
-          gh issue comment 42 --repo "${GITHUB_REPOSITORY}" --body-file reply.txt
- historical-beforeinfo-backfill.txt
-          fi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: historical-beforeinfo-backfill-${{ github.run_id }}
-          path: |
-            historical-beforeinfo-backfill.txt
-            historical-beforeinfo-backfill-manifest.json
-          retention-days: 90
-          if-no-files-found: error
-
-      - name: Comment sanitized summary
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
-            echo
-            if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' historical-beforeinfo-backfill.txt || true
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=|HIST_FAST_BLOCK=|HIST_FAST_STOP_ANOMALY=)' historical-beforeinfo-backfill.txt || true
             fi
             echo
             echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
