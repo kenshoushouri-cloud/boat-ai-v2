@@ -12,16 +12,8 @@ test "$target_rows" = "0"
 
 echo COMPACT_CONTINUE_RACE_ENTRIES
 cat >/tmp/export_race_entries.sql <<'SQL'
-\copy (
-  select (jsonb_populate_record(
-    NULL::public.v2_race_entries,
-    to_jsonb(e) - 'recent_form'
-  )).*
-  from public.v2_race_entries e
-  order by race_id,lane
-) to stdout with (format binary)
+\copy (select (jsonb_populate_record(NULL::public.v2_race_entries,to_jsonb(e)-'recent_form')).* from public.v2_race_entries e order by race_id,lane) to stdout with (format binary)
 SQL
-
 cat >/tmp/import_race_entries.sql <<'SQL'
 \copy public.v2_race_entries from stdin with (format binary)
 SQL
