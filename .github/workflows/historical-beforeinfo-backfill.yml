@@ -145,8 +145,13 @@ jobs:
           from datetime import date
           p=os.environ["COMMENT_BODY"].strip().split()
           allowed={"historical-beforeinfo-backfill","historical-exhibition-time-backfill"}
-          if len(p)!=4 or p[1] not in allowed:
+          if len(p) not in {4,5} or p[1] not in allowed:
               raise SystemExit("invalid command")
+          if len(p)==5 and p[1]!="historical-exhibition-time-backfill":
+              raise SystemExit("max-races is exhibition-time-only")
+          max_races=int(p[4]) if len(p)==5 else 0
+          if max_races < 0 or max_races > 48:
+              raise SystemExit("max-races must be 0..48")
           a=date.fromisoformat(p[2]); b=date.fromisoformat(p[3])
           if b<a:
               raise SystemExit("end before start")
@@ -158,6 +163,7 @@ jobs:
           print("HIST_START_DATE="+p[2])
           print("HIST_END_DATE="+p[3])
           print("HIST_MODE="+mode)
+          print("HIST_MAX_RACES="+str(max_races))
           PY
 
       - name: Fill historical snapshots
@@ -170,7 +176,7 @@ jobs:
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}"' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races "${HIST_MAX_RACES}"' \
             | tee historical-beforeinfo-backfill.txt
           grep -q '^HIST_BEFOREINFO_RESULT=PASS$' historical-beforeinfo-backfill.txt
           grep -q "^HIST_BEFOREINFO_MODE=${HIST_MODE}$" historical-beforeinfo-backfill.txt
