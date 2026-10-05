@@ -608,9 +608,15 @@ def process_day(
     sleep_sec: float,
     mode: str = MODE_GENERIC,
     plan_only: bool = False,
+    max_races: int = 0,
 ) -> dict[str, Any]:
     races = _target_races(conn, target_date, mode=mode)
     counts: Counter[str] = Counter()
+    if max_races < 0:
+        raise ValueError("max_races must be >= 0")
+    if max_races:
+        counts["available_target_missing_races"] = len(races)
+        races = races[:max_races]
     counts["target_missing_races"] = len(races)
 
     if plan_only:
@@ -729,6 +735,7 @@ def main() -> None:
     ap.add_argument("--end-date", required=True)
     ap.add_argument("--mode", choices=MODES, default=MODE_GENERIC)
     ap.add_argument("--plan-only", action="store_true")
+    ap.add_argument("--max-races", type=int, default=0)
     ap.add_argument(
         "--sleep-sec",
         type=float,
@@ -775,6 +782,7 @@ def main() -> None:
                 sleep_sec=max(0.0, args.sleep_sec),
                 mode=args.mode,
                 plan_only=args.plan_only,
+                max_races=args.max_races,
             )
             reports.append(report)
             s = report["summary"]
