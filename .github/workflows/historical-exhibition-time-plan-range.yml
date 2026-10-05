@@ -1,0 +1,121 @@
+name: Historical Exhibition Time plan range
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-exhibition-time-plan-range.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          p=Path(".github/workflows/historical-exhibition-time-plan-range.yml")
+          text=p.read_text(encoding="utf-8")
+          assert isinstance(yaml.safe_load(text), dict)
+          assert "--plan-only" in text
+          assert "default_transaction_read_only=on" in text
+          assert "max 7 days" in text
+          print("PASS historical exhibition plan-range workflow")
+          PY
+
+  plan:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-exhibition-plan-range ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Parse and validate range
+        id: range
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY'
+          import os, re
+          from datetime import date
+          body=os.environ["BODY"].strip()
+          m=re.fullmatch(r"/railway historical-exhibition-plan-range (\d{4}-\d{2}-\d{2}) (\d{4}-\d{2}-\d{2})", body)
+          if not m:
+              raise SystemExit("invalid command")
+          start=date.fromisoformat(m.group(1))
+          end=date.fromisoformat(m.group(2))
+          if end < start:
+              raise SystemExit("end before start")
+          if (end-start).days > 6:
+              raise SystemExit("max 7 days")
+          if start < date(2025,7,1):
+              raise SystemExit("start before formal backtest range")
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf-8") as f:
+              f.write(f"start={start.isoformat()}\n")
+              f.write(f"end={end.isoformat()}\n")
+          PY
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Plan-only range
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          START_DATE: ${{ steps.range.outputs.start }}
+          END_DATE: ${{ steps.range.outputs.end }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; unset CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "'"$START_DATE"'" --end-date "'"$END_DATE"'" --mode exhibition-time-only --plan-only --output exhibition-plan-range.json' \
+            | tee exhibition-plan-range.txt
+          grep -q '^HIST_BEFOREINFO_WRITE_ENABLED=0$' exhibition-plan-range.txt
+          grep -q '^HIST_BEFOREINFO_PLAN_ONLY=1$' exhibition-plan-range.txt
+          grep -q '^HIST_BEFOREINFO_RESULT=PASS$' exhibition-plan-range.txt
+          grep -q '^HIST_BEFOREINFO_RESULT_ODDS_PAYOUT_READ=0$' exhibition-plan-range.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          START_DATE: ${{ steps.range.outputs.start }}
+          END_DATE: ${{ steps.range.outputs.end }}
+        run: |
+          {
+            echo "## Exhibition Time plan-only range"
+            echo
+            echo "Range: ${START_DATE:-?} .. ${END_DATE:-?}"
+            echo
+            if [ -f exhibition-plan-range.txt ]; then
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=)' exhibition-plan-range.txt || true
+            fi
+            echo
+            echo "HTTP=0 / DB write=0 / result-odds-payout read=0."
+          } > reply.txt
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file reply.txt
