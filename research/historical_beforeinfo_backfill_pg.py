@@ -563,6 +563,7 @@ def _batch_parse_quality_status(
     mode: str,
     reports: list[dict[str, Any]],
     plan_only: bool,
+    allow_official_terminal: bool = False,
 ) -> str:
     if mode != MODE_EXHIBITION_TIME_ONLY:
         return "NOT_APPLICABLE_MODE"
@@ -590,6 +591,11 @@ def _batch_parse_quality_status(
             )
             if parser_failures > 0:
                 return "FAIL_DAY_PARSER_FAILURE"
+            if (
+                allow_official_terminal
+                and official_partial + official_absent == targets
+            ):
+                continue
             if official_partial > 0:
                 return "FAIL_DAY_OFFICIAL_PARTIAL_ONLY"
             if official_absent > 0:
@@ -609,9 +615,18 @@ def process_day(
     mode: str = MODE_GENERIC,
     plan_only: bool = False,
     max_races: int = 0,
+    exclude_race_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     races = _target_races(conn, target_date, mode=mode)
+    exclude_ids = exclude_race_ids or set()
+    if exclude_ids:
+        races = [
+            race for race in races
+            if str(race.get("race_id") or "") not in exclude_ids
+        ]
     counts: Counter[str] = Counter()
+    official_partial_race_ids: list[str] = []
+    official_absent_race_ids: list[str] = []
     if max_races < 0:
         raise ValueError("max_races must be >= 0")
     if max_races:
@@ -625,6 +640,8 @@ def process_day(
             "target_date": target_date,
             "mode": mode,
             "summary": dict(sorted(counts.items())),
+            "official_partial_race_ids": [],
+            "official_absent_race_ids": [],
         }
 
     for race in races:
@@ -650,6 +667,7 @@ def process_day(
             )
 
             if status == historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_PARTIAL:
+                official_partial_race_ids.append(str(race["race_id"]))
                 counts["exhibition_official_partial_races"] += 1
                 counts["exhibition_official_partial_rows"] += int(
                     inspection.get("valid_time_count") or 0
@@ -657,6 +675,7 @@ def process_day(
                 counts["exhibition_parse_rejected_races"] += 1
                 continue
             if status == historical_parser_v3.EXHIBITION_STATUS_OFFICIAL_ABSENT:
+                official_absent_race_ids.append(str(race["race_id"]))
                 counts["exhibition_official_absent_races"] += 1
                 counts["exhibition_parse_rejected_races"] += 1
                 continue
@@ -726,6 +745,8 @@ def process_day(
         "target_date": target_date,
         "mode": mode,
         "summary": dict(sorted(counts.items())),
+        "official_partial_race_ids": official_partial_race_ids,
+        "official_absent_race_ids": official_absent_race_ids,
     }
 
 
@@ -736,6 +757,8 @@ def main() -> None:
     ap.add_argument("--mode", choices=MODES, default=MODE_GENERIC)
     ap.add_argument("--plan-only", action="store_true")
     ap.add_argument("--max-races", type=int, default=0)
+    ap.add_argument("--exclude-race-id-file")
+    ap.add_argument("--allow-official-terminal", action="store_true")
     ap.add_argument(
         "--sleep-sec",
         type=float,
@@ -770,6 +793,16 @@ def main() -> None:
     print(f"HIST_BEFOREINFO_PLAN_ONLY={int(args.plan_only)}", flush=True)
     print(f"HIST_BEFOREINFO_HISTORICAL_PARSER={historical_parser_v3.VERSION}", flush=True)
 
+    exclude_race_ids: set[str] = set()
+    if args.exclude_race_id_file:
+        exclude_path = Path(args.exclude_race_id_file)
+        if exclude_path.exists():
+            exclude_race_ids = {
+                line.strip()
+                for line in exclude_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            }
+
     reports: list[dict[str, Any]] = []
     session = requests.Session()
     with psycopg.connect(db, row_factory=dict_row, autocommit=False) as conn:
@@ -783,6 +816,7 @@ def main() -> None:
                 mode=args.mode,
                 plan_only=args.plan_only,
                 max_races=args.max_races,
+                exclude_race_ids=exclude_race_ids,
             )
             reports.append(report)
             s = report["summary"]
@@ -808,6 +842,7 @@ def main() -> None:
         mode=args.mode,
         reports=reports,
         plan_only=args.plan_only,
+        allow_official_terminal=args.allow_official_terminal,
     )
 
     payload = {
