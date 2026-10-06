@@ -49,6 +49,8 @@ jobs:
           assert "historical-exhibition-time-backfill" in text
           assert "historical-exhibition-time-backfill-fast" in text
           assert "HIST_FAST_RETRY_TRANSIENT_DB" in text
+          assert "--allow-official-terminal" in text
+          assert "--exclude-race-id-file" in text
           assert "--mode exhibition-time-only --plan-only" in text
           assert text.count("\n  backfill:") == 1
           print("PASS workflow YAML")
@@ -198,6 +200,7 @@ jobs:
           : > historical-beforeinfo-backfill.txt
 
           if [ "${HIST_FAST_MODE}" = "1" ]; then
+            : > historical-beforeinfo-fast-exclude.txt
             for block in $(seq 1 "${HIST_FAST_BLOCKS}"); do
               block_txt="historical-beforeinfo-backfill-block-${block}.txt"
               block_json="historical-beforeinfo-backfill-block-${block}.json"
@@ -209,7 +212,7 @@ jobs:
                   --project "${RAILWAY_PROJECT_ID}" \
                   --environment "${RAILWAY_ENVIRONMENT}" \
                   --service "${RAILWAY_DB_SERVICE}" \
-                  bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races 48' \
+                  bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export CONFIRM_HISTORICAL_BEFOREINFO_DB_WRITE="YES"; export HIST_BEFOREINFO_SLEEP_SEC="0.50"; exec python -u research/historical_beforeinfo_backfill_pg.py --start-date "${HIST_START_DATE}" --end-date "${HIST_END_DATE}" --mode "${HIST_MODE}" --max-races 48 --exclude-race-id-file historical-beforeinfo-fast-exclude.txt --allow-official-terminal' \
                   2>&1 | tee "${block_txt}"
                 rc=${PIPESTATUS[0]}
                 set -e
@@ -248,11 +251,8 @@ jobs:
           bad_keys=(
               "fetch_failed",
               "official_no_data",
-              "exhibition_parse_rejected_races",
               "exhibition_parser_failure_races",
               "exhibition_quality_rejected_races",
-              "exhibition_official_partial_races",
-              "exhibition_official_absent_races",
           )
           bad={
               k:int(totals.get(k,0) or 0)
@@ -266,6 +266,17 @@ jobs:
               f"HIST_FAST_BLOCK=block:{block} available:{available} "
               f"target:{target} complete:{complete} anomalies:{sum(bad.values())}"
           )
+          candidates=sorted(set(
+              (payload.get("days") or [{}])[0].get("official_partial_race_ids", [])
+              + (payload.get("days") or [{}])[0].get("official_absent_race_ids", [])
+          ))
+          if candidates:
+              with Path("historical-beforeinfo-fast-exclude.txt").open(
+                  "a", encoding="utf-8"
+              ) as fh:
+                  for race_id in candidates:
+                      fh.write(str(race_id)+"\n")
+              print("HIST_FAST_TERMINAL_CANDIDATES="+json.dumps(candidates))
           if bad:
               print("HIST_FAST_STOP_ANOMALY="+json.dumps(bad,sort_keys=True))
               raise SystemExit(3)
@@ -302,6 +313,7 @@ jobs:
             historical-beforeinfo-backfill-manifest.json
             historical-beforeinfo-backfill-block-*.txt
             historical-beforeinfo-backfill-block-*.json
+            historical-beforeinfo-fast-exclude.txt
           retention-days: 90
           if-no-files-found: error
 
@@ -314,7 +326,7 @@ jobs:
             echo "Historical beforeinfo backfill: ${HIST_START_DATE} .. ${HIST_END_DATE} mode=${HIST_MODE}"
             echo
             if [ -f historical-beforeinfo-backfill.txt ]; then
-              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=|HIST_FAST_BLOCK=|HIST_FAST_STOP_ANOMALY=)' historical-beforeinfo-backfill.txt || true
+              grep -E '^(HIST_BEFOREINFO_DAY=|HIST_BEFOREINFO_TOTALS=|HIST_BEFOREINFO_PARSE_QUALITY=|HIST_BEFOREINFO_RESULT=|HIST_FAST_BLOCK=|HIST_FAST_STOP_ANOMALY=|HIST_FAST_TERMINAL_CANDIDATES=|HIST_FAST_RETRY_TRANSIENT_DB=)' historical-beforeinfo-backfill.txt || true
             fi
             echo
             echo "Official archived beforeinfo; historical/predeadline-assumed; missing-only; no result/odds/payout read."
