@@ -924,3 +924,57 @@ jobs:
           } > summary.md
           jq -Rs '{body:.}' summary.md > summary.json
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
+
+
+  b5b-motor-prior-top2-official:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-zero-b5b-motor-prior-top2-run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Run B5B motor prior-top2 official-generation against candidate-v4 read only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export END_DATE=2026-10-05; python -u research/v5_zero_base_b5b_motor_prior_top2_official_pg.py' \
+            | tee b5b.out
+          grep '^V5_B5B_MOTOR_PRIOR_TOP2_RESULT=' b5b.out > b5b.sanitized
+          test -s b5b.sanitized
+      - name: Post B5B motor prior-top2 result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 zero-base B5B motor prior-top2 official generation — read only'
+            echo
+            if [ -s b5b.sanitized ]; then
+              echo '```text'
+              cat b5b.sanitized
+              echo '```'
+            else
+              echo 'FAILED: no V5_B5B_MOTOR_PRIOR_TOP2_RESULT produced.'
+            fi
+            echo
+            echo 'Official-generation subset only. Strict previous-day motor history with Laplace smoothing; DB first-seen is not an exchange date. No race-card motor2, lane effect, racer ability, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
+          } > summary.md
+          jq -Rs '{body:.}' summary.md > summary.json
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
