@@ -66,7 +66,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. No DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
   b1-lane:
     if: >-
@@ -118,7 +118,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. Lane number only; no V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
 
   b2a-national-win-rate:
@@ -171,7 +171,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. National win rate only; no lane predictor, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
 
   b1-venue-audit:
@@ -224,7 +224,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. Venue is evaluation stratum only, not a predictor. No DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
 
   b1-plus-venue:
@@ -277,7 +277,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. No DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
 
   b1-plus-venue-shrink:
@@ -330,7 +330,7 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. No DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
 
 
   b2b-racer-class:
@@ -383,4 +383,4 @@ jobs:
             echo
             echo 'candidate-v4 read-only evaluation only. Racer class only; no lane predictor, national win rate, venue, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
-          gh issue comment "$RAILWAY_BRIDGE_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file summary.md
+          jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
