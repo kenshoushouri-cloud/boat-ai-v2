@@ -1,0 +1,207 @@
+name: Historical exhibition label coverage read-only
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-exhibition-label-coverage-readonly.yml"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Static safety
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path(".github/workflows/historical-exhibition-label-coverage-readonly.yml").read_text(encoding="utf-8").lower()
+          assert "postgres-hobby-fullhistory-candidate-v4" in p
+          assert "default_transaction_read_only=on" in p
+          assert "set transaction read only" in p
+          forbidden=(
+              "insert"+" into",
+              "up"+"date ",
+              "delete"+" from",
+              "requests"+".",
+              "http"+"://",
+              "https"+"://",
+              "v2_"+"results",
+              "v2_"+"odds",
+          )
+          for token in forbidden:
+              assert token not in p, token
+          print("LABEL_COVERAGE_STATIC_SAFETY=PASS")
+          PY
+
+  audit:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/railway historical-exhibition-label-coverage ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]>=3.2,<3.4"
+      - run: npm install --global @railway/cli
+
+      - name: Parse range
+        id: range
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          python - <<'PY'
+          import os,re
+          from datetime import date
+          body=os.environ["BODY"].strip()
+          m=re.fullmatch(r"/railway historical-exhibition-label-coverage (\d{4}-\d{2}-\d{2}) (\d{4}-\d{2}-\d{2})",body)
+          if not m: raise SystemExit("invalid command")
+          a=date.fromisoformat(m.group(1)); b=date.fromisoformat(m.group(2))
+          if b<a or (b-a).days>31: raise SystemExit("range must be 1..32 days")
+          if a<date(2025,7,1): raise SystemExit("before formal backtest period")
+          with open(os.environ["GITHUB_OUTPUT"],"a",encoding="utf-8") as f:
+              f.write(f"start={a.isoformat()}\n")
+              f.write(f"end={b.isoformat()}\n")
+          PY
+
+      - name: Run candidate-v4 read-only label coverage
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          START_DATE: ${{ steps.range.outputs.start }}
+          END_DATE: ${{ steps.range.outputs.end }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/label_coverage.py <<'PY'
+          import json,os
+          import psycopg
+          from psycopg.rows import dict_row
+
+          start=os.environ["START_DATE"]; end=os.environ["END_DATE"]
+          sql=r"""
+          with base as (
+            select race_id,race_date
+              from v2_races
+             where race_date between %s and %s
+          ),
+          ex as (
+            select e.race_id,
+                   count(distinct e.lane) filter (
+                     where e.snapshot_label='historical'
+                       and e.exhibition_time is not null
+                   ) as hist_lanes,
+                   count(distinct e.lane) filter (
+                     where e.snapshot_label='learning_all'
+                       and e.exhibition_time is not null
+                   ) as learning_lanes,
+                   count(distinct e.lane) filter (
+                     where e.snapshot_label='final_ab'
+                       and e.exhibition_time is not null
+                   ) as final_lanes,
+                   count(distinct e.lane) filter (
+                     where e.snapshot_label in ('learning_all','final_ab')
+                       and e.exhibition_time is not null
+                   ) as daily_lanes
+              from v2_realtime_exhibition_snapshots e
+              join base b on b.race_id=e.race_id
+             group by e.race_id
+          ),
+          per_race as (
+            select b.race_date,b.race_id,
+                   coalesce(ex.hist_lanes,0) hist_lanes,
+                   coalesce(ex.learning_lanes,0) learning_lanes,
+                   coalesce(ex.final_lanes,0) final_lanes,
+                   coalesce(ex.daily_lanes,0) daily_lanes
+              from base b
+              left join ex using(race_id)
+          )
+          select race_date,
+                 count(*)::int races,
+                 count(*) filter(where hist_lanes=6)::int historical_complete,
+                 count(*) filter(where learning_lanes=6)::int learning_all_complete,
+                 count(*) filter(where final_lanes=6)::int final_ab_complete,
+                 count(*) filter(where daily_lanes=6)::int daily_union_complete,
+                 count(*) filter(where daily_lanes between 1 and 5)::int daily_partial,
+                 count(*) filter(where daily_lanes=0)::int daily_none
+            from per_race
+           group by race_date
+           order by race_date
+          """
+          with psycopg.connect(os.environ["DATABASE_URL"],row_factory=dict_row) as conn:
+              conn.execute("SET TRANSACTION READ ONLY")
+              rows=[dict(r) for r in conn.execute(sql,(start,end)).fetchall()]
+              conn.rollback()
+
+          totals={k:0 for k in (
+              "races","historical_complete","learning_all_complete","final_ab_complete",
+              "daily_union_complete","daily_partial","daily_none"
+          )}
+          for r in rows:
+              r["date"]=r.pop("race_date").isoformat()
+              for k in totals: totals[k]+=int(r[k])
+              print(
+                "LABEL_COVERAGE_DAY="
+                + " ".join([
+                  f"date:{r['date']}",f"races:{r['races']}",
+                  f"hist6:{r['historical_complete']}",
+                  f"learn6:{r['learning_all_complete']}",
+                  f"final6:{r['final_ab_complete']}",
+                  f"daily6:{r['daily_union_complete']}",
+                  f"partial:{r['daily_partial']}",
+                  f"none:{r['daily_none']}"
+                ])
+              )
+          print("LABEL_COVERAGE_TOTAL="+json.dumps(totals,separators=(",",":"),sort_keys=True))
+          print("LABEL_COVERAGE_RESULT=PASS_READ_ONLY")
+          print("HTTP_REQUESTS=0 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
+          PY
+
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export START_DATE="'"$START_DATE"'"; export END_DATE="'"$END_DATE"'"; exec python /tmp/label_coverage.py' \
+            | tee label-coverage.txt
+
+          grep -q '^LABEL_COVERAGE_RESULT=PASS_READ_ONLY$' label-coverage.txt
+
+      - name: Post compact result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          START_DATE: ${{ steps.range.outputs.start }}
+          END_DATE: ${{ steps.range.outputs.end }}
+        run: |
+          {
+            echo "## Historical exhibition label coverage"
+            echo
+            echo "Range: ${START_DATE:-?} .. ${END_DATE:-?}"
+            echo
+            if [ -f label-coverage.txt ]; then
+              grep -E '^(LABEL_COVERAGE_DAY=|LABEL_COVERAGE_TOTAL=|LABEL_COVERAGE_RESULT=|HTTP_REQUESTS=)' label-coverage.txt || true
+            fi
+            echo
+            echo "candidate-v4 read-only; labels historical/learning_all/final_ab; no HTTP; no DB writes."
+          } > reply.txt
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file reply.txt
