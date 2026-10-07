@@ -9,7 +9,7 @@ permissions:
   issues: write
 
 env:
-  RAILWAY_BRIDGE_ISSUE: "42"
+  RAILWAY_BRIDGE_ISSUE: "581"
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
@@ -18,7 +18,7 @@ env:
 jobs:
   b0:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-zero-b0-run-v2'
     runs-on: ubuntu-24.04
@@ -70,7 +70,7 @@ jobs:
 
   b1-lane:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-zero-b1-lane-run'
     runs-on: ubuntu-24.04
@@ -123,7 +123,7 @@ jobs:
 
   b2a-national-win-rate:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-zero-b2a-national-win-rate-run'
     runs-on: ubuntu-24.04
@@ -176,7 +176,7 @@ jobs:
 
   b1-venue-audit:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-b1-venue-audit-run'
     runs-on: ubuntu-24.04
@@ -229,7 +229,7 @@ jobs:
 
   b1-plus-venue:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-b1-plus-venue-run'
     runs-on: ubuntu-24.04
@@ -282,7 +282,7 @@ jobs:
 
   b1-plus-venue-shrink:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-b1-plus-venue-shrink-run'
     runs-on: ubuntu-24.04
@@ -335,7 +335,7 @@ jobs:
 
   b2b-racer-class:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-zero-b2b-racer-class-run'
     runs-on: ubuntu-24.04
@@ -388,7 +388,7 @@ jobs:
 
   b2c-national-place2:
     if: >-
-      github.event.issue.number == 42 &&
+      github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
       github.event.comment.body == '/railway v5-zero-b2c-national-place2-run'
     runs-on: ubuntu-24.04
