@@ -762,3 +762,57 @@ jobs:
           } > summary.md
           jq -Rs '{body:.}' summary.md > summary.json
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
+
+
+  b3b-local-place2-rate:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-zero-b3b-local-place2-rate-run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Run B3B local-place2-rate-only against candidate-v4 read only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b3b_local_place2_rate_pg.py' \
+            | tee b3b.out
+          grep '^V5_B3B_LOCAL_PLACE2_RATE_RESULT=' b3b.out > b3b.sanitized
+          test -s b3b.sanitized
+      - name: Post B3B local-place2-rate result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 zero-base B3B local-place2-rate-only — read only'
+            echo
+            if [ -s b3b.sanitized ]; then
+              echo '```text'
+              cat b3b.sanitized
+              echo '```'
+            else
+              echo 'FAILED: no V5_B3B_LOCAL_PLACE2_RATE_RESULT produced.'
+            fi
+            echo
+            echo 'candidate-v4 read-only evaluation only. Local place2 rate only; no lane, class, national rates, venue bias, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
+          } > summary.md
+          jq -Rs '{body:.}' summary.md > summary.json
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
