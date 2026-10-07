@@ -978,3 +978,57 @@ jobs:
           } > summary.md
           jq -Rs '{body:.}' summary.md > summary.json
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
+
+
+  b6a-recent-form:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-zero-b6a-recent-form-run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Run B6A recent-form-only against candidate-v4 read only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b6a_recent_form_last5_top3_pg.py' \
+            | tee b6a.out
+          grep '^V5_B6A_RECENT_FORM_RESULT=' b6a.out > b6a.sanitized
+          test -s b6a.sanitized
+      - name: Post B6A recent-form result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 zero-base B6A recent-form-last5-top3 — read only'
+            echo
+            if [ -s b6a.sanitized ]; then
+              echo '```text'
+              cat b6a.sanitized
+              echo '```'
+            else
+              echo 'FAILED: no V5_B6A_RECENT_FORM_RESULT produced.'
+            fi
+            echo
+            echo 'Prior-day reconstructed recent_form only. Max 5 races, min 3 valid finishes, Beta(1,1) smoothing, same-day results excluded. No V4 coefficients, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
+          } > summary.md
+          jq -Rs '{body:.}' summary.md > summary.json
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
