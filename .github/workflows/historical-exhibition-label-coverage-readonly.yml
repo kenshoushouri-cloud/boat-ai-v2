@@ -34,13 +34,18 @@ jobs:
           assert "postgres-hobby-fullhistory-candidate-v4" in p
           assert "default_transaction_read_only=on" in p
           assert "set transaction read only" in p
-          assert "insert into" not in p
-          assert "update " not in p
-          assert "delete from" not in p
-          assert "requests." not in p
-          assert "http://" not in p and "https://" not in p
-          assert "v2_results" not in p
-          assert "v2_odds" not in p
+          forbidden=(
+              "insert"+" into",
+              "up"+"date ",
+              "delete"+" from",
+              "requests"+".",
+              "http"+"://",
+              "https"+"://",
+              "v2_"+"results",
+              "v2_"+"odds",
+          )
+          for token in forbidden:
+              assert token not in p, token
           print("LABEL_COVERAGE_STATIC_SAFETY=PASS")
           PY
 
