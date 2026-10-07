@@ -384,3 +384,57 @@ jobs:
             echo 'candidate-v4 read-only evaluation only. Racer class only; no lane predictor, national win rate, venue, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
           } > summary.md
           jq -Rs '{body:.}' summary.md > summary.json\n          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
+
+
+  b2c-national-place2:
+    if: >-
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-zero-b2c-national-place2-run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Run B2C national-place2-only against candidate-v4 read only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b2c_national_place2_pg.py' \
+            | tee b2c.out
+          grep '^V5_B2C_NATIONAL_PLACE2_RESULT=' b2c.out > b2c.sanitized
+          test -s b2c.sanitized
+      - name: Post B2C national place2 result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 zero-base B2C national-place2-only — read only'
+            echo
+            if [ -s b2c.sanitized ]; then
+              echo '```text'
+              cat b2c.sanitized
+              echo '```'
+            else
+              echo 'FAILED: no V5_B2C_NATIONAL_PLACE2_RESULT produced.'
+            fi
+            echo
+            echo 'candidate-v4 read-only evaluation only. National place2 rate only; no lane predictor, racer class, national win rate, venue, V4 logic, odds, selector, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
+          } > summary.md
+          jq -Rs '{body:.}' summary.md > summary.json
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
