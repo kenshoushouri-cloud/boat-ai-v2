@@ -13,13 +13,14 @@ env:
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
   RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  PYTHONPATH: "."
 
 jobs:
   b0:
     if: >-
       github.event.issue.number == 42 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway v5-zero-b0-run'
+      github.event.comment.body == '/railway v5-zero-b0-run-v2'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -44,7 +45,7 @@ jobs:
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_ENVIRONMENT" \
             --service "$RAILWAY_DB_SERVICE" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b0_pg.py' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b0_pg.py' \
             | tee b0.out
 
           grep '^V5_B0_RESULT=' b0.out > b0.sanitized
