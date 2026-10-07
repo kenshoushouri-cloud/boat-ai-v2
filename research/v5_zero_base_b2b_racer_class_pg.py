@@ -6,22 +6,25 @@ Feature
 -------
 Only v2_race_entries.racer_class is used.
 
-Walk-forward estimator (no tuning):
-- For each target day, estimate each class's historical win rate from PREVIOUS
-  DAYS ONLY: (wins + alpha) / (starts + 2*alpha), alpha=1.
-- Convert the six class scores within each race to probabilities by simple
-  normalization.
-- Score the whole day before adding that day's starts/wins to history.
+Walk-forward estimator (no tuning)
+----------------------------------
+For each target day:
+- estimate each racer class's historical win-per-start rate from PREVIOUS DAYS ONLY
+- fixed shrinkage to the neutral 1/6 prior:
+      class_strength = (wins + 1) / (starts + 6)
+- normalize the six class strengths within each race to sum to 1
+- score the full target day
+- only then add that day's starts/wins to history
 
-No lane, national/local rates, ST, motor, exhibition, venue, weather, odds,
-selector, or V4 prediction logic is used.
+No lane number, national win/place rate, venue, motor, ST, exhibition,
+weather, odds, selector, or V4 prediction logic is used.
 
 Defaults:
-    START_DATE=2025-07-01
-    END_DATE=2026-10-05
+START_DATE=2025-07-01
+END_DATE=2026-10-05
 
 Safety:
-- DB read-only.
+- DB read-only only.
 - No Production/LINE/purchase/stake/model/settings changes.
 """
 
@@ -36,14 +39,13 @@ from typing import Any
 
 from db_pg import fetch_all
 
-VERSION = "2026-10-08-v1"
+VERSION = "2026-10-08-v2"
 START_DATE = os.getenv("START_DATE", "2025-07-01")
 END_DATE = os.getenv("END_DATE", "2026-10-05")
-ALPHA = 1.0
 EPS = 1e-15
 
 B0_LOGLOSS = -math.log(1.0 / 6.0)
-B0_BRIER_SUM = (1.0 - 1.0 / 6.0) ** 2 + 5.0 * ((1.0 / 6.0) ** 2)
+B0_BRIER_SUM = 5.0 / 6.0
 
 
 def _iso_date(v: Any) -> str:
@@ -90,9 +92,9 @@ def load_data() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         f"({winner}) between 1 and 6",
     ]
     if "result_status" in result_cols:
-        filters.append("coalesce(rs.result_status,'official') = 'official'")
+        filters.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in result_cols:
-        filters.append("coalesce(rs.race_status,'official') = 'official'")
+        filters.append("coalesce(rs.race_status,'official')='official'")
 
     results = fetch_all(
         f"""
@@ -124,6 +126,11 @@ def clean_class(v: Any) -> str | None:
         return None
     s = str(v).strip().upper()
     return s or None
+
+
+def class_strength(cls: str, starts: Counter[str], wins: Counter[str]) -> float:
+    # Fixed neutral prior mean 1/6, prior strength 6.
+    return (wins.get(cls, 0) + 1.0) / (starts.get(cls, 0) + 6.0)
 
 
 def main() -> None:
@@ -172,37 +179,20 @@ def main() -> None:
     unique_top_count = 0
     scored = 0
 
-    first_day_scores = None
-    last_day_scores = None
-
     for ds in sorted(races_by_day):
-        # Freeze history for the whole day.
-        classes_today = {
-            entries_by_race[rid][lane]
-            for rid in races_by_day[ds]
-            for lane in range(1, 7)
-        }
-        scores = {}
-        for cls in classes_today:
-            scores[cls] = (class_wins[cls] + ALPHA) / (
-                class_starts[cls] + 2.0 * ALPHA
-            )
-
-        if first_day_scores is None:
-            first_day_scores = dict(sorted(scores.items()))
-        last_day_scores = dict(sorted(scores.items()))
-
         day_starts: Counter[str] = Counter()
         day_wins: Counter[str] = Counter()
 
         for rid in races_by_day[ds]:
             winner = winner_by_race[rid]
             lane_classes = entries_by_race[rid]
-            raw = [scores[lane_classes[lane]] for lane in range(1, 7)]
+
+            raw = [
+                class_strength(lane_classes[lane], class_starts, class_wins)
+                for lane in range(1, 7)
+            ]
             total = sum(raw)
-            if total <= 0:
-                raise RuntimeError("B2B: nonpositive class-score total")
-            probs = [x / total for x in raw]
+            probs = [x / total for x in raw] if total > 0 else [1.0 / 6.0] * 6
 
             logloss_total += -math.log(max(probs[winner - 1], EPS))
             y = [0.0] * 6
@@ -221,6 +211,7 @@ def main() -> None:
             day_wins[lane_classes[winner]] += 1
             scored += 1
 
+        # Add outcomes only after all races on this date were scored.
         class_starts.update(day_starts)
         class_wins.update(day_wins)
 
@@ -230,8 +221,17 @@ def main() -> None:
     logloss = logloss_total / scored
     brier_sum = brier_total / scored
 
+    audit = {
+        cls: {
+            "starts": class_starts[cls],
+            "wins": class_wins[cls],
+            "final_smoothed_win_per_start": class_strength(cls, class_starts, class_wins),
+        }
+        for cls in sorted(class_starts)
+    }
+
     report = {
-        "contract": "V5_ZERO_BASE_B2B_RACER_CLASS_ONLY_V1",
+        "contract": "V5_ZERO_BASE_B2B_RACER_CLASS_ONLY_V2",
         "version": VERSION,
         "period": {"start": START_DATE, "end": END_DATE},
         "feature_family": {
@@ -240,15 +240,16 @@ def main() -> None:
             "lane_number_as_predictor": False,
             "national_win_rate_used": False,
             "national_place_rate_used": False,
+            "venue_used": False,
             "v4_prediction_logic_used": False,
             "odds_used": False,
             "selector_used": False,
         },
         "estimator": {
-            "method": "previous-days class empirical win rate then within-race normalization",
-            "laplace_alpha": ALPHA,
-            "same_day_results_used_for_same_day_prediction": False,
+            "method": "previous-days class win-per-start then within-race normalization",
+            "prior": "(wins+1)/(starts+6), neutral mean 1/6",
             "parameter_search": False,
+            "same_day_results_used_for_same_day_prediction": False,
             "learned_coefficients": False,
         },
         "coverage": {
@@ -274,12 +275,7 @@ def main() -> None:
             "improved_logloss_vs_b0": logloss < B0_LOGLOSS,
             "improved_brier_vs_b0": brier_sum < B0_BRIER_SUM,
         },
-        "class_history_audit": {
-            "final_starts": dict(sorted(class_starts.items())),
-            "final_wins": dict(sorted(class_wins.items())),
-            "first_target_day_scores": first_day_scores,
-            "last_target_day_scores": last_day_scores,
-        },
+        "class_history_audit": audit,
         "safety": {
             "db_write": False,
             "production_model_change": False,
