@@ -4,9 +4,9 @@
   "source": "official archived beforeinfo read-only verification",
   "rule": "Skip repeat HTTP for verified terminal races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
   "counts": {
-    "official_partial": 111,
+    "official_partial": 113,
     "official_absent": 71,
-    "total": 205,
+    "total": 207,
     "verified_terminal_unfillable": 23
   },
   "races": {
@@ -214,7 +214,9 @@
     "20260924_01_08": "official_partial",
     "20260926_03_11": "official_partial",
     "20260928_15_11": "official_partial",
-    "20260928_15_12": "official_partial"
+    "20260928_15_12": "official_partial",
+    "20260929_15_10": "official_partial",
+    "20260929_15_12": "official_partial"
   },
   "verified_batches": {
     "2026-08-07..2026-08-13": {
@@ -428,6 +430,12 @@
       "note": "Fast-mode manifest identified one official-partial race; fetch/parser/quality anomalies were zero."
     },
     "2026-09-28": {
+      "official_partial": 2,
+      "official_absent": 0,
+      "race_ids_recorded_as": "official_partial",
+      "note": "Fast-mode manifest identified two official-partial races; 142 races completed; fetch/parser/quality anomalies were zero."
+    },
+    "2026-09-29": {
       "official_partial": 2,
       "official_absent": 0,
       "race_ids_recorded_as": "official_partial",
