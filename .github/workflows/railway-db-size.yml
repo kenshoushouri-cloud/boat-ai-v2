@@ -3670,3 +3670,135 @@ jobs:
         if: always()
         shell: bash
         run: rm -f /tmp/racer_vacuum_full.py racer-vacuum-full.out racer-vacuum-full-summary.md
+
+  production-candidate-v4-date-sync-plan-20261006:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 42 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway production-candidate-v4-date-sync-plan-20261006'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Write read-only SQL
+        shell: bash
+        run: |
+          cat > /tmp/date-sync-plan.sql <<'SQL'
+          \pset tuples_only on
+          \pset format unaligned
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '120s';
+          SELECT 'RACES|' || count(*)::text
+            FROM public.v2_races
+           WHERE race_date=DATE '2026-10-06';
+          SELECT 'EX_ROWS|' || count(*)::text
+            FROM public.v2_realtime_exhibition_snapshots e
+            JOIN public.v2_races r USING(race_id)
+           WHERE r.race_date=DATE '2026-10-06'
+             AND e.snapshot_label IN ('learning_all','final_ab');
+          WITH base AS (
+            SELECT race_id FROM public.v2_races WHERE race_date=DATE '2026-10-06'
+          ), per AS (
+            SELECT e.race_id,e.snapshot_label,
+                   count(distinct e.lane) FILTER (
+                     WHERE e.exhibition_time IS NOT NULL
+                       AND e.exhibition_time_rank IS NOT NULL
+                       AND e.exhibition_time_diff IS NOT NULL
+                   ) complete_lanes
+              FROM public.v2_realtime_exhibition_snapshots e
+              JOIN base b USING(race_id)
+             WHERE e.snapshot_label IN ('learning_all','final_ab')
+             GROUP BY e.race_id,e.snapshot_label
+          ), agg AS (
+            SELECT b.race_id,
+                   max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
+                   max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
+              FROM base b
+              LEFT JOIN per p USING(race_id)
+             GROUP BY b.race_id
+          )
+          SELECT 'EX_COMPLETE|' ||
+                 coalesce(sum(learning6),0)::text || '|' ||
+                 coalesce(sum(final6),0)::text || '|' ||
+                 count(*) FILTER (WHERE learning6=1 OR final6=1)::text
+            FROM agg;
+          SELECT 'SCHEMA_RACES|' ||
+                 md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable,
+                                ',' ORDER BY ordinal_position))
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='v2_races';
+          SELECT 'SCHEMA_EX|' ||
+                 md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable,
+                                ',' ORDER BY ordinal_position))
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='v2_realtime_exhibition_snapshots';
+          SQL
+
+      - name: Read source
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway connect "Postgres-EKp2" --environment production --no-ssh < /tmp/date-sync-plan.sql > /tmp/source.raw
+          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA_RACES|SCHEMA_EX)\|' /tmp/source.raw > /tmp/source.clean
+          test "$(wc -l < /tmp/source.clean)" -eq 5
+
+      - name: Read candidate
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway connect "postgres-hobby-fullhistory-candidate-v4" --environment production --no-ssh < /tmp/date-sync-plan.sql > /tmp/target.raw
+          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA_RACES|SCHEMA_EX)\|' /tmp/target.raw > /tmp/target.clean
+          test "$(wc -l < /tmp/target.clean)" -eq 5
+
+      - name: Compare and post
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/result.txt
+          from pathlib import Path
+          def load(p):
+              out={}
+              for line in Path(p).read_text().splitlines():
+                  a=line.split("|")
+                  out[a[0]]=a[1:]
+              return out
+          s,t=load("/tmp/source.clean"),load("/tmp/target.clean")
+          schema_ok=s.get("SCHEMA_RACES")==t.get("SCHEMA_RACES") and s.get("SCHEMA_EX")==t.get("SCHEMA_EX")
+          src_races=int(s["RACES"][0]); tgt_races=int(t["RACES"][0])
+          print("DATE_SYNC_PLAN_DATE=2026-10-06")
+          print("SOURCE_RACES="+str(src_races))
+          print("SOURCE_EX_ROWS="+s["EX_ROWS"][0])
+          print("SOURCE_LEARNING_COMPLETE="+s["EX_COMPLETE"][0])
+          print("SOURCE_FINAL_COMPLETE="+s["EX_COMPLETE"][1])
+          print("SOURCE_DAILY_UNION_COMPLETE="+s["EX_COMPLETE"][2])
+          print("TARGET_RACES="+str(tgt_races))
+          print("TARGET_EX_ROWS="+t["EX_ROWS"][0])
+          print("SCHEMA_MATCH="+("true" if schema_ok else "false"))
+          print("HTTP_REQUESTS=0 SOURCE_WRITE=0 CANDIDATE_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
+          print("PROD_MODEL_CHANGE=0 LINE=0 BUY=0")
+          print("DATE_SYNC_PLAN_RESULT="+("READY" if schema_ok and src_races==156 and tgt_races==0 else "BLOCKED"))
+          PY
+          {
+            echo '## Production → candidate-v4 date sync plan 2026-10-06'
+            echo
+            echo '~~~text'
+            cat /tmp/result.txt
+            echo '~~~'
+            echo
+            echo 'Read-only only; no HTTP; no DB writes.'
+          } > /tmp/summary.md
+          gh issue comment 42 --repo "$GITHUB_REPOSITORY" --body-file /tmp/summary.md
