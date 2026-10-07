@@ -10,6 +10,7 @@
 - CPU/RAM/Networkを最小化。
 - purchase / LINE / stake / Production model / plan / volume resize-delete は明示承認なしで変更禁止。
 - Historical research DB: `postgres-hobby-fullhistory-candidate-v4`.
+- 運用目標: **1日1〜3レース目安（条件不足なら0可） / 1レース2点 / 月間純利益 +50,000円**。件数確保のためにselector/thresholdを緩めない。
 - 1回に1作業。長時間runは「起動」と「結果確認」を別ターンにする。
 
 ## Token / timeout prevention — MUST
