@@ -280,93 +280,93 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          d=os.environ["TARGET_DATE"]
-          sql=f"""\\pset tuples_only on
-\\pset format unaligned
-SET default_transaction_read_only = on;
-SET statement_timeout = '120s';
-SELECT 'RACES|' || count(*)::text FROM public.v2_races WHERE race_date=DATE '{d}';
-SELECT 'EX_ROWS|' || count(*)::text
-FROM public.v2_realtime_exhibition_snapshots e
-JOIN public.v2_races r USING(race_id)
-WHERE r.race_date=DATE '{d}' AND e.snapshot_label IN ('learning_all','final_ab');
-WITH base AS (
- SELECT race_id FROM public.v2_races WHERE race_date=DATE '{d}'
-), per AS (
- SELECT e.race_id,e.snapshot_label,
-        count(distinct e.lane) FILTER (
-          WHERE e.exhibition_time IS NOT NULL
-            AND e.exhibition_time_rank IS NOT NULL
-            AND e.exhibition_time_diff IS NOT NULL
-        ) complete_lanes
- FROM public.v2_realtime_exhibition_snapshots e
- JOIN base b USING(race_id)
- WHERE e.snapshot_label IN ('learning_all','final_ab')
- GROUP BY e.race_id,e.snapshot_label
-), agg AS (
- SELECT b.race_id,
-        max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
-        max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
- FROM base b LEFT JOIN per p USING(race_id)
- GROUP BY b.race_id
-)
-SELECT 'EX_COMPLETE|learning_all|' || coalesce(sum(learning6),0)::text FROM agg;
-WITH base AS (
- SELECT race_id FROM public.v2_races WHERE race_date=DATE '{d}'
-), per AS (
- SELECT e.race_id,e.snapshot_label,
-        count(distinct e.lane) FILTER (
-          WHERE e.exhibition_time IS NOT NULL
-            AND e.exhibition_time_rank IS NOT NULL
-            AND e.exhibition_time_diff IS NOT NULL
-        ) complete_lanes
- FROM public.v2_realtime_exhibition_snapshots e
- JOIN base b USING(race_id)
- WHERE e.snapshot_label IN ('learning_all','final_ab')
- GROUP BY e.race_id,e.snapshot_label
-), agg AS (
- SELECT b.race_id,
-        max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
-        max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
- FROM base b LEFT JOIN per p USING(race_id)
- GROUP BY b.race_id
-)
-SELECT 'EX_COMPLETE|final_ab|' || coalesce(sum(final6),0)::text FROM agg;
-WITH base AS (
- SELECT race_id FROM public.v2_races WHERE race_date=DATE '{d}'
-), per AS (
- SELECT e.race_id,e.snapshot_label,
-        count(distinct e.lane) FILTER (
-          WHERE e.exhibition_time IS NOT NULL
-            AND e.exhibition_time_rank IS NOT NULL
-            AND e.exhibition_time_diff IS NOT NULL
-        ) complete_lanes
- FROM public.v2_realtime_exhibition_snapshots e
- JOIN base b USING(race_id)
- WHERE e.snapshot_label IN ('learning_all','final_ab')
- GROUP BY e.race_id,e.snapshot_label
-), agg AS (
- SELECT b.race_id,
-        max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
-        max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
- FROM base b LEFT JOIN per p USING(race_id)
- GROUP BY b.race_id
-)
-SELECT 'EX_COMPLETE|daily_union|' || count(*) FILTER (WHERE learning6=1 OR final6=1)::text FROM agg;
-SELECT 'SCHEMA|v2_races|' ||
-       md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position))
-FROM information_schema.columns
-WHERE table_schema='public' AND table_name='v2_races';
-SELECT 'SCHEMA|v2_realtime_exhibition_snapshots|' ||
-       md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position))
-FROM information_schema.columns
-WHERE table_schema='public' AND table_name='v2_realtime_exhibition_snapshots';
-"""
-          Path("date-sync-plan.sql").write_text(sql,encoding="utf-8")
-          PY
+          cat > date-sync-plan.sql <<SQL
+          \\pset tuples_only on
+          \\pset format unaligned
+          SET default_transaction_read_only = on;
+          SET statement_timeout = '120s';
+          SELECT 'RACES|' || count(*)::text
+            FROM public.v2_races
+           WHERE race_date=DATE '${TARGET_DATE}';
+          SELECT 'EX_ROWS|' || count(*)::text
+            FROM public.v2_realtime_exhibition_snapshots e
+            JOIN public.v2_races r USING(race_id)
+           WHERE r.race_date=DATE '${TARGET_DATE}'
+             AND e.snapshot_label IN ('learning_all','final_ab');
+          WITH base AS (
+            SELECT race_id FROM public.v2_races WHERE race_date=DATE '${TARGET_DATE}'
+          ), per AS (
+            SELECT e.race_id,e.snapshot_label,
+                   count(distinct e.lane) FILTER (
+                     WHERE e.exhibition_time IS NOT NULL
+                       AND e.exhibition_time_rank IS NOT NULL
+                       AND e.exhibition_time_diff IS NOT NULL
+                   ) complete_lanes
+              FROM public.v2_realtime_exhibition_snapshots e
+              JOIN base b USING(race_id)
+             WHERE e.snapshot_label IN ('learning_all','final_ab')
+             GROUP BY e.race_id,e.snapshot_label
+          ), agg AS (
+            SELECT b.race_id,
+                   max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
+                   max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
+              FROM base b LEFT JOIN per p USING(race_id)
+             GROUP BY b.race_id
+          )
+          SELECT 'EX_COMPLETE|learning_all|' || coalesce(sum(learning6),0)::text FROM agg;
+          WITH base AS (
+            SELECT race_id FROM public.v2_races WHERE race_date=DATE '${TARGET_DATE}'
+          ), per AS (
+            SELECT e.race_id,e.snapshot_label,
+                   count(distinct e.lane) FILTER (
+                     WHERE e.exhibition_time IS NOT NULL
+                       AND e.exhibition_time_rank IS NOT NULL
+                       AND e.exhibition_time_diff IS NOT NULL
+                   ) complete_lanes
+              FROM public.v2_realtime_exhibition_snapshots e
+              JOIN base b USING(race_id)
+             WHERE e.snapshot_label IN ('learning_all','final_ab')
+             GROUP BY e.race_id,e.snapshot_label
+          ), agg AS (
+            SELECT b.race_id,
+                   max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
+                   max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
+              FROM base b LEFT JOIN per p USING(race_id)
+             GROUP BY b.race_id
+          )
+          SELECT 'EX_COMPLETE|final_ab|' || coalesce(sum(final6),0)::text FROM agg;
+          WITH base AS (
+            SELECT race_id FROM public.v2_races WHERE race_date=DATE '${TARGET_DATE}'
+          ), per AS (
+            SELECT e.race_id,e.snapshot_label,
+                   count(distinct e.lane) FILTER (
+                     WHERE e.exhibition_time IS NOT NULL
+                       AND e.exhibition_time_rank IS NOT NULL
+                       AND e.exhibition_time_diff IS NOT NULL
+                   ) complete_lanes
+              FROM public.v2_realtime_exhibition_snapshots e
+              JOIN base b USING(race_id)
+             WHERE e.snapshot_label IN ('learning_all','final_ab')
+             GROUP BY e.race_id,e.snapshot_label
+          ), agg AS (
+            SELECT b.race_id,
+                   max((p.snapshot_label='learning_all' AND p.complete_lanes=6)::int) learning6,
+                   max((p.snapshot_label='final_ab' AND p.complete_lanes=6)::int) final6
+              FROM base b LEFT JOIN per p USING(race_id)
+             GROUP BY b.race_id
+          )
+          SELECT 'EX_COMPLETE|daily_union|' ||
+                 count(*) FILTER (WHERE learning6=1 OR final6=1)::text
+            FROM agg;
+          SELECT 'SCHEMA|v2_races|' ||
+                 md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position))
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='v2_races';
+          SELECT 'SCHEMA|v2_realtime_exhibition_snapshots|' ||
+                 md5(string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position))
+            FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='v2_realtime_exhibition_snapshots';
+          SQL
 
       - name: Capture source read-only
         env:
@@ -375,7 +375,7 @@ WHERE table_schema='public' AND table_name='v2_realtime_exhibition_snapshots';
         run: |
           set -euo pipefail
           railway connect "$DATE_SYNC_SOURCE_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < date-sync-plan.sql > source.raw
-          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA)\\|' source.raw > source.clean
+          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA)\|' source.raw > source.clean
           test "$(wc -l < source.clean)" -eq 7
 
       - name: Capture target read-only
@@ -385,7 +385,7 @@ WHERE table_schema='public' AND table_name='v2_realtime_exhibition_snapshots';
         run: |
           set -euo pipefail
           railway connect "$DATE_SYNC_TARGET_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --no-ssh < date-sync-plan.sql > target.raw
-          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA)\\|' target.raw > target.clean
+          grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA)\|' target.raw > target.clean
           test "$(wc -l < target.clean)" -eq 7
 
       - name: Compare and post result
