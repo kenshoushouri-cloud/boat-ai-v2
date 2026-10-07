@@ -173,6 +173,33 @@ jobs:
                 ])
               )
           print("LABEL_COVERAGE_TOTAL="+json.dumps(totals,separators=(",",":"),sort_keys=True))
+
+          conflict_sql=r"""
+          with base as (
+            select race_id from v2_races where race_date between %s and %s
+          ),
+          paired as (
+            select e.race_id,e.lane,
+                   max(e.exhibition_time) filter(where e.snapshot_label='learning_all') as learning_time,
+                   max(e.exhibition_time) filter(where e.snapshot_label='final_ab') as final_time
+              from v2_realtime_exhibition_snapshots e
+              join base b on b.race_id=e.race_id
+             where e.snapshot_label in ('learning_all','final_ab')
+               and e.exhibition_time is not null
+             group by e.race_id,e.lane
+          )
+          select count(*)::int as conflicting_lanes,
+                 count(distinct race_id)::int as conflicting_races
+            from paired
+           where learning_time is not null
+             and final_time is not null
+             and abs(learning_time-final_time) > 0.000001
+          """
+          with psycopg.connect(os.environ["DATABASE_URL"],row_factory=dict_row) as conn:
+              conn.execute("SET TRANSACTION READ ONLY")
+              conflict=dict(conn.execute(conflict_sql,(start,end)).fetchone())
+              conn.rollback()
+          print("LABEL_COVERAGE_CONFLICTS="+json.dumps(conflict,separators=(",",":"),sort_keys=True))
           print("LABEL_COVERAGE_RESULT=PASS_READ_ONLY")
           print("HTTP_REQUESTS=0 DB_WRITE=0 RESULT_ODDS_PAYOUT_READ=0")
           PY
@@ -199,7 +226,7 @@ jobs:
             echo "Range: ${START_DATE:-?} .. ${END_DATE:-?}"
             echo
             if [ -f label-coverage.txt ]; then
-              grep -E '^(LABEL_COVERAGE_DAY=|LABEL_COVERAGE_TOTAL=|LABEL_COVERAGE_RESULT=|HTTP_REQUESTS=)' label-coverage.txt || true
+              grep -E '^(LABEL_COVERAGE_DAY=|LABEL_COVERAGE_TOTAL=|LABEL_COVERAGE_CONFLICTS=|LABEL_COVERAGE_RESULT=|HTTP_REQUESTS=)' label-coverage.txt || true
             fi
             echo
             echo "candidate-v4 read-only; labels historical/learning_all/final_ab; no HTTP; no DB writes."
