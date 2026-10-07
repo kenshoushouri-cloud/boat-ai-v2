@@ -3748,7 +3748,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway connect "Postgres-EKp2" --environment production --no-ssh < /tmp/date-sync-plan.sql > /tmp/source.raw
+          railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service "Postgres-EKp2" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; psql "$DATABASE_PUBLIC_URL" -X -q -v ON_ERROR_STOP=1 < /tmp/date-sync-plan.sql' > /tmp/source.raw
           grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA_RACES|SCHEMA_EX)\|' /tmp/source.raw > /tmp/source.clean
           test "$(wc -l < /tmp/source.clean)" -eq 5
 
@@ -3758,7 +3758,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway connect "postgres-hobby-fullhistory-candidate-v4" --environment production --no-ssh < /tmp/date-sync-plan.sql > /tmp/target.raw
+          railway run --project "268a5b17-0712-440a-884d-27f7fa887a2d" --environment production --service "postgres-hobby-fullhistory-candidate-v4" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; psql "$DATABASE_PUBLIC_URL" -X -q -v ON_ERROR_STOP=1 < /tmp/date-sync-plan.sql' > /tmp/target.raw
           grep -E '^(RACES|EX_ROWS|EX_COMPLETE|SCHEMA_RACES|SCHEMA_EX)\|' /tmp/target.raw > /tmp/target.clean
           test "$(wc -l < /tmp/target.clean)" -eq 5
 
