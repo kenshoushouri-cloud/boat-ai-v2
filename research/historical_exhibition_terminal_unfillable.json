@@ -5,8 +5,8 @@
   "rule": "Skip repeat HTTP for verified terminal races in exhibition-time-only historical backfill. No DB write is permitted for partial/absent pages.",
   "counts": {
     "official_partial": 103,
-    "official_absent": 26,
-    "total": 152,
+    "official_absent": 59,
+    "total": 185,
     "verified_terminal_unfillable": 23
   },
   "races": {
@@ -161,7 +161,40 @@
     "20260918_03_03": "official_partial",
     "20260918_03_09": "official_partial",
     "20260919_17_11": "official_partial",
-    "20260920_15_12": "official_partial"
+    "20260920_15_12": "official_partial",
+    "20260921_02_01": "official_absent",
+    "20260921_02_02": "official_absent",
+    "20260921_02_03": "official_absent",
+    "20260921_02_04": "official_absent",
+    "20260921_02_05": "official_absent",
+    "20260921_02_06": "official_absent",
+    "20260921_02_07": "official_absent",
+    "20260921_02_08": "official_absent",
+    "20260921_02_09": "official_absent",
+    "20260921_02_10": "official_absent",
+    "20260921_02_11": "official_absent",
+    "20260921_02_12": "official_absent",
+    "20260921_03_01": "official_absent",
+    "20260921_03_02": "official_absent",
+    "20260921_03_03": "official_absent",
+    "20260921_03_04": "official_absent",
+    "20260921_03_05": "official_absent",
+    "20260921_03_06": "official_absent",
+    "20260921_03_07": "official_absent",
+    "20260921_03_08": "official_absent",
+    "20260921_03_09": "official_absent",
+    "20260921_03_10": "official_absent",
+    "20260921_03_11": "official_absent",
+    "20260921_03_12": "official_absent",
+    "20260921_09_06": "official_absent",
+    "20260921_09_07": "official_absent",
+    "20260921_09_08": "official_absent",
+    "20260921_09_09": "official_absent",
+    "20260921_09_10": "official_absent",
+    "20260921_09_11": "official_absent",
+    "20260921_09_12": "official_absent",
+    "20260921_10_11": "official_absent",
+    "20260921_10_12": "official_absent"
   },
   "verified_batches": {
     "2026-08-07..2026-08-13": {
@@ -343,6 +376,12 @@
       "official_absent": 0,
       "race_ids_recorded_as": "official_partial",
       "note": "Fast-mode manifest identified one official-partial race; fetch/parser/quality anomalies were zero."
+    },
+    "2026-09-21": {
+      "official_partial": 0,
+      "official_absent": 33,
+      "race_ids_recorded_as": "official_absent",
+      "note": "Fast-mode manifest identified thirty-three official-absent races; fetch/parser/quality anomalies were zero."
     }
   }
 }
