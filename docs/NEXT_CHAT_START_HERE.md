@@ -14,12 +14,13 @@
 
 【トーク容量・タイムアウト対策を最優先】
 - 古いhandoff、PROJECT_HISTORY、長いworkflow、過去chatは読まない。
-- 1回に1作業だけ。原則1〜3 tool call。
+- 1回に1作業。tool callは必要最小限。
 - Issue commentsは最新必要分だけ。Actions全run、全service、全logの大量取得は禁止。
 - polling連打禁止。長時間runは起動と結果確認を別ターンにする。
 - タイムアウト後に同じcommandを再実行しない。
 - SHA/run/件数/容量は固定値扱いせず、その1作業に必要な値だけlive取得。
 - 中間ログやtool discoveryを大量表示しない。
+- コード追加＋runner追加＋1回の起動は、必要なら1ターンにまとめてよい。
 
 Production=V4、V5/V5.1=research-only。
 Railway Agent/AIは禁止。
