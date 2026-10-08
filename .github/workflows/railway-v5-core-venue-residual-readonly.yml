@@ -1,0 +1,67 @@
+name: Railway V5 core venue residual readonly
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_BRIDGE_ISSUE: "581"
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  venue-residual:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-lane-class-plus-venue-residual-run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Run lane-class venue residual against candidate-v4 read only
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --service "$RAILWAY_DB_SERVICE" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_lane_class_plus_venue_residual_pg.py' \
+            | tee out.txt
+          grep '^V5_LANE_CLASS_PLUS_VENUE_RESIDUAL_RESULT=' out.txt > result.txt
+          test -s result.txt
+      - name: Post result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## V5 lane + class + venue residual — read only'
+            echo
+            if [ -s result.txt ]; then
+              echo '```text'
+              cat result.txt
+              echo '```'
+            else
+              echo 'FAILED: no V5_LANE_CLASS_PLUS_VENUE_RESIDUAL_RESULT produced.'
+            fi
+          } > summary.md
+          jq -Rs '{body:.}' summary.md > summary.json
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$RAILWAY_BRIDGE_ISSUE/comments" --input summary.json > /dev/null
