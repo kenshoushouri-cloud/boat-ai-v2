@@ -287,7 +287,7 @@ def main() -> None:
         for venue, motor, fin in day_updates:
             key = (venue, motor)
             starts[key] += 1
-            if fin <= 2:
+            if fin <= 3:
                 top3[key] += 1
 
     n = int(total["n"])
@@ -327,7 +327,7 @@ def main() -> None:
                 "v2_race_entries.motor_no",
                 "v2_result_entries.finish_position from strictly earlier calendar days",
             ],
-            "race_card_motor_place2_rate_used": False,
+            "race_card_motor_place3_rate_used": False,
             "db_first_seen_as_exchange_date": False,
             "official_generation_start_required": True,
             "estimator": "(prior_top3+1)/(prior_starts+2), normalized within race",
