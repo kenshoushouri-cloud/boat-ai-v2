@@ -47,6 +47,7 @@ jobs:
           from psycopg.rows import dict_row
           from bs4 import BeautifulSoup
           import v21_realtime_collector_pg as rt
+          import official_odds3t_parser as safe_odds
 
           RID="20261006_02_05"
           DATE="2026-10-06"
@@ -79,12 +80,26 @@ jobs:
           parsed=rt.parse_odds3t(html or '')
           print(f'CURRENT_PARSER_ODDS_COUNT={len(parsed)}')
           print(f'CURRENT_PARSER_TICKETS={sorted(parsed)[:20]}')
+          safe_parsed=safe_odds.parse_official_odds3t(html or '')
+          safe_ticket_set=safe_odds.complete_snapshot_ticket_set(safe_parsed)
+          print(f'SAFE_PARSER_ODDS_COUNT={len(safe_parsed)}')
+          print(f'SAFE_PARSER_COMPLETE_SET={len(safe_ticket_set) if safe_ticket_set is not None else None}')
+          print(f'SAFE_PARSER_TICKETS={sorted(safe_parsed)[:20]}')
 
           text=' '.join(BeautifulSoup(html or '', 'html.parser').get_text(' ',strip=True).split())
           for key in ('3連単','返還','欠場','不成立','発売','中止','オッズ'):
               p=text.find(key)
               if p>=0:
                   print(f'VISIBLE_AROUND_{key}={text[max(0,p-180):min(len(text),p+700)]}')
+          soup=BeautifulSoup(html or '', 'html.parser')
+          odds_rows=[]
+          for tr in soup.find_all('tr'):
+              cells=[' '.join(td.get_text(' ',strip=True).split()) for td in tr.find_all(['th','td'],recursive=False)]
+              if len(cells)>=4 and any('欠場' in x for x in cells):
+                  odds_rows.append(' | '.join(cells)[:1200])
+          print(f'ODDS_TABLE_ROW_COUNT={len(odds_rows)}')
+          for i,row in enumerate(odds_rows[:40],1):
+              print(f'ODDS_TABLE_ROW_{i}={row}')
           ticket_like=re.findall(r'([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])',text)
           unique={f'{a}-{b}-{c}' for a,b,c in ticket_like if len({a,b,c})==3}
           print(f'RAW_UNIQUE_TICKET_PATTERNS={len(unique)}')
