@@ -40,7 +40,7 @@ def stkey(v):
     try:d=Decimal(str(v))
     except (InvalidOperation,ValueError):return None
     if not d.is_finite(): return None
-    if d < Decimal("-1") or d > Decimal("2"): return None
+    if d < Decimal("0") or d > Decimal("20"): return None
     return format(d.normalize(),"f")
 
 def ii(v):
