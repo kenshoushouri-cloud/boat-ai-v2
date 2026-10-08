@@ -40,9 +40,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export INCIDENT_START_DATE=2025-07-01
-          export INCIDENT_END_DATE=2026-10-05
-          railway run             --service postgres-hobby-fullhistory-candidate-v4             --environment production             -- python -u research/race_incident_inventory_pg.py             > incident-inventory.txt
+          railway run \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-hobby-fullhistory-candidate-v4 \
+            --environment production \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export INCIDENT_START_DATE=2025-07-01; export INCIDENT_END_DATE=2026-10-05; exec python -u research/race_incident_inventory_pg.py' \
+            > incident-inventory.txt
 
           {
             echo "## Candidate-v4 incident inventory"
