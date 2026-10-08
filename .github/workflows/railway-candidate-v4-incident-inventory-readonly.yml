@@ -1,0 +1,66 @@
+name: Candidate-v4 incident inventory read-only
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway incident-inventory-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Run read-only inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          export INCIDENT_START_DATE=2025-07-01
+          export INCIDENT_END_DATE=2026-10-05
+          railway run             --service postgres-hobby-fullhistory-candidate-v4             --environment production             -- python -u research/race_incident_inventory_pg.py             > incident-inventory.txt
+
+          {
+            echo "## Candidate-v4 incident inventory"
+            echo
+            echo "- range: 2025-07-01..2026-10-05"
+            echo "- database transaction: READ ONLY"
+            echo "- no model / LINE / BUY / stake / plan / volume change"
+            echo
+            echo '```text'
+            cat incident-inventory.txt
+            echo '```'
+          } > railway-result-summary.md
+
+      - name: Post result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
