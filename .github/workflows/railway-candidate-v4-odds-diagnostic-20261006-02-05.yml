@@ -1,0 +1,118 @@
+name: Railway candidate-v4 odds diagnostic 2026-10-06 02-05
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-odds-diagnostic-20261006-02-05'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Diagnose one race read-only
+        shell: bash
+        run: |
+          cat > diagnose_odds.py <<'PY'
+          import os,re
+          import psycopg
+          from psycopg.rows import dict_row
+          from bs4 import BeautifulSoup
+          import v21_realtime_collector_pg as rt
+
+          RID="20261006_02_05"
+          DATE="2026-10-06"
+          VENUE="02"
+          RNO=5
+
+          conn=psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row)
+          cur=conn.cursor()
+          cur.execute('BEGIN READ ONLY')
+          cur.execute('select * from v2_results where race_id=%s',(RID,))
+          result=cur.fetchone() or {}
+          cur.execute('select lane,finish_position,finish_status,is_flying,is_late,start_course,start_timing from v2_result_entries where race_id=%s order by lane',(RID,))
+          entries=cur.fetchall()
+          cur.execute('select ticket,odds from v2_odds_trifecta where race_id=%s order by ticket',(RID,))
+          stored=cur.fetchall()
+          conn.rollback()
+
+          print(f'DB_STORED_ODDS={len(stored)}')
+          print(f'DB_STORED_TICKETS={[x["ticket"] for x in stored]}')
+          print(f'DB_RESULT_TRIFECTA={result.get("trifecta_ticket")}')
+          print(f'DB_RESULT_PAYOUT={result.get("payout")}')
+          for e in entries:
+              print('RESULT_ENTRY '+ ' '.join(f'{k}={e.get(k)}' for k in ('lane','finish_position','finish_status','is_flying','is_late','start_course','start_timing')))
+
+          url=rt._official_url('odds3t',DATE,VENUE,RNO)
+          html=rt._fetch(url)
+          print(f'OFFICIAL_ODDS_FETCH_OK={bool(html)}')
+          print(f'OFFICIAL_ODDS_HTML_BYTES={len(html.encode("utf-8",errors="ignore")) if html else 0}')
+          print(f'OFFICIAL_ODDS_NO_DATA={rt._looks_no_data(html)}')
+          parsed=rt.parse_odds3t(html or '')
+          print(f'CURRENT_PARSER_ODDS_COUNT={len(parsed)}')
+          print(f'CURRENT_PARSER_TICKETS={sorted(parsed)[:20]}')
+
+          text=' '.join(BeautifulSoup(html or '', 'html.parser').get_text(' ',strip=True).split())
+          for key in ('3連単','返還','欠場','不成立','発売','中止','オッズ'):
+              p=text.find(key)
+              if p>=0:
+                  print(f'VISIBLE_AROUND_{key}={text[max(0,p-180):min(len(text),p+700)]}')
+          ticket_like=re.findall(r'([1-6])\s*[-－]\s*([1-6])\s*[-－]\s*([1-6])',text)
+          unique={f'{a}-{b}-{c}' for a,b,c in ticket_like if len({a,b,c})==3}
+          print(f'RAW_UNIQUE_TICKET_PATTERNS={len(unique)}')
+          print(f'RAW_TICKET_SAMPLE={sorted(unique)[:30]}')
+          print('DIAG_DB_WRITE=0')
+          PY
+
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u diagnose_odds.py' > odds-diagnostic.txt
+
+          {
+            echo "## candidate-v4 odds diagnostic 2026-10-06 02-05"
+            echo
+            echo "- database: postgres-hobby-fullhistory-candidate-v4"
+            echo "- race: 20261006_02_05"
+            echo "- DB transaction: READ ONLY"
+            echo "- no writes / no Production / no LINE / no BUY"
+            echo
+            echo '```text'
+            cat odds-diagnostic.txt
+            echo '```'
+          } > summary.md
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file summary.md
