@@ -86,6 +86,35 @@ def main() -> None:
 
         cur.execute(
             """
+            with per_race as (
+              select r.race_id,
+                     date_trunc('month', r.race_date)::date as month,
+                     count(e.lane) as n
+              from v2_races r
+              left join v2_result_entries e on e.race_id=r.race_id
+              where r.race_date between %s and %s
+              group by r.race_id, date_trunc('month', r.race_date)::date
+            )
+            select month,
+                   count(*) filter (where n <> 6) as incomplete_races,
+                   count(*) filter (where n = 0) as n0,
+                   count(*) filter (where n = 1) as n1,
+                   count(*) filter (where n = 2) as n2,
+                   count(*) filter (where n = 3) as n3,
+                   count(*) filter (where n = 4) as n4,
+                   count(*) filter (where n = 5) as n5,
+                   count(*) filter (where n = 6) as n6,
+                   count(*) as total_races
+            from per_race
+            group by month
+            order by month
+            """,
+            (START, END),
+        )
+        monthly_incomplete = cur.fetchall()
+
+        cur.execute(
+            """
             select column_name
             from information_schema.columns
             where table_schema='public' and table_name='v2_results'
@@ -150,6 +179,17 @@ def main() -> None:
         f"{(100.0 * result_races / total_races if total_races else 0):.3f}"
     )
     print(f"INCOMPLETE_RESULT_ENTRY_RACES={len(incomplete)}")
+    print("INCOMPLETE_MONTHLY_BEGIN")
+    for row in monthly_incomplete:
+        print(
+            "MONTH "
+            f"{row['month']} "
+            f"incomplete={int(row['incomplete_races'])} "
+            f"n0={int(row['n0'])} n1={int(row['n1'])} n2={int(row['n2'])} "
+            f"n3={int(row['n3'])} n4={int(row['n4'])} n5={int(row['n5'])} "
+            f"n6={int(row['n6'])} total={int(row['total_races'])}"
+        )
+    print("INCOMPLETE_MONTHLY_END")
     print(f"ABNORMAL_DISTINCT_RACES={len(abnormal)}")
     for name in (
         "withdrawal",
