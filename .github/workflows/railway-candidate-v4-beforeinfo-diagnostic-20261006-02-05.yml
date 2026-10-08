@@ -1,0 +1,136 @@
+name: Railway candidate-v4 beforeinfo diagnostic 2026-10-06 02-05
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-beforeinfo-diagnostic-20261006-02-05'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Diagnose one race read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnose_beforeinfo.py <<'PY'
+          import os, re
+          import psycopg
+          import v21_realtime_collector_pg as v21
+          import backfill_historical_beforeinfo_pg as hist
+
+          RID = "20261006_02_05"
+          DATE = "2026-10-06"
+
+          conn = psycopg.connect(os.environ["DATABASE_URL"])
+          cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+          cur.execute("BEGIN READ ONLY")
+          cur.execute("""
+            select race_id,race_date,venue_id,venue_code,venue_name,race_no,race_name
+            from v2_races where race_id=%s
+          """, (RID,))
+          race = cur.fetchone()
+          cur.execute("""
+            select * from v2_race_entries
+            where race_id=%s order by lane
+          """, (RID,))
+          entries = cur.fetchall()
+
+          print(f"DIAG_RACE_ID={RID}")
+          print(f"DB_RACE_FOUND={bool(race)}")
+          print(f"DB_ENTRY_ROWS={len(entries)}")
+          if not race:
+              raise SystemExit("race missing")
+
+          venue = str(race.get("venue_id") or race.get("venue_code") or "").zfill(2)
+          race_no = int(race.get("race_no") or 0)
+          url = v21._official_url("beforeinfo", DATE, venue, race_no)
+          html = v21._fetch(url)
+          print(f"OFFICIAL_FETCH_OK={bool(html)}")
+          print(f"OFFICIAL_HTML_BYTES={len(html.encode('utf-8', errors='ignore')) if html else 0}")
+
+          if html:
+              text = re.sub(r"\s+", " ", html)
+              print(f"RAW_HAS_EXHIBITION_LABEL={('展示' in text)}")
+              print(f"RAW_HAS_WEATHER_LABEL={('気温' in text or '水温' in text or '風' in text)}")
+              exhibition = v21.parse_exhibition(html)
+              weather = hist.parse_weather_v2(html)
+              race_condition, players = v21.parse_beforeinfo_extra(html, entries)
+              print(f"PARSE_EXHIBITION_COUNT={len(exhibition)}")
+              lanes = [x.get("lane") for x in exhibition]
+              print(f"PARSE_EXHIBITION_LANES={lanes}")
+              print(f"PARSE_EXHIBITION_TIMES={[x.get('exhibition_time') for x in exhibition]}")
+              print(f"PARSE_EXHIBITION_ST={[x.get('start_timing') for x in exhibition]}")
+              print(f"PARSE_WEATHER_PRESENT={bool(weather)}")
+              print(f"PARSE_WEATHER_KEYS={sorted(k for k,v in weather.items() if v is not None)}")
+              print(f"PARSE_RACE_CONDITION_PRESENT={bool(race_condition)}")
+              print(f"PARSE_PLAYER_ROWS={len(players)}")
+
+          result = hist.fetch_and_parse(DATE, race, entries)
+          print(f"FETCH_AND_PARSE_STATUS={result.get('status')}")
+          print(f"FETCH_AND_PARSE_EXHIBITION_COUNT={result.get('exhibition_count')}")
+          print(f"FETCH_AND_PARSE_EXHIBITION_COMPLETE={result.get('exhibition_complete')}")
+          if result.get("error"):
+              print(f"FETCH_AND_PARSE_ERROR={result.get('error')}")
+
+          conn.rollback()
+          print("DIAG_DB_WRITE=0")
+          PY
+
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u diagnose_beforeinfo.py' \
+            > diagnose.txt
+
+          {
+            echo "## candidate-v4 beforeinfo diagnostic 2026-10-06 02-05"
+            echo
+            echo "- database: postgres-hobby-fullhistory-candidate-v4"
+            echo "- race: 20261006_02_05"
+            echo "- DB transaction: READ ONLY"
+            echo "- no writes / no Production / no LINE / no BUY"
+            echo
+            echo '```text'
+            cat diagnose.txt
+            echo '```'
+          } > diagnose-summary.md
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file diagnose-summary.md
