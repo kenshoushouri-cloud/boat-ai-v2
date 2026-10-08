@@ -1,0 +1,129 @@
+name: Railway candidate-v4 beforeinfo catch-up 2026-10-06
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  catchup:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-beforeinfo-catchup-20261006 CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Run fixed-date historical beforeinfo catch-up
+        id: backfill
+        shell: bash
+        run: |
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c '
+              set -e
+              test -n "${DATABASE_PUBLIC_URL:-}"
+              export DATABASE_URL="$DATABASE_PUBLIC_URL"
+              export HIST_START_DATE="2026-10-06"
+              export HIST_END_DATE="2026-10-06"
+              export HIST_SNAPSHOT_LABEL="historical"
+              export HIST_WORKERS="4"
+              export HIST_SLEEP_SEC="0.05"
+              export HIST_MAX_RACES="0"
+              exec python -u backfill_historical_beforeinfo_pg.py
+            ' > beforeinfo-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.backfill.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("beforeinfo-output.txt").read_text(encoding="utf-8", errors="replace") if Path("beforeinfo-output.txt").exists() else ""
+          prefixes = (
+              "✅ backfill_historical_beforeinfo_pg.py",
+              "HIST_START_DATE=",
+              "HIST_END_DATE=",
+              "HIST_SNAPSHOT_LABEL=",
+              "TARGET_RACES=",
+              "HTTP_OK=",
+              "HTTP_NG=",
+              "PARSE_",
+              "SAVED_",
+              "weather_rows=",
+              "exhibition_rows=",
+              "race_condition_rows=",
+              "racer_condition_rows=",
+              "=== historical beforeinfo",
+          )
+          keep = [line[:600] for line in raw.splitlines() if line.startswith(prefixes)]
+          code = os.environ.get("EXIT_CODE", "?")
+          lines = [
+              "## candidate-v4 beforeinfo catch-up 2026-10-06",
+              "",
+              "- database: postgres-hobby-fullhistory-candidate-v4",
+              "- fixed date: 2026-10-06 only",
+              "- snapshot_label: historical",
+              "- targets: weather / exhibition / race condition / racer condition",
+              "- no Production model / LINE / BUY / stake / plan / volume change",
+              "",
+              "```text",
+              *(keep[-160:] if keep else ["(no allowlisted summary lines returned)"]),
+              "```",
+              "",
+              f"Process exit code: {code}",
+              "",
+              "**CANDIDATE_V4_BEFOREINFO_CATCHUP_PASS**" if code == "0" else "**CANDIDATE_V4_BEFOREINFO_CATCHUP_FAILED**",
+          ]
+          Path("beforeinfo-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Clean raw output
+        if: always()
+        run: rm -f beforeinfo-output.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file beforeinfo-summary.md
+
+      - name: Fail when catch-up failed
+        if: steps.backfill.outputs.exit_code != '0'
+        run: exit 1
