@@ -1,0 +1,263 @@
+name: Railway candidate-v4 data inventory 2026-10-06
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-data-inventory-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Read-only inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c '
+              set -e
+              test -n "${DATABASE_PUBLIC_URL:-}"
+              export DATABASE_URL="$DATABASE_PUBLIC_URL"
+              exec python -u - <<"PY"
+          import os
+          from collections import OrderedDict
+          import psycopg
+
+          DATE = "2026-10-06"
+          conn = psycopg.connect(os.environ["DATABASE_URL"])
+          cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+          cur.execute("BEGIN READ ONLY")
+
+          def table_exists(t):
+              cur.execute("""
+                select exists(
+                  select 1 from information_schema.tables
+                  where table_schema='public' and table_name=%s
+                ) ok
+              """, (t,))
+              return bool(cur.fetchone()["ok"])
+
+          def cols(t):
+              if not table_exists(t):
+                  return set()
+              cur.execute("""
+                select column_name from information_schema.columns
+                where table_schema='public' and table_name=%s
+              """, (t,))
+              return {r["column_name"] for r in cur.fetchall()}
+
+          def count_races(t):
+              c = cols(t)
+              if not c:
+                  return None
+              if t == "v2_races":
+                  cur.execute("select count(distinct race_id) n from v2_races where race_date=%s", (DATE,))
+              elif "race_id" in c:
+                  cur.execute(f"""
+                    select count(distinct t.race_id) n
+                    from {t} t join v2_races r on r.race_id=t.race_id
+                    where r.race_date=%s
+                  """, (DATE,))
+              elif "race_date" in c:
+                  cur.execute(f"select count(distinct race_id) n from {t} where race_date=%s", (DATE,))
+              else:
+                  return None
+              return int(cur.fetchone()["n"] or 0)
+
+          def row_count(t):
+              c = cols(t)
+              if not c:
+                  return None
+              if t == "v2_races":
+                  cur.execute("select count(*) n from v2_races where race_date=%s", (DATE,))
+              elif "race_id" in c:
+                  cur.execute(f"""
+                    select count(*) n
+                    from {t} t join v2_races r on r.race_id=t.race_id
+                    where r.race_date=%s
+                  """, (DATE,))
+              elif "race_date" in c:
+                  cur.execute(f"select count(*) n from {t} where race_date=%s", (DATE,))
+              else:
+                  return None
+              return int(cur.fetchone()["n"] or 0)
+
+          def full6(t, required_col=None):
+              c = cols(t)
+              if not c or "race_id" not in c:
+                  return None
+              lane = next((x for x in ("lane","course","boat_no") if x in c), None)
+              if not lane:
+                  return None
+              filt = f" and t.{required_col} is not null" if required_col and required_col in c else ""
+              cur.execute(f"""
+                select count(*) n from (
+                  select t.race_id
+                  from {t} t join v2_races r on r.race_id=t.race_id
+                  where r.race_date=%s {filt}
+                  group by t.race_id
+                  having count(distinct t.{lane})=6
+                ) x
+              """, (DATE,))
+              return int(cur.fetchone()["n"] or 0)
+
+          def nonnull(t, col):
+              c = cols(t)
+              if col not in c:
+                  return None
+              if "race_id" in c:
+                  cur.execute(f"""
+                    select count(*) total,
+                           count(t.{col}) got
+                    from {t} t join v2_races r on r.race_id=t.race_id
+                    where r.race_date=%s
+                  """, (DATE,))
+              else:
+                  cur.execute(f"""
+                    select count(*) total,
+                           count({col}) got
+                    from {t}
+                    where race_date=%s
+                  """, (DATE,))
+              r=cur.fetchone()
+              return (int(r["got"] or 0), int(r["total"] or 0))
+
+          def labels(t):
+              c=cols(t)
+              if "snapshot_label" not in c or "race_id" not in c:
+                  return {}
+              cur.execute(f"""
+                select coalesce(t.snapshot_label,'(null)') label,
+                       count(distinct t.race_id) n
+                from {t} t join v2_races r on r.race_id=t.race_id
+                where r.race_date=%s
+                group by 1 order by 2 desc
+              """, (DATE,))
+              return OrderedDict((str(r["label"]), int(r["n"] or 0)) for r in cur.fetchall())
+
+          cur.execute("select count(*) n from v2_races where race_date=%s", (DATE,))
+          base=int(cur.fetchone()["n"] or 0)
+
+          print(f"DATA_INVENTORY_DATE={DATE}")
+          print(f"BASE_RACES={base}")
+          tables = [
+            "v2_races","v2_race_entries","v2_results","v2_result_entries",
+            "v2_odds_trifecta","v2_realtime_weather_snapshots",
+            "v2_realtime_exhibition_snapshots","v2_realtime_entry_snapshots",
+            "v2_realtime_race_condition_snapshots",
+            "v2_realtime_racer_condition_snapshots","v2_realtime_odds_snapshots",
+          ]
+          for t in tables:
+              if not table_exists(t):
+                  print(f"TABLE {t} MISSING")
+                  continue
+              print(f"TABLE {t} rows={row_count(t)} races={count_races(t)} labels={dict(labels(t))}")
+
+          for t,col in [
+            ("v2_race_entries","motor_no"),
+            ("v2_race_entries","boat_no"),
+            ("v2_race_entries","motor_place2_rate"),
+            ("v2_race_entries","motor_place3_rate"),
+            ("v2_race_entries","boat_place2_rate"),
+            ("v2_race_entries","boat_place3_rate"),
+            ("v2_realtime_weather_snapshots","temperature_c"),
+            ("v2_realtime_weather_snapshots","water_temperature_c"),
+            ("v2_realtime_weather_snapshots","wind_speed_m"),
+            ("v2_realtime_weather_snapshots","wind_direction"),
+            ("v2_realtime_weather_snapshots","wave_height_cm"),
+            ("v2_realtime_exhibition_snapshots","exhibition_time"),
+            ("v2_realtime_exhibition_snapshots","exhibition_time_rank"),
+            ("v2_realtime_exhibition_snapshots","start_timing"),
+            ("v2_realtime_exhibition_snapshots","start_timing_rank"),
+            ("v2_realtime_racer_condition_snapshots","weight_kg"),
+            ("v2_realtime_racer_condition_snapshots","adjustment_weight_kg"),
+          ]:
+              x=nonnull(t,col)
+              if x is not None:
+                  got,total=x
+                  pct=(got/total*100.0) if total else 0.0
+                  print(f"FIELD {t}.{col}={got}/{total} ({pct:.1f}%)")
+
+          for t,col in [
+            ("v2_race_entries",None),
+            ("v2_result_entries",None),
+            ("v2_realtime_exhibition_snapshots","exhibition_time"),
+            ("v2_realtime_exhibition_snapshots","exhibition_time_rank"),
+            ("v2_realtime_exhibition_snapshots","start_timing"),
+            ("v2_realtime_entry_snapshots",None),
+            ("v2_realtime_racer_condition_snapshots",None),
+          ]:
+              n=full6(t,col)
+              if n is not None:
+                  suffix=f".{col}" if col else ""
+                  print(f"FULL6 {t}{suffix}={n}/{base}")
+
+          if table_exists("v2_odds_trifecta") and "ticket" in cols("v2_odds_trifecta"):
+              cur.execute("""
+                select count(*) n from (
+                  select o.race_id
+                  from v2_odds_trifecta o join v2_races r on r.race_id=o.race_id
+                  where r.race_date=%s
+                  group by o.race_id
+                  having count(distinct o.ticket)=120
+                ) x
+              """, (DATE,))
+              print(f"FULL120 v2_odds_trifecta={int(cur.fetchone()['n'] or 0)}/{base}")
+
+          conn.rollback()
+          print("DATA_INVENTORY_READ_ONLY=PASS")
+          PY
+            ' > inventory.txt
+
+          {
+            echo "## candidate-v4 data inventory 2026-10-06"
+            echo
+            echo "- database: postgres-hobby-fullhistory-candidate-v4"
+            echo "- transaction: READ ONLY"
+            echo "- no Production model / LINE / BUY / stake / plan / volume change"
+            echo
+            echo '```text'
+            cat inventory.txt
+            echo '```'
+          } > inventory-summary.md
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file inventory-summary.md
