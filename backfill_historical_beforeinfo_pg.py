@@ -240,10 +240,10 @@ def parse_weather_v2(
     return {
         "weather": weather,
         "temperature_c": rx(
-            r"気温\s*([+-]?\d+(?:\.\d+)?)\s*℃"
+            r"気温\s*([+-]?\d+(?:\.\d+)?)\s*(?:℃|°C)"
         ),
         "water_temperature_c": rx(
-            r"水温\s*([+-]?\d+(?:\.\d+)?)\s*℃"
+            r"水温\s*([+-]?\d+(?:\.\d+)?)\s*(?:℃|°C)"
         ),
         "wind_speed_m": rx(
             r"風速\s*([0-9]+(?:\.\d+)?)\s*m"
