@@ -42,7 +42,7 @@ jobs:
       - name: Run read-only prewrite audit
         shell: bash
         run: |
-          cat > /tmp/audit_result_entries.py <<'PY'
+          cat > audit_result_entries.py <<'PY'
           import os
           import psycopg
           from psycopg.rows import dict_row
@@ -79,7 +79,7 @@ jobs:
           print("DB_TRANSACTION=READ_ONLY")
           PY
 
-          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export TARGET_DATE="2026-10-06"; exec python -u /tmp/audit_result_entries.py'             > audit.txt
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export TARGET_DATE="2026-10-06"; exec python -u audit_result_entries.py'             > audit.txt
 
           {
             echo "## candidate-v4 result entries prewrite audit 2026-10-06"
