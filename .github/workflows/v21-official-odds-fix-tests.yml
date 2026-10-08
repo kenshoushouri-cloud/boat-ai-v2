@@ -8,6 +8,7 @@ on:
       - 'v25_final_realtime_pipeline_pg.py'
       - 'run_learning_all_realtime_pg.py'
       - 'tests/test_v21_official_odds_fix.py'
+      - 'tests/test_learning_odds_only_mode.py'
       - '.github/workflows/v21-official-odds-fix-tests.yml'
 
 permissions:
@@ -37,5 +38,10 @@ jobs:
           v25_final_realtime_pipeline_pg.py
           run_learning_all_realtime_pg.py
           tests/test_v21_official_odds_fix.py
+          tests/test_learning_odds_only_mode.py
       - name: Run focused offline regressions
-        run: python -m unittest tests.test_v21_official_odds_fix -v
+        run: >-
+          python -m unittest
+          tests.test_v21_official_odds_fix
+          tests.test_learning_odds_only_mode
+          -v
