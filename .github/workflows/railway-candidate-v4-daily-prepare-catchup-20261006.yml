@@ -1,0 +1,138 @@
+name: Railway candidate-v4 daily prepare catch-up 2026-10-06
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  catchup:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-daily-prepare-catchup-20261006 CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_DATE: "2026-10-06"
+      WORKERS: "4"
+      ODDS_WORKERS: "2"
+      SLEEP_SEC: "0.1"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Run fixed-date daily prepare against candidate-v4
+        id: prepare
+        shell: bash
+        run: |
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u run_daily_data_prepare_pg.py' \
+            > catchup-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.prepare.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("catchup-output.txt").read_text(encoding="utf-8", errors="replace") if Path("catchup-output.txt").exists() else ""
+          prefixes = (
+              "✅ run_daily_data_prepare_pg.py VERSION",
+              "TARGET_DATE=",
+              "DATABASE_URL:",
+              "DO_RACES=",
+              "ODDS_IS_FINAL=",
+              "odds_save_mode=",
+              "保存レース件数:",
+              "保存出走表件数:",
+              "保存結果件数:",
+              "保存オッズ件数:",
+              "成功:",
+              "非開催/データなし:",
+              "失敗:",
+              "失敗/データなし:",
+              "target_date=",
+              "audit_now_jst=",
+              "total_races=",
+              "complete_races=",
+              "pending_races=",
+              "problem_races=",
+              "  partial_odds=",
+              "  missing_odds=",
+              "  invalid_ticket=",
+              "  unexpected=",
+          )
+          keep = [line[:500] for line in raw.splitlines() if line.startswith(prefixes)]
+          code = os.environ.get("EXIT_CODE", "?")
+          lines = [
+              "## candidate-v4 daily prepare catch-up 2026-10-06",
+              "",
+              "- target DB service: postgres-hobby-fullhistory-candidate-v4",
+              "- fixed TARGET_DATE: 2026-10-06",
+              "- normal daily prepare only: races/entries/base odds",
+              "- results disabled by run_daily_data_prepare_pg.py contract",
+              "- no Production model / LINE / BUY / stake / plan / volume change",
+              "",
+              "```text",
+              *(keep[-120:] if keep else ["(no allowlisted summary lines returned)"]),
+              "```",
+              "",
+              f"Process exit code: {code}",
+              "",
+              "**CANDIDATE_V4_DAILY_PREPARE_CATCHUP_PASS**" if code == "0" else "**CANDIDATE_V4_DAILY_PREPARE_CATCHUP_FAILED**",
+          ]
+          Path("catchup-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Clean raw temporary output
+        if: always()
+        run: rm -f catchup-output.txt
+
+      - name: Post sanitized result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file catchup-summary.md
+
+      - name: Fail when catch-up failed
+        if: steps.prepare.outputs.exit_code != '0'
+        run: exit 1
