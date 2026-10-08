@@ -131,7 +131,7 @@ def parse_weather(html):
     def rx(p):
         m=re.search(p,text);return _safe_float(m.group(1),None) if m else None
     m=re.search(r"(北東|南東|南西|北西|向い風|追い風|右横風|左横風|北|東|南|西)",text)
-    return {"weather":weather,"temperature_c":rx(r"気温\s*([0-9.]+)\s*℃"),"water_temperature_c":rx(r"水温\s*([0-9.]+)\s*℃"),"wind_speed_m":rx(r"風速\s*([0-9.]+)\s*m"),"wind_direction":m.group(1) if m else None,"wave_height_cm":rx(r"波高\s*([0-9.]+)\s*cm"),"raw_text":text[:2000]}
+    return {"weather":weather,"temperature_c":rx(r"気温\s*([0-9.]+)\s*(?:℃|°C)"),"water_temperature_c":rx(r"水温\s*([0-9.]+)\s*(?:℃|°C)"),"wind_speed_m":rx(r"風速\s*([0-9.]+)\s*m"),"wind_direction":m.group(1) if m else None,"wave_height_cm":rx(r"波高\s*([0-9.]+)\s*cm"),"raw_text":text[:2000]}
 def _extract_table_rows(html):
     if BeautifulSoup is None:return []
     out=[]
