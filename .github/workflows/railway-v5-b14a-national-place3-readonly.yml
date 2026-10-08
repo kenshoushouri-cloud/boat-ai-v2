@@ -43,7 +43,7 @@ jobs:
             --service "$RAILWAY_DB_SERVICE" \
             bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; export PYTHONPATH=.; export START_DATE=2025-07-01; export END_DATE=2026-10-05; python -u research/v5_zero_base_b14a_national_place3_pg.py' \
             | tee out.txt
-          grep '^V5_B14A_NATIONAL_PLACE3_RATE_RESULT=' out.txt > result.txt
+          grep '^V5_B14A_NATIONAL_PLACE3_RESULT=' out.txt > result.txt
           test -s result.txt
       - name: Post result
         if: always()
@@ -60,7 +60,7 @@ jobs:
               cat result.txt
               echo '```'
             else
-              echo 'FAILED: no V5_B14A_NATIONAL_PLACE3_RATE_RESULT produced.'
+              echo 'FAILED: no V5_B14A_NATIONAL_PLACE3_RESULT produced.'
             fi
             echo
             echo 'National place3 rate only. No lane/class/local/motor/exhibition/weather/V4 logic, DB writes, Production model, LINE, purchase, stake, plan, or volume changes.'
