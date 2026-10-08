@@ -37,6 +37,34 @@ class V21ParserSanityTests(unittest.TestCase):
         self.assertEqual(row["temperature_c"], 26.0)
         self.assertEqual(row["water_temperature_c"], 22.0)
 
+    def test_beforeinfo_quality_detects_weather_missing(self):
+        weather = {
+            "temperature_c": None,
+            "water_temperature_c": 22.0,
+            "wind_speed_m": 1.0,
+            "wave_height_cm": 1.0,
+        }
+        q = v21.inspect_beforeinfo_quality("<html></html>", weather, [])
+        self.assertIn("temperature_c", q["weather_missing"])
+
+    def test_beforeinfo_quality_classifies_official_partial(self):
+        rows = []
+        for lane, value in ((1, "6.78"), (2, "6.75"), (3, "6.86"), (4, "6.77"), (5, ""), (6, "6.85")):
+            rows.append(
+                f'<tbody class="is-fs12"><tr><td>{lane}</td><td></td><td>r</td>'
+                f'<td>52.0kg</td><td>{value}</td><td>0.0</td></tr></tbody>'
+            )
+        html = "<html><body>" + "".join(rows) + "</body></html>"
+        weather = {
+            "temperature_c": 26.0,
+            "water_temperature_c": 22.0,
+            "wind_speed_m": 1.0,
+            "wave_height_cm": 1.0,
+        }
+        q = v21.inspect_beforeinfo_quality(html, weather, [])
+        self.assertEqual(q["exhibition_status"], "official_partial")
+        self.assertEqual(q["exhibition_valid_time_count"], 5)
+
     def test_parse_odds3t_ascii_and_fullwidth_hyphen(self):
         html = "<html><body>1-2-3 12.4 2－1－3 9.8</body></html>"
         odds = v21.parse_odds3t(html)
