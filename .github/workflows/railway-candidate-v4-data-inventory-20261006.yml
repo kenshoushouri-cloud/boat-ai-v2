@@ -219,6 +219,33 @@ jobs:
                   suffix=f".{col}" if col else ""
                   print(f"FULL6 {t}{suffix}={n}/{base}")
 
+          if table_exists("v2_realtime_exhibition_snapshots"):
+              cur.execute("""
+                select e.race_id,r.venue_id,r.race_no,e.lane,
+                       x.race_id is not null as has_snapshot,
+                       x.exhibition_time,x.exhibition_time_rank,x.start_timing
+                from v2_race_entries e
+                join v2_races r on r.race_id=e.race_id
+                left join v2_realtime_exhibition_snapshots x
+                  on x.race_id=e.race_id
+                 and x.lane=e.lane
+                 and x.snapshot_label='historical'
+                where r.race_date=%s
+                  and (x.race_id is null or x.exhibition_time is null)
+                order by r.venue_id,r.race_no,e.lane
+              """, (DATE,))
+              miss=cur.fetchall()
+              print(f"MISSING_EXHIBITION_ROWS={len(miss)}")
+              for m in miss:
+                  print(
+                      "MISSING_EXHIBITION "
+                      f"race_id={m['race_id']} venue={m['venue_id']} "
+                      f"race_no={m['race_no']} lane={m['lane']} "
+                      f"has_snapshot={m['has_snapshot']} "
+                      f"time={m['exhibition_time']} rank={m['exhibition_time_rank']} "
+                      f"st={m['start_timing']}"
+                  )
+
           if table_exists("v2_odds_trifecta") and "ticket" in cols("v2_odds_trifecta"):
               cur.execute("""
                 select count(*) n from (
