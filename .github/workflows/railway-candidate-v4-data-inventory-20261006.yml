@@ -45,15 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          railway run \
-            --project "${RAILWAY_PROJECT_ID}" \
-            --environment "${RAILWAY_ENVIRONMENT}" \
-            --service "${RAILWAY_DB_SERVICE}" \
-            bash -c '
-              set -e
-              test -n "${DATABASE_PUBLIC_URL:-}"
-              export DATABASE_URL="$DATABASE_PUBLIC_URL"
-              exec python -u - <<"PY"
+          cat > candidate_v4_inventory.py <<'PY'
           import os
           from collections import OrderedDict
           import psycopg
@@ -242,7 +234,13 @@ jobs:
           conn.rollback()
           print("DATA_INVENTORY_READ_ONLY=PASS")
           PY
-            ' > inventory.txt
+
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; exec python -u candidate_v4_inventory.py' \
+            > inventory.txt
 
           {
             echo "## candidate-v4 data inventory 2026-10-06"
