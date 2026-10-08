@@ -224,6 +224,7 @@ def main() -> None:
         )
 
     sw = sx = se = so = src_cond = splayer_cond = nb = ne = no = 0
+    dq_weather_missing = dq_exh_partial = dq_exh_absent = dq_exh_parser = dq_exh_other = 0
     for index, race in enumerate(target, 1):
         rid = str(race.get("race_id"))
         venue = str(
@@ -242,9 +243,34 @@ def main() -> None:
             sx += c1
             se += c2
         else:
-            sw += legacy.save_weather(race, legacy.parse_weather(before_html or ""))
+            weather = legacy.parse_weather(before_html or "")
+            sw += legacy.save_weather(race, weather)
             exhibition = legacy.parse_exhibition(before_html or "")
             ne += int(not exhibition)
+            quality = legacy.inspect_beforeinfo_quality(before_html or "", weather, exhibition)
+            if quality["weather_missing"]:
+                dq_weather_missing += 1
+                print(
+                    f"DATA_QUALITY_WARNING race_id={rid} "
+                    f"weather_missing={','.join(quality['weather_missing'])}",
+                    flush=True,
+                )
+            if quality["exhibition_status"] != "complete":
+                status = quality["exhibition_status"]
+                if status == "official_partial":
+                    dq_exh_partial += 1
+                elif status == "official_absent":
+                    dq_exh_absent += 1
+                elif status in ("parser_failure", "monitor_parser_error"):
+                    dq_exh_parser += 1
+                else:
+                    dq_exh_other += 1
+                print(
+                    f"DATA_QUALITY_WARNING race_id={rid} exhibition_status={status} "
+                    f"valid_time_count={quality['exhibition_valid_time_count']} "
+                    f"source={quality['exhibition_source']}",
+                    flush=True,
+                )
             c1, c2 = legacy.save_exhibition_and_entries(
                 race, entries_by.get(rid, []), exhibition
             )
@@ -292,7 +318,12 @@ def main() -> None:
         f"saved_odds_rows: {so}\n"
         f"no_beforeinfo: {nb}\n"
         f"no_exhibition_complete: {ne}\n"
-        f"no_odds: {no}",
+        f"no_odds: {no}\n"
+        f"data_quality_weather_missing_races: {dq_weather_missing}\n"
+        f"data_quality_exhibition_official_partial: {dq_exh_partial}\n"
+        f"data_quality_exhibition_official_absent: {dq_exh_absent}\n"
+        f"data_quality_exhibition_parser_failure: {dq_exh_parser}\n"
+        f"data_quality_exhibition_other: {dq_exh_other}",
         flush=True,
     )
     print("=== v21 safe PG リアルタイム収集終了 ===", flush=True)
