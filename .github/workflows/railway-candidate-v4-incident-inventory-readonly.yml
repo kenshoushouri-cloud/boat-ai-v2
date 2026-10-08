@@ -31,8 +31,10 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Railway CLI
-        run: npm install --global @railway/cli
+      - name: Install dependencies
+        run: |
+          python -m pip install 'psycopg[binary]'
+          npm install --global @railway/cli
 
       - name: Run read-only inventory
         shell: bash
