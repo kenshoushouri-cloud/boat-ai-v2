@@ -50,6 +50,7 @@ jobs:
           import psycopg
           import v21_realtime_collector_pg as v21
           import backfill_historical_beforeinfo_pg as hist
+          import historical_beforeinfo_parser_v3 as parser_v3
 
           RID = "20261006_02_05"
           DATE = "2026-10-06"
@@ -111,6 +112,15 @@ jobs:
               print(f"RELEVANT_TABLE_ROWS_COUNT={len(relevant_rows)}")
               for i,row in enumerate(relevant_rows[:30],1):
                   print(f"RELEVANT_TABLE_ROW_{i}={row}")
+
+              inspection = parser_v3.inspect_exhibition_time_page(html)
+              print(f"V3_EXHIBITION_STATUS={inspection.get('status')}")
+              print(f"V3_EXHIBITION_VALID_TIME_COUNT={inspection.get('valid_time_count')}")
+              print(f"V3_EXHIBITION_LANES={inspection.get('lanes')}")
+              print(f"V3_EXHIBITION_SOURCE={inspection.get('source')}")
+              print(f"V3_EXHIBITION_TIMES={[r.get('exhibition_time') for r in inspection.get('rows', [])]}")
+              print(f"NFKC_HAS_DEGREE_C={'°C' in hist.soup_text(html)}")
+              print(f"NFKC_HAS_CELSIUS_SYMBOL={'℃' in hist.soup_text(html)}")
 
               exhibition = v21.parse_exhibition(html)
               weather = hist.parse_weather_v2(html)
