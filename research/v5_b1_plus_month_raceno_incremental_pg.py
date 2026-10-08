@@ -59,7 +59,7 @@ def main():
     if "result_status" in xc:fs.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in xc:fs.append("coalesce(rs.race_status,'official')='official'")
     rows=fetch_all(f"""select r.race_id,r.race_date::date race_date,r.race_no::int race_no,
-        extract(month from r.race_date)::int month,{ve} venue,{we} winner
+        extract(month from r.race_date)::int month_no,{ve} venue,{we} winner
         from v2_races r join v2_results rs on rs.race_id=r.race_id
         where {' and '.join(fs)}
         order by r.race_date,r.race_id""",(START,END))
@@ -76,7 +76,7 @@ def main():
         bp=lane_probs(lw,gn)
         dlw=Counter();dstarts={i:Counter() for i in range(1,7)};dwins={i:Counter() for i in range(1,7)}
         for r in days[ds]:
-            key=(int(r["month"]),int(r["race_no"]))
+            key=(int(r["month_no"]),int(r["race_no"]))
             raw=[]
             for lane in range(1,7):
                 q,n,wt=adjusted(lane,key,bp[lane-1],starts,wins)
