@@ -2,6 +2,7 @@
 import unittest
 
 import v21_realtime_collector_pg as v21
+import backfill_historical_beforeinfo_pg as historical_beforeinfo
 
 
 class V21ParserSanityTests(unittest.TestCase):
@@ -23,6 +24,18 @@ class V21ParserSanityTests(unittest.TestCase):
         self.assertEqual(row["wind_speed_m"], 4.0)
         self.assertEqual(row["wind_direction"], "北東")
         self.assertEqual(row["wave_height_cm"], 3.0)
+
+    def test_parse_weather_normalized_degree_c(self):
+        html = "<html><body>晴 気温 26.0°C 水温 22.0°C 風速 1m 波高 1cm</body></html>"
+        row = v21.parse_weather(html)
+        self.assertEqual(row["temperature_c"], 26.0)
+        self.assertEqual(row["water_temperature_c"], 22.0)
+
+    def test_historical_parse_weather_celsius_after_nfkc(self):
+        html = "<html><body>晴 気温 26.0℃ 水温 22.0℃ 風速 1m 波高 1cm</body></html>"
+        row = historical_beforeinfo.parse_weather_v2(html)
+        self.assertEqual(row["temperature_c"], 26.0)
+        self.assertEqual(row["water_temperature_c"], 22.0)
 
     def test_parse_odds3t_ascii_and_fullwidth_hyphen(self):
         html = "<html><body>1-2-3 12.4 2－1－3 9.8</body></html>"
