@@ -132,6 +132,22 @@ def parse_weather(html):
         m=re.search(p,text);return _safe_float(m.group(1),None) if m else None
     m=re.search(r"(北東|南東|南西|北西|向い風|追い風|右横風|左横風|北|東|南|西)",text)
     return {"weather":weather,"temperature_c":rx(r"気温\s*([0-9.]+)\s*(?:℃|°C)"),"water_temperature_c":rx(r"水温\s*([0-9.]+)\s*(?:℃|°C)"),"wind_speed_m":rx(r"風速\s*([0-9.]+)\s*m"),"wind_direction":m.group(1) if m else None,"wave_height_cm":rx(r"波高\s*([0-9.]+)\s*cm"),"raw_text":text[:2000]}
+def inspect_beforeinfo_quality(html,weather,exhibition):
+    missing=[k for k in ("temperature_c","water_temperature_c","wind_speed_m","wave_height_cm") if weather.get(k) is None]
+    status="complete" if len(exhibition)==6 else "unknown_incomplete"
+    valid_time_count=len(exhibition)
+    source="realtime_parse"
+    if len(exhibition)!=6:
+        try:
+            import historical_beforeinfo_parser_v3 as _hp3
+            q=_hp3.inspect_exhibition_time_page(html or "")
+            status=str(q.get("status") or status)
+            valid_time_count=_safe_int(q.get("valid_time_count"),len(exhibition))
+            source=str(q.get("source") or "historical_parser_v3")
+        except Exception as e:
+            status="monitor_parser_error"
+            source=type(e).__name__
+    return {"weather_missing":missing,"exhibition_status":status,"exhibition_valid_time_count":valid_time_count,"exhibition_source":source}
 def _extract_table_rows(html):
     if BeautifulSoup is None:return []
     out=[]
@@ -362,12 +378,25 @@ def main():
     for r in target[:20]:
         dl=_parse_deadline_at(r);print(f"  {r.get('race_id')} deadline={dl.isoformat() if dl else '-'}",flush=True)
     sw=sx=se=so=src_cond=splayer_cond=nb=ne=no=0
+    dq_weather_missing=dq_exh_partial=dq_exh_absent=dq_exh_parser=dq_exh_other=0
     for i,r in enumerate(target,1):
         rid=str(r.get("race_id"));v=str(r.get("venue_id") or r.get("venue_code") or "").zfill(2);rno=_safe_int(r.get("race_no"));bh=_fetch(_official_url("beforeinfo",TARGET_DATE,v,rno));ex=[]
         if _looks_no_data(bh):
             nb+=1;c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),[]);sx+=c1;se+=c2
         else:
-            sw+=save_weather(r,parse_weather(bh or ""));ex=parse_exhibition(bh or "");ne+=int(not ex);c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),ex);sx+=c1;se+=c2
+            weather=parse_weather(bh or "");sw+=save_weather(r,weather);ex=parse_exhibition(bh or "");ne+=int(not ex)
+            quality=inspect_beforeinfo_quality(bh or "",weather,ex)
+            if quality["weather_missing"]:
+                dq_weather_missing+=1
+                print(f"DATA_QUALITY_WARNING race_id={rid} weather_missing={','.join(quality['weather_missing'])}",flush=True)
+            if quality["exhibition_status"]!="complete":
+                st=quality["exhibition_status"]
+                if st=="official_partial":dq_exh_partial+=1
+                elif st=="official_absent":dq_exh_absent+=1
+                elif st in ("parser_failure","monitor_parser_error"):dq_exh_parser+=1
+                else:dq_exh_other+=1
+                print(f"DATA_QUALITY_WARNING race_id={rid} exhibition_status={st} valid_time_count={quality['exhibition_valid_time_count']} source={quality['exhibition_source']}",flush=True)
+            c1,c2=save_exhibition_and_entries(r,entries_by.get(rid,[]),ex);sx+=c1;se+=c2
             race_cond,racer_cond=parse_beforeinfo_extra(bh or "",entries_by.get(rid,[]));c3,c4=save_beforeinfo_extra(r,entries_by.get(rid,[]),race_cond,racer_cond);src_cond+=c3;splayer_cond+=c4
         oh=_fetch(_official_url("odds3t",TARGET_DATE,v,rno));od=parse_odds3t(oh or "") if oh else {};src="official_odds3t"
         if len(od)<80 and base_odds.get(rid):od=base_odds[rid];src="v2_odds_trifecta_fallback"
@@ -376,6 +405,6 @@ def main():
         print(f"[{i}/{len(target)}] {rid} before={'ok' if bh else 'ng'} exh_rows={len(ex)} odds={len(od)} source={src if od else '-'}",flush=True)
         if REALTIME_SLEEP_SEC>0:time.sleep(REALTIME_SLEEP_SEC)
     print("\n=== v21 PG realtime collection summary ===",flush=True)
-    print(f"scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_race_condition_rows: {src_cond}\nsaved_racer_condition_rows: {splayer_cond}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}",flush=True)
+    print(f"scope_races: {len(scope)}\ntarget_races: {len(target)}\nsaved_weather: {sw}\nsaved_exhibition_rows: {sx}\nsaved_entry_rows: {se}\nsaved_race_condition_rows: {src_cond}\nsaved_racer_condition_rows: {splayer_cond}\nsaved_odds_rows: {so}\nno_beforeinfo: {nb}\nno_exhibition_complete: {ne}\nno_odds: {no}\ndata_quality_weather_missing_races: {dq_weather_missing}\ndata_quality_exhibition_official_partial: {dq_exh_partial}\ndata_quality_exhibition_official_absent: {dq_exh_absent}\ndata_quality_exhibition_parser_failure: {dq_exh_parser}\ndata_quality_exhibition_other: {dq_exh_other}",flush=True)
     print("=== v21 PG リアルタイム収集終了 ===",flush=True)
 if __name__=="__main__":main()
