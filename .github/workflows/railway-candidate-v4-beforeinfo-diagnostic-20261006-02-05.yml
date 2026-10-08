@@ -85,6 +85,33 @@ jobs:
               text = re.sub(r"\s+", " ", html)
               print(f"RAW_HAS_EXHIBITION_LABEL={('展示' in text)}")
               print(f"RAW_HAS_WEATHER_LABEL={('気温' in text or '水温' in text or '風' in text)}")
+              from bs4 import BeautifulSoup
+              soup = BeautifulSoup(html, "html.parser")
+              visible = soup.get_text(" ", strip=True)
+              for key in ("展示タイム", "展示", "気温", "水温", "風速", "波高"):
+                  pos = visible.find(key)
+                  if pos >= 0:
+                      lo=max(0,pos-180); hi=min(len(visible),pos+500)
+                      snippet=re.sub(r"\\s+"," ",visible[lo:hi])
+                      print(f"VISIBLE_AROUND_{key}={snippet}")
+                  else:
+                      print(f"VISIBLE_AROUND_{key}=NOT_FOUND")
+
+              numeric = re.findall(r"(?<!\\d)([0-9]+(?:\\.[0-9]+)?)(?!\\d)", visible)
+              expo_like=[x for x in numeric if re.fullmatch(r"[67]\\.\\d{1,3}", x)]
+              temp_like=[x for x in numeric if re.fullmatch(r"[+-]?\\d{1,2}(?:\\.\\d+)?", x)]
+              print(f"RAW_EXHIBITION_NUMERIC_CANDIDATES={expo_like[:30]}")
+              print(f"RAW_NUMERIC_SAMPLE={numeric[:80]}")
+
+              relevant_rows=[]
+              for tr in soup.find_all("tr"):
+                  row=" | ".join(re.sub(r"\\s+"," ",x.get_text(" ",strip=True)) for x in tr.find_all(["th","td"]))
+                  if row and ("展示" in row or "気温" in row or "水温" in row or re.search(r"(?<!\\d)[67]\\.\\d{1,3}(?!\\d)", row)):
+                      relevant_rows.append(row[:800])
+              print(f"RELEVANT_TABLE_ROWS_COUNT={len(relevant_rows)}")
+              for i,row in enumerate(relevant_rows[:30],1):
+                  print(f"RELEVANT_TABLE_ROW_{i}={row}")
+
               exhibition = v21.parse_exhibition(html)
               weather = hist.parse_weather_v2(html)
               race_condition, players = v21.parse_beforeinfo_extra(html, entries)
