@@ -1,0 +1,100 @@
+name: Railway candidate-v4 result entries prewrite audit 2026-10-06
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-result-entries-prewrite-audit-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Run read-only prewrite audit
+        shell: bash
+        run: |
+          cat > /tmp/audit_result_entries.py <<'PY'
+          import os
+          import psycopg
+          from psycopg.rows import dict_row
+          import save_k_day_results_pg as saver
+
+          saver.TARGET_DATE = "2026-10-06"
+          races = saver.build()
+          k_ids = [str(x["race_id"]) for x in races]
+          entry_rows = sum(len(x["entries"]) for x in races)
+
+          with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
+              cur = conn.cursor()
+              cur.execute("BEGIN READ ONLY")
+              cur.execute("select race_id from v2_results where race_id like '20261006_%' order by race_id")
+              db_result_ids = [str(x["race_id"]) for x in cur.fetchall()]
+              cur.execute("select race_id from v2_races where race_date=%s order by race_id", ("2026-10-06",))
+              db_race_ids = [str(x["race_id"]) for x in cur.fetchall()]
+              cur.execute("select count(*) as n, count(distinct race_id) as races from v2_result_entries where race_id like '20261006_%'")
+              existing = cur.fetchone()
+              conn.rollback()
+
+          ks=set(k_ids); rs=set(db_result_ids); bs=set(db_race_ids)
+          print(f"K_RACES={len(k_ids)}")
+          print(f"K_ENTRY_ROWS={entry_rows}")
+          print(f"DB_RACES={len(db_race_ids)}")
+          print(f"DB_RESULTS={len(db_result_ids)}")
+          print(f"EXISTING_RESULT_ENTRY_ROWS={existing['n']}")
+          print(f"EXISTING_RESULT_ENTRY_RACES={existing['races']}")
+          print(f"K_MINUS_DB_RACES={len(ks-bs)}")
+          print(f"DB_RACES_MINUS_K={len(bs-ks)}")
+          print(f"K_MINUS_DB_RESULTS={len(ks-rs)}")
+          print(f"DB_RESULTS_MINUS_K={len(rs-ks)}")
+          print(f"PREWRITE_EXACT_MATCH={ks==bs==rs and len(k_ids)==len(ks) and entry_rows==len(k_ids)*6}")
+          print("DB_TRANSACTION=READ_ONLY")
+          PY
+
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export TARGET_DATE="2026-10-06"; exec python -u /tmp/audit_result_entries.py'             > audit.txt
+
+          {
+            echo "## candidate-v4 result entries prewrite audit 2026-10-06"
+            echo
+            echo "- database: postgres-hobby-fullhistory-candidate-v4"
+            echo "- DB transaction: READ ONLY"
+            echo "- official K parser only; no DB writes"
+            echo
+            echo '```text'
+            cat audit.txt
+            echo '```'
+          } > summary.md
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file summary.md
