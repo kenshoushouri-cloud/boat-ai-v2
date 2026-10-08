@@ -248,6 +248,24 @@ jobs:
 
           if table_exists("v2_odds_trifecta") and "ticket" in cols("v2_odds_trifecta"):
               cur.execute("""
+                select r.race_id,r.venue_id,r.race_no,count(distinct o.ticket) as tickets
+                from v2_races r
+                left join v2_odds_trifecta o on o.race_id=r.race_id
+                where r.race_date=%s
+                group by r.race_id,r.venue_id,r.race_no
+                having count(distinct o.ticket) <> 120
+                order by r.venue_id,r.race_no
+              """, (DATE,))
+              odds_miss=cur.fetchall()
+              print(f"INCOMPLETE_ODDS_RACES={len(odds_miss)}")
+              for m in odds_miss:
+                  print(
+                      "INCOMPLETE_ODDS "
+                      f"race_id={m['race_id']} venue={m['venue_id']} "
+                      f"race_no={m['race_no']} tickets={m['tickets']}/120"
+                  )
+
+              cur.execute("""
                 select count(*) n from (
                   select o.race_id
                   from v2_odds_trifecta o join v2_races r on r.race_id=o.race_id
