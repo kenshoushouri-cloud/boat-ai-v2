@@ -19,7 +19,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway v5-lane-class-plus-exhibition-time-run'
+      github.event.comment.body == '/railway v5-lane-class-plus-exhibition-time-fixed-run'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
