@@ -1,0 +1,64 @@
+name: V5 research incident primary fit offline regression
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-incident-primary-fit-offline-test-20261009'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run incident policy and V5 integration regression tests
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_historical_incident_eligibility.py' -v > offline-result.txt 2>&1
+          rc1=$?
+          python -m unittest discover -s tests -p 'test_v5_historical_void_integration.py' -v >> offline-result.txt 2>&1
+          rc2=$?
+          if [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]; then echo 'passed=true' >> "$GITHUB_OUTPUT"; else echo 'passed=false' >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Report bounded test result
+        id: report
+        if: always()
+        shell: bash
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          content = Path("offline-result.txt").read_text(encoding="utf-8",errors="replace") if Path("offline-result.txt").exists() else ""
+          show = [s[:400] for s in content.splitlines() if s.startswith(("test_", "Ran ", "OK", "FAILED", "ERROR", "FAIL", "Traceback", "AssertionError", "KeyError", "ValueError", "TypeError", "ImportError"))]
+          passed = os.getenv("PASSED") == "true" and "Ran 13 tests" in content and "Ran 3 tests" in content and content.count("\nOK\n") == 2
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out: out.write("verified="+("true" if passed else "false")+"\n")
+          result = ["## V5 incident primary-fit research integration offline tests", "", "- DB-free mock V5 scoring and prior-history test; no Railway / Production / purchase changes", "- Expect 13 incident contract + 3 existing V5 integration tests", "", "~~~text", *show[-55:], "~~~", "", "V5_INCIDENT_PRIMARY_FIT_OFFLINE_PASS" if passed else "V5_INCIDENT_PRIMARY_FIT_OFFLINE_FAILED"]
+          Path("offline-summary.md").write_text("\n".join(result)+"\n",encoding="utf-8")
+          PY
+      - name: Remove raw output
+        if: always()
+        run: rm -f offline-result.txt
+      - name: Publish test report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file offline-summary.md
+      - name: Fail when contract or integration tests fail
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
