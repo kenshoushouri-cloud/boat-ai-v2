@@ -15,6 +15,6 @@
 - Railway費用 <= USD20、理想 <= USD15。Agent/AI禁止。
 - 実行開始時は推定所要時間を表示する。
 
-**Next ONE task:** Issue #581 comment `6074271031` の結果だけ確認。pending中は再実行禁止。
+**Next ONE task:** 上記 current compact handoff の最終「Next ONE task」を参照。ここには過去run・comment IDを固定しない。
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
