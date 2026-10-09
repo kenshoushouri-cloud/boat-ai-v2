@@ -20,6 +20,7 @@ Railway Start Command:
     SELECTOR_MODE=ab|balanced|wide|strict|all
     TEST_MODE=1
     DRY_RUN=0
+    PRE_LINE_ENABLED=0  # Production default: PRE LINE disabled; FINAL BUY only
 """
 
 from __future__ import annotations
@@ -105,6 +106,7 @@ TARGET_DATE = os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
 SELECTOR_MODE = os.getenv("SELECTOR_MODE", "balanced").strip().lower()
 PRE_SESSION = os.getenv("PRE_SESSION", "day").strip().lower()
 DRY_RUN = os.getenv("DRY_RUN", "0").strip() in ("1", "true", "True", "yes", "YES")
+PRE_LINE_ENABLED = os.getenv("PRE_LINE_ENABLED", "0").strip() in ("1", "true", "True", "yes", "YES")
 TEST_MODE = os.getenv("TEST_MODE", "1").strip() not in ("0", "false", "False", "no", "NO")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_TO = (os.getenv("LINE_TO") or os.getenv("LINE_USER_ID") or os.getenv("LINE_GROUP_ID") or "").strip()
@@ -1107,13 +1109,15 @@ def _save_pre_notification(message: str, status: str, resp: Dict[str, Any], sele
 
 def main() -> None:
     _require_settings()
-    _ensure_line_notification_columns()
+    if PRE_LINE_ENABLED:
+        _ensure_line_notification_columns()
 
-    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-08-08 dynamic-odds-target-filter-v2.1-venue-name-v2", flush=True)
+    print("✅ v24_pre_candidate_notifier_pg.py VERSION 2026-10-09 pre-line-default-off-final-buy-only-v1", flush=True)
     print("=== v24 PG 仮買い目LINE通知開始 ===", flush=True)
     print(
         f"TARGET_DATE={TARGET_DATE} PRE_SESSION={PRE_SESSION} SELECTOR_MODE={SELECTOR_MODE} "
-        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} ODDS_READY_MODE=dynamic_exact_120_60_24",
+        f"DRY_RUN={DRY_RUN} TEST_MODE={TEST_MODE} PRE_LINE_ENABLED={PRE_LINE_ENABLED} "
+        f"ODDS_READY_MODE=dynamic_exact_120_60_24",
         flush=True,
     )
     if TARGET_RACE_ID_SET:
@@ -1121,11 +1125,14 @@ def main() -> None:
     else:
         print("TARGET_RACE_IDS disabled", flush=True)
 
-    guard = _usage_guard()
-    if guard:
-        print(f"LINE送信上限ガード: {guard}", flush=True)
-        print("=== v24 PG 仮買い目LINE通知終了 ===", flush=True)
-        return
+    if PRE_LINE_ENABLED:
+        guard = _usage_guard()
+        if guard:
+            print(f"LINE送信上限ガード: {guard}", flush=True)
+            print("=== v24 PG 仮買い目LINE通知終了 ===", flush=True)
+            return
+    else:
+        print("PRE_LINE_DISABLED=1: 仮候補計算は継続し、LINE送信は行いません。", flush=True)
 
     strategies_by_name = {s.name: s for s in V17_STRATEGIES}
     strategy_names = [n for n in _selector_strategy_names(SELECTOR_MODE) if n in strategies_by_name]
@@ -1262,6 +1269,11 @@ def main() -> None:
 
     if not selected:
         print("仮候補はありません。通知しません。", flush=True)
+        print("=== v24 PG 仮買い目LINE通知終了 ===", flush=True)
+        return
+
+    if not PRE_LINE_ENABLED:
+        print(f"PRE_LINE_SKIPPED selected={len(selected)} FINAL_BUY_LINE_ONLY=1", flush=True)
         print("=== v24 PG 仮買い目LINE通知終了 ===", flush=True)
         return
 
