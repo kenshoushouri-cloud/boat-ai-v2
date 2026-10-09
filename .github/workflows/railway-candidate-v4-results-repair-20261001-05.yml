@@ -1,0 +1,123 @@
+name: Candidate-v4 results repair 2026-10-01 to 05
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  repair:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-results-repair-20261001-05 CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Repair base races only
+        id: repair
+        shell: bash
+        run: |
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c '
+              set -e
+              test -n "${DATABASE_PUBLIC_URL:-}"
+              export DATABASE_URL="$DATABASE_PUBLIC_URL"
+              export REPAIR_START_DATE="2026-10-01"
+              export REPAIR_END_DATE="2026-10-05"
+              export REPAIR_DO_RACES="0"
+              export REPAIR_DO_RESULTS="1"
+              export REPAIR_DO_ODDS="0"
+              export REPAIR_WORKERS="2"
+              export REPAIR_SLEEP_SEC="0.1"
+              exec python -u repair_month_all_pg.py
+            ' > repair-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.repair.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("repair-output.txt").read_text(encoding="utf-8", errors="replace") if Path("repair-output.txt").exists() else ""
+          prefixes = (
+              "repair range:",
+              "DO_RACES=",
+              "DATE ",
+              "RACES ",
+              "RESULTS ",
+              "ODDS ",
+              "SUMMARY",
+              "saved",
+              "success",
+              "failed",
+          )
+          keep=[line[:700] for line in raw.splitlines() if line.startswith(prefixes)]
+          code=os.environ.get("EXIT_CODE","?")
+          out=[
+              "## candidate-v4 results repair 2026-10-01..05",
+              "",
+              "- database: postgres-hobby-fullhistory-candidate-v4",
+              "- RESULTS only; RACES=0; ODDS=0",
+              "- upsert semantics",
+              "- no Production model / LINE / BUY / stake / plan / volume change",
+              "",
+              *keep[-160:],
+              "",
+              f"Process exit code: {code}",
+              "",
+              "CANDIDATE_V4_RESULTS_REPAIR_OCT01_05_PASS" if code=="0" else "CANDIDATE_V4_RESULTS_REPAIR_OCT01_05_FAILED",
+          ]
+          Path("repair-summary.md").write_text("\n".join(out)+"\n",encoding="utf-8")
+          PY
+
+      - name: Clean raw output
+        if: always()
+        run: rm -f repair-output.txt
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file repair-summary.md
+
+      - name: Fail when repair failed
+        if: steps.repair.outputs.exit_code != '0'
+        run: exit 1
