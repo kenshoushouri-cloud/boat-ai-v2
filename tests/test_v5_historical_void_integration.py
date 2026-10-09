@@ -71,21 +71,25 @@ class TestV5VoidIntegration(unittest.TestCase):
         hist_rows = [
             {
                 "race_id": rid, "racer_number": 2000 + ix * 10 + lane,
-                "start_course": lane, "finish_position": lane,
+                "lane": lane, "start_course": lane, "finish_position": lane,
+                "finish_status": f"{lane:02d}", "is_flying": False, "is_late": False,
+                "result_status": "official", "race_status": "official",
                 "race_date": "2026-09-21",
             }
             for ix, rid in enumerate(valid)
             for lane in range(1, 7)
         ] + [{
             "race_id": cancelled, "racer_number": 9999,
-            "start_course": 1, "finish_position": 1, "race_date": "2026-09-21",
+            "lane": 1, "start_course": 1, "finish_position": 1,
+            "finish_status": "01", "is_flying": False, "is_late": False,
+            "result_status": "official", "race_status": "official", "race_date": "2026-09-21",
         }]
         schema = {
             "v2_races": {"race_id", "race_date", "venue_code"},
             "v2_race_entries": {"race_id", "lane", "racer_number", "racer_class", "recent_form"},
             "v2_results": {"race_id", "first_lane", "result_status", "race_status"},
             "v2_realtime_exhibition_snapshots": {"race_id", "lane", "exhibition_time_rank"},
-            "v2_result_entries": {"race_id", "racer_number", "start_course", "finish_position"},
+            "v2_result_entries": {"race_id", "lane", "racer_number", "start_course", "finish_position", "finish_status", "is_flying", "is_late"},
         }
 
         def fake_fetch(sql, args):
@@ -96,7 +100,7 @@ class TestV5VoidIntegration(unittest.TestCase):
                 return race_rows
             if "select e.race_id,e.lane" in normalized:
                 return entry_rows
-            if "select re.race_id,re.racer_number" in normalized:
+            if "select re.race_id,re.lane,re.racer_number" in normalized:
                 return hist_rows
             raise AssertionError(f"Unexpected SQL: {normalized[:120]}")
 
@@ -112,6 +116,9 @@ class TestV5VoidIntegration(unittest.TestCase):
         self.assertEqual(report["coverage"]["scored"], 2)
         self.assertEqual(report["coverage"]["void_candidate_rows_excluded"], 1)
         self.assertEqual(report["coverage"]["void_history_rows_excluded"], 1)
+        self.assertEqual(report["coverage"]["incident_candidate_exclusions"], {})
+        self.assertEqual(report["coverage"]["incident_history_races_exclusions"], {})
+        self.assertTrue(report["coverage"]["result_side_not_predeadline_evidence"])
         self.assertEqual(report["coverage"]["verified_void_registry_size"], 71)
         self.assertEqual(report["coverage"]["venue_count"], 2)
         self.assertEqual(set(report["venue_delta_logloss"]), {"09", "10"})
