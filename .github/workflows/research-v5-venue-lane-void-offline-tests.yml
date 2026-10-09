@@ -1,0 +1,61 @@
+name: V5 research venue-lane VOID offline test
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-venue-lane-void-offline-test-20261009'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run offline research venue-lane test
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_venue_lane_void_guard.py' -v > test-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Build compact result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.test.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
+          allowed=("test_","Ran ","OK","FAILED","ERROR","Traceback","AssertionError","ImportError","ModuleNotFoundError")
+          safe=[line[:300] for line in raw.splitlines() if line.startswith(allowed)]
+          passed=os.environ.get("EXIT_CODE")=="0" and "Ran 1 test" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as output:
+              output.write("verified="+("true" if passed else "false")+"\n")
+          lines=["## V5 venue-lane historical VOID offline test","","- No database, Railway or Production access","- Verifies 71-VOID exclusion from outcome and historical features; preserves partial-card real races","","~~~text",*safe[-30:],"~~~","",f"Process exit code: {os.environ.get('EXIT_CODE','?')}","V5_VENUE_LANE_VOID_TEST_PASS" if passed else "V5_VENUE_LANE_VOID_TEST_FAILED"]
+          Path("test-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Remove raw output
+        if: always()
+        run: rm -f test-output.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file test-summary.md
+      - name: Fail if tests fail
+        if: steps.result.outputs.verified != 'true'
+        run: exit 1
