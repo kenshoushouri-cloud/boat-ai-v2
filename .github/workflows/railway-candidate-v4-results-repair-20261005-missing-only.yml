@@ -1,0 +1,184 @@
+name: Candidate-v4 results repair Oct 05 missing only
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  repair:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-results-repair-20261005-missing-only CONFIRM'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Repair only missing Oct 05 results
+        id: repair
+        shell: bash
+        run: |
+          cat > repair_missing_oct05.py <<'PY'
+          import os
+          import re
+          import sys
+          import psycopg
+
+          TARGET = "2026-10-05"
+
+          def coverage():
+              with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=15) as conn:
+                  with conn.cursor() as cur:
+                      cur.execute("BEGIN READ ONLY")
+                      cur.execute("SELECT race_id FROM v2_races WHERE race_date=%s ORDER BY race_id", (TARGET,))
+                      base_ids = {str(row[0]) for row in cur.fetchall()}
+                      cur.execute("SELECT race_id FROM v2_results WHERE race_id LIKE '20261005_%'")
+                      result_ids = {str(row[0]) for row in cur.fetchall()}
+                      conn.rollback()
+              return base_ids, result_ids
+
+          base, existing = coverage()
+          missing = sorted(base - existing)
+          print(f"RESULTS_BASE_BEFORE={len(base)}", flush=True)
+          print(f"RESULTS_PRESENT_BEFORE={len(base & existing)}", flush=True)
+          print(f"RESULTS_MISSING_BEFORE={len(missing)}", flush=True)
+          print(f"RESULTS_EXTRA_BEFORE={len(existing - base)}", flush=True)
+          if len(base) != 144 or existing - base:
+              raise RuntimeError("Safety stop: unexpected base count or extra results")
+          for rid in missing:
+              m = re.fullmatch(r"20261005_(\d{2})_(\d{2})", rid)
+              if not m or not (1 <= int(m.group(1)) <= 24) or not (1 <= int(m.group(2)) <= 12):
+                  raise RuntimeError("Safety stop: invalid Oct 05 race ID")
+          if missing:
+              os.environ["REPAIR_START_DATE"] = TARGET
+              os.environ["REPAIR_END_DATE"] = TARGET
+              os.environ["REPAIR_RACE_IDS"] = ",".join(missing)
+              os.environ["REPAIR_DO_RACES"] = "0"
+              os.environ["REPAIR_DO_RESULTS"] = "1"
+              os.environ["REPAIR_DO_ODDS"] = "0"
+              os.environ["REPAIR_WORKERS"] = "2"
+              os.environ["REPAIR_SLEEP_SEC"] = "0.1"
+              import repair_month_all_pg
+              repair_month_all_pg.main()
+          else:
+              print("RESULTS_ALREADY_COMPLETE=YES", flush=True)
+          final_base, final_results = coverage()
+          print(f"RESULTS_BASE_AFTER={len(final_base)}", flush=True)
+          print(f"RESULTS_PRESENT_AFTER={len(final_base & final_results)}", flush=True)
+          print(f"RESULTS_MISSING_AFTER={len(final_base - final_results)}", flush=True)
+          print(f"RESULTS_EXTRA_AFTER={len(final_results - final_base)}", flush=True)
+          if final_base != base or final_base - final_results or final_results - final_base:
+              print("RESULTS_REPAIR_OCT05_VERIFIED_FAILED", flush=True)
+              sys.exit(3)
+          print("RESULTS_REPAIR_OCT05_VERIFIED_PASS", flush=True)
+          PY
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c '
+              set -e
+              test -n "${DATABASE_PUBLIC_URL:-}"
+              export DATABASE_URL="$DATABASE_PUBLIC_URL"
+              export REPAIR_START_DATE="2026-10-05"
+              export REPAIR_END_DATE="2026-10-05"
+              export REPAIR_DO_RACES="0"
+              export REPAIR_DO_RESULTS="1"
+              export REPAIR_DO_ODDS="0"
+              export REPAIR_WORKERS="2"
+              export REPAIR_SLEEP_SEC="0.1"
+              exec python -u repair_missing_oct05.py
+            ' > repair-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        id: summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.repair.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("repair-output.txt").read_text(encoding="utf-8", errors="replace") if Path("repair-output.txt").exists() else ""
+          prefixes = (
+              "RESULTS_",
+              "REPAIR_RACE_IDS enabled:",
+              "task_count:",
+              "progress race/result:",
+              "DO_RACES=",
+              "DATE ",
+              "RACES ",
+              "RESULTS ",
+              "ODDS ",
+              "SUMMARY",
+              "saved",
+              "success",
+              "failed",
+          )
+          keep=[line[:700] for line in raw.splitlines() if line.startswith(prefixes)]
+          code=os.environ.get("EXIT_CODE","?")
+          verified = code == "0" and "RESULTS_REPAIR_OCT05_VERIFIED_PASS" in raw
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fd:
+              fd.write("verified=" + ("true" if verified else "false") + "\n")
+          out=[
+              "## candidate-v4 Oct 05 missing-results repair",
+              "",
+              "- database: postgres-hobby-fullhistory-candidate-v4",
+              "- RESULTS only; RACES=0; ODDS=0",
+              "- upsert semantics",
+              "- no Production model / LINE / BUY / stake / plan / volume change",
+              "",
+              *keep[-160:],
+              "",
+              f"Process exit code: {code}",
+              "",
+              "CANDIDATE_V4_RESULTS_REPAIR_OCT05_PASS" if verified else "CANDIDATE_V4_RESULTS_REPAIR_OCT05_FAILED",
+          ]
+          Path("repair-summary.md").write_text("\n".join(out)+"\n",encoding="utf-8")
+          PY
+
+      - name: Clean raw output
+        if: always()
+        run: rm -f repair-output.txt
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file repair-summary.md
+
+      - name: Fail when repair failed
+        if: steps.summary.outputs.verified != 'true'
+        run: exit 1
