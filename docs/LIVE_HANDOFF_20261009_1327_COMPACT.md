@@ -129,7 +129,20 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Remaining missing (race has ZERO result-entry rows): 2026-08-11=12, 2026-09-09=12, 2026-09-21=35, 2026-09-22=12. No partial6 or >6 anomalies. Do not invent missing official K rows.
 - Historical backtest window remains 2025-07-01..2026-10-05, not 10/06+ data.
 
+## ACTIVE PENDING — 71 residual K classification read-only
+- Previous result-entry coverage audit PASSED: Issue #581 comment `6075857637`, period 2026-08-01..10-05, 66 days, BASE=10380, COMPLETE6=10309, MISSING=71, PARTIAL=0, OVER6=0, gap days=4.
+- Residual days: 8/11=12, 9/9=12, 9/21=35, 9/22=12. 10/01–05: all 792 races complete, do not rerun backfill.
+- New classification workflow: `.github/workflows/railway-candidate-v4-classify-71-result-entries-20260811-0922.yml`
+- Workflow commit `b8ac7a316529b74b218458fe26d0e341f617bcd2`
+- Issue #581 command comment ID: **6076014344**
+- Command: `/railway candidate-v4-classify-71-result-entries-20260811-0922`.
+- Four official K files checked with existing parser; DB SELECT within `BEGIN READ ONLY`, log per-missing race_id with venue, DB result presence and K record category (COMPLETE6 / INCOMPLETE / HEADER_UNPARSED / RACE_NOT_FOUND / VENUE_NOT_FOUND). Absence of a K header is NOT proof of cancellation. No writes/repair.
+- Estimated runtime communicated: **2–5 min**; job timeout 10 min.
+- No matching previous command existed at launch. **DO NOT REPOST / DUPLICATE WHILE PENDING.**
+
 ## Next ONE task
-**Classify the 71 residual missing result-entry races read-only** against official K-file availability / race cancellation / nonstandard incident records. Prioritize exact race_id and venue/race_no for 8/11, 9/9, 9/21, 9/22 using bounded SELECTs. No writes, no repair until classification confirms why missing. For any launched command show estimated runtime; never repost pending command.
-After classification, finalize incident inventory and research V5 backtest/freeze. Production V4; automatic purchase LAST; Railway Agent/AI prohibited, cost <=USD20/mo ideally <=USD15.
+**Only check GitHub Issue #581 comment `6076014344` for bot classification result (or exact run/job if needed).**
+- If PASS: summarize per-day categories and venue/race_id patterns; decide whether eligible recoverable K rows or legitimate absence, but **do not fabricate missing results or launch repair without grounded evidence**.
+- If FAILED: inspect the one workflow/job, fix one root cause. No blind repeat.
+- After classification: incident inventory and V5 research backtest/freeze review. Production V4; auto purchase last. Railway Agent/AI prohibited, monthly spend <=USD20 ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
