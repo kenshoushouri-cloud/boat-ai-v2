@@ -6,6 +6,7 @@ from collections import Counter,defaultdict
 from datetime import date,datetime
 from typing import Any
 from db_pg import fetch_all
+from research.historical_void_registry import VERIFIED_VOID_RACE_IDS, EVIDENCE_REF
 
 START=os.getenv("START_DATE","2025-07-01")
 END=os.getenv("END_DATE","2026-10-05")
@@ -139,6 +140,22 @@ def opponent_probs(classes,base_probs,pstarts,pwins):
         raw.append(base*factor)
     s=sum(raw);return [x/s for x in raw],matched,weights
 
+def exclude_verified_void_rows(rows):
+    """Remove only official-K-confirmed whole-race cancellations.
+
+    Non-VOID races still require all separate six-boat and incident checks.
+    This is for retrospective research outcome/history data, not a claim
+    that cancellation was known before the historical prediction deadline.
+    """
+    retained=[]; excluded=0
+    for row in rows:
+        rid=row["race_id"]
+        if not isinstance(rid,str) or not rid:
+            raise ValueError("Research row must contain a valid race_id")
+        if rid in VERIFIED_VOID_RACE_IDS:excluded+=1
+        else:retained.append(row)
+    return retained,excluded
+
 def main():
     rc,ec,xc,cc,rec=cols("v2_races"),cols("v2_race_entries"),cols("v2_results"),cols("v2_realtime_exhibition_snapshots"),cols("v2_result_entries")
     if {"lane","racer_number","racer_class","recent_form"}-ec:raise RuntimeError("missing entry columns")
@@ -148,9 +165,11 @@ def main():
     fs=["r.race_date >= %s","r.race_date <= %s",f"({we}) between 1 and 6"]
     if "result_status" in xc:fs.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in xc:fs.append("coalesce(rs.race_status,'official')='official'")
-    races=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
+    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
       from v2_races r join v2_results rs on rs.race_id=r.race_id
       where {' and '.join(fs)} order by r.race_date,r.race_id""",(START,END))
+    # Outcome-side eligibility guard, before building winners, features, or metrics.
+    races,void_selected_excluded=exclude_verified_void_rows(selected_rows)
     es=fetch_all("""select e.race_id,e.lane,e.racer_number,e.racer_class,e.recent_form,
                             x.exhibition_time_rank
       from v2_race_entries e
@@ -158,10 +177,12 @@ def main():
       left join v2_realtime_exhibition_snapshots x
         on x.race_id=e.race_id and x.lane=e.lane and x.snapshot_label=%s
       where r.race_date between %s and %s order by e.race_id,e.lane""",(LABEL,START,END))
-    hist=fetch_all("""select re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
+    historical_rows=fetch_all("""select re.race_id,re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
       from v2_result_entries re join v2_races r on r.race_id=re.race_id
       where r.race_date between %s and %s and re.racer_number is not null
       order by r.race_date,re.race_id,re.lane""",(START,END))
+    # Guard the history-derived ability priors as well as scored outcomes.
+    hist,void_history_excluded=exclude_verified_void_rows(historical_rows)
 
     wb={str(r["race_id"]):int(r["winner"]) for r in races}
     db={str(r["race_id"]):iso(r["race_date"]) for r in races}
@@ -277,6 +298,10 @@ def main():
                    "strictly_prior_calendar_day":True,"same_day_results_used":False,
                    "parameter_search":False,"v4_opponent_logic_used":False,"v4_logic":False},
       "coverage":{"completed_races":len(races),"scored":n,"coverage_pct":100*n/len(races),"skipped":skip,
+                  "verified_void_registry_size":len(VERIFIED_VOID_RACE_IDS),
+                  "void_candidate_rows_excluded":void_selected_excluded,
+                  "void_history_rows_excluded":void_history_excluded,
+                  "void_evidence_ref":EVIDENCE_REF,
                   "invalid_entry_rows":invalid,"invalid_history_rows":badh,
                   "matched_pair_pct":100*tot["matched"]/tot["pairs"] if tot["pairs"] else None,
                   "mean_pair_shrink_weight":tot["ws"]/tot["wn"] if tot["wn"] else None,
