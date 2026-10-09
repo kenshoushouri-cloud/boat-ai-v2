@@ -122,8 +122,17 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - `v2_results` top-level was already confirmed 792/792 from previous read-only audit and Oct 05 fix.
 - No relaunch needed; do not repost command. No Production model, LINE, BUY, stake, plan or volume change.
 
-## Next ONE task
-Run the existing **read-only result-entry coverage preflight** for historical period 2026-08-01..2026-10-05, specifically confirming the 2026-10-01..05 detail coverage and current residual dates. Inspect only the specific relevant workflow and pending command first. Show estimated runtime before triggering; avoid duplicate or bulk runs.
-Then classify any remaining 8/11 and September residual gaps without fabricating data; rerun incident inventory only after coverage is finalized; proceed to V5 final backtest/freeze review. Production=V4; V5/V5.1 research-only. Automatic purchase LAST. Railway Agent/AI prohibited; target monthly cost <=USD20, ideally <=USD15.
+## ACTIVE PENDING — read-only result-entry coverage audit
+- Existing Oct 1–5 result-entry backfill completed PASS: Issue #581 result comment `6075705473`, 792/792 races and 4752 entry rows, all 5 days PASS. **Do not repeat backfill.**
+- New audit workflow: `.github/workflows/railway-candidate-v4-result-entries-coverage-audit-20260801-1005.yml`, commit `ab5fd324ca499b68c2c130006103ff33b1ee3f78`.
+- Issue #581 command comment ID **6075853528**: `/railway candidate-v4-result-entries-coverage-audit-20260801-1005`
+- Scope 2026-08-01..2026-10-05; PostgreSQL `BEGIN READ ONLY`; aggregate and missing/partial day counts for `v2_races` vs `v2_result_entries`; no changes to DB or production.
+- Estimated execution time shown to user **2–5 minutes**; workflow timeout 10 minutes.
+- **DO NOT DUPLICATE/RERUN while pending.**
 
+## Next ONE task
+**Only verify result of Issue #581 audit comment `6075853528`** (matching bot reply; if necessary the exact run/job).
+- On PASS, record coverage aggregate, 10/1–10/5 confirmation and residual missing/partial dates, then proceed to *read-only classification of remaining 8/11 and September gaps* in a separate turn.
+- On FAILED, inspect only the failed audit and remedy one issue at a time.
+- Then incident inventory; V5 research backtest/freeze review. Production V4 only; auto-purchase last. Railway Agent/AI forbidden; spending <=USD20/month ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
