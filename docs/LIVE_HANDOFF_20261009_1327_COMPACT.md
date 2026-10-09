@@ -185,6 +185,15 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Previous base opponent research guard 9/9 offline tests PASS (`6078124223`); do not confuse targeted unit PASS with an actual full-sample V5 backtest.
 - No DB, Railway or Production V4/LINE/BUY/stake change. V5 research-only, keep raw data and 2025-07-01..2026-10-05 frozen research window.
 
+## V5 calibration VOID guard — COMPLETE / PASS
+- Official K `中止` exactly 71 historical race IDs established at Issue #581 bot `6077502477`. Research-only `research/historical_void_registry.py`; never fabricate result or delete raw.
+- Representative V5 core `research/v5_lc_rf_exrank_rc_plus_opponent_pg.py` guard PASS 9/9 offline tests at `6078124223`. Weight optimization `research/v5_strong_core_weight_tuning_pg.py` PASS 1/1 offline test at `6078180261`.
+- **This turn:** `research/v5_strong_core_calibration_pg.py` commit `0eb35163b600e990c0b25b9d71a5f0dbcc6be8bc`: calls shared `b.exclude_verified_void_rows()` on selected outcomes and historical result-entry rows *before* fit/scoring. Research JSON outputs excluded candidate/history counts and `b.EVIDENCE_REF`. Existing train/Apr/May/late split and frozen temperature selection preserved.
+- Added `tests/test_v5_calibration_void_guard.py` commit `b994324723812f77859beeaf265949e400127a0a`, uses fake DB with deliberately mislabeled cancelled 9/21 津5R and completed 津4R / 三国9R; validates VOID excluded from score+history and model splits.
+- GitHub-only offline test workflow `.github/workflows/research-v5-calibration-void-offline-tests.yml` commit `da4a08784c834024621bac67235682508a616a5f`.
+- Issue #581 command comment `6078219291` run **ONCE**, bot result comment **`6078221781`**: `V5_CALIBRATION_VOID_TEST_PASS`, 1 test OK, process exit code 0. No pending action to rerun.
+- These are offline mock tests. **No live historical 2025-07-01..2026-10-05 backtest executed yet; NOT all V5 scripts covered**. No Production V4/LINE/BUY/stake, DB, Railway, plan, volume or raw data changes.
+
 ## Next ONE task
-Inspect and narrowly guard **`research/v5_strong_core_calibration_pg.py`** against exact official K 71 VOID race IDs in both selected outcomes and historic racer-course prior entries. Use shared established `b.exclude_verified_void_rows`, preserve non-VOID races and existing calibration split. Run one offline mocked regression check and record result before touching another script. Never execute bulk Production or Railway AI; monthly cost <=USD20 ideally <=USD15. Auto purchase LAST.
+Review remaining immediate V5 research scripts/dependencies (e.g. `research/v5_current_core_plus_venue_lane_pg.py`) for the same outcome/history VOID guard. Prefer one narrow file and offline test rather than bulk changes. Once core VOID guards are verified, do read-only incident inventory, then full-window V5 research-only backtest and freeze review; user expects mid-October operational target. Show estimated execution time before runs; avoid duplicate commands. Auto purchase LAST; Railway Agent/AI prohibited, target Railway <=USD20/mo, ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
