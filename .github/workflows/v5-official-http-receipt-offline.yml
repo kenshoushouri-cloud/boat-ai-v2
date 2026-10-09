@@ -1,0 +1,66 @@
+name: V5 mainline official HTTP receipt offline tests
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 official-http-receipt-offline-test-20261010'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate pure first-response receipt
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_official_http_receipt.py' -v > test-output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Concise evidence
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
+          keep=[s[:260] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 16 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:f.write("verified="+("true" if passed else "false")+"\n")
+          lines=[
+              "## V5 mainline official HTTP receipt",
+              "",
+              "- Offline only: no network, Railway, DB, Production V4, LINE, BUY or stake",
+              "- Validates official URL, raw bytes/digest and true response-completion time; no immutable first-write receipt or eligibility is claimed.",
+              "",
+              "~~~text",*keep[-32:],"~~~","",
+              "V5_MAINLINE_HTTP_RECEIPT_PASS" if passed else "V5_MAINLINE_HTTP_RECEIPT_FAILED"
+          ]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail on regression
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
