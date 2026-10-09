@@ -86,20 +86,21 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - The underlying process output was redirected to a temporary log that the workflow deleted. DB per-day progress is **unknown**, not zero.
 - **Do not rerun** full 2026-10-01..05 repair without a read-only coverage audit and a date-scoped plan.
 
-### ACTIVE PENDING READ-ONLY AUDIT — DO NOT DUPLICATE
-- New GitHub workflow: `.github/workflows/railway-candidate-v4-results-coverage-audit-20261001-05.yml`
-- Commit: `2797a54907c4d5645d05359d2c642a15a44af4c0`.
-- Issue #581 command comment id: **6075339999**
-- Command: `/railway candidate-v4-results-coverage-audit-20261001-05`
-- Performs PostgreSQL `BEGIN READ ONLY` and SELECT-only comparisons between `v2_races` and `v2_results` for each day 2026-10-01..05.
-- Expected execution time announced: about **2–5 min**, GitHub job timeout 10 min.
-- **Do not issue a duplicate command or restart while pending.** This does NOT perform result repair or write DB data.
+### Oct 1-5 read-only coverage audit — COMPLETED / PASS
+- Issue #581 audit command comment: `6075339999`.
+- Bot result comment: `6075344857` — `RESULTS_COVERAGE_AUDIT_20261001_05_PASS`.
+- DB: `postgres-hobby-fullhistory-candidate-v4`; transaction READ ONLY.
+- `v2_races` vs `v2_results` by date:
+  - 2026-10-01: BASE=168, RESULTS=168, MISSING=0, EXTRA=0
+  - 2026-10-02: BASE=168, RESULTS=168, MISSING=0, EXTRA=0
+  - 2026-10-03: BASE=156, RESULTS=156, MISSING=0, EXTRA=0
+  - 2026-10-04: BASE=156, RESULTS=156, MISSING=0, EXTRA=0
+  - 2026-10-05: BASE=144, RESULTS=0, MISSING=144, EXTRA=0
+  - TOTAL: BASE=792, RESULTS=648, MISSING=144, EXTRA=0.
+- All results for Oct 1-4 are present; only Oct 5 needs RESULTS repair. The earlier 90-minute five-day command was cancelled and **must not be relaunched**.
+- This audit made no DB changes. Raw repair progress before the audit is unknown.
 
 ## Next ONE task
-**Only check the result of Issue #581 command comment `6075339999` (and matching bot reply/run if needed).**
-- If PASS: record exact per-day BASE_RACES / RESULTS / MISSING / EXTRA, then use next turn to plan one date-scoped RESULTS-only repair; do not launch a repair now.
-- If FAILED: inspect only the specific audit job/error and fix one issue at a time.
-- After result coverage complete: run existing `v2_result_entries` backfill 10/1..10/5, read-only result-entry preflight, classify 8/11 and September residuals, incident inventory, then V5 backtest/freeze.
-- Production=V4, V5 research-only; automatic purchase last. No Railway Agent/AI or unnecessary Railway cost.
+Design/check a **2026-10-05 only**, `RESULTS=1, RACES=0, ODDS=0` safe backfill using the existing repair script and a new distinct command, with estimated runtime shown. Do not relaunch the five-day command. Keep one work item per turn and avoid increasing Railway costs; verify pending-run absence before any launch. When results are all present, proceed to 10/1-10/5 `v2_result_entries` backfill (one controlled run), subsequent read-only coverage check, remaining residual classification, incident inventory, then V5 final backtest/freeze review. Production=V4; automatic purchase last.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
