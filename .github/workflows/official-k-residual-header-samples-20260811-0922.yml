@@ -1,0 +1,129 @@
+name: Official K residual header samples Aug Sep
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sample:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway official-k-residual-header-samples-20260811-0922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install official K parser dependencies
+        run: python -m pip install requests lhafile==0.3.1
+
+      - name: Read limited K header samples
+        id: sample
+        shell: bash
+        run: |
+          cat > sample_k_headers.py <<'PY'
+          import re
+          import audit_k_day_all_pg as ka
+
+          examples = {
+              "2026-08-11": [("03", 1)],
+              "2026-09-09": [("03", 1)],
+              "2026-09-21": [("02", 1), ("03", 1), ("09", 4), ("09", 5), ("10", 9), ("10", 10)],
+              "2026-09-22": [("09", 1)],
+          }
+          keywords = ("中止", "不成立", "順延", "打切", "欠場", "荒天", "事故", "無効", "強風", "波浪", "開催", "取りやめ", "競走")
+          expected = sum(map(len, examples.values()))
+          printed = 0
+          print("NO_DB_ACCESS=YES", flush=True)
+          for day, targets in examples.items():
+              ka.TARGET_DATE = day
+              contents = ka.get_k_text(day)
+              sections = {x["venue_code"]: x for x in ka.split_venue_sections(contents.splitlines())}
+              print(f"DAY {day} SECTION_COUNT={len(sections)}", flush=True)
+              for venue, race_no in targets:
+                  section = sections.get(venue)
+                  if not section:
+                      print(f"SAMPLE {day} VENUE={venue} RACE={race_no} HEADER_NOT_FOUND=VENUE", flush=True)
+                      printed += 1
+                      continue
+                  lines = section["lines"]
+                  candidates = []
+                  for i, line in enumerate(lines):
+                      m = re.match(r"^(\d{1,2})R(?:\s|$)", ka.clean(line))
+                      if m and int(m.group(1)) == race_no:
+                          candidates.append(i)
+                  if not candidates:
+                      print(f"SAMPLE {day} VENUE={venue} RACE={race_no} HEADER_NOT_FOUND=RACE", flush=True)
+                      printed += 1
+                      continue
+                  i = candidates[0]
+                  header = lines[i]
+                  snippets = []
+                  for nxt in lines[i+1:i+8]:
+                      normalized = ka.clean(nxt)
+                      if re.match(r"^(\d{1,2})R(?:\s|$)", normalized):
+                          break
+                      if normalized:
+                          snippets.append(nxt[:180])
+                      if len(snippets) >= 3:
+                          break
+                  relevant = " ".join([header] + snippets)
+                  hits = [k for k in keywords if k in relevant]
+                  strict = ka.parse_header(header) is not None
+                  print(f"SAMPLE {day} VENUE={venue} RACE={race_no} STRICT_HEADER={'YES' if strict else 'NO'} FLAGS={','.join(hits) or 'NONE'} CANDIDATES={len(candidates)}", flush=True)
+                  print(f"RAW_HEADER {day} {venue} {race_no} {header[:220]!r}", flush=True)
+                  for n, snippet in enumerate(snippets, start=1):
+                      print(f"RAW_NEAR {day} {venue} {race_no} {n} {snippet!r}", flush=True)
+                  printed += 1
+          print(f"SAMPLE_COUNT={printed} EXPECTED={expected}", flush=True)
+          if printed != expected:
+              raise RuntimeError("Sample list incomplete")
+          print("READ_ONLY_HEADER_SAMPLE_COMPLETE=YES", flush=True)
+          PY
+          set +e
+          python -u sample_k_headers.py > header-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build brief result comment
+        id: report
+        if: always()
+        shell: bash
+        env:
+          CODE: ${{ steps.sample.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          s=Path("header-output.txt").read_text(encoding="utf-8",errors="replace") if Path("header-output.txt").exists() else ""
+          lines=[line[:380] for line in s.splitlines() if line.startswith(("NO_DB_ACCESS=", "DAY ", "SAMPLE ", "RAW_HEADER ", "RAW_NEAR ", "SAMPLE_COUNT=", "READ_ONLY_HEADER_SAMPLE_COMPLETE="))]
+          valid=os.getenv("CODE")=="0" and "READ_ONLY_HEADER_SAMPLE_COMPLETE=YES" in s and "SAMPLE_COUNT=9 EXPECTED=9" in s
+          with open(os.environ["GITHUB_OUTPUT"],"a") as o:
+              o.write("verified="+("true" if valid else "false")+"\n")
+          out=["## Official K residual-header samples (read only)","","- Scope: nine bounded samples in four K files","- No database connection, writes, Railway execution, or model changes","","~~~text",*lines,"~~~","",f"Process exit code: {os.getenv('CODE','?')}","K_HEADER_SAMPLES_PASS" if valid else "K_HEADER_SAMPLES_FAILED"]
+          Path("header-summary.md").write_text("\n".join(out)+"\n",encoding="utf-8")
+          PY
+
+      - name: Clean raw sample output
+        if: always()
+        run: rm -f header-output.txt
+
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file header-summary.md
+
+      - name: Fail when sample incomplete
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
