@@ -1,0 +1,65 @@
+name: V5 mainline first-write HTTP evidence offline tests
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 official-first-write-storage-offline-test-20261010'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: V5 mainline original HTTP receipt storage pure tests
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_official_first_write_storage.py' -v > test-output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Emit concise evidence
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("test-output.txt").read_text(encoding="utf-8", errors="replace") if Path("test-output.txt").exists() else ""
+          keep=[s[:270] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 20 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:f.write("verified="+("true" if passed else "false")+"\n")
+          lines=[
+              "## V5 mainline first-write original HTTP capture storage",
+              "",
+              "- GitHub-only pure synthetic tests; no network/Railway/DB/Production/LINE/BUY",
+              "- The SQL is an undeployed proposal; digest-consistent first stored bytes are NOT independent source provenance nor true Forward eligibility.",
+              "", "~~~text", *keep[-32:], "~~~", "",
+              "V5_MAINLINE_FIRST_WRITE_STORAGE_PASS" if passed else "V5_MAINLINE_FIRST_WRITE_STORAGE_FAILED"
+          ]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Report result to bridge issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail unsuccessful regression
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
