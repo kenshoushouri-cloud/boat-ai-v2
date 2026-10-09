@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261008_1155_COMPACT.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261009_1327_COMPACT.md`
 
 次チャットで読むのは次の3点だけ:
 1. `docs/HANDOFF_LATEST.md`
@@ -13,7 +13,8 @@
 - SHA/run/件数/容量は必要時だけlive取得。
 - Production=V4、V5/V5.1=research-only。
 - Railway費用 <= USD20、理想 <= USD15。Agent/AI禁止。
+- 実行開始時は推定所要時間を表示する。
 
-**Next ONE task:** Issue #581 command id `6051221908` の結果だけ確認。結果があれば判定、再実行禁止。
+**Next ONE task:** Issue #581 comment `6074271031` の結果だけ確認。pending中は再実行禁止。
 
-`COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN`
+`COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
