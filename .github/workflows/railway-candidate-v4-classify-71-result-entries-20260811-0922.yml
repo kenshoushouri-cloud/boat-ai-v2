@@ -1,0 +1,201 @@
+name: Candidate-v4 classify 71 residual K result entries
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-classify-71-result-entries-20260811-0922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Audit coverage read only
+        id: audit
+        shell: bash
+        run: |
+          cat > results_coverage_audit.py <<'PY'
+          import os
+          import re
+          from collections import Counter
+          import psycopg
+          import audit_k_day_all_pg as ka
+
+          days = ("2026-08-11", "2026-09-09", "2026-09-21", "2026-09-22")
+          print("DB_READ_ONLY=YES", flush=True)
+          print("SCOPE_DAYS=" + ",".join(days), flush=True)
+
+          with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=15) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("SET LOCAL statement_timeout = '60000ms'")
+                  cur.execute("""
+                    SELECT race_id, race_date, venue_code, race_no, status
+                    FROM v2_races
+                    WHERE race_date IN (%s, %s, %s, %s)
+                    ORDER BY race_date, venue_code, race_no
+                  """, days)
+                  base = [(str(a), str(b), str(c).zfill(2), int(d), str(e or ""))
+                          for a, b, c, d, e in cur.fetchall()]
+                  ids = [r[0] for r in base]
+                  cur.execute("SELECT race_id FROM v2_results WHERE race_id = ANY(%s)", (ids,))
+                  results = {str(row[0]) for row in cur.fetchall()}
+                  cur.execute("""
+                    SELECT race_id, COUNT(*) FROM v2_result_entries
+                    WHERE race_id = ANY(%s) GROUP BY race_id
+                  """, (ids,))
+                  counts = {str(a): int(b) for a, b in cur.fetchall()}
+                  conn.rollback()
+
+          gaps = [r for r in base if counts.get(r[0], 0) == 0]
+          partial = [r for r in base if 0 < counts.get(r[0], 0) != 6]
+          print(f"DB_BASE={len(base)} DB_MISSING={len(gaps)} DB_PARTIAL_OR_OVER6={len(partial)}", flush=True)
+          if len(base) == 0 or partial:
+              raise RuntimeError("Unexpected DB base/partial state; manual review needed")
+
+          all_classes = Counter()
+          for day in days:
+              ka.TARGET_DATE = day
+              raw = ka.get_k_text(day)
+              sections = ka.split_venue_sections(raw.splitlines())
+              parsed = {}
+              headers = set()
+              venue_sections = {x["venue_code"] for x in sections}
+              for section in sections:
+                  venue = section["venue_code"]
+                  for entry in ka.parse_section(section):
+                      parsed[entry["race_id"]] = entry
+                  for line in section["lines"]:
+                      m = re.match(r"^([0-9]{1,2})R(?:\s|$)", ka.clean(line))
+                      if m:
+                          headers.add((venue, int(m.group(1))))
+
+              missing_today = [x for x in gaps if x[1] == day]
+              classes = Counter()
+              venue_counts = Counter()
+              for rid, dt, venue, race_no, status in missing_today:
+                  official = parsed.get(rid)
+                  if official is not None:
+                      entry_count = len(official["entries"])
+                      category = "K_COMPLETE6" if entry_count == 6 else "K_INCOMPLETE"
+                      abnormal = sum(
+                          1 for e in official["entries"]
+                          if e.get("finish_position") is None
+                      )
+                      parser_fail = len(official["parse_failed_candidate_lines"])
+                  elif venue not in venue_sections:
+                      category = "K_VENUE_NOT_FOUND"
+                      entry_count = abnormal = parser_fail = 0
+                  elif (venue, race_no) in headers:
+                      category = "K_HEADER_UNPARSED"
+                      entry_count = abnormal = parser_fail = 0
+                  else:
+                      category = "K_RACE_NOT_FOUND"
+                      entry_count = abnormal = parser_fail = 0
+                  classes[category] += 1
+                  all_classes[category] += 1
+                  venue_counts[venue] += 1
+                  print(
+                      f"RACE {rid} VENUE={venue} RACE_NO={race_no}"
+                      f" CATEGORY={category} K_ENTRIES={entry_count}"
+                      f" K_ABNORMAL={abnormal} K_PARSE_ERRORS={parser_fail}"
+                      f" DB_RESULT={'YES' if rid in results else 'NO'}"
+                      f" DB_STATUS={status[:30]}",
+                      flush=True,
+                  )
+              by_kind = ",".join(f"{k}:{v}" for k, v in sorted(classes.items())) or "none"
+              by_venue = ",".join(f"{k}:{v}" for k, v in sorted(venue_counts.items())) or "none"
+              print(
+                  f"DAY {day} BASE={sum(1 for x in base if x[1] == day)}"
+                  f" MISSING={len(missing_today)} K_PARSED_RACES={len(parsed)}"
+                  f" VENUE_SECTIONS={len(venue_sections)}"
+                  f" CLASSIFICATIONS={by_kind} MISSING_BY_VENUE={by_venue}",
+                  flush=True,
+              )
+          summary = ",".join(f"{k}:{v}" for k, v in sorted(all_classes.items()))
+          print(f"SUMMARY MISSING={len(gaps)} CLASSIFICATIONS={summary}", flush=True)
+          print("READ_ONLY_CLASSIFICATION_COMPLETE=YES", flush=True)
+          PY
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="${DATABASE_PUBLIC_URL}"; exec python -u results_coverage_audit.py' \
+            > audit-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          raw = Path("audit-output.txt").read_text(encoding="utf-8", errors="replace") if Path("audit-output.txt").exists() else ""
+          safe = [line[:240] for line in raw.splitlines() if line.startswith(("DB_READ_ONLY=", "SCOPE_DAYS=", "DB_BASE=", "DB_MISSING=", "RACE ", "DAY ", "SUMMARY ", "READ_ONLY_CLASSIFICATION_COMPLETE="))]
+          status = "PASS" if os.environ.get("EXIT_CODE") == "0" and "READ_ONLY_CLASSIFICATION_COMPLETE=YES" in raw else "FAILED"
+          lines = [
+              "## Candidate-v4 official K residual classification — read only",
+              "",
+              "- DB: postgres-hobby-fullhistory-candidate-v4",
+              "- SELECT only; transaction READ ONLY; no repair or writes",
+              "- Output: database state at time of audit",
+              "",
+              "```text",
+              *safe,
+              "```",
+              "",
+              f"K_RESIDUAL_CLASSIFICATION_71_{status}",
+          ]
+          Path("audit-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        run: rm -f audit-output.txt
+
+      - name: Post audit result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file audit-summary.md
+
+      - name: Fail when audit not complete
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
