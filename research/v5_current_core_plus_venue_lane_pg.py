@@ -14,12 +14,16 @@ def main():
     rc,ec,xc,cc,rec=b.cols("v2_races"),b.cols("v2_race_entries"),b.cols("v2_results"),b.cols("v2_realtime_exhibition_snapshots"),b.cols("v2_result_entries")
     if {"lane","racer_number","racer_class","recent_form"}-ec: raise RuntimeError("missing entry columns")
     if {"race_id","lane","exhibition_time_rank"}-cc: raise RuntimeError("missing exhibition columns")
-    if {"racer_number","start_course","finish_position"}-rec: raise RuntimeError("missing result history columns")
+    if {"race_id","lane","racer_number","start_course","finish_position","finish_status","is_flying","is_late"}-rec:
+        raise RuntimeError("missing incident evidence columns for fail-closed research fit")
     we=b.winexpr(xc);ve=b.venueexpr(rc)
     fs=["r.race_date >= %s","r.race_date <= %s",f"({we}) between 1 and 6"]
     if "result_status" in xc: fs.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in xc: fs.append("coalesce(rs.race_status,'official')='official'")
-    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
+    status_select=("rs.result_status" if "result_status" in xc else "NULL::text")
+    race_select=("rs.race_status" if "race_status" in xc else "NULL::text")
+    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner,
+          {status_select} as result_status,{race_select} as race_status
       from v2_races r join v2_results rs on rs.race_id=r.race_id
       where {' and '.join(fs)} order by r.race_date,r.race_id""",(START,END))
     # Research-only: remove evidence-confirmed cancelled races before scoring or priors.
@@ -31,12 +35,18 @@ def main():
       left join v2_realtime_exhibition_snapshots x
         on x.race_id=e.race_id and x.lane=e.lane and x.snapshot_label=%s
       where r.race_date between %s and %s order by e.race_id,e.lane""",(b.LABEL,START,END))
-    historical_rows=fetch_all("""select re.race_id,re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
+    historical_rows=fetch_all(f"""select re.race_id,re.lane,re.racer_number,re.start_course,re.finish_position,
+          re.finish_status,re.is_flying,re.is_late,r.race_date::date race_date,
+          {status_select} as result_status,{race_select} as race_status
       from v2_result_entries re join v2_races r on r.race_id=re.race_id
-      where r.race_date between %s and %s and re.racer_number is not null
+      left join v2_results rs on rs.race_id=re.race_id
+      where r.race_date between %s and %s
       order by r.race_date,re.race_id,re.lane""",(START,END))
-    # Retrospective racer-course history must not include cancelled race results.
-    hist,void_history_excluded=b.exclude_verified_void_rows(historical_rows)
+    # Retrospective result evidence is only a research fit gate, not pre-deadline knowledge.
+    void_safe_history,void_history_excluded=b.exclude_verified_void_rows(historical_rows)
+    races,hist,incident_candidate_exclusions,incident_history_exclusions=b.filter_postrace_primary_training(
+        races,void_safe_history
+    )
 
     wb={str(r["race_id"]):int(r["winner"]) for r in races}
     db={str(r["race_id"]):b.iso(r["race_date"]) for r in races}
@@ -162,6 +172,10 @@ def main():
                   "void_candidate_rows_excluded":void_selected_excluded,
                   "void_history_rows_excluded":void_history_excluded,
                   "void_evidence_ref":b.EVIDENCE_REF,
+                  "incident_candidate_exclusions":incident_candidate_exclusions,
+                  "incident_history_races_exclusions":incident_history_exclusions,
+                  "incident_guard":"result_side_research_fit_only",
+                  "result_side_not_predeadline_evidence":True,
                   "invalid_entry_rows":invalid,"invalid_history_rows":badh,
                   "matched_pair_pct":100*tot["oppmatched"]/tot["opppairs"] if tot["opppairs"] else None,
                   "venue_lane_mean_shrink_weight":tot["vws"]/tot["vwn"] if tot["vwn"] else 0.0,
