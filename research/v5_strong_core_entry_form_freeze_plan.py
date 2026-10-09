@@ -151,6 +151,8 @@ def prepare_entry_form_freeze(
             supplied = _aware_time(item.get("published_at"))
             _require(supplied is not None and supplied == observed,
                      "UNSUPPORTED_PRIOR_PUBLICATION_TIME")
+            _require(_aware_time(scans[racer]["checked_at"]) >= observed,
+                     "SCAN_PRECEDES_OFFICIAL_RESULT_OBSERVATION")
             referenced.add(key)
 
     _require(set(scans) == racers, "EXTRA_OR_MISSING_HISTORY_SCAN")
