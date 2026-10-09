@@ -129,20 +129,19 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Remaining missing (race has ZERO result-entry rows): 2026-08-11=12, 2026-09-09=12, 2026-09-21=35, 2026-09-22=12. No partial6 or >6 anomalies. Do not invent missing official K rows.
 - Historical backtest window remains 2025-07-01..2026-10-05, not 10/06+ data.
 
-## ACTIVE PENDING — 71 residual K classification read-only
-- Previous result-entry coverage audit PASSED: Issue #581 comment `6075857637`, period 2026-08-01..10-05, 66 days, BASE=10380, COMPLETE6=10309, MISSING=71, PARTIAL=0, OVER6=0, gap days=4.
-- Residual days: 8/11=12, 9/9=12, 9/21=35, 9/22=12. 10/01–05: all 792 races complete, do not rerun backfill.
-- New classification workflow: `.github/workflows/railway-candidate-v4-classify-71-result-entries-20260811-0922.yml`
-- Workflow commit `b8ac7a316529b74b218458fe26d0e341f617bcd2`
-- Issue #581 command comment ID: **6076014344**
-- Command: `/railway candidate-v4-classify-71-result-entries-20260811-0922`.
-- Four official K files checked with existing parser; DB SELECT within `BEGIN READ ONLY`, log per-missing race_id with venue, DB result presence and K record category (COMPLETE6 / INCOMPLETE / HEADER_UNPARSED / RACE_NOT_FOUND / VENUE_NOT_FOUND). Absence of a K header is NOT proof of cancellation. No writes/repair.
-- Estimated runtime communicated: **2–5 min**; job timeout 10 min.
-- No matching previous command existed at launch. **DO NOT REPOST / DUPLICATE WHILE PENDING.**
+## 71 residual result-entry K classification — COMPLETE / PASS
+- Issue #581 command `6076014344` and bot result `6076028310`: `K_RESIDUAL_CLASSIFICATION_71_PASS`.
+- Read-only official K + DB inspection (2026-08-11, 09-09, 09-21, 09-22): DB_BASE=648, DB_MISSING=71, DB_PARTIAL_OR_OVER6=0.
+- All **71** missing-entry race IDs are category **K_HEADER_UNPARSED**: loose `1R...12R` header present in K venue section, but strict `parse_header()` does not parse it into a normal race; result-entry count=0. ALL 71 have top-level `v2_results` rows. This is **NOT proof of cancellation** and does not justify fabricated result entries.
+- By venue/date:
+  - 08/11 江戸川(03) 1–12R = 12, DB status=official
+  - 09/09 江戸川(03) 1–12R = 12, status=scheduled
+  - 09/21 戸田(02) 1–12R = 12; 江戸川(03) 1–12R = 12; 津(09) 5–12R = 8; 三国(10) 10–12R = 3; all scheduled
+  - 09/22 津(09) 1–12R = 12, scheduled.
+- Previous full coverage read-only audit: 10380 base / 10309 complete6 / 71 missing; Oct01–05 all 792/792 complete. Raw data retained, Production V4 unchanged.
 
 ## Next ONE task
-**Only check GitHub Issue #581 comment `6076014344` for bot classification result (or exact run/job if needed).**
-- If PASS: summarize per-day categories and venue/race_id patterns; decide whether eligible recoverable K rows or legitimate absence, but **do not fabricate missing results or launch repair without grounded evidence**.
-- If FAILED: inspect the one workflow/job, fix one root cause. No blind repeat.
-- After classification: incident inventory and V5 research backtest/freeze review. Production V4; auto purchase last. Railway Agent/AI prohibited, monthly spend <=USD20 ideally <=USD15.
+Inspect a **small, bounded sample of RAW official K header lines** corresponding to the `K_HEADER_UNPARSED` cases in the four affected days, read-only; detect explicit text indicating cancellation/interruption/formatting variation. Do not modify parser, DB or model and do not assume cancellations until supported by explicit official evidence. Prefer reuse of official K file parser helpers. If launching a run, show estimated duration before starting, cap work and avoid duplicate pending command. After evidence review, decide safe eligibility/exclusion treatment, then incident inventory and V5 research backtest/freeze. Auto purchase LAST.
+- Railway Agent/AI prohibited; monthly cost <=USD20 ideally <=USD15. One task per turn; no bulk history or polling loops.
+
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
