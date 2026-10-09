@@ -154,7 +154,15 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Existing sampled K evidence on 2026-09-21: 戸田(02) 1R cancelled, 江戸川(03) 1R cancelled, 津(09) 4R has payout / 5R cancelled, 三国(10) 9R has payout / 10R cancelled. Do not classify **all races** at partially interrupted venues as cancelled.
 - Preserve every completed race's normal result/learning eligibility (subject to separate incident rules). Explicit cancelled races: `VOID` / no stake or learning. Never delete raw rows, fabricate finishing order or conflate `scheduled` in DB with a confirmed official result. Distinguish **pre-race cancellation** versus **during-race incident**, using official evidence.
 
+## ACTIVE PENDING — exact 71/71 official K cancellation marker verification
+- Context: result-entry coverage for 2026-08-01..10-05: 10380 base races / 10309 complete6 / 71 missing across Aug11 (江戸川12), Sep09 (江戸川12), Sep21 (戸田12, 江戸川12, 津8, 三国3), Sep22 (津12). Oct01-05 all 792 complete, no re-backfill.
+- Raw K nine-sample inspection run `37897211423` PASS; seven residual examples display explicit `中　止` with full-width space; two preceding races (9/21 津4R and 三国9R) have actual payouts. 71 total **not yet fully verified**.
+- New GitHub-only workflow `.github/workflows/official-k-verify-all-71-cancellations-20260811-0922.yml` commit `8e2f7848a9d337c7f2817c4f04c7d5de9b733c9e`.
+- Issue #581 command ID **6077489287**: `/railway official-k-verify-all-71-cancellations-20260811-0922`.
+- Reads exactly 71 known date/venue/race IDs in four official K files, normalizes whitespace and checks explicit race-specific `中止` marker versus OTHER_UNPARSED / NO_K_HEADER / CONFLICT. Protect completed racing results from misclassification. **No DB or Railway calls.**
+- Estimated execution time shown before launch: **2–5 min**, GitHub run timeout 10 min.
+- Pending command: **DO NOT REPOST / DUPLICATE**. If PASS, verify `SUMMARY AUDITED=71` and `CANCEL_EXPLICIT` count; workflow PASS means classification complete, not necessarily all cancelled.
+
 ## Next ONE task
-Perform ONE bounded read-only **71/71 explicit cancellation marker verification** using the four official K files and the exact 71 residual race IDs/venue/race_no. Strip full-width/ascii whitespace before matching `中止` and distinguish CANCEL_EXPLICIT vs OTHER_UNPARSED/AMBIGUOUS. No DB mutations, no cancellation inference from parser mismatch alone. Prefer a GitHub-only tool; show runtime estimate before launch and do not duplicate pending command.
-Only after 71/71 evidence classification, formalize historical eligibility / VOID / exclusion handling per `docs/RACE_INCIDENT_HANDLING_CONTRACT_20261009.md`, then incident inventory and V5 research-only backtest/freeze review. Production V4, auto-purchase LAST. Railway Agent/AI forbidden; monthly spend <=USD20, ideally <=USD15.
+**Only check Issue #581 command `6077489287` bot result and exact run if needed.** On PASS classify all 71 using the actual explicit-cancellation count, then separately apply conservative `VOID / zero investment / no training` eligibility rules without deleting source data. On FAILED inspect only its job/log. Sep21 typhoon-related all-day vs mid-card cancellations must remain separated. Production=V4, V5 research-only, automatic purchase LAST. Railway Agent/AI prohibited, costs <=USD20/mo preferably <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
