@@ -100,21 +100,16 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - All results for Oct 1-4 are present; only Oct 5 needs RESULTS repair. The earlier 90-minute five-day command was cancelled and **must not be relaunched**.
 - This audit made no DB changes. Raw repair progress before the audit is unknown.
 
-## ACTIVE PENDING COMMAND — DO NOT DUPLICATE
-- Distinct missing-only repair workflow: `.github/workflows/railway-candidate-v4-results-repair-20261005-missing-only.yml`
-- Workflow commit: `054e17555c19ea5f11e6d74ee22625cacedad56c`
-- Issue #581 command comment ID: **6075467401**
-- Command: `/railway candidate-v4-results-repair-20261005-missing-only CONFIRM`
-- Scope: **2026-10-05 ONLY**. A live READ-ONLY selection targets existing `v2_races` records lacking `v2_results` (expected 144); it explicitly FAIL-CLOSES if baseline count != 144 or unexpected IDs/extra results. Dates 10/1-4 excluded.
-- Repair uses `REPAIR_RACE_IDS`, `DO_RACES=0`, `DO_RESULTS=1`, `DO_ODDS=0`, workers=2, sleep=0.1; no Production model/LINE/purchase/stake/plan/volume changes.
-- After repair, a separate READ-ONLY recheck verifies exactly 144/144 with MISSING=0, EXTRA=0. The workflow reports PASS only when exit=0 AND `RESULTS_REPAIR_OCT05_VERIFIED_PASS` is emitted.
-- **Estimated runtime communicated: 15–30 min; job timeout: 60 min.**
-- **DO NOT REPOST / RERUN WHILE PENDING.** The prior Oct 1-5 90-minute command was cancelled; never relaunch it.
+## Oct 05 missing-only RESULTS repair — COMPLETED / PASS
+- Issue #581 command `6075467401`, result comment `6075638332`.
+- GitHub run `37892542149`: completed SUCCESS, 2026-10-09 15:27 JST (~13 min).
+- Target DB: `postgres-hobby-fullhistory-candidate-v4`.
+- Target **2026-10-05 only**: before BASE=144, RESULTS=0, MISSING=144; processed 144/144 success, 0 failures; DB after BASE=144, RESULTS=144, MISSING=0, EXTRA=0.
+- `RESULTS_REPAIR_OCT05_VERIFIED_PASS` and process exit 0.
+- Combined 2026-10-01..05 `v2_results`: 792/792 confirmed (Oct1=168, Oct2=168, Oct3=156, Oct4=156, Oct5=144). Do NOT rerun either previous RESULTS repair.
+- No Production model / LINE / purchase / stake / Railway plan or volume change.
 
 ## Next ONE task
-**Only check the result of Issue #581 command comment `6075467401` (the matching bot reply / one exact GitHub run if necessary).**
-- If PASS: Oct 1-5 `v2_results` expected complete; plan the existing Oct 1-5 `v2_result_entries` backfill (check no same command pending; show estimate before launching). Do not run additional stages in same turn.
-- If FAILED/CANCELLED: inspect ONLY the relevant workflow/job and fix one cause at a time, using saved before/after counts; avoid duplicate run.
-- Then result-entry preflight, residuals 8/11 + September, incident inventory, V5 final backtest and freeze review. Auto-purchase LAST.
+Inspect the existing **2026-10-01..05 `v2_result_entries` backfill** workflow and any pending command, then run it at most once if safe. Show expected execution time BEFORE launching. Prefer bounded resources and avoid duplicating pending commands; if output shows other prerequisites missing, fail closed and diagnose. After completing backfill, run read-only coverage preflight, classify remaining 8/11 and September gaps, incident inventory, then V5 final backtest/freeze review. Automatic purchase LAST. Production=V4; V5/V5.1 research-only; Railway Agent/AI prohibited. Cost <=USD20/month ideally <=USD15.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
