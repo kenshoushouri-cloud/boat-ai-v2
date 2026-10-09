@@ -7,6 +7,7 @@ from datetime import date,datetime
 from typing import Any
 from db_pg import fetch_all
 from research.historical_void_registry import VERIFIED_VOID_RACE_IDS, EVIDENCE_REF
+from research.historical_incident_eligibility import classify_historical_incident
 
 START=os.getenv("START_DATE","2025-07-01")
 END=os.getenv("END_DATE","2026-10-05")
@@ -156,16 +157,70 @@ def exclude_verified_void_rows(rows):
         else:retained.append(row)
     return retained,excluded
 
+def filter_postrace_primary_training(rows, history_rows):
+    """Retrospective primary-fit eligibility, never a pre-deadline prediction gate.
+
+    Six official result entries, normal finish statuses and known false F/L flags
+    are required per race. Normal-looking rows still pass other feature gates.
+    This does not re-settle any actual historical bets.
+    """
+    by_id=defaultdict(list)
+    history_db_status={}
+    for h in history_rows:
+        rid=h["race_id"]
+        by_id[rid].append({
+            "lane":h["lane"],
+            "finish_status":h["finish_status"],
+            "is_flying":h["is_flying"],
+            "is_late":h["is_late"],
+        })
+        status=(h.get("result_status"),h.get("race_status"))
+        if rid in history_db_status and history_db_status[rid]!=status:
+            raise ValueError("Conflicting result status for race_id: "+str(rid))
+        history_db_status[rid]=status
+
+    history_decisions={}
+    historical_excluded_races=Counter()
+    for rid,entries in by_id.items():
+        status=history_db_status[rid]
+        d=classify_historical_incident(rid,entries,result_status=status[0],race_status=status[1])
+        history_decisions[rid]=d
+        if d.state!="NO_INCIDENT_EVIDENCE":
+            historical_excluded_races[d.state]+=1
+
+    retained_rows=[]
+    excluded_candidates=Counter()
+    for row in rows:
+        rid=row["race_id"]
+        d=classify_historical_incident(
+            rid,by_id.get(rid),
+            result_status=row.get("result_status"),
+            race_status=row.get("race_status"),
+        )
+        if d.state=="NO_INCIDENT_EVIDENCE":
+            retained_rows.append(row)
+        else:
+            excluded_candidates[d.state]+=1
+
+    history=[h for h in history_rows
+             if h["race_id"] in history_decisions and
+             history_decisions[h["race_id"]].state=="NO_INCIDENT_EVIDENCE"]
+    return retained_rows,history,dict(excluded_candidates),dict(historical_excluded_races)
+
 def main():
     rc,ec,xc,cc,rec=cols("v2_races"),cols("v2_race_entries"),cols("v2_results"),cols("v2_realtime_exhibition_snapshots"),cols("v2_result_entries")
     if {"lane","racer_number","racer_class","recent_form"}-ec:raise RuntimeError("missing entry columns")
     if {"race_id","lane","exhibition_time_rank"}-cc:raise RuntimeError("missing exhibition columns")
-    if {"racer_number","start_course","finish_position"}-rec:raise RuntimeError("missing result history columns")
+    if {"race_id","lane","racer_number","start_course","finish_position","finish_status","is_flying","is_late"}-rec:
+        raise RuntimeError("missing incident evidence columns for fail-closed research fit")
     we=winexpr(xc);ve=venueexpr(rc)
     fs=["r.race_date >= %s","r.race_date <= %s",f"({we}) between 1 and 6"]
     if "result_status" in xc:fs.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in xc:fs.append("coalesce(rs.race_status,'official')='official'")
-    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
+    status_select=("rs.result_status" if "result_status" in xc else "NULL::text")
+    race_select=("rs.race_status" if "race_status" in xc else "NULL::text")
+    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner,
+          {status_select} as result_status,{race_select} as race_status
       from v2_races r join v2_results rs on rs.race_id=r.race_id
       where {' and '.join(fs)} order by r.race_date,r.race_id""",(START,END))
     # Outcome-side eligibility guard, before building winners, features, or metrics.
@@ -177,12 +232,19 @@ def main():
       left join v2_realtime_exhibition_snapshots x
         on x.race_id=e.race_id and x.lane=e.lane and x.snapshot_label=%s
       where r.race_date between %s and %s order by e.race_id,e.lane""",(LABEL,START,END))
-    historical_rows=fetch_all("""select re.race_id,re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
+    historical_rows=fetch_all(f"""select re.race_id,re.lane,re.racer_number,re.start_course,re.finish_position,
+          re.finish_status,re.is_flying,re.is_late,r.race_date::date race_date,
+          {status_select} as result_status,{race_select} as race_status
       from v2_result_entries re join v2_races r on r.race_id=re.race_id
-      where r.race_date between %s and %s and re.racer_number is not null
+      left join v2_results rs on rs.race_id=re.race_id
+      where r.race_date between %s and %s
       order by r.race_date,re.race_id,re.lane""",(START,END))
-    # Guard the history-derived ability priors as well as scored outcomes.
-    hist,void_history_excluded=exclude_verified_void_rows(historical_rows)
+    # Official K-confirmed cancellations first; subsequently enforce incident
+    # evidence on both selected outcomes and racer-course historical priors.
+    void_safe_history,void_history_excluded=exclude_verified_void_rows(historical_rows)
+    races,hist,incident_candidate_exclusions,incident_history_exclusions=filter_postrace_primary_training(
+        races,void_safe_history
+    )
 
     wb={str(r["race_id"]):int(r["winner"]) for r in races}
     db={str(r["race_id"]):iso(r["race_date"]) for r in races}
@@ -302,6 +364,10 @@ def main():
                   "void_candidate_rows_excluded":void_selected_excluded,
                   "void_history_rows_excluded":void_history_excluded,
                   "void_evidence_ref":EVIDENCE_REF,
+                  "incident_candidate_exclusions":incident_candidate_exclusions,
+                  "incident_history_races_exclusions":incident_history_exclusions,
+                  "incident_guard":"result_side_research_fit_only",
+                  "result_side_not_predeadline_evidence":True,
                   "invalid_entry_rows":invalid,"invalid_history_rows":badh,
                   "matched_pair_pct":100*tot["matched"]/tot["pairs"] if tot["pairs"] else None,
                   "mean_pair_shrink_weight":tot["ws"]/tot["wn"] if tot["wn"] else None,
