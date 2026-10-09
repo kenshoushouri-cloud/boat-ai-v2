@@ -80,27 +80,26 @@ First run timed out at exactly 30 minutes; GitHub run `37878920159` concluded ca
 Workflow timeout was extended **30 -> 90 minutes**:
 commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 
-### ACTIVE PENDING COMMAND — DO NOT DUPLICATE
-Issue #581 comment id:
-**6074271031**
-Command:
-`/railway candidate-v4-results-repair-20261001-05 CONFIRM`
+### Last results-only repair — CLOSED / CANCELLED
+- Issue #581 command comment `6074271031` completed with bot result `6075249663`: FAILED.
+- GitHub run `37884046769` ended `cancelled` after ~90 min; step "Repair results only" cancelled.
+- The underlying process output was redirected to a temporary log that the workflow deleted. DB per-day progress is **unknown**, not zero.
+- **Do not rerun** full 2026-10-01..05 repair without a read-only coverage audit and a date-scoped plan.
 
-Estimated runtime already communicated to user:
-**about 35-60 minutes**, workflow timeout 90 minutes.
+### ACTIVE PENDING READ-ONLY AUDIT — DO NOT DUPLICATE
+- New GitHub workflow: `.github/workflows/railway-candidate-v4-results-coverage-audit-20261001-05.yml`
+- Commit: `2797a54907c4d5645d05359d2c642a15a44af4c0`.
+- Issue #581 command comment id: **6075339999**
+- Command: `/railway candidate-v4-results-coverage-audit-20261001-05`
+- Performs PostgreSQL `BEGIN READ ONLY` and SELECT-only comparisons between `v2_races` and `v2_results` for each day 2026-10-01..05.
+- Expected execution time announced: about **2–5 min**, GitHub job timeout 10 min.
+- **Do not issue a duplicate command or restart while pending.** This does NOT perform result repair or write DB data.
 
 ## Next ONE task
-**Only check the result of Issue #581 comment `6074271031`. Do not relaunch while pending.**
-If PASS:
-1. rerun the existing 10/1-10/5 `v2_result_entries` backfill once;
-2. estimate and show expected runtime before/at launch.
-If FAILED:
-- inspect only the relevant run/job/log for this workflow, identify the exact cause, and fix one issue at a time.
-After 10/1-10/5 details complete:
-- rerun result-entry preflight read-only;
-- classify remaining 8/11, 9/9, 9/21, 9/22 gaps without fabricating;
-- rerun incident inventory with completed coverage;
-- then proceed toward V5 final backtest/freeze decision.
-Automatic purchase remains last.
+**Only check the result of Issue #581 command comment `6075339999` (and matching bot reply/run if needed).**
+- If PASS: record exact per-day BASE_RACES / RESULTS / MISSING / EXTRA, then use next turn to plan one date-scoped RESULTS-only repair; do not launch a repair now.
+- If FAILED: inspect only the specific audit job/error and fix one issue at a time.
+- After result coverage complete: run existing `v2_result_entries` backfill 10/1..10/5, read-only result-entry preflight, classify 8/11 and September residuals, incident inventory, then V5 backtest/freeze.
+- Production=V4, V5 research-only; automatic purchase last. No Railway Agent/AI or unnecessary Railway cost.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
