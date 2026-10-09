@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import urllib.request
+from pathlib import Path
 import lhafile
 import psycopg
 from psycopg.rows import dict_row
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from save_k_day_results_pg import parse_k_text
 
 TARGET_DATE=os.getenv("TARGET_DATE","2026-08-21")
