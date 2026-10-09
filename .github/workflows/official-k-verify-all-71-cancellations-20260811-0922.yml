@@ -1,0 +1,161 @@
+name: Official K verify exact 71 cancellation headers
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway official-k-verify-all-71-cancellations-20260811-0922'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install official K parser dependencies
+        run: python -m pip install requests lhafile==0.3.1
+      - name: Verify explicit markers (read only)
+        id: verify
+        shell: bash
+        run: |
+          cat > verify_all71_k.py <<'PY'
+          import re
+          from collections import Counter
+          import audit_k_day_all_pg as ka
+          
+          # Exact residual race IDs from the completed read-only DB audit.
+          # Include all 71, no extrapolation beyond this scope.
+          targets = {
+              "2026-08-11": {"03": list(range(1, 13))},
+              "2026-09-09": {"03": list(range(1, 13))},
+              "2026-09-21": {
+                  "02": list(range(1, 13)),
+                  "03": list(range(1, 13)),
+                  "09": list(range(5, 13)),
+                  "10": list(range(10, 13)),
+              },
+              "2026-09-22": {"09": list(range(1, 13))},
+          }
+          def normalize(s):
+              return re.sub(r"\s+", "", str(s))
+          def is_cancel(line, race):
+              return re.match(rf"^{race}R中止(?:$|[^0-9])", normalize(line)) is not None
+          def header_race(line):
+              m = re.match(r"^(\d{1,2})R(?:\s|$)", ka.clean(line))
+              return int(m.group(1)) if m else None
+          
+          expected = sum(len(numbers) for venues in targets.values() for numbers in venues.values())
+          if expected != 71:
+              raise RuntimeError(f"Expected 71 exact residuals, got {expected}")
+          print("NO_DB_ACCESS=YES", flush=True)
+          print("EXACT_TARGET_IDS=71", flush=True)
+          summary = Counter()
+          audited = 0
+          for date, venues in targets.items():
+              ka.TARGET_DATE = date
+              raw = ka.get_k_text(date)
+              sections = ka.split_venue_sections(raw.splitlines())
+              by_venue = {s["venue_code"]: s for s in sections}
+              for venue, numbers in venues.items():
+                  section = by_venue.get(venue)
+                  if section:
+                      headers = {}
+                      for line in section["lines"]:
+                          number = header_race(line)
+                          if number is not None:
+                              headers.setdefault(number, []).append(line)
+                      parsed_ids = {r["race_id"] for r in ka.parse_section(section)}
+                  else:
+                      headers = {}
+                      parsed_ids = set()
+                  local = Counter()
+                  for race in numbers:
+                      rid = ka.race_id(date, venue, race)
+                      lines = headers.get(race, [])
+                      explicit = [line for line in lines if is_cancel(line, race)]
+                      other = [line for line in lines if not is_cancel(line, race)]
+                      if rid in parsed_ids or (explicit and other) or len(explicit) > 1:
+                          category = "CONFLICT"
+                      elif len(explicit) == 1:
+                          category = "CANCEL_EXPLICIT"
+                      elif lines:
+                          category = "OTHER_UNPARSED"
+                      else:
+                          category = "NO_K_HEADER"
+                      audited += 1
+                      local[category] += 1
+                      summary[category] += 1
+                      if category != "CANCEL_EXPLICIT":
+                          sample = normalize(lines[0])[:90] if lines else "none"
+                          print(f"EXCEPTION ID={rid} CATEGORY={category} HEADERS={len(lines)} RAW_NORMALIZED={sample!r}", flush=True)
+                  detail = ",".join(f"{key}:{local[key]}" for key in sorted(local))
+                  print(f"GROUP DATE={date} VENUE={venue} TARGETS={len(numbers)} RACES={min(numbers)}-{max(numbers)} CLASSIFICATIONS={detail}", flush=True)
+          print(f"SUMMARY AUDITED={audited} CANCEL_EXPLICIT={summary['CANCEL_EXPLICIT']} OTHER_UNPARSED={summary['OTHER_UNPARSED']} NO_K_HEADER={summary['NO_K_HEADER']} CONFLICT={summary['CONFLICT']}", flush=True)
+          if audited != expected:
+              raise RuntimeError("Not all exact residual IDs audited")
+          print("READ_ONLY_71_CLASSIFICATION_COMPLETE=YES", flush=True)
+          PY
+          set +e
+          python -u verify_all71_k.py > verify-71-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Create bounded summary
+        id: report
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("verify-71-output.txt").read_text(encoding="utf-8", errors="replace") if Path("verify-71-output.txt").exists() else ""
+          prefixes = ("NO_DB_ACCESS=", "EXACT_TARGET_IDS=", "K_GET ", "GROUP ", "SUMMARY ", "EXCEPTION ", "READ_ONLY_71_CLASSIFICATION_COMPLETE=")
+          selected = [line[:350] for line in raw.splitlines() if line.startswith(prefixes)]
+          valid = (
+              os.environ.get("EXIT_CODE") == "0"
+              and "SUMMARY AUDITED=71 " in raw
+              and "READ_ONLY_71_CLASSIFICATION_COMPLETE=YES" in raw
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fp:
+              fp.write("verified=" + ("true" if valid else "false") + "\n")
+          out = [
+              "## Official K 71/71 cancellation-marker classification",
+              "",
+              "- Read-only, four official K files, exact 71 previously missing race IDs",
+              "- No database / Railway access, repairs, training or Production changes",
+              "- An explicit marker is confirmed only when the race-specific K header reads 中止 after whitespace normalization",
+              "- Classification PASS does not automatically mean all 71 were cancelled; check summary counts",
+              "",
+              "~~~text",
+              *selected,
+              "~~~",
+              "",
+              f"Process exit code: {os.environ.get('EXIT_CODE','?')}",
+              "K_71_CLASSIFICATION_PASS" if valid else "K_71_CLASSIFICATION_FAILED",
+          ]
+          Path("verify-71-summary.md").write_text("\n".join(out) + "\n", encoding="utf-8")
+          PY
+      - name: Delete raw output
+        if: always()
+        run: rm -f verify-71-output.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file verify-71-summary.md
+      - name: Fail when 71 not audited
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
