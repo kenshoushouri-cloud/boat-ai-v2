@@ -43,7 +43,12 @@ class TestResearchVenueLaneVoid(unittest.TestCase):
         ]
         cancelled=("20260921_09_05", "2026-09-21", "09", 5)
         self.assertIn(cancelled[0], VERIFIED_VOID_RACE_IDS)
-        ordered=normal+[cancelled]
+        abnormal=[
+            ("20260105_01_02", "2026-01-05", "01", 2, "K0"),
+            ("20260505_03_02", "2026-05-05", "03", 3, "S1"),
+            ("20260921_09_03", "2026-09-21", "09", 1, "F"),
+        ]
+        ordered=normal+[cancelled]+[row[:4] for row in abnormal]
         race_rows=[
             {"race_id":rid,"race_date":date,"venue":venue,"winner":winner}
             for rid,date,venue,winner in ordered
@@ -54,25 +59,36 @@ class TestResearchVenueLaneVoid(unittest.TestCase):
             for idx,(rid, *_rest) in enumerate(ordered) for lane in range(1,7)
         ]
         history=[
-            {"race_id":rid,"racer_number":1000+idx*10+lane,
-             "start_course":lane,"finish_position":lane,"race_date":date}
+            {"race_id":rid,"lane":lane,"racer_number":1000+idx*10+lane,
+             "start_course":lane,"finish_position":lane,"finish_status":f"{lane:02d}",
+             "is_flying":False,"is_late":False,
+             "result_status":"official","race_status":"official","race_date":date}
             for idx,(rid,date,*_rest) in enumerate(normal) for lane in range(1,7)
         ]+[
-            {"race_id":cancelled[0],"racer_number":9999,
-             "start_course":1,"finish_position":1,"race_date":cancelled[1]}
+            {"race_id":cancelled[0],"lane":1,"racer_number":9999,
+             "start_course":1,"finish_position":1,"finish_status":"01",
+             "is_flying":False,"is_late":False,
+             "result_status":"official","race_status":"official","race_date":cancelled[1]}
+        ]+[
+            {"race_id":rid,"lane":lane,"racer_number":3000+idx*10+lane,
+             "start_course":lane,"finish_position":lane,
+             "finish_status":status if lane==1 else f"{lane:02d}",
+             "is_flying":status=="F" and lane==1,"is_late":False,
+             "result_status":"official","race_status":"official","race_date":date}
+            for idx,(rid,date,venue,winner,status) in enumerate(abnormal) for lane in range(1,7)
         ]
         schemas={
             "v2_races":{"race_id","race_date","venue_code"},
             "v2_race_entries":{"race_id","lane","racer_number","racer_class","recent_form"},
             "v2_results":{"race_id","first_lane","result_status","race_status"},
             "v2_realtime_exhibition_snapshots":{"race_id","lane","exhibition_time_rank"},
-            "v2_result_entries":{"race_id","racer_number","start_course","finish_position"},
+            "v2_result_entries":{"race_id","lane","racer_number","start_course","finish_position","finish_status","is_flying","is_late"},
         }
         def fake_fetch(sql,args):
             sql=" ".join(sql.lower().split())
             if "select r.race_id,r.race_date" in sql:return race_rows
             if "select e.race_id,e.lane" in sql:return entry_rows
-            if "select re.race_id,re.racer_number" in sql:return history
+            if "select re.race_id,re.lane,re.racer_number" in sql:return history
             raise AssertionError("Unexpected DB query: "+sql[:130])
         output=io.StringIO()
         with patch.object(self.tuner.b,"cols",side_effect=lambda name:schemas[name]):
@@ -88,6 +104,10 @@ class TestResearchVenueLaneVoid(unittest.TestCase):
         self.assertEqual(coverage["scored"],5)
         self.assertEqual(coverage["void_candidate_rows_excluded"],1)
         self.assertEqual(coverage["void_history_rows_excluded"],1)
+        self.assertEqual(coverage["incident_candidate_exclusions"],{"ABNORMAL_RESULT":3})
+        self.assertEqual(coverage["incident_history_races_exclusions"],{"ABNORMAL_RESULT":3})
+        self.assertEqual(coverage["incident_guard"],"result_side_research_fit_only")
+        self.assertTrue(coverage["result_side_not_predeadline_evidence"])
         self.assertEqual(coverage["verified_void_registry_size"],71)
         self.assertEqual(coverage["void_evidence_ref"],EVIDENCE_REF)
         self.assertEqual(coverage["venue_count"],5)
