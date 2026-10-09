@@ -1,0 +1,72 @@
+name: Historical V5 incident eligibility offline unit tests
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline-tests:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway historical-incident-eligibility-offline-tests-20261009'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline VOID and incident-contract tests
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_historical_void_registry.py' -v > incident-test-output.txt 2>&1
+          first=$?
+          python -m unittest discover -s tests -p 'test_historical_incident_eligibility.py' -v >> incident-test-output.txt 2>&1
+          second=$?
+          if [ "$first" -eq 0 ] && [ "$second" -eq 0 ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+      - name: Build bounded report
+        id: report
+        if: always()
+        shell: bash
+        env:
+          PASSED: ${{ steps.tests.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw = Path("incident-test-output.txt").read_text(encoding="utf-8", errors="replace") if Path("incident-test-output.txt").exists() else ""
+          safe = [s[:260] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","ModuleNotFoundError"))]
+          ok = os.environ.get("PASSED") == "true" and raw.count("\nOK\n") == 2 and "Ran 13 tests" in raw and "Ran 6 tests" in raw
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:output.write("verified="+("true" if ok else "false")+"\n")
+          text=["## V5 historical incident eligibility — offline tests","",
+                "- Research-only classifier; no database, Railway, model, prediction, settlement or purchase changes",
+                "- K-confirmed 71 race VOID precedence; 13 incident-case tests + 6 existing VOID tests",
+                "", "~~~text",*safe[-65:],"~~~","",
+                "HISTORICAL_INCIDENT_ELIGIBILITY_TEST_PASS" if ok else "HISTORICAL_INCIDENT_ELIGIBILITY_TEST_FAILED"]
+          Path("incident-test-summary.md").write_text("\n".join(text)+"\n", encoding="utf-8")
+          PY
+      - name: Remove test logs
+        if: always()
+        run: rm -f incident-test-output.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file incident-test-summary.md
+      - name: Fail when tests not verified
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
