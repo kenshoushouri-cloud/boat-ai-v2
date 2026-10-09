@@ -4,40 +4,24 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
-import urllib.request
 from pathlib import Path
-import lhafile
 import psycopg
 from psycopg.rows import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from save_k_day_results_pg import parse_k_text
+import audit_k_day_all_pg as ka
 
 TARGET_DATE=os.getenv("TARGET_DATE","2026-08-21")
 
 def main():
-    ymd=TARGET_DATE.replace("-","")
-    yy=ymd[2:]
-    mm=ymd[4:6]
-    dd=ymd[6:8]
-    url=f"https://www1.mbrace.or.jp/od2/K/{ymd[:6]}/k{yy}{mm}{dd}.lzh"
-
-    with urllib.request.urlopen(url, timeout=30) as r:
-        raw=r.read()
-    print(f"K_GET status=200 bytes={len(raw)}")
-
-    with tempfile.NamedTemporaryFile(suffix=".lzh") as f:
-        f.write(raw); f.flush()
-        arc=lhafile.Lhafile(f.name)
-        names=arc.namelist()
-        if not names:
-            raise RuntimeError("empty K archive")
-        text=arc.read(names[0]).decode("cp932","replace")
-
-    parsed=parse_k_text(text, TARGET_DATE)
+    text=ka.get_k_text(TARGET_DATE)
+    sections=ka.split_venue_sections(text.splitlines())
+    parsed=[]
+    for section in sections:
+        parsed.extend(ka.parse_section(section))
     wanted=sorted(str(x["race_id"]) for x in parsed)
     print(f"K_RACES={len(wanted)}")
+    print(f"K_VENUE_SECTIONS={len(sections)}")
 
     db=(os.getenv("DATABASE_URL") or "").strip()
     if not db:
