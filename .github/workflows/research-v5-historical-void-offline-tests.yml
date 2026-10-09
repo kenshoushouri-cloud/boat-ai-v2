@@ -1,0 +1,63 @@
+name: V5 research historical VOID offline tests
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-historical-void-research-test-20261009'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run two isolated test modules (no DB, no Railway)
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_historical_void_registry.py' -v > void-tests-output.txt 2>&1
+          first=$?
+          python -m unittest discover -s tests -p 'test_v5_historical_void_integration.py' -v >> void-tests-output.txt 2>&1
+          second=$?
+          if [[ "$first" -eq 0 && "$second" -eq 0 ]]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Build sanitized result
+        id: report
+        if: always()
+        shell: bash
+        env:
+          PASSED: ${{ steps.tests.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("void-tests-output.txt").read_text(encoding="utf-8",errors="replace") if Path("void-tests-output.txt").exists() else ""
+          keep=[s[:250] for s in raw.splitlines() if s.startswith(("test_", "Ran ", "OK", "FAILED", "ERROR", "FAIL", "Traceback", "ImportError", "ModuleNotFoundError", "AssertionError"))]
+          passed=os.environ.get("PASSED")=="true" and raw.count("OK")==2
+          with open(os.environ["GITHUB_OUTPUT"],"a") as fd:fd.write("verified="+("true" if passed else "false")+"\n")
+          lines=["## V5 historical VOID offline research tests", "", "- Test only: no DB / Railway / Production / model activation", "- 71 explicit cancellation IDs plus normal Sep21 examples", "", "~~~text", *keep[-60:], "~~~", "", "V5_HISTORICAL_VOID_TEST_PASS" if passed else "V5_HISTORICAL_VOID_TEST_FAILED"]
+          Path("void-tests-summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Remove raw test logs
+        if: always()
+        run: rm -f void-tests-output.txt
+      - name: Post result to issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file void-tests-summary.md
+      - name: Fail on unsuccessful tests
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
