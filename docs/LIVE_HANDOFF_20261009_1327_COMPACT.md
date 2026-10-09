@@ -194,14 +194,13 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Issue #581 command comment `6078219291` run **ONCE**, bot result comment **`6078221781`**: `V5_CALIBRATION_VOID_TEST_PASS`, 1 test OK, process exit code 0. No pending action to rerun.
 - These are offline mock tests. **No live historical 2025-07-01..2026-10-05 backtest executed yet; NOT all V5 scripts covered**. No Production V4/LINE/BUY/stake, DB, Railway, plan, volume or raw data changes.
 
-## V5 venue-lane core VOID guard — offline test pending
-- Official K 71 race IDs proven cancelled (Issue #581 result `6077502477`) and registered in `research/historical_void_registry.py`. Mid-card Sep21 津4R and 三国9R valid/non-VOID. No raw deletion or fabricated results.
-- V5 research-only `research/v5_current_core_plus_venue_lane_pg.py` now uses shared `b.exclude_verified_void_rows` on selected outcomes and result-entry ability history before scoring/fitting; reports VOID counts/evidence. Commit `418e5bda6820f91696d2a6341ac775b79ed7c5d9`.
-- New fake-DB offline test `tests/test_v5_venue_lane_void_guard.py`, commit `e3d8d64a90089b94575865503bcaf0c902e71328`, ensures incorrectly marked official K VOID race is excluded and normal Sep21 津4R/三国9R persist. Test compares per-venue results.
-- GitHub-only workflow `.github/workflows/research-v5-venue-lane-void-offline-tests.yml` commit `cdd0fa16ce5a3e08d4a4d31c6176b1b42717afa9`.
-- **ACTIVE PENDING Issue #581 command `6078275111`**, `/railway v5-venue-lane-void-offline-test-20261009`; POSTED ONCE. GitHub offline test, no DB/Railway; est 1–2 min, 5min timeout. **DO NOT REPOST**.
-- Prior 3 V5 research scripts tested PASS: opponent main 9/9 `6078124223`, weight tuning 1/1 `6078180261`, calibration 1/1 `6078221781`. No real DB backtest performed yet.
+## V5 research venue-lane VOID guard — COMPLETE / PASS
+- Official-K-confirmed 71 cancellations from Issue #581 result `6077502477`. 2026-09-21 津4R and 三国9R were completed and are NOT VOID.
+- Research-only `research/v5_current_core_plus_venue_lane_pg.py` commit `418e5bda6820f91696d2a6341ac775b79ed7c5d9` now excludes verified VOID from both selected outcomes and historical result-entry ability priors, using shared `b.exclude_verified_void_rows()`; reports excluded row counts and evidence provenance.
+- Fake-DB test `tests/test_v5_venue_lane_void_guard.py`, commit `e3d8d64a90089b94575865503bcaf0c902e71328`, checks exclusion + normal venue races retained. Issue #581 command `6078275111`, bot `6078278314`: `V5_VENUE_LANE_VOID_TEST_PASS`, 1/1 test, exit 0. NO rerun pending.
+- Prior V5 guarded paths also offline PASS: opponent main `6078124223` (9 tests); weight tuning `6078180261` (1); temperature calibration `6078221781` (1). **Four research scripts guarded**; not a claim that all V5 scripts have been audited, nor that real full-period V5 backtest has run.
+- No DB, Railway, Production V4, LINE, purchase, stakes or raw-data change. Never fabricate results; research only.
 
 ## Next ONE task
-**Only check Issue #581 comment `6078275111` bot result (and exact Actions run if necessary).** If PASS, record completion and next task: read-only incident inventory / remaining V5 research eligibility coverage review (one scope). If FAILED, diagnose specific test failure, fix minimally before rerun. Production V4, LINE, purchase/stake, Railway DB/plan unchanged. Full V5 research range 2025-07-01..2026-10-05, auto-purchase LAST, Railway Agent/AI prohibited, cost target <=USD20/month ideally <=USD15.
+Perform narrow **read-only historical incident inventory** using existing `research/race_incident_inventory_pg.py` and GitHub workflow `.github/workflows/railway-candidate-v4-incident-inventory-readonly.yml` for frozen V5 research range **2025-07-01..2026-10-05**, first inspect current workflow and any pending duplicate command. Check historic VOID statistics vs 71 verified cancellations and distinguish participant incidents/withdrawals/F/L from whole-race cancels. Do not use after-result knowledge as predeadline knowledge. Avoid extra Railway cost (bounded read-only) and do not launch until estimated run duration shown. Follow with guarded V5 full-range research-only backtest and freeze review. Auto purchase LAST. Railway Agent/AI prohibited; Railway <=USD20/mo ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
