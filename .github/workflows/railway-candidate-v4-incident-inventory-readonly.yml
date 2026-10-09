@@ -126,3 +126,58 @@ jobs:
             gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
           fi
 
+  k_result_gap_audit_20260821:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway k-result-gap-audit-20260821'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Run read-only gap audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-hobby-fullhistory-candidate-v4 \
+            --environment production \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export TARGET_DATE=2026-08-21; exec python -u research/k_result_gap_audit_pg.py' \
+            > gap-audit.txt
+
+          {
+            echo "## Candidate-v4 K result gap audit 2026-08-21"
+            echo
+            echo "- database transaction: READ ONLY"
+            echo "- no model / LINE / BUY / stake / plan / volume change"
+            echo
+            echo '```text'
+            cat gap-audit.txt
+            echo '```'
+          } > railway-result-summary.md
+
+      - name: Post result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f railway-result-summary.md ]; then
+            gh issue comment "$RAILWAY_BRIDGE_ISSUE" --body-file railway-result-summary.md
+          fi
+
