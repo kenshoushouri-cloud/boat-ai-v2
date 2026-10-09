@@ -65,7 +65,7 @@
 ## V5 calibrated strong core frozen live evaluation — PENDING (single run)
 - Validated existing .github/workflows/railway-v5-strong-core-calibration.yml: GitHub Actions 15min max, Railway CLI client links to postgres-hobby-fullhistory-candidate-v4 via DATABASE_PUBLIC_URL, PGOPTIONS default_transaction_read_only=on and statement_timeout=120000, fixed 2025-07-01..2026-10-05 research period, V5 only, no DB/model/LINE/BUY/stake/plan mutation.
 - Research v5_strong_core_calibration_pg.py has locked train-selected weights recent_form=0.50 exhibition_rank=1.0 racer_course=0.75 opponent=1.25 venue_lane=0.75, TRAIN through 2026-03-31, locked OOS April..Oct05, temperature candidates (0.8,0.9,1.0,1.1,1.2,1.3), historical K71 VOID guard and participant-incident exclusion on both scoring and racer-course history.
-- Issue #581 comments scanned as of 2026-10-09 21:19 JST; zero same-command duplicates or recorded results on that date. Command /railway v5-strong-core-calibration-run POSTED ONCE comment **6080782614**. Estimated 5–15 min, hard GitHub job timeout 15 min. **PENDING — DO NOT POST AGAIN**.
+- Issue #581 comments scanned as of 2026-10-09 21:19 JST; zero same-command duplicates or recorded results on that date. Command /railway v5-strong-core-calibration-run POSTED ONCE comment **6080782614**, GitHub Actions run **37929586532** (in_progress at first check). Estimated 5–15 min, hard GitHub job timeout 15 min. **PENDING — DO NOT POST AGAIN**.
 - Prior train-only V5 weight tuner read-only live SUCCESS: run 37927193888, bot **6080586442**, OOS n=27,161, LogLoss 1.222549->1.207893, Brier .595876->.589822, top1 56.2792%->56.9162%; 24/24 venues improve LogLoss and Brier. Research OOS filters after-race incidents, not prospective/ROI.
 
 ## Next ONE task
