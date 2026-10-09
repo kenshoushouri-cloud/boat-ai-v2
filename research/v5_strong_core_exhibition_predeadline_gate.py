@@ -56,7 +56,7 @@ def check_frozen_exhibition_predeadline(
 
     if source_table != FROZEN_TABLE:
         return rejected("MUTABLE_OR_UNVERIFIED_SOURCE")
-    if not race_id or not isinstance(frozen_row, Mapping):
+    if not race_id or not isinstance(frozen_row, Mapping) or not frozen_row:
         return rejected("MISSING_FROZEN_ROW")
     if str(frozen_row.get("race_id") or "") != race_id:
         return rejected("RACE_ID_MISMATCH")
@@ -82,7 +82,9 @@ def check_frozen_exhibition_predeadline(
         stored_minutes = float(frozen_row.get("minutes_before"))
     except (ValueError, TypeError):
         return rejected("INVALID_STORED_WINDOW")
-    if not math.isfinite(stored_minutes) or abs(stored_minutes - minutes) > 0.25:
+    if not math.isfinite(stored_minutes):
+        return rejected("INVALID_STORED_WINDOW")
+    if abs(stored_minutes - minutes) > 0.25:
         return rejected("STORED_WINDOW_CONFLICT")
 
     ranks = frozen_row.get("exhibition_time_ranks")
