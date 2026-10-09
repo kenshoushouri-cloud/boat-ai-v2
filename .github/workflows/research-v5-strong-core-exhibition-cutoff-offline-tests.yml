@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/railway v5-strong-core-exhibition-cutoff-offline-test-20261009'
+      github.event.comment.body == '/railway v5-strong-core-exhibition-cutoff-offline-retest-20261009'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
