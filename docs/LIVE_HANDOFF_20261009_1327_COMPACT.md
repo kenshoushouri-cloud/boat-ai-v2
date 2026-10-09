@@ -148,6 +148,12 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Keyword detector returned `FLAGS=NONE` even for these explicit cancel lines because it searched literal `中止` without removing the full-width space. **Always normalize whitespace for the next classification.**
 - Only 7 of 71 residual race IDs were individually inspected as cancelled. **Do NOT state all 71 verified yet.** Preserve raw data; never fabricate finish positions. Prior total: 10380 base / 10309 complete6 / 71 missing; Oct1–5 already complete.
 
+## Sep 21 storm-related cancellations — user clarification
+- User reports 2026-09-21 typhoon impacts causing **some venues to cancel all races** and **others to stop partway through the card**.
+- This context is not by itself official verification of the cause for each individual race. Verify raw K header `中　止` (normalize full-width spaces) and race-by-race outcome before eligibility assignment.
+- Existing sampled K evidence on 2026-09-21: 戸田(02) 1R cancelled, 江戸川(03) 1R cancelled, 津(09) 4R has payout / 5R cancelled, 三国(10) 9R has payout / 10R cancelled. Do not classify **all races** at partially interrupted venues as cancelled.
+- Preserve every completed race's normal result/learning eligibility (subject to separate incident rules). Explicit cancelled races: `VOID` / no stake or learning. Never delete raw rows, fabricate finishing order or conflate `scheduled` in DB with a confirmed official result. Distinguish **pre-race cancellation** versus **during-race incident**, using official evidence.
+
 ## Next ONE task
 Perform ONE bounded read-only **71/71 explicit cancellation marker verification** using the four official K files and the exact 71 residual race IDs/venue/race_no. Strip full-width/ascii whitespace before matching `中止` and distinguish CANCEL_EXPLICIT vs OTHER_UNPARSED/AMBIGUOUS. No DB mutations, no cancellation inference from parser mismatch alone. Prefer a GitHub-only tool; show runtime estimate before launch and do not duplicate pending command.
 Only after 71/71 evidence classification, formalize historical eligibility / VOID / exclusion handling per `docs/RACE_INCIDENT_HANDLING_CONTRACT_20261009.md`, then incident inventory and V5 research-only backtest/freeze review. Production V4, auto-purchase LAST. Railway Agent/AI forbidden; monthly spend <=USD20, ideally <=USD15.
