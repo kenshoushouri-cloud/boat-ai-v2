@@ -140,14 +140,15 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
   - 09/22 津(09) 1–12R = 12, scheduled.
 - Previous full coverage read-only audit: 10380 base / 10309 complete6 / 71 missing; Oct01–05 all 792/792 complete. Raw data retained, Production V4 unchanged.
 
-## ACTIVE PENDING — bounded official K header samples
-- Previous 71 residual classification: Issue #581 bot comment `6076028310`, all 71 `K_HEADER_UNPARSED` (loose header exists, strict standard race parser misses). No fabricated results, no DB change.
-- Official K *raw-header* sample workflow: `.github/workflows/official-k-residual-header-samples-20260811-0922.yml`, commit `e00139c296de8588dc388d88cc963005cfce9a66`.
-- Issue #581 command comment **6076185812**: `/railway official-k-residual-header-samples-20260811-0922`.
-- GitHub Actions run **37897211423** was verified `in_progress` at last check; DO NOT REPOST / RERUN while pending.
-- Reads 4 publicly published K files, prints only 9 selected header samples (including adjacent normal examples). **GitHub-only, no Railway invocation, no database access/writes.** Estimated runtime **2–5 min**, job timeout 10 min.
-- Preserve raw records; no changes to Production=V4, V5 research-only, LINE, purchase, stake or Railway resources. Auto purchase LAST; monthly Railway cost <=USD20 ideally <=USD15.
+## Official K raw-header samples — COMPLETE / PASS
+- Issue #581 command `6076185812`; bot result `6076196860`; GitHub Actions run `37897211423` completed SUCCESS, 2026-10-09 16:07 JST (~49 seconds).
+- Scope: four official K files, nine bounded samples; GitHub-only read, NO DB or Railway operations.
+- Seven sampled residual header lines explicitly say `中　止` (full-width space): Aug11 江戸川 1R, Sep09 江戸川 1R, Sep21 戸田 1R / 江戸川 1R / 津 5R / 三国 10R, Sep22 津 1R.
+- Two adjacent non-residual lines Sep21 津 4R and 三国 9R contain payout records, corroborating the observed switch to cancellation on that day.
+- Keyword detector returned `FLAGS=NONE` even for these explicit cancel lines because it searched literal `中止` without removing the full-width space. **Always normalize whitespace for the next classification.**
+- Only 7 of 71 residual race IDs were individually inspected as cancelled. **Do NOT state all 71 verified yet.** Preserve raw data; never fabricate finish positions. Prior total: 10380 base / 10309 complete6 / 71 missing; Oct1–5 already complete.
 
 ## Next ONE task
-**Only check GitHub Actions run `37897211423` / Issue #581 command comment `6076185812` and its bot result.** Determine whether official K raw lines explicitly show cancellation/interruption or another nonstandard header; do not infer cancellation from parser mismatch alone. On FAILED diagnose only that run; on PASS record examples and decide next *separate* one task for conservative eligibility/incident handling. No duplicate command or bulk logs.
+Perform ONE bounded read-only **71/71 explicit cancellation marker verification** using the four official K files and the exact 71 residual race IDs/venue/race_no. Strip full-width/ascii whitespace before matching `中止` and distinguish CANCEL_EXPLICIT vs OTHER_UNPARSED/AMBIGUOUS. No DB mutations, no cancellation inference from parser mismatch alone. Prefer a GitHub-only tool; show runtime estimate before launch and do not duplicate pending command.
+Only after 71/71 evidence classification, formalize historical eligibility / VOID / exclusion handling per `docs/RACE_INCIDENT_HANDLING_CONTRACT_20261009.md`, then incident inventory and V5 research-only backtest/freeze review. Production V4, auto-purchase LAST. Railway Agent/AI forbidden; monthly spend <=USD20, ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
