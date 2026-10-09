@@ -1,0 +1,67 @@
+name: V5 research calibration incident offline regression
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway v5-calibration-incident-offline-test-20261009'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test pure incident classifier and calibration integration offline
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_historical_incident_eligibility.py' -v > test-output.txt 2>&1
+          first=$?
+          python -m unittest discover -s tests -p 'test_v5_calibration_void_guard.py' -v >> test-output.txt 2>&1
+          second=$?
+          if [ "$first" -eq 0 ] && [ "$second" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Build concise report
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
+          keep=[line[:360] for line in raw.splitlines() if line.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 13 tests" in raw and "Ran 1 test" in raw and raw.count("\nOK\n")==2
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:out.write("verified="+("true" if passed else "false")+"\n")
+          lines=["## V5 calibration participant-incident regression","",
+                 "- Offline only, no DB / Railway / Production / BUY / stakes",
+                 "- Synthetic K0/F/S1 cases must be removed from train/OOS and historic priors; normal Sep21 races remain",
+                 "", "~~~text", *keep[-48:], "~~~", "",
+                 "V5_CALIBRATION_INCIDENT_PASS" if passed else "V5_CALIBRATION_INCIDENT_FAILED"]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Discard raw output
+        if: always()
+        run: rm -f test-output.txt
+      - name: Post result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail on unsuccessful regression
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
