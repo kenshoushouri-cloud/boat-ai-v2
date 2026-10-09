@@ -171,7 +171,13 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Added `tests/test_historical_void_registry.py` at commit `b4048d15c02d23308bfdde52ee4c15dea1911e9d`. Tested offline using Python stdlib: **6 tests PASS**, syntax compilation PASS; 71 boundaries + Sep21 津4R / 三国9R correctly excluded from VOID list.
 - **Registry is not yet connected to any V5 backtest selection, reporting, economics or Production.** No existing model/DB/selector/LINE/BUY/stake changed. A repo test workflow has not been launched; tests ran locally only.
 
+## V5 research-only VOID guard: VERIFIED
+- `research/v5_lc_rf_exrank_rc_plus_opponent_pg.py` now excludes exact 71 official-K-confirmed VOID race IDs from scoring outcome rows AND racer-course history before computing priors; commit `164fec75d2aea09e567990db7622f698e255d017`.
+- Counts and evidence provenance are included in the research coverage output; non-VOID status never means automatically eligible.
+- `tests/test_v5_historical_void_integration.py` commit `71edbd1131529def2cdfc77986ea5b7904b5e6a1`. GitHub-only workflow `research-v5-historical-void-offline-tests.yml` command comment `6078120588`, bot `6078124223`: PASS 9/9 offline tests (6 registry + 3 integration).
+- Tests verify 71 ID manifest, protect completed Sep21 津4R and 三国9R, remove legacy mislabeled cancelled result from scoring and history, and fail on missing race IDs. No DB/Railway access in tests.
+- Only ONE V5 research script is guarded. No Production V4 / LINE / BUY / stake / Railway / DB changes, no real historical backtest rerun yet.
+
 ## Next ONE task
-Implement a narrow research-only historical V5 backtest eligibility filter leveraging the verified VOID registry **at the selection boundary**, in a single representative V5 script / shared adapter first, with targeted offline tests to prove cancelled races excluded and real completed races preserved. Confirm exact `v2_results` status/winner semantics before altering broader scripts; no Production deployment. Follow with remaining affected V5 core scripts and read-only incident inventory once checks pass. Keep full research window 2025-07-01..2026-10-05, no raw deletion/fixture fabrication.
-One task per turn; estimate run times before any GitHub/Railway job. Railway Agent/AI forbidden, monthly cost <=USD20 ideally <=USD15. Auto purchase LAST.
+Review adjacent V5 strong-core weight tuning or calibration research script for the same research-only VOID guard, and apply the change narrowly with targeted offline testing. Preserve 2025-07-01..2026-10-05 window, evidence timing and raw results. Then read-only incident inventory / final V5 research backtest and freeze assessment. Avoid duplicate commands; show runtime estimates; auto purchase LAST; Railway Agent/AI forbidden, cost <= $20/month (ideally <= $15).
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
