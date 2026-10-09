@@ -22,7 +22,7 @@
 - 中間ログやtool discoveryを大量表示しない。
 - 実行を開始する時は、対象件数/日数/直近実績から**推定所要時間**を表示する。
 
-Production=V4、V5/V5.1=research-only。
+**V5は主力システム（開発中・本番未切替）**、Productionは現行V4。旧V5は比較対象。旧コードの research/ 名称は参照互換性のため残す。
 システム本体完成を優先し、自動購入は最後に構築する。
 Railway Agent/AIは禁止。
 Railway費用は月USD20以下、可能ならUSD15以下。CPU/RAM/Network最小化。
