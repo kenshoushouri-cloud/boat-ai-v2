@@ -44,18 +44,22 @@ def main():
     fs=["r.race_date >= %s","r.race_date <= %s",f"({we}) between 1 and 6"]
     if "result_status" in xc:fs.append("coalesce(rs.result_status,'official')='official'")
     if "race_status" in xc:fs.append("coalesce(rs.race_status,'official')='official'")
-    races=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
+    selected_rows=fetch_all(f"""select r.race_id,r.race_date,{ve} venue,{we} winner
       from v2_races r join v2_results rs on rs.race_id=r.race_id
       where {' and '.join(fs)} order by r.race_date,r.race_id""",(START,END))
+    # Research-only: explicitly verified whole-race cancellations never enter fitting or scoring.
+    races,void_selected_excluded=b.exclude_verified_void_rows(selected_rows)
     es=fetch_all("""select e.race_id,e.lane,e.racer_number,e.racer_class,e.recent_form,x.exhibition_time_rank
       from v2_race_entries e join v2_races r on r.race_id=e.race_id
       left join v2_realtime_exhibition_snapshots x
         on x.race_id=e.race_id and x.lane=e.lane and x.snapshot_label=%s
       where r.race_date between %s and %s order by e.race_id,e.lane""",(b.LABEL,START,END))
-    hist=fetch_all("""select re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
+    historical_rows=fetch_all("""select re.race_id,re.racer_number,re.start_course,re.finish_position,r.race_date::date race_date
       from v2_result_entries re join v2_races r on r.race_id=re.race_id
       where r.race_date between %s and %s and re.racer_number is not null
       order by r.race_date,re.race_id,re.lane""",(START,END))
+    # Exclude VOID from prior history features as well, without fabricating finishes.
+    hist,void_history_excluded=b.exclude_verified_void_rows(historical_rows)
 
     wb={str(r["race_id"]):int(r["winner"]) for r in races}
     db={str(r["race_id"]):b.iso(r["race_date"]) for r in races};vb={str(r["race_id"]):str(r["venue"]) for r in races}
@@ -161,6 +165,10 @@ def main():
                 "selection":"two-pass conservative coordinate search on TRAIN only; each accepted step must not worsen either LogLoss or Brier",
                 "oos_weights_frozen":True,"parameter_selection_uses_oos":False,"same_day_results_used":False},
       "coverage":{"completed_races":len(races),"scored":len(rows),"coverage_pct":100*len(rows)/len(races),"skipped":skip,
+                  "verified_void_registry_size":len(b.VERIFIED_VOID_RACE_IDS),
+                  "void_candidate_rows_excluded":void_selected_excluded,
+                  "void_history_rows_excluded":void_history_excluded,
+                  "void_evidence_ref":b.EVIDENCE_REF,
                   "invalid_entry_rows":invalid,"invalid_history_rows":badh,"venue_count":len(set(r["venue"] for r in rows))},
       "metrics":{"train":block(train),"oos_all":block(oos),"oos_april":block(apr),"oos_may":block(may),"oos_june_to_end":block(late),
                  "oos_venues_better_logloss":venue_good_ll,"oos_venues_better_brier":venue_good_br},
