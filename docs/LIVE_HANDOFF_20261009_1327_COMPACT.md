@@ -122,17 +122,14 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - `v2_results` top-level was already confirmed 792/792 from previous read-only audit and Oct 05 fix.
 - No relaunch needed; do not repost command. No Production model, LINE, BUY, stake, plan or volume change.
 
-## ACTIVE PENDING — read-only result-entry coverage audit
-- Existing Oct 1–5 result-entry backfill completed PASS: Issue #581 result comment `6075705473`, 792/792 races and 4752 entry rows, all 5 days PASS. **Do not repeat backfill.**
-- New audit workflow: `.github/workflows/railway-candidate-v4-result-entries-coverage-audit-20260801-1005.yml`, commit `ab5fd324ca499b68c2c130006103ff33b1ee3f78`.
-- Issue #581 command comment ID **6075853528**: `/railway candidate-v4-result-entries-coverage-audit-20260801-1005`
-- Scope 2026-08-01..2026-10-05; PostgreSQL `BEGIN READ ONLY`; aggregate and missing/partial day counts for `v2_races` vs `v2_result_entries`; no changes to DB or production.
-- Estimated execution time shown to user **2–5 minutes**; workflow timeout 10 minutes.
-- **DO NOT DUPLICATE/RERUN while pending.**
+## 2026-08-01..10-05 result-entry audit — COMPLETED / PASS
+- Issue #581 command `6075853528`; bot result `6075857637` reports `RESULT_ENTRIES_COVERAGE_AUDIT_20260801_1005_PASS`.
+- Read-only period 66 days: BASE_RACES=10380, COMPLETE6=10309, MISSING=71, PARTIAL=0, OVER6=0, RESULT_ENTRY_ROWS=61854, GAP_DAYS=4.
+- 2026-10-01..05: all 792/792 complete with 4752 detail rows, MISSING=0. Do not rerun October backfill.
+- Remaining missing (race has ZERO result-entry rows): 2026-08-11=12, 2026-09-09=12, 2026-09-21=35, 2026-09-22=12. No partial6 or >6 anomalies. Do not invent missing official K rows.
+- Historical backtest window remains 2025-07-01..2026-10-05, not 10/06+ data.
 
 ## Next ONE task
-**Only verify result of Issue #581 audit comment `6075853528`** (matching bot reply; if necessary the exact run/job).
-- On PASS, record coverage aggregate, 10/1–10/5 confirmation and residual missing/partial dates, then proceed to *read-only classification of remaining 8/11 and September gaps* in a separate turn.
-- On FAILED, inspect only the failed audit and remedy one issue at a time.
-- Then incident inventory; V5 research backtest/freeze review. Production V4 only; auto-purchase last. Railway Agent/AI forbidden; spending <=USD20/month ideally <=USD15.
+**Classify the 71 residual missing result-entry races read-only** against official K-file availability / race cancellation / nonstandard incident records. Prioritize exact race_id and venue/race_no for 8/11, 9/9, 9/21, 9/22 using bounded SELECTs. No writes, no repair until classification confirms why missing. For any launched command show estimated runtime; never repost pending command.
+After classification, finalize incident inventory and research V5 backtest/freeze. Production V4; automatic purchase LAST; Railway Agent/AI prohibited, cost <=USD20/mo ideally <=USD15.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
