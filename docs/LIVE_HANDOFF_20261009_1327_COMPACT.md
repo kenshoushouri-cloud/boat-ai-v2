@@ -140,8 +140,14 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
   - 09/22 津(09) 1–12R = 12, scheduled.
 - Previous full coverage read-only audit: 10380 base / 10309 complete6 / 71 missing; Oct01–05 all 792/792 complete. Raw data retained, Production V4 unchanged.
 
-## Next ONE task
-Inspect a **small, bounded sample of RAW official K header lines** corresponding to the `K_HEADER_UNPARSED` cases in the four affected days, read-only; detect explicit text indicating cancellation/interruption/formatting variation. Do not modify parser, DB or model and do not assume cancellations until supported by explicit official evidence. Prefer reuse of official K file parser helpers. If launching a run, show estimated duration before starting, cap work and avoid duplicate pending command. After evidence review, decide safe eligibility/exclusion treatment, then incident inventory and V5 research backtest/freeze. Auto purchase LAST.
-- Railway Agent/AI prohibited; monthly cost <=USD20 ideally <=USD15. One task per turn; no bulk history or polling loops.
+## ACTIVE PENDING — bounded official K header samples
+- Previous 71 residual classification: Issue #581 bot comment `6076028310`, all 71 `K_HEADER_UNPARSED` (loose header exists, strict standard race parser misses). No fabricated results, no DB change.
+- Official K *raw-header* sample workflow: `.github/workflows/official-k-residual-header-samples-20260811-0922.yml`, commit `e00139c296de8588dc388d88cc963005cfce9a66`.
+- Issue #581 command comment **6076185812**: `/railway official-k-residual-header-samples-20260811-0922`.
+- GitHub Actions run **37897211423** was verified `in_progress` at last check; DO NOT REPOST / RERUN while pending.
+- Reads 4 publicly published K files, prints only 9 selected header samples (including adjacent normal examples). **GitHub-only, no Railway invocation, no database access/writes.** Estimated runtime **2–5 min**, job timeout 10 min.
+- Preserve raw records; no changes to Production=V4, V5 research-only, LINE, purchase, stake or Railway resources. Auto purchase LAST; monthly Railway cost <=USD20 ideally <=USD15.
 
+## Next ONE task
+**Only check GitHub Actions run `37897211423` / Issue #581 command comment `6076185812` and its bot result.** Determine whether official K raw lines explicitly show cancellation/interruption or another nonstandard header; do not infer cancellation from parser mismatch alone. On FAILED diagnose only that run; on PASS record examples and decide next *separate* one task for conservative eligibility/incident handling. No duplicate command or bulk logs.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
