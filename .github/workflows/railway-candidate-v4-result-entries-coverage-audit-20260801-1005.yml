@@ -1,0 +1,147 @@
+name: Candidate-v4 result entries coverage audit Aug01 Oct05
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  RAILWAY_BRIDGE_ISSUE: "581"
+
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/railway candidate-v4-result-entries-coverage-audit-20260801-1005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install 'psycopg[binary]'
+          npm install --global @railway/cli
+
+      - name: Audit coverage read only
+        id: audit
+        shell: bash
+        run: |
+          cat > results_coverage_audit.py <<'PY'
+          import os
+          import psycopg
+
+          start, end = "2026-08-01", "2026-10-05"
+          print("DB_READ_ONLY=YES", flush=True)
+          print(f"SCOPE={start}..{end}", flush=True)
+          with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=15) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("BEGIN READ ONLY")
+                  cur.execute("SET LOCAL statement_timeout = '60000ms'")
+                  cur.execute("""
+                    WITH base AS (
+                      SELECT race_id, race_date FROM v2_races
+                      WHERE race_date >= %s AND race_date <= %s
+                    ), entry_counts AS (
+                      SELECT e.race_id, COUNT(*) AS n
+                      FROM v2_result_entries e JOIN base b ON e.race_id = b.race_id
+                      GROUP BY e.race_id
+                    )
+                    SELECT b.race_date,
+                      COUNT(*) AS base_races,
+                      COUNT(*) FILTER (WHERE COALESCE(ec.n, 0) = 6) AS complete6,
+                      COUNT(*) FILTER (WHERE COALESCE(ec.n, 0) = 0) AS missing,
+                      COUNT(*) FILTER (WHERE ec.n BETWEEN 1 AND 5) AS partial,
+                      COUNT(*) FILTER (WHERE ec.n > 6) AS over6,
+                      COALESCE(SUM(COALESCE(ec.n, 0)), 0) AS entry_rows
+                    FROM base b
+                    LEFT JOIN entry_counts ec ON b.race_id = ec.race_id
+                    GROUP BY b.race_date ORDER BY b.race_date
+                  """, (start, end))
+                  rows = cur.fetchall()
+                  conn.rollback()
+
+          if not rows:
+              raise RuntimeError("Safety stop: no races returned for audit period")
+          sums = [0] * 6
+          gap_days = 0
+          for day, base, complete, missing, partial, over6, entry_rows in rows:
+              nums = [base, complete, missing, partial, over6, entry_rows]
+              sums = [a + b for a, b in zip(sums, nums)]
+              if missing or partial or over6:
+                  gap_days += 1
+              if missing or partial or over6 or str(day) >= "2026-10-01":
+                  print(f"DAY {day} BASE={base} COMPLETE6={complete} MISSING={missing} PARTIAL={partial} OVER6={over6} ROWS={entry_rows}", flush=True)
+          print(f"SUMMARY DAYS={len(rows)} BASE={sums[0]} COMPLETE6={sums[1]} MISSING={sums[2]} PARTIAL={sums[3]} OVER6={sums[4]} ROWS={sums[5]} GAP_DAYS={gap_days}", flush=True)
+          print("READ_ONLY_AUDIT_COMPLETE=YES", flush=True)
+          PY
+          set +e
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -c 'set -e; test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="${DATABASE_PUBLIC_URL}"; exec python -u results_coverage_audit.py' \
+            > audit-output.txt 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build sanitized summary
+        if: always()
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          raw = Path("audit-output.txt").read_text(encoding="utf-8", errors="replace") if Path("audit-output.txt").exists() else ""
+          safe = [line[:240] for line in raw.splitlines() if line.startswith(("DB_READ_ONLY=", "SCOPE=", "DAY ", "SUMMARY ", "READ_ONLY_AUDIT_COMPLETE="))]
+          status = "PASS" if os.environ.get("EXIT_CODE") == "0" and "READ_ONLY_AUDIT_COMPLETE=YES" in raw else "FAILED"
+          lines = [
+              "## Candidate-v4 result-entry coverage Aug 1 to Oct 5 — read only",
+              "",
+              "- DB: postgres-hobby-fullhistory-candidate-v4",
+              "- SELECT only; transaction READ ONLY; no repair or writes",
+              "- Output: database state at time of audit",
+              "",
+              "```text",
+              *safe,
+              "```",
+              "",
+              f"RESULT_ENTRIES_COVERAGE_AUDIT_20260801_1005_{status}",
+          ]
+          Path("audit-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove raw output
+        if: always()
+        run: rm -f audit-output.txt
+
+      - name: Post audit result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${RAILWAY_BRIDGE_ISSUE}" --repo "$GITHUB_REPOSITORY" --body-file audit-summary.md
+
+      - name: Fail when audit not complete
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
