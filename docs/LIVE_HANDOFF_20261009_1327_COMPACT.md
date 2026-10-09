@@ -100,7 +100,21 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - All results for Oct 1-4 are present; only Oct 5 needs RESULTS repair. The earlier 90-minute five-day command was cancelled and **must not be relaunched**.
 - This audit made no DB changes. Raw repair progress before the audit is unknown.
 
+## ACTIVE PENDING COMMAND — DO NOT DUPLICATE
+- Distinct missing-only repair workflow: `.github/workflows/railway-candidate-v4-results-repair-20261005-missing-only.yml`
+- Workflow commit: `054e17555c19ea5f11e6d74ee22625cacedad56c`
+- Issue #581 command comment ID: **6075467401**
+- Command: `/railway candidate-v4-results-repair-20261005-missing-only CONFIRM`
+- Scope: **2026-10-05 ONLY**. A live READ-ONLY selection targets existing `v2_races` records lacking `v2_results` (expected 144); it explicitly FAIL-CLOSES if baseline count != 144 or unexpected IDs/extra results. Dates 10/1-4 excluded.
+- Repair uses `REPAIR_RACE_IDS`, `DO_RACES=0`, `DO_RESULTS=1`, `DO_ODDS=0`, workers=2, sleep=0.1; no Production model/LINE/purchase/stake/plan/volume changes.
+- After repair, a separate READ-ONLY recheck verifies exactly 144/144 with MISSING=0, EXTRA=0. The workflow reports PASS only when exit=0 AND `RESULTS_REPAIR_OCT05_VERIFIED_PASS` is emitted.
+- **Estimated runtime communicated: 15–30 min; job timeout: 60 min.**
+- **DO NOT REPOST / RERUN WHILE PENDING.** The prior Oct 1-5 90-minute command was cancelled; never relaunch it.
+
 ## Next ONE task
-Design/check a **2026-10-05 only**, `RESULTS=1, RACES=0, ODDS=0` safe backfill using the existing repair script and a new distinct command, with estimated runtime shown. Do not relaunch the five-day command. Keep one work item per turn and avoid increasing Railway costs; verify pending-run absence before any launch. When results are all present, proceed to 10/1-10/5 `v2_result_entries` backfill (one controlled run), subsequent read-only coverage check, remaining residual classification, incident inventory, then V5 final backtest/freeze review. Production=V4; automatic purchase last.
+**Only check the result of Issue #581 command comment `6075467401` (the matching bot reply / one exact GitHub run if necessary).**
+- If PASS: Oct 1-5 `v2_results` expected complete; plan the existing Oct 1-5 `v2_result_entries` backfill (check no same command pending; show estimate before launching). Do not run additional stages in same turn.
+- If FAILED/CANCELLED: inspect ONLY the relevant workflow/job and fix one cause at a time, using saved before/after counts; avoid duplicate run.
+- Then result-entry preflight, residuals 8/11 + September, incident inventory, V5 final backtest and freeze review. Auto-purchase LAST.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
