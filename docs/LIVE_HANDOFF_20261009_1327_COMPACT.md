@@ -109,21 +109,21 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Combined 2026-10-01..05 `v2_results`: 792/792 confirmed (Oct1=168, Oct2=168, Oct3=156, Oct4=156, Oct5=144). Do NOT rerun either previous RESULTS repair.
 - No Production model / LINE / purchase / stake / Railway plan or volume change.
 
-## ACTIVE PENDING COMMAND — DO NOT DUPLICATE
-- GitHub Issue #581 command comment ID: **6075666638**
-- Command: `/railway candidate-v4-result-entries-backfill-20261001-05 CONFIRM`
-- Workflow: `.github/workflows/railway-candidate-v4-result-entries-backfill-20261001-05.yml`
-- Started via one comment; **do not repost or retry** until the exact existing run is verified terminal / absent.
-- Target: official K-file `v2_result_entries` for **2026-10-01..2026-10-05**, 5 days, independently committed day-by-day, `STOP_ON_ERROR=1`.
-- Precondition `v2_results` fulfilled: 792/792 by 2026-10-09 15:27 JST; previous Oct 5 repair PASS.
-- Pending-runs check before comment: no matching in_progress or queued GitHub Actions workflow.
-- **Estimated execution time announced: about 5–20 minutes (rough); existing GitHub job timeout 120 min.**
-- No Production model / LINE / BUY / stake / Railway plan / volume changes.
+## 2026-10-01..05 result-entry backfill — COMPLETED / PASS
+- Issue #581 command comment `6075666638`.
+- GitHub bot result comment `6075705473`, received 2026-10-09 15:33 JST: `CANDIDATE_V4_OCT01_05_RESULT_ENTRIES_BACKFILL_PASS`, exit code 0.
+- Official K daily records (all days PASS, `STOP_ON_ERROR=True`):
+  - 10/01: 168 races, 1008 `v2_result_entries`, normal=994, accident=14.
+  - 10/02: 168 races, 1008 rows, normal=985, accident=23.
+  - 10/03: 156 races, 936 rows, normal=918, accident=18.
+  - 10/04: 156 races, 936 rows, normal=924, accident=12.
+  - 10/05: 144 races, 864 rows, normal=848, accident=16.
+- **Total: 792/792 races, 4752 result-entry rows, 5/5 days PASS, no parser errors, duplicate race IDs or incomplete6, failed_days=0.**
+- `v2_results` top-level was already confirmed 792/792 from previous read-only audit and Oct 05 fix.
+- No relaunch needed; do not repost command. No Production model, LINE, BUY, stake, plan or volume change.
 
 ## Next ONE task
-**Only check Issue #581 command `6075666638` for matching bot PASS/FAILED, and its exact GitHub Actions run if necessary.** Do not launch duplicate while pending.
-- If PASS: read-only result-entry coverage preflight over Aug 1–Oct 5, compare 10/1–10/5, then classify 8/11, September gaps, incident inventory, and V5 backtest/freeze.
-- If FAILED: inspect the single failed job/log and diagnose one issue.
-- Production V4, V5/V5.1 research-only; automatic purchase LAST; Railway Agent/AI prohibited and cost <=USD20/mo ideally <=USD15.
+Run the existing **read-only result-entry coverage preflight** for historical period 2026-08-01..2026-10-05, specifically confirming the 2026-10-01..05 detail coverage and current residual dates. Inspect only the specific relevant workflow and pending command first. Show estimated runtime before triggering; avoid duplicate or bulk runs.
+Then classify any remaining 8/11 and September residual gaps without fabricating data; rerun incident inventory only after coverage is finalized; proceed to V5 final backtest/freeze review. Production=V4; V5/V5.1 research-only. Automatic purchase LAST. Railway Agent/AI prohibited; target monthly cost <=USD20, ideally <=USD15.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
