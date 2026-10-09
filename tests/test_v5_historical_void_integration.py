@@ -54,18 +54,20 @@ class TestV5VoidIntegration(unittest.TestCase):
     def test_backtest_main_filters_both_outcomes_and_history(self):
         valid = ["20260921_09_04", "20260921_10_09"]
         cancelled = "20260921_09_05"
+        abnormal = "20260921_09_03"  # Synthetic F case, never a claim of a real incident
         race_rows = [
             {"race_id": valid[0], "race_date": "2026-09-21", "venue": "09", "winner": 4},
             {"race_id": valid[1], "race_date": "2026-09-21", "venue": "10", "winner": 1},
             # Deliberately incorrect legacy 'official' winner for a K-confirmed VOID:
             {"race_id": cancelled, "race_date": "2026-09-21", "venue": "09", "winner": 5},
+            {"race_id": abnormal, "race_date": "2026-09-21", "venue": "09", "winner": 3},
         ]
         entry_rows = [
             {
                 "race_id": rid, "lane": lane, "racer_number": 2000 + ix * 10 + lane,
                 "racer_class": "A1", "recent_form": None, "exhibition_time_rank": lane,
             }
-            for ix, rid in enumerate(valid + [cancelled])
+            for ix, rid in enumerate(valid + [cancelled, abnormal])
             for lane in range(1, 7)
         ]
         hist_rows = [
@@ -83,7 +85,14 @@ class TestV5VoidIntegration(unittest.TestCase):
             "lane": 1, "start_course": 1, "finish_position": 1,
             "finish_status": "01", "is_flying": False, "is_late": False,
             "result_status": "official", "race_status": "official", "race_date": "2026-09-21",
-        }]
+        }] + [{
+            "race_id": abnormal, "racer_number": 3000 + lane,
+            "lane": lane, "start_course": lane, "finish_position": lane,
+            "finish_status": "F" if lane == 1 else f"{lane:02d}",
+            "is_flying": lane == 1, "is_late": False,
+            "result_status": "official", "race_status": "official",
+            "race_date": "2026-09-21",
+        } for lane in range(1, 7)]
         schema = {
             "v2_races": {"race_id", "race_date", "venue_code"},
             "v2_race_entries": {"race_id", "lane", "racer_number", "racer_class", "recent_form"},
@@ -116,8 +125,8 @@ class TestV5VoidIntegration(unittest.TestCase):
         self.assertEqual(report["coverage"]["scored"], 2)
         self.assertEqual(report["coverage"]["void_candidate_rows_excluded"], 1)
         self.assertEqual(report["coverage"]["void_history_rows_excluded"], 1)
-        self.assertEqual(report["coverage"]["incident_candidate_exclusions"], {})
-        self.assertEqual(report["coverage"]["incident_history_races_exclusions"], {})
+        self.assertEqual(report["coverage"]["incident_candidate_exclusions"], {"ABNORMAL_RESULT": 1})
+        self.assertEqual(report["coverage"]["incident_history_races_exclusions"], {"ABNORMAL_RESULT": 1})
         self.assertTrue(report["coverage"]["result_side_not_predeadline_evidence"])
         self.assertEqual(report["coverage"]["verified_void_registry_size"], 71)
         self.assertEqual(report["coverage"]["venue_count"], 2)
