@@ -178,16 +178,13 @@ commit `8a42ee8778c807419ddf20973d5cf88919367b9f`
 - Tests verify 71 ID manifest, protect completed Sep21 津4R and 三国9R, remove legacy mislabeled cancelled result from scoring and history, and fail on missing race IDs. No DB/Railway access in tests.
 - Only ONE V5 research script is guarded. No Production V4 / LINE / BUY / stake / Railway / DB changes, no real historical backtest rerun yet.
 
-## V5 weight tuning VOID guard — pending offline test
-- Repository `kenshoushouri-cloud/boat-ai-v2`.
-- Fixed official K cancellation registry 71 IDs, bot evidence Issue #581 `6077502477`, no fabricated results.
-- Previous `research/v5_lc_rf_exrank_rc_plus_opponent_pg.py` research-only VOID selection and history guard already PASS with 9 offline tests in `6078124223`.
-- **This turn:** `research/v5_strong_core_weight_tuning_pg.py` commit `be9471290d3e40ac1ab7f9deb8728d8be98229fd`, uses shared `b.exclude_verified_void_rows()` on selected race outcome rows and result-entry history before model fitting, and records VOIDs/evidence counts in research JSON. No DB data/model/runtime changes.
-- New mock-only test `tests/test_v5_weight_tuning_void_guard.py`, commit `fdc77efa1db73752e350b1019067d6ee2527ab62`: covers legacy mislabeled VOID, both selection and history, 9/21 津4R and 三国9R, train Apr/May/late split, no DB.
-- Workflow `.github/workflows/research-v5-weight-tuning-void-offline-tests.yml`, commit `9c71453fe1314ed504e1dc6fdc50e8df29e9ad26`.
-- **ACTIVE COMMAND** Issue #581 comment `6078177001`: `/railway v5-weight-tuning-void-offline-test-20261009`, posted ONCE at 2026-10-09 18:25 JST. Runtime estimate 1–2 min, timeout 5 min. **DO NOT DUPLICATE WHILE PENDING.**
-- Production V4/LINE/BUY/stake, Railway DB/plan/volume untouched, V5 research-only, old raw preserved.
+## V5 weight tuning VOID guard — COMPLETE / PASS
+- `research/v5_strong_core_weight_tuning_pg.py` commit `be9471290d3e40ac1ab7f9deb8728d8be98229fd`: V5 research-only `b.exclude_verified_void_rows` guards selected race outcomes and result-entry racer-course history before fitting; adds explicit counts & provenance to coverage.
+- Regression test `tests/test_v5_weight_tuning_void_guard.py`, commit `fdc77efa1db73752e350b1019067d6ee2527ab62`.
+- GitHub Issue #581 command `6078177001`, bot result **`6078180261`**: `V5_WEIGHT_TUNING_VOID_TEST_PASS`, 1 test run, 0 failed, process exit code 0. This mocked test covers confirmed VOID injection into fake `official` rows, prior-history removal, five normal races including 9/21 津4R/三国9R, and train/Apr/May/late spans. **No live DB rerun yet.**
+- Previous base opponent research guard 9/9 offline tests PASS (`6078124223`); do not confuse targeted unit PASS with an actual full-sample V5 backtest.
+- No DB, Railway or Production V4/LINE/BUY/stake change. V5 research-only, keep raw data and 2025-07-01..2026-10-05 frozen research window.
 
 ## Next ONE task
-Check only matching GitHub bot result for Issue #581 command comment `6078177001` (exact matching Actions run if needed). If PASS, record and next inspect narrow V5 strong core calibration script for same missing research-only VOID guard, without bulk modifying everything. If FAILED, inspect only targeted test traceback and resolve one cause at a time, never blind rerun. After all eligible guards, read-only incident inventory and V5 research full backtest/freeze.
+Inspect and narrowly guard **`research/v5_strong_core_calibration_pg.py`** against exact official K 71 VOID race IDs in both selected outcomes and historic racer-course prior entries. Use shared established `b.exclude_verified_void_rows`, preserve non-VOID races and existing calibration split. Run one offline mocked regression check and record result before touching another script. Never execute bulk Production or Railway AI; monthly cost <=USD20 ideally <=USD15. Auto purchase LAST.
 `COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
