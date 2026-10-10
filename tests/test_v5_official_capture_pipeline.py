@@ -229,7 +229,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         first=copy.deepcopy(db.rows)
         forged=racelist_evidence()
         forged["all_active_verified"]=True
-        self.deny("BEFOREINFO_PREWRITE_DENIED:ACTIVE_START_STATUS_NOT_PROVEN",
+        self.deny("BEFOREINFO_START_STATUS_DENIED:SIX_EXHIBITION_CANDIDATES_START_UNKNOWN",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
                   racelist_evidence=forged)
@@ -248,6 +248,42 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
                   racelist_evidence=racelist_evidence())
         self.assertEqual(db.rows,first)
+        self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
+
+
+    def test_beforeinfo_explicit_withdrawal_from_original_bytes_blocks_insert(self):
+        from test_v5_official_racelist_readback import make_html
+        db=FakeDB()
+        call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
+        snapshot=copy.deepcopy(db.rows)
+        body=six_boat_html().replace("選手2".encode("utf-8"),"選手2欠場".encode("utf-8"))
+        self.deny("BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[body]),
+                  racelist_evidence={"all_active_verified":True})
+        self.assertEqual(db.rows,snapshot)
+        self.assertEqual(db.events[-1],"readback")
+        self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
+
+    def test_beforeinfo_explicit_cancellation_does_not_insert(self):
+        from test_v5_official_racelist_readback import make_html
+        db=FakeDB()
+        call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
+        body=six_boat_html().replace("選手5".encode("utf-8"),"選手5出走取消".encode("utf-8"))
+        self.deny("BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[body]))
+        self.assertEqual(len(db.rows),1)
+        self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
+
+    def test_beforeinfo_partial_exhibition_typed_unknown_no_insert(self):
+        from test_v5_official_racelist_readback import make_html
+        db=FakeDB()
+        call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
+        self.deny("BEFOREINFO_START_STATUS_DENIED:INCOMPLETE_EXHIBITION_START_UNKNOWN",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[six_boat_html(missing_time_lane=3)]))
+        self.assertEqual(len(db.rows),1)
         self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
 
 
