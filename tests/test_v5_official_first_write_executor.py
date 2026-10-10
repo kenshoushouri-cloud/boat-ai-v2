@@ -73,7 +73,7 @@ class FakeCursor:
                     "race_id": race_id, "source_url": url,
                     "request_started_at": start,
                     "response_completed_at": end,
-                    "raw_bytes": memoryview(raw), "raw_sha256": sha,
+                    "raw_bytes": bytes(raw), "raw_sha256": sha,
                 }
                 self.result = ("other-resource",) if self.db.wrong_returning_key else (key,)
             else:
