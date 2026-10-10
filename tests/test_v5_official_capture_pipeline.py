@@ -27,12 +27,12 @@ def fake_clock():
 
 def call(*, db=None, response=None, session=None, **overrides):
     db = FakeDB() if db is None else db
-    session = FakeSession(FakeResponse(chunks=[six_boat_html()]) if response is None else response) if session is None else session
+    session = FakeSession(FakeResponse(url=RACELIST,chunks=[six_boat_html()]) if response is None else response) if session is None else session
     settings = {
         "session": session,
         "connection": db,
-        "requested_url": BEFORE,
-        "expected_source": "official_beforeinfo",
+        "requested_url": RACELIST,
+        "expected_source": "official_racelist",
         "expected_race_id": RACE,
         "storage_enabled": True,
         "clock": fake_clock(),
@@ -70,13 +70,13 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         self.assertEqual(db.events, [])
 
     def test_one_official_capture_to_insert_and_readback(self):
-        db, response = FakeDB(), FakeResponse(chunks=[six_boat_html()])
+        db, response = FakeDB(), FakeResponse(url=RACELIST, chunks=[six_boat_html()])
         result = call(db=db, response=response)
         self.assertEqual(result["status"],
                          "STORED_SOURCE_CONSISTENT_FORWARD_UNVERIFIED")
         self.assertEqual(result["storage_status"],
                          "INSERTED_AND_READBACK_MATCH_SOURCE_UNVERIFIED")
-        self.assertEqual(result["resource_key"],"official_beforeinfo:"+RACE)
+        self.assertEqual(result["resource_key"],"official_racelist:"+RACE)
         self.assertEqual(result["response_completed_at"], END)
         self.assertTrue(result["storage_consistent"])
         self.assertTrue(result["inserted_this_attempt"])
@@ -103,7 +103,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         db = FakeDB()
         call(db=db)
         first = copy.deepcopy(db.rows)
-        updated = FakeResponse(chunks=[six_boat_html(variation="changed official page")])
+        updated = FakeResponse(url=RACELIST,chunks=[six_boat_html(variation="changed official page")])
         self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED", db=db, response=updated)
         self.assertEqual(db.events[-1], "rollback")
         self.assertEqual(db.rows,first)
@@ -207,6 +207,48 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         self.assertIsNone(result["first_observed_at"])
         self.assertFalse(result["first_write_confirmed"])
         self.assertFalse(result["forward_eligible"])
+
+
+    def test_beforeinfo_caller_claims_without_db_first_roster_denied(self):
+        db=FakeDB()
+        forged=racelist_evidence()
+        forged["first_write_confirmed"]=True
+        forged["readback_confirmed"]=True
+        forged["all_active_verified"]=True
+        self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
+                  racelist_evidence=forged)
+        self.assertEqual(db.rows,{})
+        self.assertNotIn("insert",db.events)
+
+    def test_beforeinfo_original_roster_readback_still_no_active_proof(self):
+        from test_v5_official_racelist_readback import make_html
+        db=FakeDB()
+        call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
+        first=copy.deepcopy(db.rows)
+        forged=racelist_evidence()
+        forged["all_active_verified"]=True
+        self.deny("BEFOREINFO_PREWRITE_DENIED:ACTIVE_START_STATUS_NOT_PROVEN",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
+                  racelist_evidence=forged)
+        self.assertEqual(db.rows,first)
+        self.assertEqual(db.events[-1],"readback")
+
+    def test_beforeinfo_tampered_original_roster_blocks_even_if_caller_claims_verified(self):
+        from test_v5_official_racelist_readback import make_html
+        db=FakeDB()
+        call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
+        key="official_racelist:"+RACE
+        db.rows[key]["raw_bytes"]=b"tampered"
+        first=copy.deepcopy(db.rows)
+        self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED",
+                  db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
+                  response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
+                  racelist_evidence=racelist_evidence())
+        self.assertEqual(db.rows,first)
+        self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
 
 
 if __name__ == "__main__":
