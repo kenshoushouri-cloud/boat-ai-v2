@@ -1,0 +1,39 @@
+name: V4 F-count companion contract validation
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_fcount_companion_contract.py'
+      - 'tests/test_v4_fcount_companion_contract.py'
+      - 'docs/V4_FCOUNT_COMPANION_CONTRACT_20260927.md'
+      - '.github/workflows/v4-fcount-companion-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - run: python -m py_compile research/v4_fcount_companion_contract.py
+      - run: pytest -q tests/test_v4_fcount_companion_contract.py
+      - name: Validate pure isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v4_fcount_companion_contract.py').read_text(encoding='utf-8').lower()
+          for x in ('psycopg','requests','urllib','send_'+'line','insert into','update v2_','delete from','create table','railway'):
+              assert x not in t,x
+          for x in ('formal_v4_canonical_core_sha256','purchase_action','promotion_allowed'):
+              assert x in t,x
+          print('V4_FCOUNT_COMPANION_PURE_CONTRACT=PASS')
+          PY
