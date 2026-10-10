@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/v5 positive-start-contract-after-live-observation-20261010'
+      github.event.comment.body == '/v5 positive-start-contract-review-final-20261010'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
