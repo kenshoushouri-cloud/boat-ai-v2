@@ -103,7 +103,8 @@ class TestOfficialPositiveStartEvidenceContract(unittest.TestCase):
         self.denied("EXHIBITION_NOT_COMPLETE_AND_NO_POSITIVE_HEADER",r)
 
     def test_missing_report_rejected(self):
-        self.denied("MISSING_OBSERVATION_REPORT",{})
+        self.denied("REPORT_SCOPE_OR_SAFETY_INVALID", {})
+        self.denied("MISSING_OBSERVATION_REPORT", "not-a-report")
 
     def test_unfinished_or_failed_report_rejected(self):
         r=real_metadata_fixture();r["status"]="INCOMPLETE_STOPPED"
