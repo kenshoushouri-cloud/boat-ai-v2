@@ -1,0 +1,163 @@
+name: Value Candidate Volume Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/value-candidate-volume-audit.yml'
+      - '.github/scripts/value_s02_historical_structure_pg.py'
+      - '.github/scripts/value_s02_forward_frozen_pg.py'
+      - '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py'
+      - '.github/scripts/value_s03_motor2_orthogonal_pg.py'
+      - '.github/scripts/value_s03_exhibition_timing_pg.py'
+      - '.github/scripts/value_s03_m2_forward_frozen_pg.py'
+      - 'report_candidate_shadow_active_comparison_pg.py'
+      - 'report_candidate_filter_shadow_robustness_pg.py'
+      - 'analyze_candidate_walkforward_phase4_pg.py'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000
+  ACTIVE_SHADOW_REPORT_DAYS: '30'
+  CANDIDATE_SHADOW_REPORT_DAYS: '30'
+  VALUE_PRE_BREAKDOWN_DAYS: '30'
+  VALUE_PRE_BREAKDOWN_END: '2026-09-12'
+  VALUE_S03_M2_DAYS: '30'
+  VALUE_S03_M2_END: '2026-09-12'
+  VALUE_S03_EX_TIMING_DAYS: '30'
+  VALUE_S03_EX_TIMING_END: '2026-09-12'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate research scripts
+        run: |
+          python -m py_compile report_candidate_shadow_active_comparison_pg.py
+          python -m py_compile report_candidate_filter_shadow_robustness_pg.py
+          python -m py_compile .github/scripts/value_s02_historical_structure_pg.py
+          python -m py_compile .github/scripts/value_s02_forward_frozen_pg.py
+          python -m py_compile .github/scripts/value_candidate_pre_shadow_breakdown_pg.py
+          python -m py_compile .github/scripts/value_s03_motor2_orthogonal_pg.py
+          python -m py_compile .github/scripts/value_s03_exhibition_timing_pg.py
+          python -m py_compile .github/scripts/value_s03_m2_forward_frozen_pg.py
+          python -m py_compile analyze_candidate_walkforward_phase4_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          reports=(
+              'report_candidate_shadow_active_comparison_pg.py',
+              'report_candidate_filter_shadow_robustness_pg.py',
+              'analyze_candidate_walkforward_phase4_pg.py',
+          )
+          strict=(
+              '.github/scripts/value_s02_historical_structure_pg.py',
+              '.github/scripts/value_s02_forward_frozen_pg.py',
+              '.github/scripts/value_candidate_pre_shadow_breakdown_pg.py',
+              '.github/scripts/value_s03_motor2_orthogonal_pg.py',
+              '.github/scripts/value_s03_exhibition_timing_pg.py',
+              '.github/scripts/value_s03_m2_forward_frozen_pg.py',
+          )
+          for path in reports:
+              text=Path(path).read_text(encoding='utf-8').lower()
+              for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table','execute(','upsert'):
+                  assert token not in text,(path,token)
+          for path in strict:
+              text=Path(path).read_text(encoding='utf-8').lower()
+              assert 'set transaction read only' in text
+              for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table'):
+                  assert token not in text,(path,token)
+          PY
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run active candidate volume comparison
+        run: |
+          python -u report_candidate_shadow_active_comparison_pg.py | tee candidate-active.txt
+          grep -q '^ACTIVE_SHADOW_RESULT=PASS_READ_ONLY$' candidate-active.txt
+      - name: Run candidate robustness breakdown
+        run: |
+          python -u report_candidate_filter_shadow_robustness_pg.py | tee candidate-robustness.txt
+          grep -q '^RESULT=PASS$' candidate-robustness.txt
+      - name: Run actual PRE shadow breakdown
+        run: |
+          python -u .github/scripts/value_candidate_pre_shadow_breakdown_pg.py | tee value-candidate-pre-shadow-breakdown.txt
+          grep -q '^VALUE_PRE_BREAKDOWN_RESULT=PASS_READ_ONLY$' value-candidate-pre-shadow-breakdown.txt
+      - name: Run fixed Motor2 S03 diagnostic
+        run: |
+          python -u .github/scripts/value_s03_motor2_orthogonal_pg.py | tee value-s03-motor2-orthogonal.txt
+          grep -q '^VALUE_S03_M2_RESULT=PASS_READ_ONLY$' value-s03-motor2-orthogonal.txt
+      - name: Run S03 exhibition timing audit
+        run: |
+          python -u .github/scripts/value_s03_exhibition_timing_pg.py | tee value-s03-exhibition-timing.txt
+          grep -q '^VALUE_S03_EX_TIMING_RESULT=PASS_READ_ONLY$' value-s03-exhibition-timing.txt
+      - name: Run frozen S02 Forward audit
+        run: |
+          python -u .github/scripts/value_s02_forward_frozen_pg.py | tee value-s02-forward-frozen.txt
+          grep -q '^VALUE_S02_FORWARD_RESULT=PASS_READ_ONLY$' value-s02-forward-frozen.txt
+          grep -q '^VALUE_S02_FORWARD_PROMOTION_ALLOWED=0$' value-s02-forward-frozen.txt
+      - name: Run frozen S03 Motor2 Forward audit
+        run: |
+          python -u .github/scripts/value_s03_m2_forward_frozen_pg.py | tee value-s03-m2-forward-frozen.txt
+          grep -q '^VALUE_S03_M2_FORWARD_RESULT=PASS_READ_ONLY$' value-s03-m2-forward-frozen.txt
+      - name: Run historical N01 N02 robustness screen
+        env:
+          BT_START_DATE: '2025-07-01'
+          BT_END_DATE: '2026-08-13'
+        run: |
+          python -u analyze_candidate_walkforward_phase4_pg.py | tee candidate-n01-n02-historical.txt
+          grep -q '^PERIOD=2025-07-01..2026-08-13$' candidate-n01-n02-historical.txt
+      - name: Run historical S02 structure screen
+        run: |
+          python -u .github/scripts/value_s02_historical_structure_pg.py | tee value-s02-historical-structure.txt
+          grep -q '^VALUE_S02_HIST_RESULT=PASS_READ_ONLY$' value-s02-historical-structure.txt
+      - name: Upload aggregate research artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-candidate-volume-audit-${{ github.run_id }}
+          path: |
+            candidate-active.txt
+            candidate-robustness.txt
+            value-candidate-pre-shadow-breakdown.json
+            value-candidate-pre-shadow-breakdown.txt
+            value-s02-forward-frozen.json
+            value-s02-forward-frozen.txt
+            value-s03-motor2-orthogonal.json
+            value-s03-motor2-orthogonal.txt
+            value-s03-exhibition-timing.json
+            value-s03-exhibition-timing.txt
+            value-s03-m2-forward-frozen.json
+            value-s03-m2-forward-frozen.txt
+            candidate-n01-n02-historical.txt
+            value-s02-historical-structure.json
+            value-s02-historical-structure.txt
+          retention-days: 30
+          if-no-files-found: error

@@ -1,0 +1,80 @@
+name: Value Stable Profit final_ab Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/value-stable-profit-final-ab.yml'
+      - '.github/scripts/value_stable_profit_final_ab_pg.py'
+      - 'docs/VALUE_STABLE_PROFIT_FINAL_AB_CONTRACT_20260912.md'
+      - 'v24_pre_candidate_notifier_pg.py'
+
+permissions:
+  contents: read
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=180000
+  VALUE_FINAL_AB_START: '2026-08-25'
+  VALUE_FINAL_AB_END: '2026-09-12'
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate read-only final_ab audit
+        run: |
+          python -m py_compile .github/scripts/value_stable_profit_final_ab_pg.py
+          python -m py_compile v24_pre_candidate_notifier_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/value_stable_profit_final_ab_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in p
+          assert 'snapshot_label=\'final_ab\'' in p
+          for token in ('delete from','insert into','update v2_','alter table','drop table','truncate ','vacuum ','create table','create index'):
+              assert token not in p, token
+          assert '"a_stable"' in p and '"b_profit"' in p
+          PY
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+      - name: Load database URL
+        run: |
+          railway variable list --service postgres-recovery --environment production --json > railway-vars.json 2>/dev/null
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data=json.loads(Path('railway-vars.json').read_text())
+          value=data.get('DATABASE_PUBLIC_URL') if isinstance(data,dict) else None
+          if isinstance(data,list):
+              for item in data:
+                  if isinstance(item,dict) and (item.get('name')=='DATABASE_PUBLIC_URL' or item.get('key')=='DATABASE_PUBLIC_URL'):
+                      value=item.get('value'); break
+          if not value: raise SystemExit('DATABASE_PUBLIC_URL not found')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'],'a') as fh: fh.write(f'DATABASE_URL={value}\n')
+          PY
+      - name: Run timing-safe final_ab A/B audit
+        run: |
+          python -u .github/scripts/value_stable_profit_final_ab_pg.py | tee value-stable-profit-final-ab.txt
+          grep -q '^VALUE_FINAL_AB_RESULT=PASS_READ_ONLY$' value-stable-profit-final-ab.txt
+          grep -q '^VALUE_FINAL_AB_PROMOTION_ALLOWED=0$' value-stable-profit-final-ab.txt
+      - name: Upload research artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-stable-profit-final-ab-${{ github.run_id }}
+          path: |
+            value-stable-profit-final-ab.json
+            value-stable-profit-final-ab.txt
+          retention-days: 30
+          if-no-files-found: error
