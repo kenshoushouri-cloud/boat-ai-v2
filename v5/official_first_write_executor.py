@@ -33,6 +33,7 @@ class FirstWriteRejected(RuntimeError):
 READ_COLUMNS = (
     "resource_key", "source_kind", "race_id", "source_url",
     "request_started_at", "response_completed_at", "raw_bytes", "raw_sha256",
+    "stored_at",
 )
 
 
@@ -130,6 +131,7 @@ def persist_first_http_capture(connection: Any, plan: Mapping[str, Any]) -> dict
                 return {
                     "status": verified["status"],
                     "storage_consistent": True,
+                    "db_stored_at_readback_consistent": verified["db_stored_at_readback_consistent"],
                     "resource_key": params[0],
                     "inserted_this_attempt": inserted_key is not None,
                     "first_observed_at": None,
