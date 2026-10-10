@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from research.historical_matched_contract_readiness_pg import (
-    HISTORICAL_OPPONENT_MODEL_VERSION,
     COURSE_PROXY_SOURCE,
+    FORWARD_OPPONENT_MODEL_VERSION,
+    HISTORICAL_OPPONENT_MODEL_VERSION,
+    JST,
     expected_course_snapshot,
+    opponent_provenance,
     opponent_valid,
 )
 
@@ -24,19 +27,75 @@ class HistoricalMatchedContractReadinessTests(unittest.TestCase):
         self.assertEqual(expected_course_snapshot(date(2026, 7, 1)), date(2026, 4, 30))
         self.assertEqual(expected_course_snapshot(date(2026, 9, 29)), date(2026, 4, 30))
 
-    def test_historical_opponent_requires_strict_prior_and_complete_arrays(self):
-        good = {
-            "model_version": HISTORICAL_OPPONENT_MODEL_VERSION,
+    def _base(self):
+        return {
             "race_date": date(2026, 9, 29),
             "train_end": date(2026, 9, 28),
             "matched_opponents": [4, 5, 6, 4, 8, 5],
             "base_win": [0.2, 0.18, 0.17, 0.16, 0.15, 0.14],
             "adj_win": [0.21, 0.17, 0.18, 0.15, 0.16, 0.13],
         }
+
+    def test_historical_102_requires_strict_prior_and_complete_arrays(self):
+        good = {
+            **self._base(),
+            "model_version": HISTORICAL_OPPONENT_MODEL_VERSION,
+        }
         self.assertTrue(opponent_valid(good))
+        self.assertEqual(opponent_provenance(good), "historical102")
         self.assertFalse(opponent_valid(dict(good, train_end=date(2026, 9, 29))))
-        self.assertFalse(opponent_valid(dict(good, matched_opponents=[4, 5, 3, 4, 8, 5])))
-        self.assertFalse(opponent_valid(dict(good, model_version=2)))
+        self.assertFalse(
+            opponent_valid(dict(good, matched_opponents=[4, 5, 3, 4, 8, 5]))
+        )
+
+    def test_forward_v2_is_accepted_only_when_timing_clean(self):
+        deadline = datetime(2026, 9, 29, 10, 0, tzinfo=JST)
+        good = {
+            **self._base(),
+            "model_version": FORWARD_OPPONENT_MODEL_VERSION,
+            "created_at": datetime(2026, 9, 29, 8, 0, tzinfo=JST),
+            "updated_at": datetime(2026, 9, 29, 8, 1, tzinfo=JST),
+            "deadline_at": deadline,
+        }
+        self.assertTrue(opponent_valid(good))
+        self.assertEqual(
+            opponent_provenance(good),
+            "forward_v2_timing_clean",
+        )
+
+        self.assertFalse(
+            opponent_valid(
+                dict(
+                    good,
+                    updated_at=datetime(2026, 9, 29, 8, 15, tzinfo=JST),
+                )
+            )
+        )
+        self.assertFalse(
+            opponent_valid(
+                dict(
+                    good,
+                    created_at=datetime(2026, 9, 29, 10, 0, tzinfo=JST),
+                    updated_at=datetime(2026, 9, 29, 10, 0, tzinfo=JST),
+                )
+            )
+        )
+        self.assertFalse(opponent_valid(dict(good, deadline_at=None)))
+
+    def test_forward_v2_timestamps_are_normalized_to_jst(self):
+        utc = timezone.utc
+        good = {
+            **self._base(),
+            "model_version": FORWARD_OPPONENT_MODEL_VERSION,
+            "created_at": datetime(2026, 9, 28, 22, 59, tzinfo=utc),
+            "updated_at": datetime(2026, 9, 28, 23, 0, tzinfo=utc),
+            "deadline_at": datetime(2026, 9, 29, 1, 0, tzinfo=utc),
+        }
+        self.assertTrue(opponent_valid(good))
+
+    def test_unknown_or_late_model_is_not_usable(self):
+        base = self._base()
+        self.assertFalse(opponent_valid(dict(base, model_version=999)))
 
     def test_script_is_result_blind(self):
         source = Path("research/historical_matched_contract_readiness_pg.py").read_text(

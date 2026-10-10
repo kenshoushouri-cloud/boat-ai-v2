@@ -1,0 +1,74 @@
+name: V4 Course complete vs neutral diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "research/v4_course_neutral_cohort_comparison_pg.py"
+      - "tests/test_v4_course_neutral_cohort_comparison_pg.py"
+      - ".github/workflows/research-v4-course-neutral-cohort-comparison.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+  REFERENCE_RUN_ID: "37182477262"
+  REFERENCE_ARTIFACT: "opponent-ephemeral-20260901-0910-37182477262"
+  REFERENCE_SHA256: "7c050718beede6f0efbb845bd5d2a7d22ce15d0eaf63e7e304f69b6c7a183bfd"
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Safety tests
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_v4_course_neutral_cohort_comparison_pg.py
+          python -m py_compile research/v4_course_neutral_cohort_comparison_pg.py
+      - name: Download frozen Opponent overlay
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.REFERENCE_ARTIFACT }}
+          path: opponent-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.REFERENCE_RUN_ID }}
+      - name: Verify frozen Opponent artifact
+        run: |
+          set -euo pipefail
+          f="opponent-artifact/historical-opponent-ephemeral-20260901-0910.json"
+          actual="$(sha256sum "$f" | awk '{print $1}')"
+          test "$actual" = "$REFERENCE_SHA256"
+      - run: npm install --global @railway/cli
+      - name: Compare Course cohorts read-only
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c max_parallel_workers_per_gather=0"; export PYTHONPATH=.; exec python -u research/v4_course_neutral_cohort_comparison_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --opponent-artifact opponent-artifact/historical-opponent-ephemeral-20260901-0910.json --output course-neutral-cohort-comparison.json' \
+            2>&1 | tee course-neutral-cohort-comparison.txt
+          grep -q '^COURSE_COHORT_SELECTION_OUTCOME_READ=0$' course-neutral-cohort-comparison.txt
+          grep -q '^COURSE_COHORT_RESULT=PASS_DIAGNOSTIC_ONLY$' course-neutral-cohort-comparison.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: course-neutral-cohort-comparison-${{ github.run_id }}
+          path: |
+            course-neutral-cohort-comparison.json
+            course-neutral-cohort-comparison.txt
+          retention-days: 14
+          if-no-files-found: error
