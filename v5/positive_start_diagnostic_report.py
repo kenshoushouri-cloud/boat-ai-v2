@@ -91,6 +91,8 @@ def prepare_offline_diagnostic_report(preflight: object) -> OfflineDiagnosticRep
         return OfflineDiagnosticReport(_INVALID)
     race_id = _safe_race_id(preflight.race_id)
     reason = preflight.reason_code
+    if type(reason) is not str:
+        return OfflineDiagnosticReport(_INVALID)
     if reason == _SYNTHETIC_PREVIEW:
         if (race_id is not None and race_id not in COMPLETED_PROBES
                 and preflight.preflight_conditions_met is True
