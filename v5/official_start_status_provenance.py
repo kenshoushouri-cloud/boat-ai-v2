@@ -123,14 +123,17 @@ def classify_predeadline_start_status(
     except UnicodeError:
         return denied("ORIGINAL_BEFOREINFO_CHARSET_UNKNOWN")
     entries = roster.get("entries")
-    if (not isinstance(entries, (list, tuple)) or len(entries) != 6
-            or len({e.get("racer_number") for e in entries if isinstance(e, Mapping)}) != 6
-            or sorted(e.get("lane") for e in entries if isinstance(e, Mapping)) != list(range(1, 7))
-            or any(not isinstance(e, Mapping)
-                   or type(e.get("racer_number")) is not int
-                   or e.get("racer_number") <= 0
-                   or e.get("active_verified") is not False
-                   for e in entries)):
+    if not isinstance(entries, (list, tuple)) or len(entries) != 6:
+        return denied("RACELIST_CANDIDATE_ROSTER_INVALID")
+    if any(not isinstance(e, Mapping)
+           or type(e.get("racer_number")) is not int
+           or e.get("racer_number") <= 0
+           or type(e.get("lane")) is not int
+           or e.get("active_verified") is not False
+           for e in entries):
+        return denied("RACELIST_CANDIDATE_ROSTER_INVALID")
+    if (len({e["racer_number"] for e in entries}) != 6
+            or sorted(e["lane"] for e in entries) != list(range(1, 7))):
         return denied("RACELIST_CANDIDATE_ROSTER_INVALID")
     # Build cancellation evidence only from boat-specific structured rows.
     # Never search generic page text or post-race results as positive proof.
