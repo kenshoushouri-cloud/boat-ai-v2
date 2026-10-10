@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import unittest
+from datetime import datetime
 
 import psycopg
 from psycopg.errors import InsufficientPrivilege
@@ -138,7 +139,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
         self.assertEqual(saved[0], raw)
         self.assertEqual(saved[1], hashlib.sha256(raw).hexdigest())
         self.assertEqual(saved[2], BEFORE4)
-        self.assertEqual(saved[3].isoformat(), TIME_DONE)
+        self.assertEqual(saved[3], datetime.fromisoformat(TIME_DONE))
         self.assertEqual(self.count_rows(), 1)
 
     def test_identical_repeat_does_not_change_first_row(self):
