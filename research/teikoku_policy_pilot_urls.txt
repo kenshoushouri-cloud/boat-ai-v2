@@ -1,0 +1,3 @@
+# Policy pilot only. Keep sequential and >=3.0 sec.
+https://boatrace-db.net/race/detail/date/20250731/pid/14/rno/07/
+https://boatrace-db.net/race/detail/date/20250621/pid/22/rno/07/
