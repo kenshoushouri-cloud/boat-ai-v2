@@ -115,8 +115,10 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
 
     def run_capture(self, *, url=RACELIST4, body=b"synthetic-six-entries",
                     status=200, enabled=True, race="20261010_09_04",
-                    source="official_racelist", roster_override=None):
-        raw = six_boat_html(variation=body.hex()) if source == "official_beforeinfo" else body
+                    source="official_racelist", roster_override=None,
+                    beforeinfo_original_bytes=None):
+        raw = (beforeinfo_original_bytes if beforeinfo_original_bytes is not None
+               else six_boat_html(variation=body.hex())) if source == "official_beforeinfo" else body
         reply = SyntheticResponse(url, raw, status=status)
         session = SyntheticSession(reply)
         roster = racelist_evidence()
@@ -261,7 +263,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
         forged = racelist_evidence()
         forged["all_active_verified"]=True
         with self.assertRaisesRegex(
-            CapturePipelineNotReady, "^BEFOREINFO_PREWRITE_DENIED:ACTIVE_START_STATUS_NOT_PROVEN$"
+            CapturePipelineNotReady, "^BEFOREINFO_START_STATUS_DENIED:SIX_EXHIBITION_CANDIDATES_START_UNKNOWN$"
         ):
             self.run_capture(
                 url=BEFORE4, source="official_beforeinfo",
@@ -283,6 +285,48 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
             CapturePipelineNotReady, "^V5_CAPTURE_OR_STORAGE_NOT_VERIFIED$"
         ):
             self.run_capture(url=BEFORE4, source="official_beforeinfo")
+        self.assertEqual(self.count_rows(),1)
+
+
+    def test_beforeinfo_explicit_withdrawal_real_pg_never_inserted(self):
+        self.run_capture(url=RACELIST4,body=make_html())
+        raw=six_boat_html().replace("選手2".encode("utf-8"),
+                                   "選手2欠場".encode("utf-8"))
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady,
+            "^BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED$"
+        ):
+            self.run_capture(
+                url=BEFORE4,source="official_beforeinfo",
+                beforeinfo_original_bytes=raw,
+            )
+        self.assertEqual(self.count_rows(),1)
+        self.assertEqual(self.admin.execute(
+            "SELECT source_kind FROM v5_official_source_first_capture"
+        ).fetchone()[0],"official_racelist")
+
+    def test_beforeinfo_explicit_cancellation_real_pg_never_inserted(self):
+        self.run_capture(url=RACELIST4,body=make_html())
+        raw=six_boat_html().replace("選手5".encode("utf-8"),
+                                   "選手5出走取消".encode("utf-8"))
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady,
+            "^BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED$"
+        ):
+            self.run_capture(url=BEFORE4,source="official_beforeinfo",
+                             beforeinfo_original_bytes=raw)
+        self.assertEqual(self.count_rows(),1)
+
+    def test_beforeinfo_partial_six_exhibition_real_pg_stays_unverified(self):
+        self.run_capture(url=RACELIST4,body=make_html())
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady,
+            "^BEFOREINFO_START_STATUS_DENIED:INCOMPLETE_EXHIBITION_START_UNKNOWN$"
+        ):
+            self.run_capture(
+                url=BEFORE4,source="official_beforeinfo",
+                beforeinfo_original_bytes=six_boat_html(missing_time_lane=3),
+            )
         self.assertEqual(self.count_rows(),1)
 
 
