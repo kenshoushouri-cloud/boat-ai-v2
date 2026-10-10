@@ -1,0 +1,132 @@
+name: V5 one-race official read-only start evidence observation
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  one-race-readonly:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 official-one-race-readonly-20261010-03-01'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal HTML and HTTP dependencies
+        shell: bash
+        run: python -m pip install --no-cache-dir 'beautifulsoup4>=4.12,<5' 'requests>=2.31,<3'
+      - name: Observe only Edogawa 1R predeadline official page metadata
+        id: observe
+        shell: bash
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          import json
+          import requests
+          from v5.official_start_status_observation_pilot import run_bounded_official_observation
+
+          # One live observation, no persistence of the source. Fixed 2026-10-10
+          # Edogawa 1R official deadline 11:14 JST; only permit 8–15 minutes
+          # BEFORE deadline, and exit without networking outside that window.
+          now = datetime.now(ZoneInfo("Asia/Tokyo"))
+          deadline = datetime(2026, 10, 10, 11, 14, tzinfo=ZoneInfo("Asia/Tokyo"))
+          minutes_left = (deadline-now).total_seconds()/60
+          result = {
+            "scope":"20261010_03_01",
+            "official_deadline_jst":"2026-10-10T11:14:00+09:00",
+            "status":"NOT_RUN_OUTSIDE_PREDEADLINE_WINDOW",
+            "attempted_gets":0,
+            "observations":[],
+            "all_six_active_confirmed":False,
+            "persistence_performed":False,
+            "forward_eligible":False,
+          }
+          if 8 <= minutes_left <= 15:
+              with requests.Session() as session:
+                  session.headers.update({"Accept":"text/html"})
+                  result = run_bounded_official_observation(
+                      race_ids=["20261010_03_01"],
+                      session=session,
+                      external_get_approved=True,
+                  )
+          elif minutes_left < 8:
+              result["reason"]="SAFETY_CUTOFF_REACHED_NO_GET"
+          else:
+              result["reason"]="NOT_IN_EIGHT_TO_FIFTEEN_MINUTE_WINDOW"
+          # This is the ONLY written diagnostic: anonymous aggregate label
+          # counts, content hash, byte count and local observation time. Never
+          # print/persist any raw HTML/base64, racer names/IDs, cookies or URLs.
+          Path("summary.json").write_text(
+              json.dumps(result,ensure_ascii=False,separators=(",",":")),
+              encoding="utf-8",
+          )
+          PY
+      - name: Publish sanitized one-race summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path("summary.json")
+          if path.exists():
+              r=json.loads(path.read_text(encoding="utf-8"))
+          else:
+              r={"status":"HARNESS_FAILED_BEFORE_REPORT",
+                 "attempted_gets":0,"observations":[]}
+          allowed_status={"READ_ONLY_DISCOVERY_COMPLETE_NOT_VERIFIED",
+                          "INCOMPLETE_STOPPED","NOT_RUN_OUTSIDE_PREDEADLINE_WINDOW",
+                          "HARNESS_FAILED_BEFORE_REPORT"}
+          if r.get("status") not in allowed_status:
+              r={"status":"INTERNAL_UNEXPECTED_STATUS","attempted_gets":0,
+                 "observations":[]}
+          lines=[
+              "## V5 official predeadline one-race READ-ONLY observation",
+              "",
+              "- Scope: 2026-10-10 Edogawa 1R (official closing 11:14 JST)",
+              "- Fixed single race, racelist+beforeinfo only; at most TWO HTTP GETs",
+              "- Executed only 8–15 minutes before official deadline; otherwise zero GETs",
+              "- NO raw HTML, racer names/numbers, cookies, credentials, persistent DB",
+              "- NO Railway/Production V4/LINE/stake/BUY or Forward activation",
+              "- Positive confirmed-six-starter proof is NEVER inferred from these labels",
+              "",
+              "Status: `"+str(r.get("status"))+"`",
+              "GET attempts: "+str(r.get("attempted_gets",0)),
+          ]
+          if "reason" in r:
+              lines.append("No-fetch reason: `"+str(r["reason"])+"`")
+          for o in r.get("observations",[]):
+              h=o.get("hints",{})
+              lines.extend([
+                  "",
+                  "- "+str(o.get("source"))+": `"+str(o.get("status"))+"`",
+                  "  - bytes: "+str(o.get("raw_size_bytes")),
+                  "  - SHA256: `"+str(o.get("raw_sha256"))+"`",
+                  "  - response complete: `"+str(o.get("response_completed_at"))+"`",
+                  "  - HTML parse: "+str(h.get("html_parse")),
+                  "  - candidate header counts: "+str(h.get("potential_status_labels",{})),
+                  "  - structured 6-lane exhibition: "+str(h.get("structured_exhibition_complete",False)),
+              ])
+          lines.extend(["","**All-six active status: UNPROVEN; beforeinfo first-write still BLOCKED.**"])
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Post sanitized result to project issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
