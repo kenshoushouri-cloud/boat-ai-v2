@@ -57,6 +57,14 @@ class OfflineDiagnosticReportTests(unittest.TestCase):
         self.assertEqual(r.reason_code, "UNTRUSTED_PREFLIGHT_RESULT")
         self.assertIsNone(r.race_id)
 
+    def test_nonstring_reason_fails_closed(self):
+        for reason in (None, ["unexpected"], {"active": True}):
+            with self.subTest(reason=reason):
+                r = prepare_offline_diagnostic_report(
+                    PreflightResult(reason, RACE))
+                self.assertEqual(r.reason_code, "UNTRUSTED_PREFLIGHT_RESULT")
+                self.assertFalse(r.forward_eligible)
+
     def test_inconsistent_preflight_rejected(self):
         for p in (PreflightResult(PREVIEW, RACE, False, 2),
                   PreflightResult(PREVIEW, RACE, True, 0),
