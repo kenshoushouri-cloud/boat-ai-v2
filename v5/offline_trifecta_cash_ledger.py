@@ -16,7 +16,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 JST = ZoneInfo('Asia/Tokyo')
-RACE_ID = re.compile(r'(20\d{6})_(0[1-9]|1\d|2[0-4])\_(0[1-9]|1[0-2])\Z')
+RACE_ID = re.compile(r'(20\d{6})_(0[1-9]|1\d|2[0-4])_(0[1-9]|1[0-2])\Z')
 TICKET = re.compile(r'([1-6])-([1-6])-([1-6])\Z')
 SHA256 = re.compile(r'[0-9a-f]{64}\Z')
 MAX_RACES = 500
