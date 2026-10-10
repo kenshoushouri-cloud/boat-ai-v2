@@ -1,0 +1,47 @@
+name: V4 daily one-race selector contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_daily_one_race_selector_contract.py'
+      - 'tests/test_v4_daily_one_race_selector_contract.py'
+      - 'docs/V4_DAILY_ONE_RACE_SELECTOR_PREREG_20260924.md'
+      - '.github/workflows/v4-daily-one-race-selector-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen one-race selector contract
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/v4_daily_one_race_selector_contract.py             tests/test_v4_daily_one_race_selector_contract.py
+          python -m pip install pytest
+          pytest -q tests/test_v4_daily_one_race_selector_contract.py
+          python - <<'PY'
+          from research.v4_daily_one_race_selector_contract import contract_metadata
+          meta=contract_metadata()
+          assert meta['contexts'] == ['H1_P0','H1_P1','HM_P0','HM_P1']
+          assert meta['daily_candidates'] == 6
+          assert meta['selected_races_per_day'] == 1
+          assert meta['points_per_race'] == 2
+          assert meta['market_input_allowed'] is False
+          assert meta['odds_gate_allowed'] is False
+          assert meta['ticket_rerank_allowed'] is False
+          assert meta['same_day_result_feedback_allowed'] is False
+          assert meta['production_change_allowed'] is False
+          assert meta['purchase_action'] is False
+          print('V4_DAILY_ONE_RACE_SELECTOR_CONTRACT=PASS')
+          PY
