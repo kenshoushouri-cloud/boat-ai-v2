@@ -85,7 +85,7 @@ class FakeCursor:
             if self.db.force_missing_read:
                 self.result = None
                 return
-            row = self.db.staged.get(params[0])
+            row = (self.db.staged if self.db.staged is not None else self.db.rows).get(params[0])
             if row is None:
                 self.result = None
             elif self.db.tuple_read:
