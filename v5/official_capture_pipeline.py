@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Callable
+from collections.abc import Mapping
+
+from v5.beforeinfo_prewrite_gate import check_beforeinfo_prewrite
 
 from v5.official_first_write_executor import (
     FirstWriteRejected,
@@ -34,6 +37,9 @@ def capture_and_store_v5_official_source(
     storage_enabled: bool = False,
     clock: Callable[[], datetime] | None = None,
     timeout_seconds: float = 15.0,
+    official_deadline_at: Any = None,
+    prediction_cutoff_at: Any = None,
+    racelist_evidence: Mapping | None = None,
 ) -> dict[str, Any]:
     """Perform ONE response capture and ONE transactional insert/readback.
 
@@ -64,6 +70,18 @@ def capture_and_store_v5_official_source(
             raise CapturePipelineNotReady("UNVERIFIED_HTTP_CAPTURE_PROPOSAL")
         receipt = observed["receipt_proposal"]
         storage_plan = observed["storage_plan"]
+        if expected_source == "official_beforeinfo":
+            prewrite = check_beforeinfo_prewrite(
+                receipt,
+                expected_race_id=expected_race_id,
+                official_deadline_at=official_deadline_at,
+                prediction_cutoff_at=prediction_cutoff_at,
+                racelist_evidence=racelist_evidence,
+            )
+            if prewrite.get("prewrite_eligible") is not True:
+                raise CapturePipelineNotReady(
+                    "BEFOREINFO_PREWRITE_DENIED:" + prewrite["reason"]
+                )
         result = persist_first_http_capture(connection, storage_plan)
         if (result.get("storage_consistent") is not True
                 or result.get("forward_eligible") is not False
@@ -83,6 +101,7 @@ def capture_and_store_v5_official_source(
         "raw_sha256": receipt["raw_sha256"],
         "inserted_this_attempt": result["inserted_this_attempt"],
         "storage_consistent": True,
+        "beforeinfo_prewrite_checked": expected_source == "official_beforeinfo",
         "first_observed_at": None,
         "first_write_confirmed": False,
         "forward_eligible": False,
