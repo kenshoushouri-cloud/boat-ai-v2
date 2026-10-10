@@ -1,0 +1,68 @@
+name: V5 mainline official positive start evidence contract offline
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 positive-start-contract-after-live-observation-20261010'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated HTML parser dependency
+        run: python -m pip install --no-cache-dir 'beautifulsoup4>=4.12,<5'
+      - name: Test fail-closed V5 positive status schema contract with anonymized real pilot metadata
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_official_positive_start_evidence_contract.py' -v > test-output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Generate short result
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
+          keep=[s[:260] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 24 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out:out.write("verified="+("true" if passed else "false")+"\n")
+          lines=[
+            "## V5 real one-race pilot positive start-status evidence contract review",
+            "",
+            "- 24 review tests use only anonymized Edogawa-1R metadata; no network/DB/Railway/V4/LINE/stakes/BUY",
+            "- The 11:03 official pilot saw six exhibition rows but th/dt heading counts alone cannot prove 6 active starts. No source approved; beforeinfo INSERT and Forward remain blocked.",
+            "",
+            "~~~text",*keep[-33:],"~~~","",
+            "V5_POSITIVE_START_EVIDENCE_CONTRACT_OFFLINE_PASS" if passed else "V5_POSITIVE_START_EVIDENCE_CONTRACT_OFFLINE_FAILED"
+          ]
+          Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Reject failing tests
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
