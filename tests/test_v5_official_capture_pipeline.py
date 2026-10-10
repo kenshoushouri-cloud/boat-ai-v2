@@ -10,6 +10,7 @@ from v5.official_capture_pipeline import (
 )
 from test_v5_official_first_write_executor import FakeDB
 from test_v5_official_http_transport import FakeResponse, FakeSession
+from v5_beforeinfo_test_fixtures import six_boat_html, racelist_evidence, DEADLINE, CUTOFF
 
 BEFORE = "https://www.boatrace.jp/owpc/pc/race/beforeinfo?rno=4&jcd=09&hd=20261010"
 RACELIST = "https://www.boatrace.jp/owpc/pc/race/racelist?rno=4&jcd=09&hd=20261010"
@@ -26,7 +27,7 @@ def fake_clock():
 
 def call(*, db=None, response=None, session=None, **overrides):
     db = FakeDB() if db is None else db
-    session = FakeSession(FakeResponse() if response is None else response) if session is None else session
+    session = FakeSession(FakeResponse(chunks=[six_boat_html()]) if response is None else response) if session is None else session
     settings = {
         "session": session,
         "connection": db,
@@ -35,6 +36,9 @@ def call(*, db=None, response=None, session=None, **overrides):
         "expected_race_id": RACE,
         "storage_enabled": True,
         "clock": fake_clock(),
+        "official_deadline_at": DEADLINE,
+        "prediction_cutoff_at": CUTOFF,
+        "racelist_evidence": racelist_evidence(),
     }
     settings.update(overrides)
     return capture_and_store_v5_official_source(**settings)
@@ -66,7 +70,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         self.assertEqual(db.events, [])
 
     def test_one_official_capture_to_insert_and_readback(self):
-        db, response = FakeDB(), FakeResponse()
+        db, response = FakeDB(), FakeResponse(chunks=[six_boat_html()])
         result = call(db=db, response=response)
         self.assertEqual(result["status"],
                          "STORED_SOURCE_CONSISTENT_FORWARD_UNVERIFIED")
@@ -99,7 +103,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         db = FakeDB()
         call(db=db)
         first = copy.deepcopy(db.rows)
-        updated = FakeResponse(chunks=[b"changed after first"])
+        updated = FakeResponse(chunks=[six_boat_html(variation="changed official page")])
         self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED", db=db, response=updated)
         self.assertEqual(db.events[-1], "rollback")
         self.assertEqual(db.rows,first)
