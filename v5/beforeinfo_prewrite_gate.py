@@ -126,43 +126,57 @@ def check_beforeinfo_prewrite(
             or sorted(ranks) != [1, 2, 3, 4, 5, 6]):
         return reject("INVALID_SIX_EXHIBITION_VALUES")
 
-    # BEFOREINFO alone does not establish racers are all active: six-racer
-    # verification must originate in a separately observed official racelist.
+    # No caller-asserted proof may authorize an irreversible per-race first
+    # write. The production pipeline obtains this ONLY by selecting the
+    # immutable ORIGINAL racelist row and parsing its six racers. Even the
+    # verified original does not prove they are all active at this deadline.
     if not isinstance(racelist_evidence, Mapping) or not racelist_evidence:
-        return reject("ACTIVE_RACELIST_EVIDENCE_MISSING")
-    if (racelist_evidence.get("source") != "official_racelist"
-            or racelist_evidence.get("race_id") != expected_race_id
-            or racelist_evidence.get("first_write_confirmed") is not True
-            or racelist_evidence.get("readback_confirmed") is not True):
-        return reject("UNVERIFIED_ACTIVE_RACELIST")
+        return reject("RACELIST_ORIGINAL_READBACK_MISSING")
+    if (racelist_evidence.get("contract") != "V5_RACELIST_ORIGINAL_READBACK_V1"
+            or racelist_evidence.get("readback_consistent") is not True
+            or racelist_evidence.get("first_write_confirmed") is not False
+            or racelist_evidence.get("forward_eligible") is not False
+            or racelist_evidence.get("all_active_verified") is not False
+            or racelist_evidence.get("source") != "official_racelist"
+            or racelist_evidence.get("race_id") != expected_race_id):
+        return reject("RACELIST_ORIGINAL_READBACK_UNVERIFIED")
     try:
         roster_url = racelist_evidence.get("source_url")
         r_kind, _ = _source_from_exact_url(roster_url)
         _, roster_race = _identity(r_kind, roster_url)
         roster_at = _aware_dt(racelist_evidence.get("captured_at"))
     except (TypeError, ValueError, UnverifiedCapture):
-        return reject("UNVERIFIED_ACTIVE_RACELIST")
+        return reject("RACELIST_ORIGINAL_READBACK_UNVERIFIED")
+    digest = racelist_evidence.get("raw_sha256")
     if (r_kind != "official_racelist" or roster_race != expected_race_id
             or roster_at > captured or roster_at >= cutoff
-            or not isinstance(racelist_evidence.get("raw_sha256"), str)
-            or len(racelist_evidence["raw_sha256"]) != 64
-            or not all(c in "0123456789abcdef" for c in racelist_evidence["raw_sha256"])):
-        return reject("UNVERIFIED_ACTIVE_RACELIST")
+            or not isinstance(digest, str) or len(digest) != 64
+            or not all(c in "0123456789abcdef" for c in digest)):
+        return reject("RACELIST_ORIGINAL_READBACK_UNVERIFIED")
     entries = racelist_evidence.get("entries")
     if not isinstance(entries, (list, tuple)) or len(entries) != 6:
-        return reject("NOT_SIX_ACTIVE_RACERS")
+        return reject("RACELIST_NOT_SIX_CANDIDATES")
     lanes, racers = [], []
-    for e in entries:
-        if not isinstance(e, Mapping) or e.get("active") is not True:
-            return reject("NOT_SIX_ACTIVE_RACERS")
-        lane, racer = e.get("lane"), e.get("racer_number")
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            return reject("RACELIST_CANDIDATE_INVALID")
+        lane, racer = entry.get("lane"), entry.get("racer_number")
         if (type(lane) is not int or type(racer) is not int
-                or not 1 <= lane <= 6 or racer <= 0):
-            return reject("INVALID_RACER_IDENTITY")
+                or not 1 <= lane <= 6 or racer <= 0
+                or entry.get("racer_class") not in ("A1", "A2", "B1", "B2")
+                or entry.get("no_cancellation_marker") is not True):
+            return reject("RACELIST_CANDIDATE_INVALID")
+        # "active=True" is untrusted caller metadata, and even
+        # active_verified=True must never circumvent the missing official
+        # start-status provenance.
+        if entry.get("active_verified") is not False:
+            return reject("ACTIVE_STATUS_CLAIM_UNVERIFIED")
         lanes.append(lane)
         racers.append(racer)
     if sorted(lanes) != [1, 2, 3, 4, 5, 6] or len(set(racers)) != 6:
-        return reject("DUPLICATE_OR_MISSING_RACERS")
-    return {"prewrite_eligible": True, "reason": "COMPLETE_BEFOREINFO_PREWRITE_ONLY",
-            "forward_eligible": False, "race_id": linked_race_id,
-            "source_sha256": hashlib.sha256(raw).hexdigest()}
+        return reject("RACELIST_DUPLICATE_OR_MISSING_CANDIDATES")
+
+    # HARD SAFETY HOLD. A genuine independent official start-status / earliest
+    # HTTP source attestation is not implemented yet. Do not lift this with a
+    # boolean or synthetic flag; build/validate that separate evidence first.
+    return reject("ACTIVE_START_STATUS_NOT_PROVEN")
