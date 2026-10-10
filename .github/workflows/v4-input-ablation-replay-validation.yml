@@ -1,0 +1,43 @@
+name: V4 input ablation replay validation
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_input_ablation_replay_pg.py'
+      - 'tests/test_v4_input_ablation_replay.py'
+      - '.github/workflows/v4-input-ablation-replay-validation.yml'
+      - '.github/workflows/v4-input-ablation-replay-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate one-shot replay implementation without DB access
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_input_ablation_replay_pg.py tests/test_v4_input_ablation_replay.py
+          pytest -q tests/test_v4_input_ablation_replay.py
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('research/v4_input_ablation_replay_pg.py').read_text(encoding='utf-8').lower()
+          assert 'set transaction read only' in src
+          assert 'result query' in src
+          for value in ('insert into','update v2_','delete from','vacuum ','purchase_action=true','v2_odds'):
+              assert value not in src, value
+          print('V4_INPUT_ABLATION_REPLAY_VALIDATION=PASS')
+          PY

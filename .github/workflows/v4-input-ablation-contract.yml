@@ -1,0 +1,45 @@
+name: V4 input ablation contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_input_ablation_contract.py'
+      - 'tests/test_v4_input_ablation_contract.py'
+      - 'docs/V4_INPUT_ABLATION_PREREG_20260925.md'
+      - '.github/workflows/v4-input-ablation-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen input-ablation contract
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/v4_input_ablation_contract.py             tests/test_v4_input_ablation_contract.py
+          python -m pip install pytest
+          pytest -q tests/test_v4_input_ablation_contract.py
+          python - <<'PY'
+          from research.v4_input_ablation_contract import contract_metadata
+          m=contract_metadata()
+          assert m["variants"] == ["control","no_course","no_opponent","no_motor","base_only"]
+          assert m["track_a_fixed_control_race"] is True
+          assert m["track_b_variant_reselection"] is True
+          assert m["result_after_freeze_only"] is True
+          assert m["threshold_search"] is False
+          assert m["coefficient_retune"] is False
+          assert m["production_change"] is False
+          assert m["purchase_action"] is False
+          print("V4_INPUT_ABLATION_CONTRACT=PASS")
+          PY
