@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/v5 beforeinfo-prewrite-guard-realpg-20261010'
+      github.event.comment.body == '/v5 beforeinfo-prewrite-guard-diagnostic-20261010'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     services:
@@ -75,7 +75,7 @@ jobs:
             "- Synthetic structured official-style beforeinfo HTML and verified-attestation fixtures ONLY, no real HTTP/Railway/Production V4/LINE/stake/BUY",
             "- Fail CLOSED on incomplete six-boats, cutoff/window, unverified racelist before any insert; retain prior full-pipeline mock+real-Pg regressions; claimed racelist attestation is not independently authentic official source proof",
             "",
-            "~~~text", *keep[-28:], "~~~", "",
+            "~~~text", *keep[:33], "---- LAST ----", *keep[-28:], "~~~", "",
             "V5_BEFOREINFO_PREWRITE_GUARD_REALPG_PASS" if passed else "V5_BEFOREINFO_PREWRITE_GUARD_REALPG_FAILED"
           ]
           Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
