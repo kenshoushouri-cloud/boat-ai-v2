@@ -46,9 +46,18 @@ def call(*, db=None, response=None, session=None, **overrides):
 
 class TestV5OfficialCapturePipeline(unittest.TestCase):
     def deny(self, reason, **params):
+        # An unapproved beforeinfo request must stop BEFORE the injected
+        # HTTP session, roster SELECT or any DB transaction are used.
+        beforeinfo = params.get("expected_source") == "official_beforeinfo"
+        prior_events = list(params["db"].events) if beforeinfo and "db" in params else None
+        probe = params.setdefault("session", FakeSession()) if beforeinfo else None
         with self.assertRaises(CapturePipelineNotReady) as context:
             call(**params)
         self.assertEqual(str(context.exception), reason)
+        if beforeinfo:
+            self.assertEqual(probe.calls, [])
+            if prior_events is not None:
+                self.assertEqual(params["db"].events, prior_events)
 
     def test_disabled_by_default_before_any_io(self):
         db = FakeDB()
@@ -215,7 +224,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         forged["first_write_confirmed"]=True
         forged["readback_confirmed"]=True
         forged["all_active_verified"]=True
-        self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
                   racelist_evidence=forged)
@@ -229,12 +238,12 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         first=copy.deepcopy(db.rows)
         forged=racelist_evidence()
         forged["all_active_verified"]=True
-        self.deny("BEFOREINFO_START_STATUS_DENIED:SIX_EXHIBITION_CANDIDATES_START_UNKNOWN",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
                   racelist_evidence=forged)
         self.assertEqual(db.rows,first)
-        self.assertEqual(db.events[-1],"readback")
+        # No extra readback may occur during the rejected beforeinfo call.
 
     def test_beforeinfo_tampered_original_roster_blocks_even_if_caller_claims_verified(self):
         from test_v5_official_racelist_readback import make_html
@@ -243,7 +252,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         key="official_racelist:"+RACE
         db.rows[key]["raw_bytes"]=b"tampered"
         first=copy.deepcopy(db.rows)
-        self.deny("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html()]),
                   racelist_evidence=racelist_evidence())
@@ -257,12 +266,12 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
         snapshot=copy.deepcopy(db.rows)
         body=six_boat_html().replace("選手2".encode("utf-8"),"選手2欠場".encode("utf-8"))
-        self.deny("BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[body]),
                   racelist_evidence={"all_active_verified":True})
         self.assertEqual(db.rows,snapshot)
-        self.assertEqual(db.events[-1],"readback")
+        # No extra readback may occur during the rejected beforeinfo call.
         self.assertNotIn("official_beforeinfo:"+RACE,db.rows)
 
     def test_beforeinfo_explicit_cancellation_does_not_insert(self):
@@ -270,7 +279,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         db=FakeDB()
         call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
         body=six_boat_html().replace("選手5".encode("utf-8"),"選手5出走取消".encode("utf-8"))
-        self.deny("BEFOREINFO_START_STATUS_DENIED:EXPLICIT_WITHDRAWAL_DISPLAYED",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[body]))
         self.assertEqual(len(db.rows),1)
@@ -280,7 +289,7 @@ class TestV5OfficialCapturePipeline(unittest.TestCase):
         from test_v5_official_racelist_readback import make_html
         db=FakeDB()
         call(db=db,response=FakeResponse(url=RACELIST,chunks=[make_html()]))
-        self.deny("BEFOREINFO_START_STATUS_DENIED:INCOMPLETE_EXHIBITION_START_UNKNOWN",
+        self.deny("BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START",
                   db=db,requested_url=BEFORE,expected_source="official_beforeinfo",
                   response=FakeResponse(url=BEFORE,chunks=[six_boat_html(missing_time_lane=3)]))
         self.assertEqual(len(db.rows),1)
