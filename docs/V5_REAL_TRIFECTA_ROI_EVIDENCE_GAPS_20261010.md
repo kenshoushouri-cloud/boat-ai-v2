@@ -1,0 +1,26 @@
+# V5 real 3連単 ROI — source evidence blocker audit (2026-10-10 JST)
+
+**Scope:** GitHub-only, read-only, ZERO Railway/SQL/official GET. V5-only, no mandatory V4 comparison. No new bets or authorization. A positive synthetic ledger ROI is **NOT** demonstrated profit.
+
+## Code-based audit: what exists and what is still missing
+
+| Layer | Existing verified repository contract | Missing to compute genuinely source-bound V5-only ROI |
+| --- | --- | --- |
+| Predecision odds | `v5/offline_odds_capture_plan.py` calls raw 120-ticket binder, records SHA of synthetic raw HTML and 120 canonical prices | **Actual** official HTML source, independent acquisition-completion timestamp before decision cutoff, immutable first-observation/readback, and preservation of ticket→odds values and wager decisions as frozen original evidence. Current plan records ticket digest only, not ticket price map or real official provenance. |
+| V5 tickets/stakes | `v5/offline_trifecta_cash_ledger.py`: `MockOrder(ticket, stake_yen, odds_decimal, odds_observed_at, purchase_executed_at, purchase_receipt_ref)` | No actual predeadline V5 decision/stake freeze or authenticated binding of each order's `odds_decimal` to a specific official odds original and version. Caller numbers and mock receipts can be arbitrary. V5 ticket count/stake policy is **not yet approved**. |
+| Race outcome | `v2_results` read-only schema visible via `research/result_day_terminal_readiness_pg.py`: `result_status`, `race_status`, `trifecta_ticket`, `trifecta_payout_yen`. `PostraceMockResult` stores arbitrary `raw_result_bytes` and SHA. | Need official original result/payout source, exact same race identity, source date/time, SHA and immutable preservation/readback; crucially **parse original winning trifecta and payout** and compare to claimed DB/result fields. A matching SHA of arbitrary bytes does not attest that claimed payout is in those bytes. |
+| Refund/VOID/F-L | Ledger accepts `MockTicketReturn(ticket,payout_yen,refund_yen)`, preserves postdecision VOID in predecision cohort and distinguishes official vs VOID. | No original official **ticket-specific refund** field or parsed evidence of which tickets are refundable after F/L / withdrawal, especially when remaining race has an OFFICIAL finishing order. Full-race VOID is not a substitute for ticket-specific refund. `research/result_day_terminal_readiness_pg.py` SELECT does **not** include refund, exclusion or F/L evidence. |
+| ROI reporting | Synthetic ledger computes cash net/ROI and checks basic shapes; `research/forward_economics.py` offers generic statistics but `invalid_result` is excluded from investment. | Real outcome, refunds, as-of odds, order freeze and loss cohort must be source-bound. Do **not** use `invalid_result` exclusion to silently remove predecision selected VOID races: count original stake **and** verified refund in returns, while marking unresolved as PENDING. |
+
+### Critical observed gap (not an invented missing result)
+The V5 ledger validates `raw_result_sha256 == sha256(raw_result_bytes)` but **never parses raw result bytes to establish `winning_ticket` or `returns`**. The caller may alter a numerically valid payout while keeping the same fake result bytes/digest; mock economics can change. This is by-design synthetic math, **not genuine source parity**. An additional check of hash *without parsing* does not fix it. Similarly the odds plan's 120-price digest does not bind `MockOrder.odds_decimal` to those source values.
+
+The DB has terminal outcome fields, so the blocker is **not simply missing a payout amount**. It is the lack of authenticated original result and refund **content parity**, coupled with original verified predecision odds/candidate freeze.
+
+## Shortest next implementation path
+1. Read **only** a current repository official-result ingestion/parser source and its test (no Railway), identify the official page/archive layout including 3連単 payout and F/L refund information. **Do not invent result URLs or official field semantics.**
+2. With a real, lawfully available source fixture and a verified official semantic contract, implement a *pure offline* parser returning race-id, winning trifecta, 100-yen official payout, status and refundable tickets. Reject ambiguous/partial data; keep original byte digest and source/time metadata as separate untrusted claims pending provenance audit. Test original source→claimed result/return parity.
+3. Independently bind each selected V5 order's race/ticket/odds to true predeadline original 120-ticket observation and frozen selection, then join immutable postrace payout/refund source (same race) for paper ROI. Separate retrospective `NOT_ASOF` from prospective `PAPER`; report missing coverage and unresolved PENDING, never hindsight-filter void/refunds.
+4. Only after source-authenticated Forward verification and separate user approval consider real selection/BUY. A failing or missing source remains HARD HOLD.
+
+**Protected priorities:** monthly V5 NET +JPY50,000 is an unproven target, about 1–3 quality candidate races/day (0 allowed); ChatGPT + Railway <=JPY6,000/month (ideal <=JPY5,000), Railway practical <=USD10–12 (warn USD15, next invoice cap target USD20). V4 remains Production until safe cutover; no V4 return comparison required; prevent large DB writes and protect near-full 5GB V4 volume.
