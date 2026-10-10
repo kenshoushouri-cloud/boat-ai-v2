@@ -102,7 +102,11 @@ def classify_predeadline_start_status(
             or before_race != expected_race_id
             or roster_race != expected_race_id):
         return denied("SOURCE_RACE_ID_MISMATCH")
-    if (not roster_observed <= begin <= observed < cutoff <= deadline
+    # A separately stored racelist must be observed no later than the
+    # beforeinfo response completion. Requiring it before request START would
+    # reject same-completion snapshots despite matching as-of evidence.
+    if (not begin <= observed < cutoff <= deadline
+            or not roster_observed <= observed
             or not 0 <= (observed - begin).total_seconds() <= MAX_REQUEST_SECONDS
             or not 0 <= (observed - roster_observed).total_seconds() <= 86400
             or not WINDOW_MIN <= (deadline - observed).total_seconds() / 60 <= WINDOW_MAX):
