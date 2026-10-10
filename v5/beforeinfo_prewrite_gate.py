@@ -128,7 +128,7 @@ def check_beforeinfo_prewrite(
 
     # BEFOREINFO alone does not establish racers are all active: six-racer
     # verification must originate in a separately observed official racelist.
-    if not isinstance(racelist_evidence, Mapping):
+    if not isinstance(racelist_evidence, Mapping) or not racelist_evidence:
         return reject("ACTIVE_RACELIST_EVIDENCE_MISSING")
     if (racelist_evidence.get("source") != "official_racelist"
             or racelist_evidence.get("race_id") != expected_race_id
