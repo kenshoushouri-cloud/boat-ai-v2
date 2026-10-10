@@ -200,7 +200,7 @@ class TestV5RacelistReadback(unittest.TestCase):
         row["request_started_at"]=datetime.fromisoformat("2026-10-10T02:45:59+00:00")
         row["response_completed_at"]=datetime.fromisoformat("2026-10-10T02:46:00+00:00")
         result=run(DB(row))
-        self.assertEqual(result["captured_at"],ROSTER_AT)
+        self.assertEqual(datetime.fromisoformat(result["captured_at"]), datetime.fromisoformat(ROSTER_AT))
 
     def test_table_digest_does_not_prove_true_first_capture(self):
         r=run()
