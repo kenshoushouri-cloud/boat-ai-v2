@@ -19,6 +19,7 @@ from v5.official_capture_pipeline import (
     capture_and_store_v5_official_source,
 )
 from v5.official_first_write_storage import DDL
+from v5_beforeinfo_test_fixtures import six_boat_html, racelist_evidence, DEADLINE, CUTOFF
 
 BEFORE4 = "https://www.boatrace.jp/owpc/pc/race/beforeinfo?rno=4&jcd=09&hd=20261010"
 BEFORE5 = "https://www.boatrace.jp/owpc/pc/race/beforeinfo?rno=5&jcd=09&hd=20261010"
@@ -112,13 +113,21 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
     def run_capture(self, *, url=BEFORE4, body=b"synthetic-complete-6-entries",
                     status=200, enabled=True, race="20261010_09_04",
                     source="official_beforeinfo"):
-        reply = SyntheticResponse(url, body, status=status)
+        raw = six_boat_html(variation=body.hex()) if source == "official_beforeinfo" else body
+        reply = SyntheticResponse(url, raw, status=status)
         session = SyntheticSession(reply)
+        roster = racelist_evidence()
+        if race == "20261010_09_05":
+            roster["race_id"] = race
+            roster["source_url"] = roster["source_url"].replace("rno=4", "rno=5")
         result = capture_and_store_v5_official_source(
             session=session, connection=self.writer,
             requested_url=url, expected_source=source,
             expected_race_id=race, storage_enabled=enabled,
             clock=synthetic_clock(),
+            official_deadline_at=DEADLINE,
+            prediction_cutoff_at=CUTOFF,
+            racelist_evidence=roster,
         )
         return result, session, reply
 
@@ -136,8 +145,8 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
             "SELECT raw_bytes, raw_sha256, source_url, response_completed_at "
             "FROM v5_official_source_first_capture",
         ).fetchone()
-        self.assertEqual(saved[0], raw)
-        self.assertEqual(saved[1], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(saved[0], six_boat_html(variation=raw.hex()))
+        self.assertEqual(saved[1], hashlib.sha256(six_boat_html(variation=raw.hex())).hexdigest())
         self.assertEqual(saved[2], BEFORE4)
         self.assertEqual(saved[3], datetime.fromisoformat(TIME_DONE))
         self.assertEqual(self.count_rows(), 1)
@@ -167,7 +176,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
         original = self.admin.execute(
             "SELECT raw_bytes FROM v5_official_source_first_capture"
         ).fetchone()[0]
-        self.assertEqual(original, b"first response")
+        self.assertEqual(original, six_boat_html(variation=b"first response".hex()))
 
     def test_corrupted_first_row_refuses_new_match(self):
         self.run_capture(body=b"original")
