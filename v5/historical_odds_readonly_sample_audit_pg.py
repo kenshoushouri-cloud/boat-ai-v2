@@ -46,13 +46,13 @@ def checked_race_ids(raw: object) -> tuple[str, ...]:
     return ids
 
 
-def summarize_odds(n: int, valid: int, final: int, nonfinal: int,
-                   missing_final: int) -> str:
+def summarize_odds(n: int, valid: int, distinct_tickets: int,
+                   final: int, nonfinal: int, missing_final: int) -> str:
     """A stored is_final flag is a claim, not independent source proof."""
     if n == 0:
         return "NO_ROWS_FOR_SAMPLED_RACE"
-    if n != 120 or valid != 120:
-        return "NOT_120_COMPLETE"
+    if n != 120 or valid != 120 or distinct_tickets != 120:
+        return "NOT_120_COMPLETE_OR_INVALID_TICKETS"
     if final == 120 and nonfinal == 0 and missing_final == 0:
         return "120_RECORDED_FINAL_FLAG_CANDIDATE_NOT_SOURCE_PROOF"
     if final == 0 and nonfinal == 120:
@@ -115,8 +115,85 @@ def run_sample_audit() -> dict:
                 # Every data query is indexed on race_id with at most 3 keys.
                 cur.execute("""
                     SELECT race_id, count(*)::int AS n,
+                           count(DISTINCT ticket)::int AS distinct_tickets,
                            count(*) FILTER
-                             (WHERE ticket IS NOT NULL AND odds > 0)::int AS valid,
+                             (WHERE ticket ~ '^[1-6]-[1-6]-[1-6]
+                           count(*) FILTER (WHERE is_final IS TRUE)::int AS final,
+                           count(*) FILTER (WHERE is_final IS FALSE)::int AS nonfinal,
+                           count(*) FILTER (WHERE is_final IS NULL)::int AS missing_final,
+                           min(fetched_at) AS oldest_stored_fetch,
+                           max(fetched_at) AS newest_stored_fetch
+                      FROM v2_odds_trifecta
+                     WHERE race_id = ANY(%s)
+                     GROUP BY race_id
+                """, (list(ids),))
+                odds = {r["race_id"]: dict(r) for r in cur.fetchall()}
+                cur.execute("""
+                    SELECT race_id, result_status, race_status,
+                           trifecta_ticket, trifecta_payout_yen
+                      FROM v2_results
+                     WHERE race_id = ANY(%s)
+                """, (list(ids),))
+                settlements = {r["race_id"]: dict(r) for r in cur.fetchall()}
+                cur.execute("""
+                    SELECT race_id, count(*)::int AS rows,
+                           count(*) FILTER (WHERE is_flying IS TRUE)::int AS flying,
+                           count(*) FILTER (WHERE is_late IS TRUE)::int AS late
+                      FROM v2_result_entries
+                     WHERE race_id = ANY(%s)
+                     GROUP BY race_id
+                """, (list(ids),))
+                incidents = {r["race_id"]: dict(r) for r in cur.fetchall()}
+                races = []
+                for rid in ids:
+                    o = odds.get(rid, {})
+                    s = settlements.get(rid, {})
+                    i = incidents.get(rid, {})
+                    n, valid, distinct, final = (
+                        int(o.get(k, 0)) for k in ("n", "valid", "distinct_tickets", "final"))
+                    nonfinal = int(o.get("nonfinal", 0))
+                    missing_final = int(o.get("missing_final", 0))
+                    races.append({
+                        "race_id": rid,
+                        "odds_rows": n, "valid_odds_rows": valid,
+                        "distinct_tickets": distinct,
+                        "is_final_true_rows": final,
+                        "is_final_false_rows": nonfinal,
+                        "is_final_null_rows": missing_final,
+                        "odds_shape_verdict": summarize_odds(
+                            n, valid, distinct, final, nonfinal, missing_final),
+                        "stored_fetch_oldest": (
+                            o["oldest_stored_fetch"].isoformat()
+                            if o.get("oldest_stored_fetch") else None),
+                        "stored_fetch_newest": (
+                            o["newest_stored_fetch"].isoformat()
+                            if o.get("newest_stored_fetch") else None),
+                        "result_present": bool(s),
+                        "result_status": s.get("result_status"),
+                        "race_status": s.get("race_status"),
+                        "trifecta_ticket_present": bool(s.get("trifecta_ticket")),
+                        "trifecta_payout_positive": (
+                            type(s.get("trifecta_payout_yen")) is int
+                            and s["trifecta_payout_yen"] > 0),
+                        "entry_rows": int(i.get("rows", 0)),
+                        "flying_lanes": int(i.get("flying", 0)),
+                        "late_lanes": int(i.get("late", 0)),
+                        "refund_eligible_tickets_verified": False,
+                        "predecision_first_capture_verified": False,
+                    })
+                return {**results, "sample": races}
+            finally:
+                cur.execute("ROLLBACK")
+
+
+if __name__ == "__main__":
+    print(json.dumps(run_sample_audit(), ensure_ascii=False, sort_keys=True))
+
+                               AND split_part(ticket, '-', 1) <> split_part(ticket, '-', 2)
+                               AND split_part(ticket, '-', 1) <> split_part(ticket, '-', 3)
+                               AND split_part(ticket, '-', 2) <> split_part(ticket, '-', 3)
+                               AND odds > 0
+                               AND odds::text NOT IN ('NaN','Infinity','-Infinity'))::int AS valid,
                            count(*) FILTER (WHERE is_final IS TRUE)::int AS final,
                            count(*) FILTER (WHERE is_final IS FALSE)::int AS nonfinal,
                            count(*) FILTER (WHERE is_final IS NULL)::int AS missing_final,
