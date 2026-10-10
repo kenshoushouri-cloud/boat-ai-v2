@@ -74,6 +74,7 @@ class FakeCursor:
                     "request_started_at": start,
                     "response_completed_at": end,
                     "raw_bytes": bytes(raw), "raw_sha256": sha,
+                    "stored_at": end,
                 }
                 self.result = ("other-resource",) if self.db.wrong_returning_key else (key,)
             else:
@@ -90,7 +91,8 @@ class FakeCursor:
                 self.result = None
             elif self.db.tuple_read:
                 names = ("resource_key", "source_kind", "race_id", "source_url",
-                         "request_started_at", "response_completed_at", "raw_bytes", "raw_sha256")
+                         "request_started_at", "response_completed_at", "raw_bytes", "raw_sha256",
+                         "stored_at")
                 self.result = tuple(row[k] for k in names)
             else:
                 self.result = row
