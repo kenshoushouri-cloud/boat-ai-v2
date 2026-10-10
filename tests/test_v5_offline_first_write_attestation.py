@@ -70,6 +70,23 @@ class OfflineProvenanceTests(unittest.TestCase):
             with self.subTest(row=row):
                 self.verify("ROW_MUTATED_OR_COLLIDED", row=row)
 
+    def test_forged_cross_race_and_source_keys_rejected(self):
+        a = fixtures()
+        for forged in (
+            "official_beforeinfo:20261012_03_02",  # wrong race day
+            "official_racelist:20261011_03_03",  # wrong race number
+            "official_k_file:20261011_03_02",  # wrong resource type
+            "arbitrary:20261011_03_02",  # forged resource namespace
+        ):
+            with self.subTest(resource_key=forged):
+                # All three inputs collude on the same forged resource key.
+                self.verify(
+                    "RESOURCE_KEY_RACE_BINDING_INVALID",
+                    receipt=dataclasses.replace(a["receipt"], resource_key=forged),
+                    row=dataclasses.replace(a["row"], resource_key=forged),
+                    audit=dataclasses.replace(a["audit"], resource_key=forged),
+                )
+
     def test_untrusted_or_missing_receipt(self):
         self.verify("SOURCE_RECEIPT_UNAUTHENTICATED", receipt={"raw_sha256": DIGEST})
         a = fixtures()
