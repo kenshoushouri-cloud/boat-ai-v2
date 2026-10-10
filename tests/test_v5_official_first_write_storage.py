@@ -42,7 +42,7 @@ def stored(plan):
     return dict(resource_key=key,source_kind=kind,race_id=race,
                 source_url=url,request_started_at=begun,
                 response_completed_at=completed,raw_bytes=memoryview(raw),
-                raw_sha256=sha)
+                raw_sha256=sha,stored_at=completed)
 
 
 class TestV5FirstWriteStorage(unittest.TestCase):
