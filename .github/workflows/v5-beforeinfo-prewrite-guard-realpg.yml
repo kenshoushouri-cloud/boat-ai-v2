@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/v5 beforeinfo-prewrite-guard-final-retest-20261010'
+      github.event.comment.body == '/v5 original-racelist-required-offline-pg-20261010'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     services:
@@ -66,17 +66,17 @@ jobs:
           from pathlib import Path
           raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
           keep=[s[:260] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError","psycopg.errors."))]
-          passed=(os.environ.get("PASSED")=="true" and all("Ran "+str(n)+" tests" in raw for n in (23,20,9)) and raw.count("\nOK\n") == 3)
+          passed=(os.environ.get("PASSED")=="true" and all("Ran "+str(n)+" tests" in raw for n in (24,23,12)) and raw.count("\nOK\n") == 3)
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:out.write("verified="+("true" if passed else "false")+"\n")
           lines=[
-            "## V5 beforeinfo pre-first-write six-active-lane and real PostgreSQL regression",
+            "## V5 original racelist readback mandatory and fail-closed beforeinfo PostgreSQL regression",
             "",
             "- GitHub Actions temporary postgres:16 only, isolated localhost database v5_ephemeral_ci",
-            "- Synthetic structured official-style beforeinfo HTML and verified-attestation fixtures ONLY, no real HTTP/Railway/Production V4/LINE/stake/BUY",
-            "- Fail CLOSED on incomplete six-boats, cutoff/window, unverified racelist before any insert; retain prior full-pipeline mock+real-Pg regressions; claimed racelist attestation is not independently authentic official source proof",
+            "- Synthetic official-style HTTP and original BYTEA SELECT only; no real HTTP/Railway/Production V4/LINE/stake/BUY",
+            "- Legacy caller first-write/active flags are ignored; original racelist BYTEA must parse 6 candidates, and absence of independent all-six active proof means beforeinfo INSERT remains blocked. Other racelist/K first-write SQL regressions still exercised.",
             "",
             "~~~text", *keep[:33], "---- LAST ----", *keep[-28:], "~~~", "",
-            "V5_BEFOREINFO_PREWRITE_GUARD_REALPG_PASS" if passed else "V5_BEFOREINFO_PREWRITE_GUARD_REALPG_FAILED"
+            "V5_RACELIST_BINDER_PIPELINE_FAILCLOSED_PASS" if passed else "V5_RACELIST_BINDER_PIPELINE_FAILCLOSED_FAILED"
           ]
           Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
