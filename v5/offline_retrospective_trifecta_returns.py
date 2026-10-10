@@ -1,6 +1,7 @@
 """V5 retrospective 3連単 returns, from FIXED selections + actual result rows.
 
-Pure CPU-only economics: no DB, HTTP, Railway, official fetch, stake placement or
+Pure CPU-only economics: uses explicit published winning payout rather than
+closing odds; no DB, HTTP, Railway, official fetch, stake placement or
 prediction based on postrace results/closing odds. An output is scenario math,
 NOT evidence that selections or odds existed before the actual race cutoff.
 ALL selected races are retained. PENDING/unverified refund -> no full-cohort ROI.
@@ -93,6 +94,7 @@ def evaluate_fixed_retrospective_returns(
         paid = 0
         for t in s.tickets:
             if (type(t) is not FixedTicket
+                    or type(t.combination) is not str
                     or t.combination not in _TICKETS
                     or type(t.stake_yen) is not int
                     or t.stake_yen < 100 or t.stake_yen % 100 != 0):
@@ -128,7 +130,8 @@ def evaluate_fixed_retrospective_returns(
             returned = paid_by_race[sel.race_id]
             status = "VOID_REFUNDED"
         else:
-            if (outcome.winning_ticket not in _TICKETS
+            if (type(outcome.winning_ticket) is not str
+                    or outcome.winning_ticket not in _TICKETS
                     or type(outcome.payout_per_100_yen) is not int
                     or outcome.payout_per_100_yen < 100):
                 return fail("OFFICIAL_WINNER_OR_PAYOUT_INVALID")
@@ -160,7 +163,7 @@ def evaluate_fixed_retrospective_returns(
     pending_stake = all_stake - settled_stake
     complete = nsettled == len(selections)
     return RetrospectiveReturns(
-        reason=("RETROSPECTIVE_CLOSING_PRICE_SCENARIO_ONLY" if complete
+        reason=("RETROSPECTIVE_RESULT_PAYOUT_SCENARIO_ONLY" if complete
                 else "INCOMPLETE_COHORT_ROI_WITHHELD"),
         candidate_races=len(selections),
         planned_stake_yen=all_stake,
