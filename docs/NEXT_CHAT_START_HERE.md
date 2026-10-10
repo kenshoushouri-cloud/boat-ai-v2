@@ -28,4 +28,6 @@ Railway Agent/AIは禁止。
 Railway費用は月USD20以下、可能ならUSD15以下。CPU/RAM/Network最小化。
 purchase / LINE / stake / Production model / plan / volume resize-deleteは明示承認なしで変更しない。
 
+重要: 2026-10-10 江戸川1Rの公式READ-ONLY 2 GETとpositive-start証拠判定24/24 PASSは既に完了。**同じ検証を再実行しない。** 出走確定の肯定的証拠は未確認なので、beforeinfo初回保存・Forwardの安全停止を維持する。
+
 確認後、current compact handoffの **Next ONE taskだけ** 実施してください。
