@@ -14,6 +14,9 @@ from typing import Any, Callable
 from collections.abc import Mapping
 
 from v5.beforeinfo_prewrite_gate import check_beforeinfo_prewrite
+from v5.official_racelist_readback import (
+    RacelistNotVerified, bind_first_write_racelist,
+)
 
 from v5.official_first_write_executor import (
     FirstWriteRejected,
@@ -39,13 +42,15 @@ def capture_and_store_v5_official_source(
     timeout_seconds: float = 15.0,
     official_deadline_at: Any = None,
     prediction_cutoff_at: Any = None,
-    racelist_evidence: Mapping | None = None,
+    racelist_evidence: Mapping | None = None,  # legacy caller claims are IGNORED
 ) -> dict[str, Any]:
     """Perform ONE response capture and ONE transactional insert/readback.
 
     storage_enabled must be explicitly True. The caller MUST independently
     ensure the connection is an ISOLATED V5 INSERT+SELECT-only account before
     invoking this function. This code cannot infer the DB's role or origin.
+    Any caller-supplied racelist_evidence is deliberately IGNORED. The V5
+    original-byte binder must SELECT and parse the first stored racelist itself.
     Actual Railway/Production invocation is not configured or approved.
     """
     if storage_enabled is not True:
@@ -71,12 +76,18 @@ def capture_and_store_v5_official_source(
         receipt = observed["receipt_proposal"]
         storage_plan = observed["storage_plan"]
         if expected_source == "official_beforeinfo":
+            verified_roster = bind_first_write_racelist(
+                connection,
+                expected_race_id=expected_race_id,
+                beforeinfo_captured_at=receipt["response_completed_at"],
+                prediction_cutoff_at=prediction_cutoff_at,
+            )
             prewrite = check_beforeinfo_prewrite(
                 receipt,
                 expected_race_id=expected_race_id,
                 official_deadline_at=official_deadline_at,
                 prediction_cutoff_at=prediction_cutoff_at,
-                racelist_evidence=racelist_evidence,
+                racelist_evidence=verified_roster,
             )
             if prewrite.get("prewrite_eligible") is not True:
                 raise CapturePipelineNotReady(
@@ -88,7 +99,7 @@ def capture_and_store_v5_official_source(
                 or result.get("first_observed_at") is not None
                 or result.get("first_write_confirmed") is not False):
             raise CapturePipelineNotReady("UNVERIFIED_FIRST_WRITE_READBACK")
-    except (FirstWriteRejected, UnverifiedCapture) as exc:
+    except (FirstWriteRejected, UnverifiedCapture, RacelistNotVerified) as exc:
         # Do not log raw payloads, credentials, or underlying database errors.
         raise CapturePipelineNotReady("V5_CAPTURE_OR_STORAGE_NOT_VERIFIED") from exc
 
