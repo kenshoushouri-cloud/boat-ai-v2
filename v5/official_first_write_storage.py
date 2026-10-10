@@ -50,7 +50,7 @@ RETURNING resource_key
 """
 READ_FIRST = """
 SELECT resource_key,source_kind,race_id,source_url,request_started_at,
-       response_completed_at,raw_bytes,raw_sha256
+       response_completed_at,raw_bytes,raw_sha256,stored_at
 FROM v5_official_source_first_capture WHERE resource_key=%s
 """
 
@@ -148,6 +148,7 @@ def verify_first_write_readback(
         return {
             "status": status, "storage_consistent": consistent,
             "first_observed_at": None, "first_write_confirmed": False,
+            "db_stored_at_readback_consistent": consistent,
             "forward_eligible": False,
         }
 
@@ -158,6 +159,17 @@ def verify_first_write_readback(
     if not isinstance(frozen, Mapping):
         return outcome("FIRST_WRITE_READBACK_MISSING")
     key, kind, rid, url, start, completed, raw, digest = plan["params"]
+    # PostgreSQL DEFAULT now() is transaction-start, never commit/first-sight.
+    # This is only an untrusted same-transaction row value, not an audit.
+    stored_at = frozen.get("stored_at")
+    if type(stored_at) is not datetime:
+        return outcome("DB_STORED_AT_MISSING_OR_INVALID")
+    try:
+        stored_at = _aware_dt(stored_at)
+    except (UnverifiedCapture, ValueError, TypeError):
+        return outcome("DB_STORED_AT_MISSING_OR_INVALID")
+    if stored_at < completed:
+        return outcome("DB_STORED_AT_BEFORE_RESPONSE_COMPLETION")
     try:
         stored_raw = frozen.get("raw_bytes")
         if not isinstance(stored_raw, (bytes, memoryview)):
