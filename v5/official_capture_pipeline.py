@@ -14,6 +14,7 @@ from typing import Any, Callable
 from collections.abc import Mapping
 
 from v5.beforeinfo_prewrite_gate import check_beforeinfo_prewrite
+from v5.official_start_status_provenance import classify_predeadline_start_status
 from v5.official_racelist_readback import (
     RacelistNotVerified, bind_first_write_racelist,
 )
@@ -82,6 +83,33 @@ def capture_and_store_v5_official_source(
                 beforeinfo_captured_at=receipt["response_completed_at"],
                 prediction_cutoff_at=prediction_cutoff_at,
             )
+            start_status = classify_predeadline_start_status(
+                beforeinfo_receipt=receipt,
+                racelist_readback=verified_roster,
+                expected_race_id=expected_race_id,
+                official_deadline_at=official_deadline_at,
+                prediction_cutoff_at=prediction_cutoff_at,
+            )
+            status = start_status.get("status")
+            if status == "UNVERIFIED_SOURCE":
+                raise CapturePipelineNotReady(
+                    "BEFOREINFO_START_SOURCE_UNVERIFIED:" + start_status["reason"]
+                )
+            if status in (
+                "EXPLICIT_WITHDRAWAL_DISPLAYED",
+                "SIX_EXHIBITION_CANDIDATES_START_UNKNOWN",
+                "INCOMPLETE_EXHIBITION_START_UNKNOWN",
+            ):
+                raise CapturePipelineNotReady(
+                    "BEFOREINFO_START_STATUS_DENIED:" + status
+                )
+            # No approved positive-source contract exists. Unknown or
+            # future statuses cannot silently bypass the active-start
+            # evidence or the independent prewrite integrity gate.
+            if (start_status.get("all_six_active_confirmed") is not True
+                    or start_status.get("beforeinfo_prewrite_eligible") is not True
+                    or start_status.get("forward_eligible") is not False):
+                raise CapturePipelineNotReady("BEFOREINFO_START_STATUS_UNSUPPORTED")
             prewrite = check_beforeinfo_prewrite(
                 receipt,
                 expected_race_id=expected_race_id,
