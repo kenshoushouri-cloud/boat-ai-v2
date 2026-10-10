@@ -47,7 +47,7 @@ scored AS (
                  max(item->>'race_date') AS newest_history_date
             FROM (
                 SELECT item
-                  FROM jsonb_array_elements(l.parsed_history) item
+                  FROM jsonb_array_elements(l.parsed_history) AS j(item)
                  LIMIT 5
             ) recent
        ) h ON TRUE
