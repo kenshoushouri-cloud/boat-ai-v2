@@ -1,0 +1,33 @@
+name: Exhibition ST current health contract validation
+on:
+  pull_request:
+    paths:
+      - 'docs/EXHIBITION_ST_CURRENT_HEALTH_20260927.md'
+      - '.github/workflows/exhibition-st-current-health-validation.yml'
+      - '.github/workflows/exhibition-st-current-health-one-shot.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Validate frozen audit definition
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          d=Path('docs/EXHIBITION_ST_CURRENT_HEALTH_20260927.md').read_text(encoding='utf-8')
+          w=Path('.github/workflows/exhibition-st-current-health-one-shot.yml').read_text(encoding='utf-8').lower()
+          assert 'beta = **-0.02 fixed**' in d
+          assert 'do not invoke the collector' in d
+          assert 'default_transaction_read_only=on' in w
+          assert 'railway run' in w
+          for token in ('railway'+' variable'+' list','railway-vars'+'.json'):
+              assert token not in w
+          print('EXH_ST_CURRENT_HEALTH_CONTRACT=PASS')
+          PY
