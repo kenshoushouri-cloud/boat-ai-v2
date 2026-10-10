@@ -1,4 +1,4 @@
-name: V5 guarded beforeinfo pre-first-write and real Postgres CI
+name: V5 official predeadline cancellation classification and first-write safety CI
 
 on:
   issue_comment:
@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/v5 original-racelist-required-offline-pg-20261010'
+      github.event.comment.body == '/v5 beforeinfo-start-status-wire-realpg-20261010'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     services:
@@ -49,7 +49,7 @@ jobs:
           set +e
           : > test-output.txt
           code=0
-          for pat in test_v5_beforeinfo_prewrite_gate.py test_v5_official_capture_pipeline.py test_v5_capture_pipeline_postgres.py; do
+          for pat in test_v5_official_start_status_provenance.py test_v5_beforeinfo_prewrite_gate.py test_v5_official_capture_pipeline.py test_v5_capture_pipeline_postgres.py; do
             python -m unittest discover -s tests -p "$pat" -v >> test-output.txt 2>&1 || code=1
           done
           if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
@@ -66,17 +66,17 @@ jobs:
           from pathlib import Path
           raw=Path("test-output.txt").read_text(encoding="utf-8",errors="replace") if Path("test-output.txt").exists() else ""
           keep=[s[:260] for s in raw.splitlines() if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","TypeError","ValueError","psycopg.errors."))]
-          passed=(os.environ.get("PASSED")=="true" and all("Ran "+str(n)+" tests" in raw for n in (24,23,12)) and raw.count("\nOK\n") == 3)
+          passed=(os.environ.get("PASSED")=="true" and "Ran 24 tests" in raw and raw.count("Ran 26 tests")==2 and "Ran 15 tests" in raw and raw.count("\nOK\n")==4)
           with open(os.environ["GITHUB_OUTPUT"],"a") as out:out.write("verified="+("true" if passed else "false")+"\n")
           lines=[
-            "## V5 original racelist readback mandatory and fail-closed beforeinfo PostgreSQL regression",
+            "## V5 negative/unknown start-status classifier integrated before first-write",
             "",
             "- GitHub Actions temporary postgres:16 only, isolated localhost database v5_ephemeral_ci",
             "- Synthetic official-style HTTP and original BYTEA SELECT only; no real HTTP/Railway/Production V4/LINE/stake/BUY",
-            "- Legacy caller first-write/active flags are ignored; original racelist BYTEA must parse 6 candidates, and absence of independent all-six active proof means beforeinfo INSERT remains blocked. Other racelist/K first-write SQL regressions still exercised.",
+            "- V5 original racelist readback must match; explicit lane 欠場/取消, incomplete exhibition and six-boat participation without official positive start proof cause typed fail-closed rejection before INSERT. Synthetic-only tests, no Railway/Production/LINE/BUY.",
             "",
             "~~~text", *keep[:33], "---- LAST ----", *keep[-28:], "~~~", "",
-            "V5_RACELIST_BINDER_PIPELINE_FAILCLOSED_PASS" if passed else "V5_RACELIST_BINDER_PIPELINE_FAILCLOSED_FAILED"
+            "V5_START_STATUS_PIPELINE_REALPG_PASS" if passed else "V5_START_STATUS_PIPELINE_REALPG_FAILED"
           ]
           Path("summary.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
