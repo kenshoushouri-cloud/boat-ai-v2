@@ -12,7 +12,7 @@
 - 古いhandoff / PROJECT_HISTORY / 長いworkflow / 過去chatは大量参照しない。
 - 1回に1作業、tool call最小限。pending commandを重複実行しない。
 - SHA/run/件数/容量は必要時だけlive取得。
-- **V5は主力システム（開発中・本番未切替）**、V4は現行Production。旧V5は比較対象。既存の research/ ファイル名は互換性維持のため変更しない。
+- **V5は主力システム（開発中・本番未切替）**。V4は収益不振を理由に再構築された旧本番であり、**V4対V5の収益比較は必須ではない**。V5単独の実3連単回収率・締切前Forward・損失を検証。V4は切替まで現行Productionとして保護、切替後に安全停止。既存の research/ ファイル名は互換性維持。
 - Railway費用 <= USD20、理想 <= USD15。Agent/AI禁止。
 - 実行開始時は推定所要時間を表示する。
 
