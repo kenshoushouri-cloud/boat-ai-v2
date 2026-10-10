@@ -20,9 +20,12 @@ from v5.official_capture_pipeline import (
 )
 from v5.official_first_write_storage import DDL
 from v5_beforeinfo_test_fixtures import six_boat_html, racelist_evidence, DEADLINE, CUTOFF
+from test_v5_official_racelist_readback import make_html
 
 BEFORE4 = "https://www.boatrace.jp/owpc/pc/race/beforeinfo?rno=4&jcd=09&hd=20261010"
 BEFORE5 = "https://www.boatrace.jp/owpc/pc/race/beforeinfo?rno=5&jcd=09&hd=20261010"
+RACELIST4 = BEFORE4.replace("beforeinfo","racelist")
+RACELIST5 = BEFORE5.replace("beforeinfo","racelist")
 K_FILE = "https://www1.mbrace.or.jp/od2/K/202610/k261009.lzh"
 TIME_START = "2026-10-10T11:49:59+09:00"
 TIME_DONE = "2026-10-10T11:50:00+09:00"
@@ -110,9 +113,9 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
             "SELECT count(*) FROM v5_official_source_first_capture"
         ).fetchone()[0]
 
-    def run_capture(self, *, url=BEFORE4, body=b"synthetic-complete-6-entries",
+    def run_capture(self, *, url=RACELIST4, body=b"synthetic-six-entries",
                     status=200, enabled=True, race="20261010_09_04",
-                    source="official_beforeinfo"):
+                    source="official_racelist", roster_override=None):
         raw = six_boat_html(variation=body.hex()) if source == "official_beforeinfo" else body
         reply = SyntheticResponse(url, raw, status=status)
         session = SyntheticSession(reply)
@@ -127,7 +130,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
             clock=synthetic_clock(),
             official_deadline_at=DEADLINE,
             prediction_cutoff_at=CUTOFF,
-            racelist_evidence=roster,
+            racelist_evidence=roster if roster_override is None else roster_override,
         )
         return result, session, reply
 
@@ -145,9 +148,9 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
             "SELECT raw_bytes, raw_sha256, source_url, response_completed_at "
             "FROM v5_official_source_first_capture",
         ).fetchone()
-        self.assertEqual(saved[0], six_boat_html(variation=raw.hex()))
-        self.assertEqual(saved[1], hashlib.sha256(six_boat_html(variation=raw.hex())).hexdigest())
-        self.assertEqual(saved[2], BEFORE4)
+        self.assertEqual(saved[0], raw)
+        self.assertEqual(saved[1], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(saved[2], RACELIST4)
         self.assertEqual(saved[3], datetime.fromisoformat(TIME_DONE))
         self.assertEqual(self.count_rows(), 1)
 
@@ -176,7 +179,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
         original = self.admin.execute(
             "SELECT raw_bytes FROM v5_official_source_first_capture"
         ).fetchone()[0]
-        self.assertEqual(original, six_boat_html(variation=b"first response".hex()))
+        self.assertEqual(original, b"first response")
 
     def test_corrupted_first_row_refuses_new_match(self):
         self.run_capture(body=b"original")
@@ -193,7 +196,7 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
     def test_two_independent_races_keep_distinct_snapshots(self):
         self.run_capture(body=b"race-four")
         second, _, _ = self.run_capture(
-            url=BEFORE5, body=b"race-five", race="20261010_09_05"
+            url=RACELIST5, body=b"race-five", race="20261010_09_05"
         )
         self.assertTrue(second["inserted_this_attempt"])
         self.assertEqual(self.count_rows(), 2)
@@ -238,6 +241,49 @@ class TestV5CapturePipelinePostgres(unittest.TestCase):
         with self.assertRaises(InsufficientPrivilege):
             self.writer.execute("DELETE FROM v5_official_source_first_capture")
         self.assertEqual(self.count_rows(), 1)
+
+
+    def test_beforeinfo_forged_active_flags_never_persist(self):
+        forged = racelist_evidence()
+        forged["active_verified"]=True
+        forged["all_active_verified"]=True
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady, "^V5_CAPTURE_OR_STORAGE_NOT_VERIFIED$"
+        ):
+            self.run_capture(
+                url=BEFORE4, source="official_beforeinfo",
+                roster_override=forged,
+            )
+        self.assertEqual(self.count_rows(),0)
+
+    def test_beforeinfo_with_original_racelist_row_cannot_assume_all_active(self):
+        self.run_capture(url=RACELIST4, body=make_html())
+        forged = racelist_evidence()
+        forged["all_active_verified"]=True
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady, "^BEFOREINFO_PREWRITE_DENIED:ACTIVE_START_STATUS_NOT_PROVEN$"
+        ):
+            self.run_capture(
+                url=BEFORE4, source="official_beforeinfo",
+                roster_override=forged,
+            )
+        self.assertEqual(self.count_rows(),1)
+        key = self.admin.execute(
+            "SELECT resource_key FROM v5_official_source_first_capture"
+        ).fetchone()[0]
+        self.assertEqual(key,"official_racelist:20261010_09_04")
+
+    def test_beforeinfo_corrupted_racelist_storage_fails_before_insert(self):
+        self.run_capture(url=RACELIST4, body=make_html())
+        self.admin.execute(
+            "UPDATE v5_official_source_first_capture SET raw_bytes=%s",
+            (b"tampered-digest",),
+        )
+        with self.assertRaisesRegex(
+            CapturePipelineNotReady, "^V5_CAPTURE_OR_STORAGE_NOT_VERIFIED$"
+        ):
+            self.run_capture(url=BEFORE4, source="official_beforeinfo")
+        self.assertEqual(self.count_rows(),1)
 
 
 if __name__ == "__main__":
