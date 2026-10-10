@@ -1,0 +1,61 @@
+name: Research V4 Formal Artifact Inventory 20260927
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_formal_artifact_inventory.py'
+      - '.github/workflows/research-v4-formal-artifact-inventory-20260927.yml'
+      - 'research/candidate_discovery_v4_capture_arbiter.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      V4_INVENTORY_RUN_LIST: 'v4-run-list.json'
+      V4_INVENTORY_OUTPUT: 'v4-formal-artifact-inventory.json'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify provider-only isolation
+        run: |
+          set -euo pipefail
+          grep -q 'DB_READ=0 RESULT_READ=0 PAYOUT_READ=0 ODDS_READ=0' research/v4_formal_artifact_inventory.py
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v4_formal_artifact_inventory.py').read_text(encoding='utf-8').lower()
+          for token in ('psycopg','database_url','insert into','update v2_','delete from','send_line'):
+              assert token not in t, token
+          PY
+      - name: List all prospective-freeze workflow runs
+        run: |
+          set -euo pipefail
+          gh run list \
+            --workflow candidate-discovery-v4-prospective-freeze.yml \
+            --limit 100 \
+            --json databaseId,event,createdAt,status,conclusion,headSha \
+            > v4-run-list.json
+      - name: Inventory and arbitrate immutable artifacts
+        run: |
+          set -euo pipefail
+          python -u research/v4_formal_artifact_inventory.py 2>&1 | tee v4-formal-artifact-inventory.txt
+          grep -q '^V4_INVENTORY_DB_WRITE=0 LINE=0 BUY=0 PROD_CHANGE=0 PROMOTION=0$' v4-formal-artifact-inventory.txt
+          grep -q '^V4_INVENTORY_RESULT=PASS_READ_ONLY$' v4-formal-artifact-inventory.txt
+      - name: Upload inventory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-formal-artifact-inventory-${{ github.run_id }}
+          path: |
+            v4-formal-artifact-inventory.json
+            v4-formal-artifact-inventory.txt
+            v4-run-list.json
+          retention-days: 90
+          if-no-files-found: error
