@@ -73,7 +73,6 @@ def cash(ranks, pre, post):
                    synthetic_net_yen=refund-spent, synthetic_roi_pct=100*refund/spent,
                    actual_purchase_verified=False)
 
-
 mods={}
 for name in ('offline_mainline_inference','offline_trifecta_shadow_ranking',
              'offline_trifecta_cash_ledger','offline_trifecta_cash_bridge'):
