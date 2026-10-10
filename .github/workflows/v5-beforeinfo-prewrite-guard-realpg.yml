@@ -13,7 +13,7 @@ jobs:
     if: >-
       github.event.issue.number == 581 &&
       github.actor == github.repository_owner &&
-      github.event.comment.body == '/v5 beforeinfo-start-status-wire-realpg-20261010'
+      github.event.comment.body == '/v5 beforeinfo-start-status-asof-retest-20261010'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     services:
