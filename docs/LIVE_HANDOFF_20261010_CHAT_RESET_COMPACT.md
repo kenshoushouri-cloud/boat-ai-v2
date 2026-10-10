@@ -118,7 +118,13 @@
 - Seven features: `lane_class` = entry snapshot timestamps present, immutable lineage UNPROVEN; `exhibition_rank` = mutable snapshot/historical reuse, immutable lineage UNPROVEN; `recent_form`, `racer_course`, `opponent`, `venue_lane` = per-feature observed/frozen provenance NOT ESTABLISHED from inspected files (not global DB absence); `prior_day_k` = schema/provenance NOT REVIEWED in this bounded audit. All 7 live-as-of approvals remain unverified. Offline HMAC/mock shape PASS is NOT proof; historical labels/VOID cannot filter prospective decision cohort.
 - **Single next gap:** static read-only feature/source provenance evidence inventory that denies eligibility if only `snapshot_at`/`updated_at`, historical UPSERT, derived feature without cutoff freeze or unreviewed K is provided. No Railway, official GET, SQL, tests, V4/LINE/stakes/BUY action; `APPROVED_POSITIVE_SOURCE_SCHEMAS` EMPTY, first-write/Forward/BUY HARD HOLD.
 
-## Next ONE task — V5 mainline
-Implement a **pure offline, static seven-feature provenance-source classification adapter** under `v5/`, with a minimal fake-only unit test. Categorize each existing checked source as `MUTABLE_SNAPSHOT_NOT_ATTESTED`, `DERIVED_FREEZE_UNVERIFIED` or `SOURCE_SCHEMA_UNREVIEWED` and explicitly refuse promotion from `snapshot_at`/`updated_at`/historical UPSERT to independently frozen proof. Return an immutable review report only; all selection/Forward/BUY/first-write flags FALSE. No live DB/SQL/GET, no Railway or broad test/retuning, no V4/LINE/stake/BUY changes. Show test runtime.
+## 2026-10-10 Seven-feature offline source inventory done
+- Added v5/offline_source_provenance_inventory.py and tests/test_v5_offline_source_provenance_inventory.py; targeted offline unittest 8/8 PASS, 0.001 s.
+- Source and test GitHub blobs match locally tested files: 00418f3a753b9b455577d5bfda67ead0b16acea0, 6406af0e25668bec7780836978b0a4465d183aac.
+- Findings: lane_class and exhibition_rank = mutable snapshots without authenticated freeze (2); recent_form, racer_course, opponent, venue_lane = derived timestamp/provenance unverified (4); prior_day_k = K schema unreviewed (1).
+- Claimed snapshot_at, updated_at, UPsert history, immutability or auditor booleans never promote mock data to independently verified evidence. All live decision, first-write and purchase permissions remain FALSE. No live system or DB action.
 
-`COMPACT_ONLY / ONE_TASK_ONLY / LIVE_MINIMUM / NO_RAILWAY_AGENT_AI / BUY_LAST`
+## Next ONE task — V5 mainline
+Read-only inspect up to TWO existing prior-day K ingestion/schema files to identify source raw capture, authentic first-observed/freeze timestamps and cutoff linkage. Record missing evidence and choose ONE offline-only follow-up. No external GET, DB, Railway or Production changes.
+
+COMPACT_ONLY / ONE_TASK_ONLY / LIVE_MINIMUM / NO_RAILWAY_AGENT_AI / BUY_LAST
