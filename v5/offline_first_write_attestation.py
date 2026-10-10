@@ -126,6 +126,13 @@ def verify_offline_first_write_attestation(
         datetime.strptime(receipt.race_id[:8], "%Y%m%d")
     except ValueError:
         return deny("SOURCE_RECEIPT_UNAUTHENTICATED")
+    # The first-write storage identity contract is source-kind:race_id.
+    # Matching arbitrary forged keys across the receipt/row/audit is not proof.
+    if receipt.resource_key not in (
+        f"official_racelist:{receipt.race_id}",
+        f"official_beforeinfo:{receipt.race_id}",
+    ):
+        return deny("RESOURCE_KEY_RACE_BINDING_INVALID")
     if not _aware(row.stored_at):
         return deny("STORED_AT_NOT_READ_BACK")
     if (type(row.raw_bytes) is not bytes
