@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install strict structured official HTML parser dependency
+        run: python -m pip install --no-cache-dir 'beautifulsoup4>=4.12,<5'
       - name: Test complete V5 source capture to first-write with fake HTTP and DB
         id: test
         shell: bash
