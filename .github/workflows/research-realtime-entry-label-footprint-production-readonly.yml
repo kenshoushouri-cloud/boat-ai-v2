@@ -1,0 +1,134 @@
+name: Research realtime entry label footprint production read-only
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-realtime-entry-label-footprint-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readonly-entry-label-footprint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000 -c timezone=UTC
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install read-only dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q psycopg[binary]
+          npm install -g @railway/cli >/dev/null 2>&1
+
+      - name: Resolve Production public database URL without publishing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway variable list \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-recovery \
+            --environment production \
+            --json > railway-vars.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), dict):
+                  value = data['variables'].get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), list):
+                  for item in data['variables']:
+                      if isinstance(item, dict) and item.get('name') == 'DATABASE_PUBLIC_URL':
+                          value = item.get('value')
+                          break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL unavailable')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+
+      - name: Measure entry snapshot labels only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee entry-label-footprint.txt
+          import os
+          import psycopg
+
+          dsn = os.environ['DATABASE_URL']
+          with psycopg.connect(
+              dsn,
+              options='-c default_transaction_read_only=on -c statement_timeout=120000 -c timezone=UTC',
+          ) as conn:
+              with conn.cursor() as cur:
+                  cur.execute('show transaction_read_only')
+                  if str(cur.fetchone()[0]).lower() != 'on':
+                      raise RuntimeError('read-only guard failed')
+                  cur.execute('''
+                      select
+                        coalesce(snapshot_label, '<null>') as label,
+                        count(*)::bigint as rows,
+                        count(distinct race_id)::bigint as races,
+                        min(race_date)::text as min_date,
+                        max(race_date)::text as max_date,
+                        coalesce(sum(pg_column_size(t)),0)::bigint as payload_bytes
+                      from v2_realtime_entry_snapshots t
+                      group by snapshot_label
+                      order by count(*) desc, label
+                  ''')
+                  labels = cur.fetchall()
+                  cur.execute('''
+                      select
+                        count(*)::bigint,
+                        count(distinct race_id)::bigint,
+                        min(race_date)::text,
+                        max(race_date)::text,
+                        coalesce(sum(pg_column_size(t)),0)::bigint,
+                        pg_total_relation_size('v2_realtime_entry_snapshots')::bigint
+                      from v2_realtime_entry_snapshots t
+                  ''')
+                  total = cur.fetchone()
+
+          print('ENTRY_LABEL_FOOTPRINT=READ_ONLY')
+          for label, rows, races, min_date, max_date, payload in labels:
+              print(
+                  f'label={label} rows={int(rows)} races={int(races)} '
+                  f'min_date={min_date} max_date={max_date} payload_bytes={int(payload)}'
+              )
+          print(
+              f'ENTRY_TOTAL rows={int(total[0])} races={int(total[1])} '
+              f'min_date={total[2]} max_date={total[3]} '
+              f'payload_bytes={int(total[4])} relation_bytes={int(total[5])}'
+          )
+          PY
+          grep -q '^ENTRY_LABEL_FOOTPRINT=READ_ONLY$' entry-label-footprint.txt
+          grep -q '^ENTRY_TOTAL ' entry-label-footprint.txt
+          {
+            echo '## Realtime entry label footprint — Production read-only'
+            echo
+            echo '```text'
+            cat entry-label-footprint.txt
+            echo '```'
+            echo
+            echo 'Metadata-only audit. No row content was exported and no DB/config mutation was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local audit files
+        if: always()
+        run: rm -f railway-vars.json entry-label-footprint.txt
