@@ -1,0 +1,72 @@
+name: Racer Course Neutral Forward Contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/racer_course_neutral_forward_contract.py'
+      - 'research/test_racer_course_neutral_forward_contract.py'
+      - 'research/racer_course_neutral_shadow_payload.py'
+      - 'research/test_racer_course_neutral_shadow_payload.py'
+      - '.github/workflows/racer-course-neutral-forward-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: >-
+          python -m py_compile
+          research/racer_course_neutral_forward_contract.py
+          research/test_racer_course_neutral_forward_contract.py
+          research/racer_course_neutral_shadow_payload.py
+          research/test_racer_course_neutral_shadow_payload.py
+      - name: Fixed-rule and payload contract tests
+        run: >-
+          python -m unittest
+          research.test_racer_course_neutral_forward_contract
+          research.test_racer_course_neutral_shadow_payload -v
+      - name: Confirm pure research isolation
+        run: |
+          python - <<'PY'
+          import ast
+          import re
+          from pathlib import Path
+          paths=(
+              Path('research/racer_course_neutral_forward_contract.py'),
+              Path('research/racer_course_neutral_shadow_payload.py'),
+          )
+          sources={path: path.read_text(encoding='utf-8') for path in paths}
+          combined='\n'.join(sources.values()).lower()
+          imported=set()
+          for source in sources.values():
+              tree=ast.parse(source)
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      imported.update(alias.name.split('.')[0] for alias in node.names)
+                  elif isinstance(node, ast.ImportFrom) and node.module:
+                      imported.add(node.module.split('.')[0])
+          assert 'course_coef = 0.50' in combined
+          assert 'course_cutoff = time(8, 15)' in combined
+          assert 'missing/unusable lanes always receive z=0' in combined
+          assert 'v24_prob_temp = 2.20' in combined
+          assert 'shadow_version = "course-neutral-missing-v1"' in combined
+          forbidden_imports={'psycopg','requests','urllib','sqlalchemy'}
+          bad_imports=sorted(imported & forbidden_imports)
+          if bad_imports: raise SystemExit(f'forbidden runtime imports: {bad_imports}')
+          forbidden_markers=('line_channel_access_token','database_url','purchase_action')
+          found=[x for x in forbidden_markers if x in combined]
+          if found: raise SystemExit(f'forbidden runtime markers: {found}')
+          if re.search(r'\binsert\s+into\b|\bupdate\s+[a-z_][a-z0-9_]*\s+set\b|\bdelete\s+from\b', combined):
+              raise SystemExit('forbidden SQL mutation marker')
+          print('COURSE_NEUTRAL_FORWARD_CONTRACT=PASS')
+          PY
