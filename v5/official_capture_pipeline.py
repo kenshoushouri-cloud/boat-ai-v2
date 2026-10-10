@@ -56,6 +56,16 @@ def capture_and_store_v5_official_source(
     """
     if storage_enabled is not True:
         raise CapturePipelineNotReady("V5_STORAGE_NOT_ENABLED")
+    # PRE-HTTP HARD HOLD: there is no independently approved affirmative
+    # six-active official source schema or authenticated pre-fetch proof.
+    # No injected session GET, collector, racelist DB SELECT or first-write
+    # transaction is allowed for beforeinfo. This is deliberately independent
+    # of caller flags/roster assertions and must not auto-unlock if a schema
+    # registry is modified; unlocking requires a separate reviewed gate.
+    if expected_source == "official_beforeinfo":
+        raise CapturePipelineNotReady(
+            "BEFOREINFO_PRE_HTTP_HARD_HOLD_NO_AUTHENTICATED_POSITIVE_START"
+        )
     if connection is None or not callable(getattr(connection, "transaction", None)) or not callable(getattr(connection, "cursor", None)):
         raise CapturePipelineNotReady("EXPLICIT_ISOLATED_DB_CONNECTION_REQUIRED")
     if session is None or not callable(getattr(session, "get", None)):
