@@ -42,7 +42,12 @@
 - Both denied and synthetic passing preflight cases return immutable HARD HOLD; attempted GET=0, live GET authorization/six-active/first-write/Forward/persistence all FALSE. No integration with existing collector. GitHub file writes succeeded; **new tests are committed but not executed** (no local repo checkout/network; no CI dispatch). Do NOT report 12/12 PASS before actual targeted test evidence.
 - Production schema registry remains EMPTY; completed Edogawa1R not rerun. Railway/V4/LINE/stakes/BUY unchanged.
 
+## 2026-10-10 offline diagnostic adapter target test VERIFIED (ONE task completed)
+- GitHub blobs exactly reproduced locally: adapter `49a119b0f86914f805575e547163b5ea98e85f05`, test `c437be4fbe80b619433d67316884517b57baa3fa`, preflight dependency `e0b5c31a5a55e56ea1f2e068736a8a0d983f922c`; local `git hash-object` matched all.
+- Ran only `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/mnt/data python -B -m unittest discover -s /mnt/data/tests -p 'test_v5_positive_start_diagnostic_report.py' -v`: **12/12 PASS (0.001s)**. An initial `unittest -m` path syntax failed during discovery (no test ran), then the corrected targeted discover command passed. No prior suite rerun, no GitHub CI, no official GET, Railway/DB/V4/LINE/BUY/stake change.
+- This establishes only offline adapter behavior; production reviewed positive-source schemas still EMPTY. Genuine official six-active predeadline source and independently attested first-write are NOT established, and beforeinfo first-write/Forward remain HARD HOLD.
+
 ## Next ONE task — V5 mainline
-Run **only** `tests/test_v5_positive_start_diagnostic_report.py` in an available isolated Python/GitHub test environment using fake data and **NO real official GET**. Verify exact pass/fail and report it; fix only new adapter/test defects if necessary. Avoid rerunning older test suites, broad workflows, live probes, or DB/Railway actions. Once verified, resume investigation of independently documented affirmative six-active official source, retaining beforeinfo first-write and Forward HARD HOLD.
+Research **only publicly documented official affirmative per-lane six-active start status field semantics** (source/publisher specification or official documentation; read-only, no live scheduled-race GET, no broad history). Return a narrow source/evidence assessment and record only verifiable findings. Do not accept six-exhibition/absence-of-欠場 as proof; if no documented affirmative schema, keep `APPROVED_POSITIVE_SOURCE_SCHEMAS` empty and HOLD. No Railway/Production V4/LINE/stake/BUY changes.
 
 `COMPACT_ONLY / ONE_TASK_ONLY / LIVE_MINIMUM / NEVER_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME / NO_RAILWAY_AGENT_AI / BUY_LAST`
