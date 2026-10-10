@@ -1,6 +1,6 @@
 # Handoff Latest
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261009_1327_COMPACT.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261010_CHAT_RESET_COMPACT.md`
 
 次チャットで読むのは次の3点だけ:
 1. `docs/HANDOFF_LATEST.md`
