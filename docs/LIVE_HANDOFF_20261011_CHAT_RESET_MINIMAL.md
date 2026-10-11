@@ -71,6 +71,9 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 ## Latest ONE result — ローカルDBカタログread-only接続導線（2026-10-11）
 既存`v5/historical_odds_readonly_sample_audit_pg.py`のREAD ONLY/短時間timeoutの方式を参照。既存GitHub Actions接続は費用・V4誤操作リスクのため利用しない。devに`ops/v5_archive_preflight_manual.py` (blob`aac2533e`) と`tests/test_v5_archive_preflight_manual.py` (blob`07814d04`) を追加、**隔離7/7 PASS・構文PASS・GitHub SHA一致**。デフォルト接続禁止、二重opt-in、history-archive手動確認、psqlのlibpq環境認証、接続3秒/SQL2秒/ロック250ms、read-only、固定SQL blob`fa930650`のみ、秘密情報をログに出さない。手順`docs/V5_MANUAL_CATALOG_PREFLIGHT_20261011.md`。**実DB照会もRailway Actionsも未実行、実データ0/67窓。**
 
-## Next ONE task — SQL検査結果の判定と1日smokeの上限契約
-devのread-onlyカタログ検査SQLの20列・4表索引/権限を受け取った際に合格/不合格を判定する**オフライン処理**と、初回実データを1日に限定する行数/通信量・中止条件を設計。実DBへのアクセス・Railway Agent/AI・有料Actions/CI・V4/main/BUYは禁止。実際の接続は別途安全確認後。
+## Latest ONE result — カタログ検査結果・初日上限ゲート（2026-10-11）
+dev `v5/offline_catalog_smoke_gate.py`（GitHub blob `5200a99d`）、`tests/test_v5_offline_catalog_smoke_gate.py`（`05074d2c`）を追加。GitHub保存版SHA一致の隔離単体**12/12 PASS**、構文PASS。既存psql出力20列+4索引+1接続を厳密解析、型/索引/SELECT/READ ONLY/2秒timeout/出力切れ・余分行をHOLD。初回1日計測上限: Q1<=400、Q2<=2400、Q3<=400、合計<=4MB、Q2=6×Q1/Q3=Q1でない場合HOLD。**上限は取得後のオフライン検査でありDB通信量を制限する仕組みではない。** カタログ成功の自己申告も実DB同一性や実行承認を証明しない。実DB0/67窓、Railway/V4/main/BUY変更なし。
+
+## Next ONE task — 1日smokeの取得中上限と安全な実行導線を整備
+GitHub既存1日/7日SQLから、最初の1日だけ対象にするread-only取得中の行数/転送バイト上限（超過時即停止、LIMITで母集団を偽装しない）を設計・隔離試験。実DB catalog索引/型は依然未照会なので、確認まで**実DB取得を実行しない**。高費用CI/Railway Agent・AI、V4/main/Forward/BUY禁止。全期間バックテスト直結を最優先。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
