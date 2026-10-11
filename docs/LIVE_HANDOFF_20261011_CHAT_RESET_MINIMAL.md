@@ -77,6 +77,9 @@ dev `v5/offline_catalog_smoke_gate.py`（GitHub blob `5200a99d`）、`tests/test
 ## Latest ONE result — 初回1日stream上限制御（2026-10-11）
 dev `v5/offline_one_day_stream_cap.py` blob `83791cb8`、`tests/test_v5_offline_one_day_stream_cap.py` blob `393eab5b`を保存し隔離Python新規15/15＋既存catalog12/12＝**27/27 PASS**、構文PASS、GitHub SHA一致。Q1<=400、Q2<=2400、Q3<=400、client復号payload<=4MB、1行<=64KBで行ごとに即時HOLD/iterator close、`fetchone`とcursor itersize=1を模擬確認。対象SQLはGitHub blob `9c3ecd56`固定、start/endは厳密に1日、Q3は`selection_sealed=True`まで呼ばず、真正凍結の証明はしない。**通信のTCP厳密上限でもPostgresクエリ自体のCPU上限でもなく、巨大1行は受信後検出**。DB実行0/67窓、Railway/Actions/V4/BUY不変更。
 
-## Next ONE task — 実DB初日smokeのサーバ側行サイズ保護と最終read-only実行契約
-既存7日SQLのQ2`recent_form`等が巨大1行を返す場合に備え、GitHub dev限定で**サーバ側投影サイズ上限**と停止/NULL契約を設計・小規模隔離試験。現DBの索引20列/4index確認は未実行なので、実DB実行は引き続きHOLD。開発時に単体テストの増殖を避け、1日分実データの接続を最優先。Railway Agent/AI、Actions、有料CI、V4/main/BUY不変更。
+## Latest ONE result — 初回1日のサイズ保護SQL完成（2026-10-11）
+dev `ops/v5_one_day_archived_size_guarded_readonly.sql` (blob `02751441`) 新規、`v5/offline_one_day_stream_cap.py` (blob `6063bf72`)をそのSQLにSHA固定、`tests/test_v5_one_day_guarded_sql_contract.py` (blob `12d9e269`) 4件追加。隔離Python**既存15＋新規4=19/19 PASS**・構文PASS、3ファイルGitHub SHA一致。SQL Q1/Q2/Q3日付幅1日、Q2 recent_form JSON<=12KB、展示raw<=4KB、識別子/文字列のサイズ超過は**NULLでHOLD、切り詰め/重複隠しなし**。予測Q2に払戻結果なし、Q3は後処理のみ。**サーバ側のサイズ評価自体のCPUや実TCPバイトを完全制限しない**。PG SQLパーサ/実DB未検証、実データ**0/67窓**、Railway/Actions/V4/main/BUY操作なし。元7日SQL`9c3ecd56`は変更せず保持。
+
+## Next ONE task — 初回read-onlyメタデータ実行経路の現実的な着手
+安全設計は揃ったため、追加の合成テストを増やさず、**現DB20列+4索引の本当の確認**を最優先。既存接続は任意SQL非対応。V4の停止/配置/データ変更は禁止、コスト$10-12理想/$20上限維持。信頼できる既存のread-only DBアクセス方法が見つからなければ、ユーザーに手動接続プリフライトの最小ステップだけ案内して進める。資格情報/URLをチャットに貼らせない。プリフライトのlive成功前は1日SELECTすら実行しない。実ROI/Forward/BUYはHARD HOLD。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
