@@ -95,10 +95,10 @@ devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `7030
 ## User clarification — official archived beforeinfo vs captured predeadline (2026-10-11)
 既存`research/historical_beforeinfo_backfill_pg.py`は`SOURCE=official_archived_beforeinfo_historical_reconstruction`、`SOURCE_CONTRACT=BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1`、`historical_reconstruction=true`、`prospective_evidence=false`、一部synthetic`snapshot_at`を明記している。**「事後取得＝使えない」という誤認を修正**。公式に公開された当時のbeforeinfoを事後取得した事例は、**再現バックテスト研究・仮定付きROI**に使用可能。ただしDB864件それぞれのsource/contractはまだ未照合のため`official_archive_provenance_verified=false`、元の締切前取得・運用実績・真のROI・Forward/BUYは未証明。出所の違う展示と混同しない。研究全期間67窓実処理0件は変わらず。
 
-## Latest ONE result — 7/1 recent_formは864/864が空配列（2026-10-11）
-Railway Data Queryユーザー実測: 2025-07-01のQ1=144レース/Q2=864艇、`recent_form`のJSON型は**864件すべてarray `[]`、非空0、その他型0、欠損0**。`one_to_five_history_slots=0`/`history_items=0`はパーサ誤認ではなく当日DBが未充足だったため。ユーザー仮説は「公式の過去K結果が7月途中からしか取得可能でなかったかもしれない」。**DB未収録と公式サイトにデータがなかったことは同義ではない**。初日のみから全期間欠損を断定しない。DB書込/削除/人為補完は保留。
-dev `ops/v5_candidate_v4_july_recent_form_checkpoints_readonly_20261011.sql` を追加。**2025-07-08,15,22,29の4日**だけ日付索引→6艇entry索引で参照、1日最大400race/12KB JSONをガードし、日別の空配列・履歴1〜5件入り・欠損・形式異常を4行集計。Q3/展示/オッズ/個別IDの参照表示なし、SQL静的10/10確認。実DB未実行。資料の追加日付で履歴発生が確認できても**最初の日そのものではない**。公式アーカイブ展示は出所照合で事後再現研究に利用可能、実予測原本証明は別。全期間実処理**0/67窓**、実ROI/Forward/BUY未証明。
+## Latest ONE result — 2025年7月の直近成績warm-up推移（2026-10-11）
+- User live read-only Railway candidate-v4: 7/1は864艇中`recent_form=[]`864艇/非空0。4日サンプルは**7/8:819/936** (87.5%)、**7/15:921/936** (98.4%)、**7/22:985/1008** (97.7%)、**7/29:1145/1152** (99.4%)に1〜5走の非空履歴。各日の出走Q1一意、出走6艇データ一致・大容量/不明JSON形0。7月中旬まで全欠損ではなく、欠損は選手の最近の出走有無などを含みうる。**DB内の履歴有無と当時の公式取得可否は同一ではない**。全期間削除/一律除外不要。保存値の各行が前日以前かはこの4日サンプルだけでは未検証。真ROI/Forward/BUY HARD HOLD。
+- dev `ops/v5_candidate_v4_july_02_07_recent_form_onset_readonly_20261011.sql` (blob `fe293a1a`)新規。先に検査済みの4日サンプルSQLの枠組みを再利用し**2025-07-02〜07の6日限定**、1日Q1<=400 race、6艇entry索引、JSON<=12KB、件数のみ6行出力。No Q3/オッズ/展示/結果/個別ID/書込。静的11項目PASS、PostgreSQLで未実行。Railway/main/V4/BUY変更なし、67窓中0完了。
 
-## Next ONE task — candidate-v4の7月4日付recent_form埋まり具合を確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で`ops/v5_candidate_v4_july_recent_form_checkpoints_readonly_20261011.sql`を1回実行し**4行**を受け取る。初めて非空を確認した日付の前後だけ追加照会して必要なウォームアップ期間を見極め、以降のバックテストは欠損母集団を明示して評価する。Railway CPU/RAM/費用$10–12目標/$20上限、Agent/AI/有料CI、V4本番・DB書込/BUY禁止。
+## Next ONE task — 7月2〜7日の履歴蓄積開始を実DBで確定
+ユーザーがRailway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で上記単一SELECTを1回だけ実行し、返る6行の`race_date_checked,entry_rows,empty_history_arrays,one_to_five_history_arrays,checkpoint_verdict`等を共有。その後は最初の非空日を評価、出走者の履歴欠損理由と「学習準備期間 vs 正式スコアリング期間」を分離。公式の過去展示は出所確認して研究用に保持、実運用実績の偽装禁止。コスト最小化・Railway Agent/AI/Actions/DB書込/V4変更/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
