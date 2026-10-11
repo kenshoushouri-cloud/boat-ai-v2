@@ -1,5 +1,5 @@
 -- V5 FIRST-DAY RESEARCH SMOKE ONLY: server-side size-guarded projection.
--- ORIGINAL 7-day SELECTs remain unchanged in separate file.
+-- Original 7-day companion is retained and mapped to racer_class_text separately.
 -- Oversize values -> NULL (HOLD); NEVER truncation, DISTINCT, LIMIT, or BUY.
 -- PostgreSQL schema/EXPLAIN/actual traffic NOT verified. Manual read-only only.
 -- Values above the guard become NULL => offline HOLD, never shorten histories.
@@ -55,7 +55,9 @@ inventory AS MATERIALIZED (
 )
 SELECT CASE WHEN octet_length(r.race_id) <= 32 THEN r.race_id ELSE NULL::text END AS race_id, r.race_date, r.deadline_at, lanes.lane,
        e.racer_number,
-       CASE WHEN octet_length(e.racer_class) <= 8 THEN e.racer_class ELSE NULL::text END AS racer_class,
+       CASE WHEN e.racer_class_text IN ('A1','A2','B1','B2')
+                  AND octet_length(e.racer_class_text) <= 8
+            THEN e.racer_class_text ELSE NULL::text END AS racer_class,
        jsonb_typeof(e.recent_form) AS recent_form_json_type,
        CASE WHEN pg_column_size(e.recent_form) <= 12000
                  AND octet_length(e.recent_form::text) <= 12000
