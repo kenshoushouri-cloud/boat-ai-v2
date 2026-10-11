@@ -110,7 +110,7 @@ def _fingerprint(state: PriorDayCounters) -> str:
         value = state.counters[key]
         if key in NESTED:
             parts.append(repr((key, tuple(sorted(
-                ((repr(k), ordered(v)) for k, v in value.items())))))
+                ((repr(k), ordered(v)) for k, v in value.items()))))))
         else:
             parts.append(repr((key, ordered(value))))
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
