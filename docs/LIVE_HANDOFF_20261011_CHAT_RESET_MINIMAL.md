@@ -54,6 +54,9 @@
 - **全期間を最優先へ変更**。dev `v5/offline_research_period_batches.py` + `tests/test_v5_offline_research_period_batches.py`、新規9件+既存9件=**18/18 PASS**（GitHub SHA `ee392987`/`43fc4a97`一致）。2025-07-01〜2026-10-10=467日→7日単位67窓の**計画だけ完了（実データ処理0窓）**。未処理日/NO_BUY/PENDING/返還不明があれば期間ROI保留。全件揃っても研究用仮想ROIのみ。
 - 詳細は`docs/V5_FULL_PERIOD_BACKTEST_FAST_TRACK_20261011.md`。2026-10-05までの旧評価範囲と10-06以降を区別。コスト$10〜12理想、$15未満優先、$20上限。Railway/DB/Actions/V4/main/BUY操作なし。
 
-## Next ONE task — 七日バッチのDB保存値入口をread-only設計
-GitHub既存スキーマ・SQLを狭く確認し、複数日（初回7日）に使えるrace ID/6艇/展示/結果と返還nullの一括**read-only抽出契約**をdevに作る。大村1レース用SQLを大量ループさせない。DB実行はまだせず、索引・LIMITとCPU/Network/課金の確認を先行。将来の抽出では当日/未来結果を予測に入れず、元の全レース母集団を保持。V5本番Forward/BUYはHARD HOLD。
+## Latest ONE result — 七日データ抽出入口（2026-10-11）
+dev `ops/v5_seven_day_archived_research_source_readonly.sql`を追加。1〜7日の完了済期間を名前付きバインドし、Q1全inventory、Q2艇番1〜6＋履歴/後日展示、Q3結果・払戻を**分離**。返還/VOID肯定原本はNULL/false維持。3SELECTに7日範囲・書込命令なしを静的検査。**実DB/SQLパーサ未実行**、課金0。欠損・重複をLIMIT/DISTINCTで隠さない。詳細は`docs/V5_FULL_PERIOD_BACKTEST_FAST_TRACK_20261011.md`。
+
+## Next ONE task — 初回実DB接続前の軽量索引・型監査
+Railwayの既存接続で**read-onlyメタデータのみ**（`pg_indexes`/information_schemaの対象4表）を最小1作業確認し、Q1〜Q3に必要な索引/カラム型が実在するか確定。大規模SQL・全期間実行・データ書込/新サービス/有料CI禁止。費用とタイムアウト条件を満たせない場合はHOLDして報告。次の本データsmokeも1日だけ、別作業。main/V4/Forward/BUY不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
