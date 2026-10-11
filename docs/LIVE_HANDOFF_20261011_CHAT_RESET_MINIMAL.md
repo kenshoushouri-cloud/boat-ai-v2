@@ -74,6 +74,9 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 ## Latest ONE result — カタログ検査結果・初日上限ゲート（2026-10-11）
 dev `v5/offline_catalog_smoke_gate.py`（GitHub blob `5200a99d`）、`tests/test_v5_offline_catalog_smoke_gate.py`（`05074d2c`）を追加。GitHub保存版SHA一致の隔離単体**12/12 PASS**、構文PASS。既存psql出力20列+4索引+1接続を厳密解析、型/索引/SELECT/READ ONLY/2秒timeout/出力切れ・余分行をHOLD。初回1日計測上限: Q1<=400、Q2<=2400、Q3<=400、合計<=4MB、Q2=6×Q1/Q3=Q1でない場合HOLD。**上限は取得後のオフライン検査でありDB通信量を制限する仕組みではない。** カタログ成功の自己申告も実DB同一性や実行承認を証明しない。実DB0/67窓、Railway/V4/main/BUY変更なし。
 
-## Next ONE task — 1日smokeの取得中上限と安全な実行導線を整備
-GitHub既存1日/7日SQLから、最初の1日だけ対象にするread-only取得中の行数/転送バイト上限（超過時即停止、LIMITで母集団を偽装しない）を設計・隔離試験。実DB catalog索引/型は依然未照会なので、確認まで**実DB取得を実行しない**。高費用CI/Railway Agent・AI、V4/main/Forward/BUY禁止。全期間バックテスト直結を最優先。
+## Latest ONE result — 初回1日stream上限制御（2026-10-11）
+dev `v5/offline_one_day_stream_cap.py` blob `83791cb8`、`tests/test_v5_offline_one_day_stream_cap.py` blob `393eab5b`を保存し隔離Python新規15/15＋既存catalog12/12＝**27/27 PASS**、構文PASS、GitHub SHA一致。Q1<=400、Q2<=2400、Q3<=400、client復号payload<=4MB、1行<=64KBで行ごとに即時HOLD/iterator close、`fetchone`とcursor itersize=1を模擬確認。対象SQLはGitHub blob `9c3ecd56`固定、start/endは厳密に1日、Q3は`selection_sealed=True`まで呼ばず、真正凍結の証明はしない。**通信のTCP厳密上限でもPostgresクエリ自体のCPU上限でもなく、巨大1行は受信後検出**。DB実行0/67窓、Railway/Actions/V4/BUY不変更。
+
+## Next ONE task — 実DB初日smokeのサーバ側行サイズ保護と最終read-only実行契約
+既存7日SQLのQ2`recent_form`等が巨大1行を返す場合に備え、GitHub dev限定で**サーバ側投影サイズ上限**と停止/NULL契約を設計・小規模隔離試験。現DBの索引20列/4index確認は未実行なので、実DB実行は引き続きHOLD。開発時に単体テストの増殖を避け、1日分実データの接続を最優先。Railway Agent/AI、Actions、有料CI、V4/main/BUY不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
