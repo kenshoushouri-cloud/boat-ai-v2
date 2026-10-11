@@ -90,7 +90,8 @@ def inspect_six_lane_raw_extract(rows: object) -> SixLaneExtractAudit:
             reasons.append(prefix + "RACER_MISSING_INVALID_OR_DUPLICATE")
         else:
             seen_racers.add(number)
-        if row.get("racer_class") not in CLASSES:
+        racer_class = row.get("racer_class")
+        if type(racer_class) is not str or racer_class not in CLASSES:
             reasons.append(prefix + "RACER_CLASS_MISSING_OR_INVALID")
         history = row.get("parsed_history")
         if (type(history) not in (tuple, list) or not 1 <= len(history) <= 5
