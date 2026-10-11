@@ -34,7 +34,7 @@ idx AS (
   JOIN pg_class i ON i.oid=ix.indexrelid
   JOIN pg_am am ON am.oid=i.relam
   LEFT JOIN pg_attribute a ON a.attrelid=t.oid
-    AND a.attnum=(ix.indkey::int2[])[0]
+    AND a.attnum=ix.indkey[0]
   WHERE ns.nspname='public' AND t.relname='v2_odds_trifecta'
 ),
 access AS (
