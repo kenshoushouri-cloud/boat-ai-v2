@@ -22,7 +22,7 @@ REQUIRED: dict[str, dict[str, frozenset[str]]] = {
         "race_id": frozenset(("text", "varchar")),
         "lane": frozenset(("int2", "int4", "int8")),
         "racer_number": frozenset(("int2", "int4", "int8")),
-        "racer_class": frozenset(("text", "varchar")),
+        "racer_class_text": frozenset(("text", "varchar")),
         "recent_form": frozenset(("jsonb",)),
     },
     "v2_realtime_exhibition_snapshots": {
