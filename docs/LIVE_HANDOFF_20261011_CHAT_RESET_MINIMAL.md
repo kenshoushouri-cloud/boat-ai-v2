@@ -62,6 +62,9 @@ Railway既存プロジェクト`boat-v2-postgres`/productionをREAD-ONLY列挙�
 ## Latest ONE result — 7日Q1/Q2/Q3隔離アダプタ（2026-10-11）
 devに`v5/offline_seven_day_stream_adapter.py`（GitHub blob`62c56775`）と`tests/test_v5_offline_seven_day_stream_adapter.py`（8件、blob`dda19d83`）を保存。Q1母集団、Q2で6艇/前日以前履歴/展示型を確認、欠損・重複・結果列混入をPENDINGに保持。Q3は**別関数**で結果を扱い、公式返還未照合なのでROI/BUYを決して認証しない。元コードの隔離試験は実施したが、**GitHub保存版blob一致で隔離8/8 PASS・py_compile PASS（2026-10-11）**。実DB処理0/67窓、Railway/DB/main/V4/BUY操作なし。
 
-## Next ONE task — 7日Q1/Q2/Q3の複数レース・欠損日テスト
-既存`v5/offline_seven_day_stream_adapter.py`と`v5/offline_research_period_batches.py`の契約を、同日複数場・複数日・休催日/母集団欠損の**合成fixture**で追加検証し、結果由来のレース除外を防ぐ。修正はdevのみ、必要最小限。DB SQL実行不可のRailway接続状況を前提に、実DB smokeはHOLD、外部費用なし。main/V4/BUY不変更。
+## Latest ONE result — 7日複数場/欠損日合成テスト（2026-10-11）
+dev `tests/test_v5_offline_seven_day_multi_race_coverage.py`新規10件（GitHub blob `f84dda3d`/隔離実行SHA一致）。既存8件込み**18/18 PASS**/構文PASS。2日3レース2場・Q2欠損/重複・Q3結果欠損/重複/中止・Q2への払戻混入・当日履歴混入を確認。Q1にレース行がない日は`unrepresented_days`へ保持し、**休催確定とは認定しない**。実DB0/67窓、実ROI/BUY未証明、Railway/main/V4不変更。
+
+## Next ONE task — 実全期間データに向けて休催日と取得漏れの分母契約を設計
+既存`BatchFeatures.unrepresented_days`と`rollup_research_period`の間にある「休催日vsQ1欠損」の扱いを、明示的な外部開催根拠がなければ保留する契約で最小化。開発ブランチだけでオフライン検証、DB/Actions/Railway実行やV4/BUY変更なし。併せて実DB read-only検証手段がなく全期間実行0/67窓である事実を保持。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
