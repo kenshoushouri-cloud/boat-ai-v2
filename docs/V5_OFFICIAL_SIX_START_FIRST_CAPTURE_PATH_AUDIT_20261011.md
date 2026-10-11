@@ -37,3 +37,13 @@
 - `v5/official_start_status_observation_pilot.py`：最大2レース/4GET、手動明示承認のみ、通常OFF。`<th>/<dt>`の`出走確定/出走状況/出走予定/欠場`見出し**件数**を返すが、原文・艇別肯定出走状態を保存しない。コード上の出力は常に`all_six_active_confirmed=False`、`first_observed_at=None`。
 - `v5/official_positive_start_evidence_contract.py`：2026-10-10江戸川1Rの匿名化見出し集計だけでは原文・lane/racer別の確定出走状態を証明できないと明記。`APPROVED_POSITIVE_SOURCE_SCHEMAS=frozenset()`、肯定証拠認証およびForwardはすべてFalse。
 **結論：** GitHubで確認したパーサ/模擬原本/観測メタデータだけでは「6艇掲載・展示参加」から「締切前6艇出走確定」へ昇格不可。実公式ページの新たな原文再取得・DB読取・実行試験は今回行っていない。今後、既存に独立保存された公式のlane別肯定ステータス原文があるかを、許可されたread-only証拠の範囲で特定できるまでは**HOLD**。
+
+## 既存保存資料の実証範囲（公式GET再実行なし・2026-10-11）
+- 対象は実施済み**2026-10-10江戸川1R**の既存観測結果。再度のHTTP GET、Railway/DB取得、Actions実行は禁止して未実施。
+- `.github/workflows/v5-one-race-official-readonly-observation.yml`は`summary.json`/Issueへ匿名化集計のみ残す実装。元HTML、登録番号、名前、公式ページ原文は出力・永続化しない。
+- `tests/test_v5_official_positive_start_evidence_contract.py:real_metadata_fixture`には実観測のURL種別・ハッシュ・バイト数・ローカル完了時刻・`<th>/<dt>`の見出し件数があるが、レーン別の肯定出走値や元バイト列は含まない。全見出しに「出走確定」を仮置きしても同テストは肯定証拠に昇格させない。
+- `v5/official_start_status_observation_pilot.py`は匿名化する設計で、`all_six_active_confirmed=False`、`first_observed_at=None`を返す。
+- `v5/positive_start_diagnostic_preflight.py`のproduction reviewed schema/個別承認レジストリは空。`v5/positive_start_diagnostic_report.py`はオフライン限定、肯定証拠およびfirst-writeを保証しない。設計文書`docs/V5_POSITIVE_START_DIAGNOSTIC_DESIGN_20261010.md`も**DESIGN ONLY / 新GET要個別承認**。
+- `v5/official_racelist_readback.py`がパースする6艇と取消マーカーの不在は**陰性チェック**であり、公式の「6艇全員が出走確定」の肯定フィールドではない。今回の限定GitHubコード・保存資料の確認では原本付き肯定証拠**未発見**。GitHub外の原本不存在まで証明したものではない。
+
+**最終判定：** 公式のレーン別肯定的出走状態、当時の独立初観測時刻、改竄されない原本保存が未証明。許可済みpositive schemaは空。**Beforeinfo / Forward / BUY HARD HOLD継続**。既存江戸川1R観測は再実行しない。
