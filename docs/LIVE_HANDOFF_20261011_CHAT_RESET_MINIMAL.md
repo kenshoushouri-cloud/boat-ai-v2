@@ -87,10 +87,11 @@ GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**H
 ユーザーがRailway Data > Queryで`2025-07-01`をlive確認: `q1_inventory_rows=144`, `unique_race_ids=144`, `Q1_ONE_DAY_COUNT_ONLY_NOT_COVERAGE_PROOF`。重複0、400件上限内。**公式全レースの独立母集団証明ではない**。この1日Q1カウントは全期間バックテスト67窓の実処理完了とは計上しない。
 devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `70301192`)を保存。**2025-07-01のQ1 144件/一意144を再確認した場合だけ**144×6=864 slotの出走表+historical展示を別々にindexed LEFT JOIN集計し、選手番号/文字級別/最近成績JSON型、展示欠損/重複/後日snapshotの件数を結果**1行**で表示。Q3・払戻・レースIDを表示せず、0件/重複はHOLD、Q3/ROI/Forward/BUY不可。書込/無制限全期間scanのない単一SELECTを静的8条件検査。**PostgreSQL上では未実行**、CPU/通信量は実測前、実データ処理0/67窓。
 
-## Latest ONE result — 2025-07-01 Q2実DB構造確認と締切後展示（2026-10-11）
-ユーザーによるcandidate-v4 Data Queryの実測: Q1=144件、6艇想定864slot、エントリー864・選手番号864・文字級別864・recent_form配列/オブジェクト864、欠損/重複0。historical展示864/864・展示順位864で見かけ上完全。ただし**historical展示のsnapshot_atが締切より後なのは864/864件**。as-of予想入力として使用不可。Q2の`Q2_SHAPE_COUNTS_ONLY_NOT_ASOF_VERIFIED`は時間真正性を保証しない。レース・展示行の実データ全体は未抽出、real ROI未証明、全期間67窓の完了0件。
-次の調査用にdev `ops/v5_candidate_v4_first_day_exhibition_asof_candidates_readonly_20261011.sql` (GitHub blob `28fc25d3`) 追加。`2025-07-01` Q1=144でのみ、索引に沿って`learning_all`と`final_ab`の行数・締切前/後件数・6艇全rank一意の締切前候補レース数を1行に集計するSELECT。個別レースID・結果・払戻・rawは出力せず、DB書込なしの静的9/9確認。Railway実DBでは**未実行**。締切前タイムスタンプだけでは元観測の真正性は証明不可。
+## Latest ONE result — 2025-07-01 実データQ1/Q2、展示期限検査（2026-10-11）
+- candidate-v4のユーザーRailway Data UI実測：Q1=144 race/一意144、Q2出走864/864・番号864・文字級別864・recent_form容器864、重複/欠損0。historical展示864/864にrankはあるが**snapshot_atが締切後864/864**。別ラベル`learning_all`/ `final_ab`は**どちらも0件**、predeadline候補0。2025-07-01の展示を**V5 as-of予測に使わない**。late snapshotの原本データは保全。日付の表示のみで最初の観測時刻は証明不可。
+- dev`ops/v5_candidate_v4_first_day_recent_form_prior_day_readonly_20261011.sql` blob `16f977a4`を新規作成。2025-07-01のQ1=144ガード→864 entry slot限定、recent_form JSON 12KBガード、履歴1〜5件の前日以前日付・着順の欠損/不正を**一行の件数集計**で返す。Q3/払戻/展示/ID出力なし。static10/10確認。**実DB未実行**。
+- 既存`research/historical_recent_form_backfill_pg.py`は過去K結果から再構築している。履歴日付が当日より前でも、オリジナルの締切前取得を証明しない。V5 real ROI/Forward/BUY HARD HOLD、全期間実走67窓中0完了。Railway Agent/AI、DB書込/Actions、本番V4/main変更なし。費用 $10〜12目標/$20限度。
 
-## Next ONE task — 実DBの別展示ラベルの締切前候補件数を確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを1回だけ実行し、返る1行を確認。候補0なら2025-07-01の展示をV5 as-of要因には採用しない。候補ありでも原本のfirst observed証明まで真ROI/Forward/BUYはHARD HOLD。費用上限・V4保護・NO Actions/Agent/AI継続。
+## Next ONE task — 2025-07-01 recent_form前日以前検査を1回だけ確認
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを単発実行。期待Q1=144、joined_entries=864、history欠損/同日混入/不正着順をユーザーが1行で報告。形式合格でも**capture原本の証明ではなく研究限定**。結果次第で展示なしの代替V5評価・後日実測証拠の整備に進む。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
