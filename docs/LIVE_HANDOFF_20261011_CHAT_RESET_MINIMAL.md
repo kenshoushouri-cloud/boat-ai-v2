@@ -45,8 +45,8 @@
 
 - **大村12R保存値→研究入力の1件限定照合（2026-10-11）：** `docs/V5_OOMURA_20260501_RESEARCH_INPUT_FIELD_MAP_20261011.md`作成。確認済みはレースID/締切参照、6艇×直近5走の前日以前の日付、後日展示順位、保存的中券`2-1-5`/払戻6,180円の内部整合のみ。未証明: 6艇の登番/級別生値、当日以前に固定の基本確率+5因子×6、model fitted-through、decision cutoff、V5選定券/点数/単価、official/VOID・返還原本、全日inventory。**ArchivedRaceFactors構築不可、StoredResultRowはPENDING、ROI未算出。** GitHubのみ、DB/Railway操作なし。
 
-- **2026-10-11 大村12R 6艇生値抽出契約：** devに新read-only SQL `ops/v5_oomura12_six_lane_values_readonly_20260501.sql`（未実行）、NULL/重複/履歴当日リーク/日時タイムゾーンをHOLDにする純粋関数 `v5/offline_six_lane_raw_extract_guard.py` と11単体テスト（**追加済み・未実行**）を保存。旧集計SQLは保持。仕様 `docs/V5_SIX_LANE_RAW_EXTRACT_NULL_CONTRACT_20261011.md`。構造完全でも後日展示は研究限定、公式6艇肯定/first-observed/Forward/BUYは全てfalse。DB/Railway/main/V4未変更。
+- **2026-10-11 大村12R 6艇生値抽出契約：** devに新read-only SQL `ops/v5_oomura12_six_lane_values_readonly_20260501.sql`（未実行）、NULL/重複/履歴当日リーク/日時タイムゾーンをHOLDにする純粋関数 `v5/offline_six_lane_raw_extract_guard.py` と11単体テスト（**11/11隔離PythonでPASS**。重複順位の行番号依存テストをdevで修正、Git blob SHA実装`d6603211`/テスト`3c0ce819`一致）を保存。旧集計SQLは保持。仕様 `docs/V5_SIX_LANE_RAW_EXTRACT_NULL_CONTRACT_20261011.md`。構造完全でも後日展示は研究限定、公式6艇肯定/first-observed/Forward/BUYは全てfalse。DB/Railway/main/V4未変更。
 
-## Next ONE task — 6艇抽出NULLガード11テストを隔離実行
-devブランチの `v5/offline_six_lane_raw_extract_guard.py` と `tests/test_v5_offline_six_lane_raw_extract_guard.py` をGitHub SHAと一致する隔離Python環境で実行し、PASS/FAILを確定。実DB不要・外部ネットワーク不要、失敗ならdevのみ修正。**未実行をPASSと呼ばない。** main/V4/Railway/DB/BUY変更禁止。
+## Next ONE task — 6艇生値抽出結果とV5研究入力の型境界を設計
+GitHubの6艇ガードで構造OKとなった生値を、`ArchivedLane`/`ArchivedRaceFactors`へ変換する前に**未取得のV5学習ベクトル・選手/級別原本・decision_cutoffを拒否するオフライン入力契約**を最小設計。結果/オッズを予測入力に混ぜず、研究限定の事後展示は明記。DB/Railway/本番/BUYへのアクセスは禁止。別途実DB6艇SELECTを勝手に実行しない。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
