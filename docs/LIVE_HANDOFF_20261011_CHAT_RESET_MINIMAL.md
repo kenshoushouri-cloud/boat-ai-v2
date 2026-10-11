@@ -52,9 +52,9 @@
 ## Latest ONE result — V5実型連結・隔離PASS (2026-10-11)
 GitHub blob一致の実`offline_prior_day_factor_export`・実`offline_archived_six_lane_bridge`・実推論/順位/払戻モジュールで12テストPASS、既存6艇ガード11件込み23/23 PASS。合成Counterから実export→境界→実rankまで実行し、展示6艇後日保存・当日学習混入を検出。研究式helper演算とas-of定数のみ隔離代替。実研究係数の一致、実DB/真正性/ROIは未確認。Railway/V4/BUY変更なし。
 
-## Latest ONE result — 研究式Parity限定照合（2026-10-11）
-既存exportのblob一致コード＋研究式純粋関数**抜粋**で合成Counterを小規模照合し、基本確率/5因子×6の誤差全て0、元Counter非破壊、当日学習拒否を確認。監査`docs/V5_PRIOR_DAY_NATIVE_MATH_PARITY_20261011.md`、実研究モジュールを直接呼ぶ3単体テスト`tests/test_v5_offline_prior_day_native_math_parity.py`をdevへ追加。ただし**研究モジュール全文SHA一致によるこの3テスト実行は未実施**。研究限定・実ROI/Forward/BUYは未証明。
+## Latest ONE result — 実研究全文の式Parity検証（2026-10-11）
+GitHub全文SHA一致（core`708569e9`, venue`5ffc0a81`, export`8d155a1c`, 3テスト`884e7da4`）を隔離Pythonで**3/3 PASS**、構文PASS。基本確率/5因子×6艇の研究式、Counter非破壊、当日学習拒否を合成入力で確認。数式関数は実物、DB/事故台帳インポートだけモック。`docs/V5_PRIOR_DAY_NATIVE_MATH_PARITY_20261011.md`更新。実DB・ROI・Forward・BUY未検証。Railway/V4/main未変更。
 
-## Next ONE task — Native研究モジュール全文で追加3単体テストを検証
-GitHub blob一致の研究全文を隔離環境へ取得できる範囲で再現し、既存新テスト3件をオフライン実行。DBアクセスは依存インポートだけ隔離し実数式を変更しない。検証できない場合は未確認と明記。Railway/DB/main/V4/有料Actions/BUY不変更。
+## Next ONE task — 前日Counter→研究入力のオフライン一貫接続
+保存済み6艇rawのnullガード、実`PriorDayCounters`/`export_prior_day_factors`、`prepare_archived_research_input`を**合成1レースだけ**で連結して小テスト。結果/最終オッズを特徴量に使わず、欠損・当日学習はHOLD。公式原本・実ROI認証に昇格させない。Railway/DB/main/V4/CI/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
