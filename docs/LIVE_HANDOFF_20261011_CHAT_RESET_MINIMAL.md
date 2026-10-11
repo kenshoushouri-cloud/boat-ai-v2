@@ -68,6 +68,9 @@ dev `tests/test_v5_offline_seven_day_multi_race_coverage.py`新規10件（GitHub
 ## Latest ONE result — 開催日/Q1欠損ゲート（2026-10-11）
 dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5_offline_calendar_denominator_gate.py` (`d0cbe6ff`)を追加。既存7日Q1アダプタと期間planを結合し、Q1行ゼロを**休催認定しない**、自己申告の0件開催日/予定件数とQ1の差・7日窓欠損/重複をHOLD。公式スケジュール独立真正性は未確認で`hypothetical_roi_authorized=false`。既存8+10件、新規12件、**GitHub版SHA一致で隔離30/30 PASS**、構文PASS。実DB0/67窓、Railway/main/V4/BUY操作なし。
 
-## Next ONE task — 実DB 1日smokeまでの安全な接続導線を設計
-Railway connectorにSQL実行権限がないことを前提に、既存コード/Workflowを**少数参照**して、実DBメタデータread-onlyプリフライトを最低コストで動かす既存導線の有無を確認。既存手段がなければ小型のread-only manual実行方法をdevに用意し、**実行はせず**SQL漏洩・タイムアウト・費用確認を先行。GitHub有料Actions/DB実行/Railway Agent/AI/V4/BUYは禁止。
+## Latest ONE result — ローカルDBカタログread-only接続導線（2026-10-11）
+既存`v5/historical_odds_readonly_sample_audit_pg.py`のREAD ONLY/短時間timeoutの方式を参照。既存GitHub Actions接続は費用・V4誤操作リスクのため利用しない。devに`ops/v5_archive_preflight_manual.py` (blob`aac2533e`) と`tests/test_v5_archive_preflight_manual.py` (blob`07814d04`) を追加、**隔離7/7 PASS・構文PASS・GitHub SHA一致**。デフォルト接続禁止、二重opt-in、history-archive手動確認、psqlのlibpq環境認証、接続3秒/SQL2秒/ロック250ms、read-only、固定SQL blob`fa930650`のみ、秘密情報をログに出さない。手順`docs/V5_MANUAL_CATALOG_PREFLIGHT_20261011.md`。**実DB照会もRailway Actionsも未実行、実データ0/67窓。**
+
+## Next ONE task — SQL検査結果の判定と1日smokeの上限契約
+devのread-onlyカタログ検査SQLの20列・4表索引/権限を受け取った際に合格/不合格を判定する**オフライン処理**と、初回実データを1日に限定する行数/通信量・中止条件を設計。実DBへのアクセス・Railway Agent/AI・有料Actions/CI・V4/main/BUYは禁止。実際の接続は別途安全確認後。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
