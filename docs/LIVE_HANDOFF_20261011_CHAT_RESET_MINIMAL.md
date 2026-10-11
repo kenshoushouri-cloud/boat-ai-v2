@@ -88,9 +88,12 @@ GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**H
 devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `70301192`)を保存。**2025-07-01のQ1 144件/一意144を再確認した場合だけ**144×6=864 slotの出走表+historical展示を別々にindexed LEFT JOIN集計し、選手番号/文字級別/最近成績JSON型、展示欠損/重複/後日snapshotの件数を結果**1行**で表示。Q3・払戻・レースIDを表示せず、0件/重複はHOLD、Q3/ROI/Forward/BUY不可。書込/無制限全期間scanのない単一SELECTを静的8条件検査。**PostgreSQL上では未実行**、CPU/通信量は実測前、実データ処理0/67窓。
 
 ## Latest ONE result — 2025-07-01 実データQ1/Q2、展示期限検査（2026-10-11）
-- candidate-v4のユーザーRailway Data UI実測：Q1=144 race/一意144、Q2出走864/864・番号864・文字級別864・recent_form容器864、重複/欠損0。historical展示864/864にrankはあるが**snapshot_atが締切後864/864**。別ラベル`learning_all`/ `final_ab`は**どちらも0件**、predeadline候補0。2025-07-01の展示を**V5 as-of予測に使わない**。late snapshotの原本データは保全。日付の表示のみで最初の観測時刻は証明不可。
+- candidate-v4のユーザーRailway Data UI実測：Q1=144 race/一意144、Q2出走864/864・番号864・文字級別864・recent_form容器864、重複/欠損0。historical展示864/864にrankはあるが**snapshot_atが締切後864/864**。別ラベル`learning_all`/ `final_ab`は**どちらも0件**、prospective predeadline候補0。**重要訂正**: ユーザーによれば864件は最近公式サイトから取得した過去展示で、締切後の保存日時は当然。**公式の過去直前情報として取得元/契約を照合した場合、展示をV5の事後再現シミュレーションに採用可**。日時遅延だけで除外しない。ただし締切前実観測の証明ではないため真のas-ofキャプチャ/実ROI/Forward/BUYは認証しない。
 - dev`ops/v5_candidate_v4_first_day_recent_form_prior_day_readonly_20261011.sql` blob `16f977a4`を新規作成。2025-07-01のQ1=144ガード→864 entry slot限定、recent_form JSON 12KBガード、履歴1〜5件の前日以前日付・着順の欠損/不正を**一行の件数集計**で返す。Q3/払戻/展示/ID出力なし。static10/10確認。**実DB未実行**。
 - 既存`research/historical_recent_form_backfill_pg.py`は過去K結果から再構築している。履歴日付が当日より前でも、オリジナルの締切前取得を証明しない。V5 real ROI/Forward/BUY HARD HOLD、全期間実走67窓中0完了。Railway Agent/AI、DB書込/Actions、本番V4/main変更なし。費用 $10〜12目標/$20限度。
+
+## User clarification — official archived beforeinfo vs captured predeadline (2026-10-11)
+既存`research/historical_beforeinfo_backfill_pg.py`は`SOURCE=official_archived_beforeinfo_historical_reconstruction`、`SOURCE_CONTRACT=BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1`、`historical_reconstruction=true`、`prospective_evidence=false`、一部synthetic`snapshot_at`を明記している。**「事後取得＝使えない」という誤認を修正**。公式に公開された当時のbeforeinfoを事後取得した事例は、**再現バックテスト研究・仮定付きROI**に使用可能。ただしDB864件それぞれのsource/contractはまだ未照合のため`official_archive_provenance_verified=false`、元の締切前取得・運用実績・真のROI・Forward/BUYは未証明。出所の違う展示と混同しない。研究全期間67窓実処理0件は変わらず。
 
 ## Next ONE task — 2025-07-01 recent_form前日以前検査を1回だけ確認
 Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを単発実行。期待Q1=144、joined_entries=864、history欠損/同日混入/不正着順をユーザーが1行で報告。形式合格でも**capture原本の証明ではなく研究限定**。結果次第で展示なしの代替V5評価・後日実測証拠の整備に進む。
