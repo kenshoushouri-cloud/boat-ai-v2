@@ -49,12 +49,11 @@
 
 - **2026-10-11 6艇→V5研究入力境界：** devに`v5/offline_archived_input_boundary.py`/test12件を追加。前日までの`FactorVectors`・5因子×6・明示cutoff/点数/単価・SQL列allowlistを要求し、結果/オッズ列混入をHOLD。成功も研究限定・Forward/BUY=false。**隔離12/12 PASS**（未使用の既存dataclass依存をstub）、実行コピーGitHub blob一致 `2ef3970e`/`094a12a6`。DB/Railway/V4変更なし。
 
-## Latest ONE result — V5実型連結・隔離PASS (2026-10-11)
-GitHub blob一致の実`offline_prior_day_factor_export`・実`offline_archived_six_lane_bridge`・実推論/順位/払戻モジュールで12テストPASS、既存6艇ガード11件込み23/23 PASS。合成Counterから実export→境界→実rankまで実行し、展示6艇後日保存・当日学習混入を検出。研究式helper演算とas-of定数のみ隔離代替。実研究係数の一致、実DB/真正性/ROIは未確認。Railway/V4/BUY変更なし。
+## Latest compact verification (2026-10-11)
+- 6艇NULLガード11/11、入力境界12/12、実型接続23/23、研究式全文Parity3/3は隔離合成テストでPASS。**実DB/本当の締切前証拠/実ROIは別**。
+- **全期間を最優先へ変更**。dev `v5/offline_research_period_batches.py` + `tests/test_v5_offline_research_period_batches.py`、新規9件+既存9件=**18/18 PASS**（GitHub SHA `ee392987`/`43fc4a97`一致）。2025-07-01〜2026-10-10=467日→7日単位67窓の**計画だけ完了（実データ処理0窓）**。未処理日/NO_BUY/PENDING/返還不明があれば期間ROI保留。全件揃っても研究用仮想ROIのみ。
+- 詳細は`docs/V5_FULL_PERIOD_BACKTEST_FAST_TRACK_20261011.md`。2026-10-05までの旧評価範囲と10-06以降を区別。コスト$10〜12理想、$15未満優先、$20上限。Railway/DB/Actions/V4/main/BUY操作なし。
 
-## Latest ONE result — 実研究全文の式Parity検証（2026-10-11）
-GitHub全文SHA一致（core`708569e9`, venue`5ffc0a81`, export`8d155a1c`, 3テスト`884e7da4`）を隔離Pythonで**3/3 PASS**、構文PASS。基本確率/5因子×6艇の研究式、Counter非破壊、当日学習拒否を合成入力で確認。数式関数は実物、DB/事故台帳インポートだけモック。`docs/V5_PRIOR_DAY_NATIVE_MATH_PARITY_20261011.md`更新。実DB・ROI・Forward・BUY未検証。Railway/V4/main未変更。
-
-## Next ONE task — 前日Counter→研究入力のオフライン一貫接続
-保存済み6艇rawのnullガード、実`PriorDayCounters`/`export_prior_day_factors`、`prepare_archived_research_input`を**合成1レースだけ**で連結して小テスト。結果/最終オッズを特徴量に使わず、欠損・当日学習はHOLD。公式原本・実ROI認証に昇格させない。Railway/DB/main/V4/CI/BUY禁止。
+## Next ONE task — 七日バッチのDB保存値入口をread-only設計
+GitHub既存スキーマ・SQLを狭く確認し、複数日（初回7日）に使えるrace ID/6艇/展示/結果と返還nullの一括**read-only抽出契約**をdevに作る。大村1レース用SQLを大量ループさせない。DB実行はまだせず、索引・LIMITとCPU/Network/課金の確認を先行。将来の抽出では当日/未来結果を予測に入れず、元の全レース母集団を保持。V5本番Forward/BUYはHARD HOLD。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
