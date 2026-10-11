@@ -37,6 +37,8 @@
 
 **2026-10-11 公式6艇出走肯定項目を限定read-only監査：** 出走表パーサは6艇lane/登番/級別と取消表示を読み、`active_verified=False`固定。`出走`テストHTMLは合成。beforeinfoの6艇展示タイム≠6艇出走確定。既存観測pilotは`th/dt`見出し件数のみ、原本は保存せず、positive contractの許可集合は空。詳細は`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`追記。公式GET/DB/Railway操作なし、**HARD HOLD維持**。
 
-## Next ONE task — 独立保存済みの公式出走肯定原文の有無を非破壊で確認
-既存GitHubのコード/狭い保存資料に、艇番と登番を紐づけた**肯定的な公式start-stateフィールド原文**の実証があるかread-onlyで確認（再取得HTTP・DB/Railway全量検索なし）。なければ未発見と明記し、根拠のない解禁はしない。必要な実データ取得やDB操作は別途安全審査と承認。main/V4/Forward/BUYは不変更。
+- **2026-10-11既存保存証拠の限定監査：** 江戸川1Rの既存GitHub観測は匿名化hash/時刻/見出し集計のみ。原本HTML・lane/racer別肯定状態を保存せず、初観測も未認証。positive reviewed schema/approval空。監査書`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`追記、再HTTP/Actions/DB/Railway実行なし。**6艇肯定証拠未発見/Forward/BUY HOLD維持**。
+
+## Next ONE task — V5事後再構築研究バックテストの安全な接続点を特定
+Forwardの公式6艇肯定証拠待ちを維持しつつ、別経路の**研究用 retrospective closing-price sensitivity**を進める。`v5/offline_archived_six_lane_bridge.py`→3連単券固定→返還/VOID/PENDING込の収支Adapterについて、既存コードの必要フィールドと未接続点を狭いread-onlyで確認。過去の事後展示・最終オッズを当時の実購入証拠と呼ばず、実ROIの主張をしない。1作業のみ、main/V4/DB/Railway/BUY変更なし。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
