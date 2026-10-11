@@ -23,10 +23,11 @@
 - **2026-10-11研究Counter同値テスト追加：** 開発ブランチ `feature/v5-prior-day-counter-test-20261011` に `tests/test_v5_offline_prior_day_research_parity.py` 追加（4ケース、**隔離Pythonで4/4 PASS**）。研究元`research/v5_strong_core_calibration_pg.py`のCounter更新ASTを抽出して13種比較、2レース/2日を正例にする。**要注意：元研究の`hday`は予測対象外の正常レースも含み、個別の有効コース行も算入する。現V5モジュールは予測固定レースの完全6行のみ算入→`cs/ct/rcs/rct`で不一致となる2ケースを明示**。既存9/9テストは別の隔離stub検証、**今回の合計13/13 PASS**。実装本体・既存9件はGitHub blobと実行コピー一致。研究本体は更新部分だけの正確な抜粋を隔離使用、全リポジトリ結合未実施。ASTテストの参照位置誤り1件を開発ブランチのみ修正。
 - **コース履歴採用契約の設計（2026-10-11）：** 開発ブランチに `docs/V5_COURSE_HISTORY_ELIGIBILITY_CONTRACT_20261011.md` を追加。元研究の正常結果 `hday` は予測特徴が欠損したレースも行単位算入し得るが、日付更新は予測 `days` のある日に限定。`cs/ct/rcs/rct` の履歴専用入力・6艇事故の肯定証拠・`refund_boats=None` 保留・全予測を固定してから翌日反映・収支母集団分離を規定。**設計のみ、実装・DB検証未実施**。
 - **2026-10-11 実装：** 開発ブランチのみ `v5/offline_evidenced_course_history.py` と `tests/test_v5_offline_evidenced_course_history.py`（7テスト）を追加。元`roll_forward_day`をコース履歴0行で一度呼び出し、確定日次結果のあとに、別証拠で公式/非VOID/返還なし/6艇正常F/L=falseが示されたレースの有効コース履歴を翌日用4 Counterへ一度だけ集計。特徴不足レースも履歴候補、部分数値不正は行単位除外、不明・事故・重複はHOLD/拒否。予測0件日は既存freezeで拒否。監査内訳付き、Forward/BUY=false。**GitHubコミット済み、隔離Pythonで7/7 PASS（GitHubとソースハッシュ一致）。外部証拠の真正性・全レース網羅・購入収支は未証明。main/V4/Railway未変更。**
+- **日次網羅性/時点証拠ガード（2026-10-11）：** 開発ブランチに`v5/offline_day_evidence_coverage.py`＋`tests/test_v5_offline_day_evidence_coverage.py`追加。隔離Pythonで11/11 PASS、GitHub blob一致(`397aff45`/`32e87b78`)。申告された全レース台帳とFROZEN/NO_BUY/PENDINGの集合差・重複・日付、6艇、展示初回取得/保存時刻と決定締切、結果初回取得の不整合を検出。事後取得を事前証拠扱いしない。**公式の独立網羅/初回証拠は一切認証不可、positive-source許可集合は空、Forward/BUY=false**。DB/本番未接続。
 - 既存確認ファイル：`docs/V5_PREDECISION_FEATURE_LINEAGE_TO_REAL_ROI_20261011.md`。長い旧handoffは**履歴として残す**が次チャットで全読みしない。
 
 - **コース履歴数値差分（2026-10-11）：** 開発ブランチに `tests/test_v5_offline_course_history_parity.py`（Git blob `40ee19e3`）を追加。隔離Pythonで6/6 PASS（元研究 `hday` 更新部分を正確に抜粋、実装/テストGit blob一致）。正常・特徴欠損・部分有効行では4 Counter一致、返還不明・重複・証拠不足では新V5が意図的にHOLD。実DBや原本真正性は未検証。
 
-## Next ONE task — 履歴入力の網羅性と時点証拠の検査設計
-開発ブランチのみで、予測対象日全件の固定を確認するためのカバレッジ証拠・公式結果の取得時刻・履歴専用レースの独立証拠を検査する小さなオフラインガードとテストを検討する。手元の保存値から実証できない項目はHOLD。`main`/V4/Railway/DBは変更しない。
+## Next ONE task — 固定済み予測の実オブジェクトと日次台帳を接続
+開発ブランチのみで`FrozenDay`実オブジェクトと`offline_day_evidence_coverage`を安全に接続する小さなread-only adapter＋単体テストを追加。申告の`frozen_race_ids`と実固定集合の不一致を拒否、NO_BUY/PENDINGを母集団に残す。公式全レース網羅・独立肯定証拠は未取得のままHOLD。**main/V4/Railway/DB/BUY操作禁止**。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
