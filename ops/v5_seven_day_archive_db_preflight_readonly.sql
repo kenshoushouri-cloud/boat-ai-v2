@@ -6,6 +6,9 @@
 -- All SELECTs query catalogs/privileges only; NO application table scan.
 -- Stop if required columns/usable index prefixes absent. No schema changes.
 
+BEGIN TRANSACTION READ ONLY;
+SET LOCAL statement_timeout = '2000ms';
+
 -- Q1. Required source columns and ACTUAL PostgreSQL data types.
 WITH required(table_name, column_name) AS (
   VALUES
@@ -101,3 +104,5 @@ SELECT current_database() AS database_name,
          AS exhibition_select,
        has_table_privilege(current_user, 'public.v2_results', 'SELECT')
          AS results_select;
+
+COMMIT;
