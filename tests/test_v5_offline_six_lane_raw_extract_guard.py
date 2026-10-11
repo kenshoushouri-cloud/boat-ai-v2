@@ -70,6 +70,8 @@ class TestSixLaneRawExtractGuard(unittest.TestCase):
         self.assertIn("ROW_1_RACER_MISSING_INVALID_OR_DUPLICATE", result.reasons)
         self.assertIn("ROW_1_RACER_CLASS_MISSING_OR_INVALID", result.reasons)
         self.assertFalse(result.research_value_shape_complete)
+        invalid_type = inspect_six_lane_raw_extract(changed(racer_class=[]))
+        self.assertIn("ROW_1_RACER_CLASS_MISSING_OR_INVALID", invalid_type.reasons)
 
     def test_missing_or_six_history_rows_denied(self):
         for history in (None, [], [{"race_date":"2026-04-30"}]*6):
