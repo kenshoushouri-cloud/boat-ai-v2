@@ -74,10 +74,10 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 - このチャットのRailway連携はSQLの直接実行不可。**ユーザーがRailway Data > Queryから単一SELECTを1回実行する必要がある**。出力1行のみ（機密URL/パスワード不要）。`SHAPE_OK_SOURCE_NOT_AUTHENTICATED`でも研究・BUYの権限には昇格しない。全期間実走のためのDB索引・型のLIVE結果は現時点で未取得。
 - コスト $10–12理想、$15未満優先、$20最大。Railway Agent/AI・有料CI/Actions・DB書込・V4/main/BUY禁止。
 
-## Latest ONE result — 実DB catalog初回診断HOLD（2026-10-11）
-ユーザーがRailway Data UIから返した結果: `HOLD_DO_NOT_READ_RACES`、必要20列全て型/存在不一致・必要4索引全て未確認・4表のSELECT権限全てfalse。従来の`public.v2_*`契約が現在の接続DBで使用不可と判明。**データ消失は未確定**。実データSELECT/DB修正はHOLD。原因候補はDB接続先・実スキーマ/表名・権限。
-dev に `ops/v5_archive_catalog_location_readonly_20261011.sql` を追加（カタログだけを参照する単一SELECT、DML/本体行scanなしを静的確認）。current_database・current_schema、4つの想定表の全schemaでの所在、schema USAGE/SELECT、候補名最大25を返す。Railway query実行は未。Railway/main/V4/BUY変更なし、実データ **0/67窓**。
+## Latest ONE result — DB所在確認（2026-10-11）
+ユーザー実行済みの`postgres-history-archive` Data Query結果: DB=`boat_history_archive`、user relations=3（`archive.v2_realtime_race_condition_snapshots`, `archive.v2_realtime_racer_condition_snapshots`, `public.v2_recent_form_archive`）、`v2_races/v2_race_entries/v2_realtime_exhibition_snapshots/v2_results`は**0/4**。この**アーカイブ専用DBに対象4表がないだけで、消失や権限不良の確証ではない**。
+GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**Historical research DB=`postgres-hobby-fullhistory-candidate-v4`**、元のProduction source=`Postgres-EKp2`。Railway live read-only metadataではcandidate-v4とPostgres-EKp2ともlive/SUCCESS/stagedなし。V4候補DBの過去空き容量が厳しいため**カタログ以外の行scan/DDL/保守禁止**。実データ0/67窓、Forward/ROI/BUY HARD HOLD。
 
-## Next ONE task — Railway Data UIで構造確認SQLを1回実行・結果判断
-`boat-v2-postgres > production > postgres-history-archive > Data > Query` で上記`ops/v5_archive_catalog_location_readonly_20261011.sql`を実行し、1行結果をユーザーから取得。DB名は必要に応じ伏せてよい。テーブルが他schemaなら安全なスキーマ差分設計、想定表が不存在なら実データの所在・正しいDBのread-only確認に進む。書込/権限変更/サービス追加/本番V4変更禁止。
+## Next ONE task — candidate-v4で20列/4索引のカタログ1行確認
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` に、既存`ops/v5_archive_catalog_railway_data_query_readonly_20261011.sql` の単一SELECTを**1回だけ**実行し、`check_result/checked_columns/checked_indexes/problem_columns/problem_indexes/problem_select_access`を取得。SQLは`information_schema`と`pg_catalog`のみ、レース本体scan/書込なし（ファイル名はarchiveでもSQLはDB非依存）。結果が全部HOLDなら無理に進まず、Source=`Postgres-EKp2`の所在を改めてread-onlyで確認する。価格$10-12理想/$20上限、Railway Agent/AI/Actions/V4変更/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
