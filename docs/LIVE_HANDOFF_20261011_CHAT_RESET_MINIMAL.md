@@ -95,6 +95,10 @@ devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `7030
 ## User clarification — official archived beforeinfo vs captured predeadline (2026-10-11)
 既存`research/historical_beforeinfo_backfill_pg.py`は`SOURCE=official_archived_beforeinfo_historical_reconstruction`、`SOURCE_CONTRACT=BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1`、`historical_reconstruction=true`、`prospective_evidence=false`、一部synthetic`snapshot_at`を明記している。**「事後取得＝使えない」という誤認を修正**。公式に公開された当時のbeforeinfoを事後取得した事例は、**再現バックテスト研究・仮定付きROI**に使用可能。ただしDB864件それぞれのsource/contractはまだ未照合のため`official_archive_provenance_verified=false`、元の締切前取得・運用実績・真のROI・Forward/BUYは未証明。出所の違う展示と混同しない。研究全期間67窓実処理0件は変わらず。
 
-## Next ONE task — 2025-07-01 recent_form前日以前検査を1回だけ確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを単発実行。期待Q1=144、joined_entries=864、history欠損/同日混入/不正着順をユーザーが1行で報告。形式合格でも**capture原本の証明ではなく研究限定**。結果次第で展示なしの代替V5評価・後日実測証拠の整備に進む。
+## Latest ONE result — 初日recent_form864艇すべて履歴0（2026-10-11）
+candidate-v4 Railway UIユーザー実測: `2025-07-01` Q1=144、6艇slot=864/entry=864、JSON欠損・12KB超=0。しかし`one_to_five_history_slots=0`, `history_items=0`, `prior_date_items=0`, `latest_prior_date_seen=NULL`, `HOLD_RECENT_FORM_MISSING_OVERSIZE_OR_LENGTH`。これは**JSON容器の存在を示すだけで1〜5走履歴の存在は示さない**。現在の抽出が空配列を読んだのか別JSON構造を読めなかったのかは未確定。2025-07-01が研究期間の初日で、Kからの過去履歴補完の初期warm-upの可能性もあり、全期間0件とは推論しない。保存データは削除/補完しない。
+dev `ops/v5_candidate_v4_first_day_recent_form_shape_readonly_20261011.sql` (blob `7c85d359`)を追加。Q1=144ガード・864艇のみ・<=12KBのJSONをroot array/object、空/非空、既定nested配列、最大16個のtop-level key名へ**結果1行のみ**集計。Q3/払戻/展示/行ID出力なし、単一SELECTの静的安全9/9条件、DB未実行。実データ全期間67窓の完了0、ROI/Forward/BUY HARD HOLD。
+
+## Next ONE task — candidate-v4初日recent_form JSON構造の1行診断
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記shape診断SQLを1回のみ実行し、`empty_root_array,root_object,empty_root_object,object_key_names,form_shape_verdict`など返る1行を評価。全て空なら「2025-07-01はK蓄積前のwarmup候補」と位置付け、削除はせず後続1日を小さく検査。別形式なら抽出パーサを改良し原本値を保全。Railway CPU/RAM/費用、Agent/AI、Actions、V4本番変更、DB書込・BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
