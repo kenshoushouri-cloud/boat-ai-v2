@@ -43,6 +43,8 @@
 
 - **2026-10-11 全日・全レース台帳＋仮想買い目統合：** dev branch `v5/offline_whole_day_research_ledger.py`（blob `5ef42718`）＋`tests/test_v5_offline_whole_day_research_ledger.py`（blob `1a780edd`、9ケース）追加。実`FrozenDay`/日次PENDING・NO_BUY含む申告inventoryを残し、仮想FROZEN ID/券順/決定cutoffと`FrozenResearchRank`を一致照合。結果は**照合後にのみ**Joinへ渡し、NO_BUY/未固定レースの結果も監査に保持。0購入日はROIなし、返還不明/結果未着は仮想ROI保留。**9/9オフライン実行PASS**。ローカル `git hash-object` とGitHub SHAが一致：`5ef42718`/`1a780edd`。払戻・結果Join・順位モジュールも実GitHub SHA一致、未使用の予測依存2件のみ軽量stub。公式全日網羅・本当の締切前券凍結は未証明、Forward/BUY=false。main/V4/Railway/DB不変更。
 
-## Next ONE task — 保存済み大村12RをV5仮想研究入力へread-only対応付け
-既存の1件限定保存値と`docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`を用い、`ArchivedRaceFactors`/`StoredResultRow`の各必須フィールドの実証済み・不明を小表で突合せ。特に6艇選手番号、前日までのCounter、払い戻し返還、意思決定時刻を推測補完しない。足りなければHOLD、仮想収支もROIも捏造しない。最初はread-only GitHub確認のみ。main/V4/Railway/DB/BUY不変更。
+- **大村12R保存値→研究入力の1件限定照合（2026-10-11）：** `docs/V5_OOMURA_20260501_RESEARCH_INPUT_FIELD_MAP_20261011.md`作成。確認済みはレースID/締切参照、6艇×直近5走の前日以前の日付、後日展示順位、保存的中券`2-1-5`/払戻6,180円の内部整合のみ。未証明: 6艇の登番/級別生値、当日以前に固定の基本確率+5因子×6、model fitted-through、decision cutoff、V5選定券/点数/単価、official/VOID・返還原本、全日inventory。**ArchivedRaceFactors構築不可、StoredResultRowはPENDING、ROI未算出。** GitHubのみ、DB/Railway操作なし。
+
+## Next ONE task — 6艇read-only抽出仕様と未取得null検査契約
+GitHub開発ブランチだけで既存`ops/v5_one_race_six_lane_feature_lineage_readonly_20260501.sql`を狭く照合し、実選手番号/級別/5走の生値取得に必要な最小項目・型・6艇完全性・空値はHOLDの契約を設計。**DBはまだ呼ばず**、結果/払戻・出走肯定証明を推定しない。main/V4/Railway/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
