@@ -1,0 +1,31 @@
+name: V4 entry input novelty contract validation
+on:
+  pull_request:
+    paths:
+      - 'research/v4_entry_input_novelty_pg.py'
+      - 'docs/V4_ENTRY_INPUT_NOVELTY_20260927.md'
+      - '.github/workflows/v4-entry-input-novelty-*.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m py_compile research/v4_entry_input_novelty_pg.py
+      - name: Validate result-blind boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v4_entry_input_novelty_pg.py').read_text(encoding='utf-8').lower()
+          for x in ('set transaction read only','input_only_novelty_audit_complete','pass_read_only'):
+              assert x in t,x
+          for x in ('v2_'+'results','v2_'+'result_entries','v2_'+'odds','v2_'+'payout','send_'+'line','insert into','update v2_','delete from','create table','alter table','drop table'):
+              assert x not in t,x
+          print('V4_ENTRY_NOVELTY_RESULT_BLIND=PASS')
+          PY
