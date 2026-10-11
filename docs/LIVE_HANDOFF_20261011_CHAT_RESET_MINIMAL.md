@@ -78,6 +78,10 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 ユーザー実行済みの`postgres-history-archive` Data Query結果: DB=`boat_history_archive`、user relations=3（`archive.v2_realtime_race_condition_snapshots`, `archive.v2_realtime_racer_condition_snapshots`, `public.v2_recent_form_archive`）、`v2_races/v2_race_entries/v2_realtime_exhibition_snapshots/v2_results`は**0/4**。この**アーカイブ専用DBに対象4表がないだけで、消失や権限不良の確証ではない**。
 GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**Historical research DB=`postgres-hobby-fullhistory-candidate-v4`**、元のProduction source=`Postgres-EKp2`。Railway live read-only metadataではcandidate-v4とPostgres-EKp2ともlive/SUCCESS/stagedなし。V4候補DBの過去空き容量が厳しいため**カタログ以外の行scan/DDL/保守禁止**。実データ0/67窓、Forward/ROI/BUY HARD HOLD。
 
-## Next ONE task — candidate-v4で20列/4索引のカタログ1行確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` に、既存`ops/v5_archive_catalog_railway_data_query_readonly_20261011.sql` の単一SELECTを**1回だけ**実行し、`check_result/checked_columns/checked_indexes/problem_columns/problem_indexes/problem_select_access`を取得。SQLは`information_schema`と`pg_catalog`のみ、レース本体scan/書込なし（ファイル名はarchiveでもSQLはDB非依存）。結果が全部HOLDなら無理に進まず、Source=`Postgres-EKp2`の所在を改めてread-onlyで確認する。価格$10-12理想/$20上限、Railway Agent/AI/Actions/V4変更/BUY禁止。
+## Latest ONE result — candidate-v4実DB検査 19/20項目適合（2026-10-11）
+ユーザーによる`postgres-hobby-fullhistory-candidate-v4`のRailway Data UI検査結果: `HOLD_DO_NOT_READ_RACES`、required20列のうち不適合は**`v2_race_entries.racer_class`のみ**、4索引は`NONE`問題なし、4表SELECT権限問題`NONE`。既存`pg_schema_compat_v5.py`には`racer_class integer`と`racer_class_text text`の定義がある。旧V5プリフライトは`racer_class`をtext/varchar想定したため**型契約不一致の疑い**。DB削除/権限問題を意味しない。実DBは変更しない。
+dev `ops/v5_candidate_v4_racer_class_columns_readonly_20261011.sql`（blob `7087bba7`）追加。該当3列だけ`information_schema.columns`を参照する単一SELECT、DML/表scanなしを静的検査。**未実行**。実データ0/67窓、V4/main/BUY不変更。
+
+## Next ONE task — racer_classの実DB型確認後、Q2級別出力契約修正
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で上記診断SELECT1回の実DB結果3行を確認。`racer_class`が整数で`racer_class_text`が文字列なら、Q2を`racer_class_text AS racer_class`等に安全に置き換え、原本欠損はNULL/HOLD。数値コードから級別を推測変換しない。診断完了前は初回1日レース取得HOLD。コスト$10〜12理想/$20上限、Agent/AI・有料CI・DB書込・V4/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
