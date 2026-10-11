@@ -74,6 +74,10 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 - このチャットのRailway連携はSQLの直接実行不可。**ユーザーがRailway Data > Queryから単一SELECTを1回実行する必要がある**。出力1行のみ（機密URL/パスワード不要）。`SHAPE_OK_SOURCE_NOT_AUTHENTICATED`でも研究・BUYの権限には昇格しない。全期間実走のためのDB索引・型のLIVE結果は現時点で未取得。
 - コスト $10–12理想、$15未満優先、$20最大。Railway Agent/AI・有料CI/Actions・DB書込・V4/main/BUY禁止。
 
-## Next ONE task — Railway Data UIのカタログ1行を評価
-ユーザーのSQL実行結果`check_result / checked_columns / checked_indexes / problem_columns / problem_indexes / problem_select_access`を確認。結果未提示ならlive合格を宣言しない。合格/停止理由を判定して、初回1日read-only smoke→7日バッチへの最短接続を進める。新サービスや既存DB変更禁止。
+## Latest ONE result — 実DB catalog初回診断HOLD（2026-10-11）
+ユーザーがRailway Data UIから返した結果: `HOLD_DO_NOT_READ_RACES`、必要20列全て型/存在不一致・必要4索引全て未確認・4表のSELECT権限全てfalse。従来の`public.v2_*`契約が現在の接続DBで使用不可と判明。**データ消失は未確定**。実データSELECT/DB修正はHOLD。原因候補はDB接続先・実スキーマ/表名・権限。
+dev に `ops/v5_archive_catalog_location_readonly_20261011.sql` を追加（カタログだけを参照する単一SELECT、DML/本体行scanなしを静的確認）。current_database・current_schema、4つの想定表の全schemaでの所在、schema USAGE/SELECT、候補名最大25を返す。Railway query実行は未。Railway/main/V4/BUY変更なし、実データ **0/67窓**。
+
+## Next ONE task — Railway Data UIで構造確認SQLを1回実行・結果判断
+`boat-v2-postgres > production > postgres-history-archive > Data > Query` で上記`ops/v5_archive_catalog_location_readonly_20261011.sql`を実行し、1行結果をユーザーから取得。DB名は必要に応じ伏せてよい。テーブルが他schemaなら安全なスキーマ差分設計、想定表が不存在なら実データの所在・正しいDBのread-only確認に進む。書込/権限変更/サービス追加/本番V4変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
