@@ -18,7 +18,7 @@ from v5.offline_catalog_smoke_gate import (
     FirstDaySmoke, check_smoke_measurements, first_day_smoke_contract,
 )
 
-SQL_BLOB_SHA = "9c3ecd56ed64d8b5f6590fd711d62c2d74eac37c"
+SQL_BLOB_SHA = "8d9e35700f1be4755209286b0d6959f00a0f36bb"
 MAX_SINGLE_ROW_BYTES = 64_000
 FEATURE_QUERIES = ("Q1", "Q2")
 RESULT_QUERY = "Q3"
@@ -136,7 +136,7 @@ def read_one_day_postrace(features: FeatureStream,
 
 
 def reviewed_select_statements(path: Path) -> dict[str, str]:
-    """Inspect the unchanged reviewed 7-day SQL text without ever running it."""
+    """Inspect the unchanged reviewed size-guarded 1-day SQL without running it."""
     data = Path(path).read_bytes()
     actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
     if actual != SQL_BLOB_SHA:
@@ -166,7 +166,7 @@ def iter_server_cursor(conn, sql: str, params: Mapping, *, explicit_manual_read=
     """
     if explicit_manual_read is not True:
         raise StreamStopped("DB_FETCH_DISABLED_BY_DEFAULT")
-    expected_path = Path(__file__).resolve().parents[1] / "ops" / "v5_seven_day_archived_research_source_readonly.sql"
+    expected_path = Path(__file__).resolve().parents[1] / "ops" / "v5_one_day_archived_size_guarded_readonly.sql"
     if sql not in reviewed_select_statements(expected_path).values():
         raise StreamStopped("UNREVIEWED_QUERY_FORBIDDEN")
     if (not isinstance(params, Mapping)
