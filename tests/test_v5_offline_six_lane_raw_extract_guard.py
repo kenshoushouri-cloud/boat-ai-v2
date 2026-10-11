@@ -92,7 +92,9 @@ class TestSixLaneRawExtractGuard(unittest.TestCase):
         for value in (None, 2, 7):
             with self.subTest(rank=value):
                 result = inspect_six_lane_raw_extract(changed(exhibition_time_rank=value))
-                self.assertIn("ROW_1_EXHIBITION_RANK_MISSING_OR_DUPLICATE", result.reasons)
+                self.assertTrue(any(reason.endswith("_EXHIBITION_RANK_MISSING_OR_DUPLICATE")
+                                    for reason in result.reasons))
+                self.assertFalse(result.research_value_shape_complete)
 
     def test_timezone_naive_and_missing_snapshot_denied(self):
         result = inspect_six_lane_raw_extract(changed(
