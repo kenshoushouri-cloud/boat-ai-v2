@@ -22,7 +22,7 @@ from v5.offline_retrospective_trifecta_returns import (
 
 _JST = ZoneInfo("Asia/Tokyo")
 _EXPECTED = "SYNTHETIC_120_TICKET_PL_SHADOW_UNVALIDATED_HARD_HOLD"
-_RACE_ID = re.compile(r"20\\d{6}_(?:0[1-9]|1\\d|2[0-4])_(?:0[1-9]|1[0-2])\\Z")
+_RACE_ID = re.compile(r"20\d{6}_(?:0[1-9]|1\d|2[0-4])_(?:0[1-9]|1[0-2])\Z")
 _ALL = frozenset("-".join(map(str, p)) for p in permutations(range(1, 7), 3))
 _GUARDS = (
     "original_first_observation_verified", "independently_authenticated_source",
