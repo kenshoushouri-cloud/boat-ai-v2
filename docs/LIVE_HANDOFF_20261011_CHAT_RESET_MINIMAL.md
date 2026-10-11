@@ -83,6 +83,10 @@ GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**H
 - dev初回SQL `ops/v5_one_day_archived_size_guarded_readonly.sql` blob `2e2e77d4`、7日SQL `ops/v5_seven_day_archived_research_source_readonly.sql` blob `0905a3d3`: Q2は`e.racer_class_text`がA1/A2/B1/B2の時だけ`AS racer_class`、それ以外NULL→HOLD。**整数級別の推測変換はしない**。catalog UI SQL blob `96105144` / psql metadata blob `7c69a740` / offline判定 `b1ca95c5`も級別text期待に更新。初回stream SHA `fbd1466c`、手動psql SHA `0a797571`に新SQL blobを固定。Regression単体テスト3件追記（GitHub保存、**このターンPython再実行なし**）。3系統SQL分離、pin、型、DMLなしを**12/12静的検査**。DB/本番/main/V4/BUY変更なし。
 - 最初の実データ確認に備え、dev `ops/v5_candidate_v4_first_day_q1_count_readonly_20261011.sql` blob `65b4145f`追加（**2025-07-01だけ**、indexed `v2_races`行数と一意レース数の1 SELECT、氏名/個別レース/結果出力なし、400件以上・0件・重複はHOLD）。静的9/9チェック、**実行は未**。実データ処理**0/67窓**、実ROI/Forward/BUY HARD HOLD。
 
-## Next ONE task — candidate-v4 2025-07-01 Q1件数のlive read-only確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で上記Q1 count SQLを**1回**実行し、`race_date_checked/q1_inventory_rows/unique_race_ids/q1_verdict`のみを共有。結果0件は休催の証明ではなく母集団HOLD。結果が適切なら次の1作業は初日6艇Q2の軽量検査。実行時費用を監視、SQL以外の書込/Actions/Agent/AI/新サービス/本番変更禁止。
+## Latest ONE result — candidate-v4初日Q1実データ確認（2026-10-11）
+ユーザーがRailway Data > Queryで`2025-07-01`をlive確認: `q1_inventory_rows=144`, `unique_race_ids=144`, `Q1_ONE_DAY_COUNT_ONLY_NOT_COVERAGE_PROOF`。重複0、400件上限内。**公式全レースの独立母集団証明ではない**。この1日Q1カウントは全期間バックテスト67窓の実処理完了とは計上しない。
+devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `70301192`)を保存。**2025-07-01のQ1 144件/一意144を再確認した場合だけ**144×6=864 slotの出走表+historical展示を別々にindexed LEFT JOIN集計し、選手番号/文字級別/最近成績JSON型、展示欠損/重複/後日snapshotの件数を結果**1行**で表示。Q3・払戻・レースIDを表示せず、0件/重複はHOLD、Q3/ROI/Forward/BUY不可。書込/無制限全期間scanのない単一SELECTを静的8条件検査。**PostgreSQL上では未実行**、CPU/通信量は実測前、実データ処理0/67窓。
+
+## Next ONE task — candidate-v4の初日Q2実DB集計を1回だけ確認
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記Q2 SQL単一SELECTを実行し、返る1行（`expected_lane_slots,entry_rows,missing_entry_slots,duplicate_entry_slots,valid_text_grade_rows,recent_form_container_rows,historical_exhibition_rows,missing_historical_exhibition_slots,q2_verdict`等）をユーザーから受け取る。欠損/重複/後日保存は勝手に補完せずHOLD/研究限定。必要なら集計結果に応じてQ2補完ルートを確定。Railway Agent/AI/Actions、DB書込/V4改変/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
