@@ -30,11 +30,11 @@
 
 - **2026-10-11 FrozenDay台帳接続：** 開発ブランチに`v5/offline_frozen_day_evidence_adapter.py`とテスト8件を追加。実`FrozenDay.races`対申告集合の不一致/重複/艇ID不一致を拒否。買い目あり=仮想`FROZEN`、空券= `NO_BUY`、未固定= `PENDING`（購入実績ではない）。既存ガードと合計19/19オフラインPASS、py_compile PASS。GitHub blob `776bd7f1`/`45c68f43`は実行コピーと一致。`PriorDayCounters`依存のみ既存軽量stub。公式全日網羅・出走6艇・締切前取得の独立証拠は依然未確認、BUY不可。`main`/V4/Railway/DB変更なし。
 
-- **大村12R 1件限定・read-only不足証拠分類（2026-10-11）：** `docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`作成。30履歴は前日以前だが初観測未証明、保存展示2026-08-15/オッズ2026-08-03は締切後、6艇の独立公式出走肯定証拠・V5固定買い目・返還・母集団網羅は不足、PENDING/HARD HOLD。`offline_day_evidence_coverage.py`でcutoff不明でも締切後保存を警告、模擬テスト1件追加（**未実行・PASS未確認**）。新しいDB読取なし、main/V4/Railway未変更。
+- **大村12R 1件限定・read-only不足証拠分類（2026-10-11）：** `docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`作成。30履歴は前日以前だが初観測未証明、保存展示2026-08-15/オッズ2026-08-03は締切後、6艇の独立公式出走肯定証拠・V5固定買い目・返還・母集団網羅は不足、PENDING/HARD HOLD。`offline_day_evidence_coverage.py`でcutoff不明でも締切後保存を警告、模擬テスト1件を**GitHub blob一致の隔離PythonでPASS**（関連テスト12/12、py_compile PASS）。新しいDB読取なし、main/V4/Railway未変更。
 
 ## Latest ONE finding — positive official six-start source absent
 限定コード監査を `docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md` に記録。historical beforeinfo は取得時 `snapshot_at=now`、reuse `source_snapshot_at` は独立初観測でない。racelist 6艇一致≠6艇出走確定。公式start-statusは肯定証拠未定義、`official_capture_pipeline` beforeinfoは**HTTP前HARD HOLD**。first-write設計/読戻しも first_observed_at=None でForward未承認。Railway/DB実状態は未確認。
 
-## Next ONE task — 大村12Rの締切後展示検出テストだけ隔離実行
-開発ブランチの `tests/test_v5_offline_day_evidence_coverage.py` 追加済み大村12R模擬ケース（cutoff/first_observed_at不明・8月保存）を、GitHubコードと一致するオフライン環境で実行。失敗時だけ開発ブランチで小修正。**未実行の現在をPASSとしない**。公式6艇肯定証拠の解禁・本番/DB/Railway/BUY変更禁止。1作業のみ。
+## Next ONE task — 公式6艇出走肯定証拠の原本・明示項目を限定調査
+既存`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`を踏まえ、公式出走表・締切前状態の**明示された6艇の肯定情報**が元原本とコードパーサで立証できるかを小範囲のread-only確認。確認できなければHARD HOLDのまま。`APPROVED_POSITIVE_SOURCE_SCHEMAS`は空、beforeinfoはHTTP前HOLD。main/V4/DB/Railway/BUYの変更禁止、無断公式サイト再取得なし。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
