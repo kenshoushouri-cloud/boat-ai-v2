@@ -18,7 +18,7 @@ from v5.offline_catalog_smoke_gate import (
     FirstDaySmoke, check_smoke_measurements, first_day_smoke_contract,
 )
 
-SQL_BLOB_SHA = "8d9e35700f1be4755209286b0d6959f00a0f36bb"
+SQL_BLOB_SHA = "0275144180d8a5cfa2d8651cd5a24620037df818"
 MAX_SINGLE_ROW_BYTES = 64_000
 FEATURE_QUERIES = ("Q1", "Q2")
 RESULT_QUERY = "Q3"
