@@ -43,7 +43,7 @@ def _original_daily_updates():
                              for x in n.targets))
     assert [ast.unparse(n.targets[0]) for n in day_loop.body[:2]] == ["gp", "priors"]
     assert "classes" in ast.unparse(race_loop.body[0])
-    assert "dlw[winner]" in ast.unparse(race_loop.body[win_index])
+    assert "dlw[winner]" in ast.unparse(race_loop.body[win_index+1])
     assert "cs[c]" in ast.unparse(day_loop.body[-1])
     original_subset = ast.For(
         target=copy.deepcopy(day_loop.target),
