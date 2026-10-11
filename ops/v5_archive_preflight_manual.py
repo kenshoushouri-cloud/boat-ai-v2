@@ -12,7 +12,7 @@ import os
 import subprocess
 from pathlib import Path
 
-SQL_BLOB_SHA = "fa930650488d3dee2ac501f7d19fb605e9a5b3ae"
+SQL_BLOB_SHA = "7c69a740b460d1e049c846df130d79d3ed192c8b"
 ENABLE = "YES_METADATA_ONLY"
 TARGET = "HISTORY_ARCHIVE_CONFIRMED"
 
