@@ -36,6 +36,17 @@ class CatalogGateTests(unittest.TestCase):
         self.assertFalse(x.smoke_authorized)
         self.assertFalse(x.buy_eligible)
 
+    def test_actual_grade_schema_uses_textual_column(self):
+        self.assertNotIn("racer_class", REQUIRED["v2_race_entries"])
+        self.assertEqual(REQUIRED["v2_race_entries"]["racer_class_text"],
+                         frozenset(("text", "varchar")))
+        fake = transcript({("v2_race_entries", "racer_class_text"):
+                           ("int4", "PRESENT_TYPE_REVIEW")})
+        result = audit_catalog_psql_output(fake)
+        self.assertIn("MISSING_OR_UNSAFE_COLUMN_TYPE:v2_race_entries.racer_class_text",
+                      result.reasons)
+        self.assertFalse(result.smoke_authorized)
+
     def test_missing_column_holds(self):
         x = audit_catalog_psql_output(transcript({("v2_races", "race_id"): ("", "MISSING")}))
         self.assertEqual(x.status, "HOLD_CATALOG_CONTRACT")
