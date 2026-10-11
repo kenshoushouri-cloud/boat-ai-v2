@@ -99,6 +99,8 @@ def reference_counts(before, frozen, settled, history):
               and settled[r.race_id].has_incident is False
               and settled[r.race_id].refund_boats == ()}
     q = copy.deepcopy(dict(before.counters))
+    # Research initializes vc as defaultdict(Counter), not a plain dict.
+    q["vc"] = defaultdict(Counter, q["vc"])
     loc = dict(q)
     loc.update(
         gn=before.completed_races,
