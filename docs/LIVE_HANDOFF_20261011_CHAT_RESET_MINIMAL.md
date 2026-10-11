@@ -32,6 +32,9 @@
 
 - **大村12R 1件限定・read-only不足証拠分類（2026-10-11）：** `docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`作成。30履歴は前日以前だが初観測未証明、保存展示2026-08-15/オッズ2026-08-03は締切後、6艇の独立公式出走肯定証拠・V5固定買い目・返還・母集団網羅は不足、PENDING/HARD HOLD。`offline_day_evidence_coverage.py`でcutoff不明でも締切後保存を警告、模擬テスト1件追加（**未実行・PASS未確認**）。新しいDB読取なし、main/V4/Railway未変更。
 
-## Next ONE task — 公式6艇肯定証拠と初回保存の既存経路を特定
-GitHub開発ブランチで、beforeinfo原本・出走6艇の肯定証拠・`first_observed_at`/`source_snapshot_at`の保存処理を**狭いコード範囲でread-only**確認し、前処理経路の欠落を特定。大量履歴やRailway一括scan禁止。今回追加の大村12Rテスト実行は未済であることを維持し、コード確認後に独立した小作業で隔離実行。肯定証拠がない限りForward/BUYはHOLD。main/V4/Railway/DB変更禁止。
+## Latest ONE finding — positive official six-start source absent
+限定コード監査を `docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md` に記録。historical beforeinfo は取得時 `snapshot_at=now`、reuse `source_snapshot_at` は独立初観測でない。racelist 6艇一致≠6艇出走確定。公式start-statusは肯定証拠未定義、`official_capture_pipeline` beforeinfoは**HTTP前HARD HOLD**。first-write設計/読戻しも first_observed_at=None でForward未承認。Railway/DB実状態は未確認。
+
+## Next ONE task — 大村12Rの締切後展示検出テストだけ隔離実行
+開発ブランチの `tests/test_v5_offline_day_evidence_coverage.py` 追加済み大村12R模擬ケース（cutoff/first_observed_at不明・8月保存）を、GitHubコードと一致するオフライン環境で実行。失敗時だけ開発ブランチで小修正。**未実行の現在をPASSとしない**。公式6艇肯定証拠の解禁・本番/DB/Railway/BUY変更禁止。1作業のみ。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
