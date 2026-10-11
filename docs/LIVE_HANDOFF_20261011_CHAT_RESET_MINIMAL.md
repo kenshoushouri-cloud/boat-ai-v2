@@ -95,11 +95,10 @@ devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `7030
 ## User clarification — official archived beforeinfo vs captured predeadline (2026-10-11)
 既存`research/historical_beforeinfo_backfill_pg.py`は`SOURCE=official_archived_beforeinfo_historical_reconstruction`、`SOURCE_CONTRACT=BOATRACE_OFFICIAL_ARCHIVED_BEFOREINFO_PREDEADLINE_ASSUMED_V1`、`historical_reconstruction=true`、`prospective_evidence=false`、一部synthetic`snapshot_at`を明記している。**「事後取得＝使えない」という誤認を修正**。公式に公開された当時のbeforeinfoを事後取得した事例は、**再現バックテスト研究・仮定付きROI**に使用可能。ただしDB864件それぞれのsource/contractはまだ未照合のため`official_archive_provenance_verified=false`、元の締切前取得・運用実績・真のROI・Forward/BUYは未証明。出所の違う展示と混同しない。研究全期間67窓実処理0件は変わらず。
 
-## Latest ONE result — 7/2 Q3検査合格・odds metadata live合格（2026-10-12）
-- ユーザー実測：Railway candidate-v4の2025-07-02 Q1=180レース、Q3結果180/180・当選3連単合法180・正数払戻180・official result/race status各180、欠損/重複0。返還/VOIDや原本の真正性未確認。7/1履歴は864艇すべて空、7/2のprior-day K履歴は864/1,080艇で1,357件全て前日7/1（事故10件=S0×5/S1×3/F×2）、未来リーク0、Kタグ1,357。公式過去展示を事後再現研究へ用いるのは可、締切前初回取得証明ではない。
-- **今回のlive Railway metadata**: `v2_odds_trifecta` 必須5カラム型5/5、異常NONE、`race_id`先頭の有効btree索引true、SELECT権限true、判定`ODDS_CATALOG_OK_NO_DATA_READ_AUTHORIZATION`。**表の中身はこの段階では未検査**。
-- dev新SQL `ops/v5_candidate_v4_july02_odds_120_coverage_readonly_20261012.sql` (blob `82b04a6f`)保存。**Q1=180一意が維持された時のみ**索引race_idを通じ7/2 **最大通常21,600オッズ行相当**の120券/レース完全性、合法/一意、正数有限オッズ、`is_final`フラグ、取得時刻有無を集約して結果1行。欠損重複はHOLD、`is_final`もhistoricalの取得時刻も締切前購買可能価格の証明にしない。SQL静的12/12条件通過、**Railway DBでは未実行**。単一read-only SELECT、出力は総数だけ。V4/main/DB/BUY未変更、実バックテストは**0/67窓**、真ROI/Forward/BUYはHARD HOLD。
+## Latest ONE result — 7/2 実オッズ21,362/21,600件（2026-10-12）
+- User live Railway candidate-v4 read-only: 2025-07-02 Q1=180 distinct race、3連単**21,362/21,600**、178/180レースは120券一意・合法・正数finite・`is_final=true`、残り2レースは**0券×1 / 2券×1**（欠損120+118=**238件**）。全保存21,362券合法/一意/正値、`is_final=true` 21,362/21,362、取得時刻全あり **2026-08-13 08:53:03〜12:57:54**。2025-07-02から1年以上後であるため**締切前観測・購入可能オッズの証明ではない**。`HOLD_ODDS_120_MISSING_DUPLICATE_OR_INVALID`。Q3結果/当選券/払戻/statusは180/180合法、欠損重複なし（過去の確認）。2レースを母集団から削除せず`PENDING_ODDS`で保持、178だけでV5実ROIの全レース性能と表示しない。オッズがあっても公式原本/返還/VOID/決済の照合は未。研究バックテスト全67窓**0/67**、実ROI/Forward/BUY HARD HOLD。
+- dev SQL `ops/v5_candidate_v4_july02_odds_gap_ids_readonly_20261012.sql` (blob `b2741050a4`)追加。対象7/2のQ1=180 uniqueとrace_id先頭索引を前提とするread-onlyの**不足オッズ2レースID＋各券件数**のみ返すSELECT（前回欠損確認範囲を狭く特定）。単一SELECT、安全な静的7条件PASS、実DB未実行。GitHub devのみ。V4/main/DB/購入変更なし。
 
-## Next ONE task — candidate-v4 7/2の3連単120券×180レース集計を実DB確認
-ユーザーがRailway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを1回実行し、`races_checked,stored_odds_rows,races_complete_120_unique_valid,races_complete_120_final_flag,odds_verdict`など返る1行だけを共有。欠損・不正なら元データを削除/無理に埋めず、区別して対処する。予測用Q1/Q2とはQ3払戻・オッズを別工程で結合し、凍結予測前にQ3を渡さない。Railway目標$10〜12/月、$20上限、Agent/AI/有料CI/DB書込・本番V4変更禁止。
+## Next ONE task — 7/2欠損2レースを実DBで特定
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で新SQL単発実行、`race_id,odds_rows,missing_from_120,gap_verdict`等2行を共有。もし0行/想定外行数なら再読み込み/集計不整合としてHOLD。確認後は公式取得欠損と事故/開催取消を区別し、無理な補完・ゼロ円処理・全母集団からの削除を避ける。Railway低費用・Agent/AI/Actions/DB書込/V4/BUY禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
