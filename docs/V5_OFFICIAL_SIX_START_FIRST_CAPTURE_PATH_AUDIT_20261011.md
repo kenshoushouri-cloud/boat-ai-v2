@@ -29,3 +29,11 @@
 **未実施：** 公開公式サイトの追加検索、公式原本の再取得、DB読み、Railway稼働確認、既存テストの追加実行、本番/BUY変更。
 
 **次ONE作業候補：** 開発ブランチの大村12R模擬テスト（追加済み・未実行）をオフライン実行し、`cutoff=None`でも「8月のsnapshot保存は5月締切後」を検出できるか検証。変更は開発ブランチのみ。
+
+## 追加限定監査：出走表の『出走』と公式6艇肯定証拠の相違（2026-10-11）
+- `v5/official_racelist_readback.py:_extract_six_entrant_candidates`：`登録番号/級別`見出しのテーブルから6艇lane/登録番号/級別を抽出。`欠場/出走取消/取消/...`があれば拒否。取消表示が**存在しないだけ**では出走確定にせず、各行`active_verified=False`固定。
+- `historical_beforeinfo_parser_v3.py:_parse_primary_boat_rows`：艇別の展示タイム/チルト等を解釈。展示6艇が揃っても、出走確定の公式明示値は作らない。
+- `tests/test_v5_official_racelist_readback.py:make_html`の`<td>出走</td>`、`tests/v5_beforeinfo_test_fixtures.py:six_boat_html`は**合成HTML**。実際の公式原本・ステータスの公開仕様を認証した資料ではない。
+- `v5/official_start_status_observation_pilot.py`：最大2レース/4GET、手動明示承認のみ、通常OFF。`<th>/<dt>`の`出走確定/出走状況/出走予定/欠場`見出し**件数**を返すが、原文・艇別肯定出走状態を保存しない。コード上の出力は常に`all_six_active_confirmed=False`、`first_observed_at=None`。
+- `v5/official_positive_start_evidence_contract.py`：2026-10-10江戸川1Rの匿名化見出し集計だけでは原文・lane/racer別の確定出走状態を証明できないと明記。`APPROVED_POSITIVE_SOURCE_SCHEMAS=frozenset()`、肯定証拠認証およびForwardはすべてFalse。
+**結論：** GitHubで確認したパーサ/模擬原本/観測メタデータだけでは「6艇掲載・展示参加」から「締切前6艇出走確定」へ昇格不可。実公式ページの新たな原文再取得・DB読取・実行試験は今回行っていない。今後、既存に独立保存された公式のlane別肯定ステータス原文があるかを、許可されたread-only証拠の範囲で特定できるまでは**HOLD**。
