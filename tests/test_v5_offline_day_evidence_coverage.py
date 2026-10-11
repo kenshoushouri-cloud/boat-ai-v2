@@ -73,6 +73,31 @@ class TestDayEvidenceCoverage(unittest.TestCase):
         self.assertIn("EXHIBITION_AFTER_DECISION_CUTOFF", result.rows[0].predecision_reasons)
         self.assertFalse(result.buy_eligible)
 
+    def test_oomura_retrospective_snapshot_post_deadline_without_cutoff(self):
+        # Archived row is a research fixture, not the original DB object.
+        # No frozen V5 selection, no independently proven 6-boat source.
+        late = row(
+            B, "PENDING", decision_cutoff_at=None, six_lanes=None,
+            six_lane_source_contract=None, exhibition_first_observed_at=None,
+            exhibition_snapshot_at=datetime(2026, 8, 15, 13, 54, 54, tzinfo=JST),
+            result_first_observed_at=None, result_source_ref=None,
+        )
+        audit = check(inventory=(B,), ledger=(late,), frozen=())
+        one = audit.rows[0]
+        self.assertEqual(one.race_id, "20260501_24_12")
+        self.assertEqual(audit.pending_count, 1)
+        self.assertIn("DECISION_CLOCK_INVALID", one.predecision_reasons)
+        self.assertIn("ORIGINAL_FIRST_OBSERVATION_UNKNOWN", one.predecision_reasons)
+        self.assertIn("EXHIBITION_SNAPSHOT_RECORDED_AFTER_DEADLINE",
+                      one.predecision_reasons)
+        self.assertIn("OFFICIAL_POSITIVE_SOURCE_UNAPPROVED", one.predecision_reasons)
+        self.assertIn("INDEPENDENT_SIX_LANE_POSITIVE_EVIDENCE_MISSING",
+                      one.predecision_reasons)
+        self.assertIn("RESULT_FIRST_OBSERVATION_UNKNOWN", one.result_reasons)
+        self.assertFalse(one.predecision_timestamps_consistent)
+        self.assertFalse(audit.inventory_independently_verified)
+        self.assertFalse(audit.buy_eligible)
+
     def test_missing_first_observation_and_result_timestamp_are_not_invented(self):
         result = check(ledger=(row(exhibition_first_observed_at=None,
                                    result_first_observed_at=None),))
