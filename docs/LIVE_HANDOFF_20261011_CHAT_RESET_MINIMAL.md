@@ -47,6 +47,8 @@
 
 - **2026-10-11 大村12R 6艇生値抽出契約：** devに新read-only SQL `ops/v5_oomura12_six_lane_values_readonly_20260501.sql`（未実行）、NULL/重複/履歴当日リーク/日時タイムゾーンをHOLDにする純粋関数 `v5/offline_six_lane_raw_extract_guard.py` と11単体テスト（**11/11隔離PythonでPASS**。重複順位の行番号依存テストをdevで修正、Git blob SHA実装`d6603211`/テスト`3c0ce819`一致）を保存。旧集計SQLは保持。仕様 `docs/V5_SIX_LANE_RAW_EXTRACT_NULL_CONTRACT_20261011.md`。構造完全でも後日展示は研究限定、公式6艇肯定/first-observed/Forward/BUYは全てfalse。DB/Railway/main/V4未変更。
 
-## Next ONE task — 6艇生値抽出結果とV5研究入力の型境界を設計
-GitHubの6艇ガードで構造OKとなった生値を、`ArchivedLane`/`ArchivedRaceFactors`へ変換する前に**未取得のV5学習ベクトル・選手/級別原本・decision_cutoffを拒否するオフライン入力契約**を最小設計。結果/オッズを予測入力に混ぜず、研究限定の事後展示は明記。DB/Railway/本番/BUYへのアクセスは禁止。別途実DB6艇SELECTを勝手に実行しない。
+- **2026-10-11 6艇→V5研究入力境界：** devに`v5/offline_archived_input_boundary.py`/test12件を追加。前日までの`FactorVectors`・5因子×6・明示cutoff/点数/単価・SQL列allowlistを要求し、結果/オッズ列混入をHOLD。成功も研究限定・Forward/BUY=false。**隔離12/12 PASS**（未使用の既存dataclass依存をstub）、実行コピーGitHub blob一致 `2ef3970e`/`094a12a6`。DB/Railway/V4変更なし。
+
+## Next ONE task — 既存FactorVectorsの実型と境界の結合テスト
+GitHub devの実`v5/offline_prior_day_factor_export.py`・`v5/offline_archived_six_lane_bridge.py`を使用して、今回追加の境界テストを**dataclass stubなし**の隔離環境で実行。研究関数の過去実績依存が重ければ最小実型だけを確認し、依存隔離の範囲を明記。実DB、Railway、main/V4、Forward/BUYは変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
