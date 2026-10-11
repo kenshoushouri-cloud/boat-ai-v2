@@ -1,0 +1,86 @@
+name: Historical racelist reconstruction DB pilot
+
+on:
+  pull_request:
+    paths:
+      - "research/historical_racelist_reconstruction_pg.py"
+      - ".github/workflows/historical-racelist-reconstruction-pilot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pilot:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      RAILWAY_DB_SERVICE: "postgres-recovery"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+      - name: Static safety check
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("research/historical_racelist_reconstruction_pg.py").read_text(encoding="utf-8").lower()
+          assert "v2_historical_racelist_reconstruction" in p
+          assert "canonical_overwrite=0" in p
+          assert "v2_results" not in p
+          assert "v2_odds" not in p
+          assert 'upsert_rows(\n            "v2_historical_racelist_reconstruction"' in p
+          assert 'upsert_rows("v2_race_entries"' not in p
+          print("PASS historical racelist reconstruction safety")
+          PY
+      - name: Reconstruct 24 historical race cards
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export HIST_RACELIST_START_DATE=2025-07-01; export HIST_RACELIST_END_DATE=2025-07-01; export HIST_RACELIST_MAX_RACES=24; exec python -u research/historical_racelist_reconstruction_pg.py' \
+            2>&1 | tee historical-racelist-pilot.log
+          grep -q '^HIST_RACELIST_CANONICAL_OVERWRITE=0 RESULT_READ=0 ODDS_READ=0 LINE=0 BUY=0$' historical-racelist-pilot.log
+          grep -q '^HIST_RACELIST_RESULT=PASS$' historical-racelist-pilot.log
+      - name: Read back coverage
+        run: |
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; python - <<"PY"
+          import json,os,psycopg
+          from psycopg.rows import dict_row
+          with psycopg.connect(os.environ["DATABASE_URL"],row_factory=dict_row,autocommit=False) as conn:
+            with conn.cursor() as c:
+              c.execute("set transaction read only")
+              c.execute("""select count(*) rows,count(distinct race_id) races,
+                          count(*) filter(where racer_class is not null) class_n,
+                          count(*) filter(where national_win_rate is not null) nwr_n,
+                          count(*) filter(where national_place2_rate is not null) n2_n,
+                          count(*) filter(where local_place2_rate is not null) l2_n,
+                          count(*) filter(where avg_st is not null) avgst_n,
+                          count(*) filter(where motor_place2_rate is not null) m2_n,
+                          count(*) filter(where f_count is not null) f_n
+                          from v2_historical_racelist_reconstruction
+                          where race_date=%s""",("2025-07-01",))
+              print("HIST_RACELIST_COVERAGE="+json.dumps(dict(c.fetchone()),sort_keys=True))
+            conn.rollback()
+          PY' 2>&1 | tee historical-racelist-coverage.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-racelist-reconstruction-pilot-20250701
+          path: |
+            historical-racelist-pilot.log
+            historical-racelist-coverage.log
+          retention-days: 90
