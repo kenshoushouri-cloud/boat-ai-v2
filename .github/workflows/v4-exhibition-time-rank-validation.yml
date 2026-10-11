@@ -1,0 +1,50 @@
+name: V4 exhibition-time rank OOS contract validation
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_exhibition_time_rank_contract.py'
+      - 'research/v4_exhibition_time_rank_oos_pg.py'
+      - 'tests/test_v4_exhibition_time_rank_oos.py'
+      - 'docs/V4_EXHIBITION_TIME_RANK_PREREG_20260927.md'
+      - '.github/workflows/v4-exhibition-time-rank-validation.yml'
+      - '.github/workflows/v4-exhibition-time-rank-one-shot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate frozen contract and replay implementation
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_exhibition_time_rank_contract.py research/v4_exhibition_time_rank_oos_pg.py tests/test_v4_exhibition_time_rank_oos.py
+          pytest -q tests/test_v4_exhibition_time_rank_oos.py
+          python - <<'PY'
+          from research.v4_exhibition_time_rank_contract import contract_metadata
+          m=contract_metadata()
+          assert m["coefficient_grid"] == [0.0,0.05,0.10,0.20]
+          assert m["same_block_outcomes_allowed_for_selection"] is False
+          assert m["old_v22_or_bao_coefficients_reused"] is False
+          assert m["historical_snapshot_is_prospective_timing_proof"] is False
+          assert m["positive_result_requires_fresh_forward"] is True
+          assert m["odds_used"] is False
+          assert m["threshold_search"] is False
+          assert m["production_change"] is False
+          assert m["purchase_action"] is False
+          print("V4_EXHIBITION_TIME_RANK_CONTRACT=PASS")
+          PY
