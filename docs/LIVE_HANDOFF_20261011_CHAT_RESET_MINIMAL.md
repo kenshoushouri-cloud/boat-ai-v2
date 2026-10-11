@@ -19,8 +19,9 @@
 ## V5実装済みの重要な経路
 - `v5/offline_mainline_inference.py`：強化型6艇の1着確率。 `v5/offline_trifecta_shadow_ranking.py`：3連単120券ランキング。 `v5/offline_archived_six_lane_bridge.py`：6艇の直近成績・展示由来と前日学習ベクトルを受取り、券予測へ。 `v5/offline_retrospective_result_adapter.py`：固定TOP-N券と保存結果を結合。 `v5/offline_retrospective_trifecta_returns.py`：返還・VOID・PENDINGを含む仮想収支。すべて**offline/synthetic/retrospective**、Forward/BUY不許可。既存テストは各所で実行記録あり（古いテストを理由なく再実行しない）。
 - **直近完了した1作業：** `v5/offline_prior_day_factor_export.py` (GitHub blob `8d155a1c35fcc2d9281e7c57aa470b846c628a75`)＋`tests/test_v5_offline_prior_day_factor_export.py` (blob `8a88efa13b9f8a823eb7b839af9a1f3f4e167fb4`)。過去日までのカウンタ `lw,lcs,lcw,rks,rkw,cs,ct,rcs,rct,ps,pw,vc,vn` と学習実績件数から、**元の**`research/v5_strong_core_calibration_pg.py` が使う`b/vr`数式で基本確率＋5特徴量を出力する研究用関数。過去日境界・6艇・重複・不足・不整合を拒否し入力Counterはコピー。**GitHubと同一コードでオフラインstubテスト12/12 PASS・py_compile PASSとの記録あり**。ただし**本物のb/vr数式との数値一致テストと、DB実データの時系列因果・完全結合は未実施**。元研究コードの結果側フィルターは実購入の母集団に流用禁止。SHAは次回必要時だけ再取得。
+- **2026-10-11追加：** `v5/offline_prior_day_counter_update.py` と `tests/test_v5_offline_prior_day_counter_update.py`。全対象日の券（NO BUY含む）を`freeze_day_predictions`で固定し、全件結果照合後の`roll_forward_day`のみが翌日Counter更新。元研究の`lw/lcs/lcw/rks/rkw/ps/pw/vc/vn`と`cs/ct/rcs/rct`増分に沿う。VOID/PENDING/F/L/返還・不明は`all_results`に保持、学習採否と決済母集団を分離。入力非変更・基準状態指紋・再適用拒否。**GitHub追加済み／単体テスト9件作成済みだが実行PASSは未検証**（本環境にリポジトリ実行ランタイムなし）。本番・DB・Railway未変更。
 - 既存確認ファイル：`docs/V5_PREDECISION_FEATURE_LINEAGE_TO_REAL_ROI_20261011.md`。長い旧handoffは**履歴として残す**が次チャットで全読みしない。
 
-## Next ONE task — オフラインで「前日学習Counterの更新」を実装
-既存`research/v5_strong_core_calibration_pg.py`の**日付ごとの結果集計更新式**に沿う、小さな`PriorDayCounters`増分更新モジュールと単体テストを実装。**対象日すべての予測買い目を固定してから、当日の結果を翌日用Counterへ反映**（同日レースの結果混入・未来リーク禁止）。返還・F/L・VOIDを予測後収支母集団から削らない（学習履歴への採否と購入母集団は別）。元b/vr数式との実数値照合は次工程。Railway一括scan・DB変更・有料Actions不要。終了時、このファイルを**長文化させず差分圧縮更新**。
+## Next ONE task — 新規Counter更新テストの隔離実行
+`tests/test_v5_offline_prior_day_counter_update.py`を**Railway・有料GitHub Actionsを使わないオフラインPython環境**で実行し、成功確認後のみPASS記載。失敗があれば新規モジュールを最小修正。未実行のまま本番投入禁止。次段階は元研究`b/vr`との実数値一致検証で、DBの重いscanはしない。引き続き1回1作業・短い報告・目安表示・費用保護。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
