@@ -49,6 +49,9 @@
 
 - **2026-10-11 6艇→V5研究入力境界：** devに`v5/offline_archived_input_boundary.py`/test12件を追加。前日までの`FactorVectors`・5因子×6・明示cutoff/点数/単価・SQL列allowlistを要求し、結果/オッズ列混入をHOLD。成功も研究限定・Forward/BUY=false。**隔離12/12 PASS**（未使用の既存dataclass依存をstub）、実行コピーGitHub blob一致 `2ef3970e`/`094a12a6`。DB/Railway/V4変更なし。
 
-## Next ONE task — 既存FactorVectorsの実型と境界の結合テスト
-GitHub devの実`v5/offline_prior_day_factor_export.py`・`v5/offline_archived_six_lane_bridge.py`を使用して、今回追加の境界テストを**dataclass stubなし**の隔離環境で実行。研究関数の過去実績依存が重ければ最小実型だけを確認し、依存隔離の範囲を明記。実DB、Railway、main/V4、Forward/BUYは変更禁止。
+## Latest ONE result — V5実型連結・隔離PASS (2026-10-11)
+GitHub blob一致の実`offline_prior_day_factor_export`・実`offline_archived_six_lane_bridge`・実推論/順位/払戻モジュールで12テストPASS、既存6艇ガード11件込み23/23 PASS。合成Counterから実export→境界→実rankまで実行し、展示6艇後日保存・当日学習混入を検出。研究式helper演算とas-of定数のみ隔離代替。実研究係数の一致、実DB/真正性/ROIは未確認。Railway/V4/BUY変更なし。
+
+## Next ONE task — 前日因子の研究式Parityを小規模オフライン確認
+合成Counterだけを使い、研究helperの実式とFactorVectors出力を比較。正確な実係数値の再現性を確認し、失敗なら開発ブランチのみに修正。実DB、Railway、main、V4、Forward、BUY変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
