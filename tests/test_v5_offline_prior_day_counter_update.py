@@ -147,6 +147,12 @@ class TestDailyCounterUpdate(unittest.TestCase):
                                    (replace(predicted(),race_id="20260502_24_01"),))
         with self.assertRaises(ValueError):
             freeze_day_predictions(p, DAY, (predicted(),predicted()))
+        with self.assertRaisesRegex(ValueError, "SIX_LANE_PREDICTION_INVALID"):
+            freeze_day_predictions(p, DAY, (replace(predicted(),
+                exhibition_ranks=[3,1,4,2,6,5]),))
+        with self.assertRaisesRegex(ValueError, "SIX_LANE_PREDICTION_INVALID"):
+            freeze_day_predictions(p, DAY, (replace(predicted(),
+                exhibition_ranks=(3,1,4,2,6,5,5)),))
 
     def test_invalid_history_values_never_affect_frozen_predictions(self):
         p = state()
