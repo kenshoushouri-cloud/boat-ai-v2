@@ -65,6 +65,9 @@ devに`v5/offline_seven_day_stream_adapter.py`（GitHub blob`62c56775`）と`tes
 ## Latest ONE result — 7日複数場/欠損日合成テスト（2026-10-11）
 dev `tests/test_v5_offline_seven_day_multi_race_coverage.py`新規10件（GitHub blob `f84dda3d`/隔離実行SHA一致）。既存8件込み**18/18 PASS**/構文PASS。2日3レース2場・Q2欠損/重複・Q3結果欠損/重複/中止・Q2への払戻混入・当日履歴混入を確認。Q1にレース行がない日は`unrepresented_days`へ保持し、**休催確定とは認定しない**。実DB0/67窓、実ROI/BUY未証明、Railway/main/V4不変更。
 
-## Next ONE task — 実全期間データに向けて休催日と取得漏れの分母契約を設計
-既存`BatchFeatures.unrepresented_days`と`rollup_research_period`の間にある「休催日vsQ1欠損」の扱いを、明示的な外部開催根拠がなければ保留する契約で最小化。開発ブランチだけでオフライン検証、DB/Actions/Railway実行やV4/BUY変更なし。併せて実DB read-only検証手段がなく全期間実行0/67窓である事実を保持。
+## Latest ONE result — 開催日/Q1欠損ゲート（2026-10-11）
+dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5_offline_calendar_denominator_gate.py` (`d0cbe6ff`)を追加。既存7日Q1アダプタと期間planを結合し、Q1行ゼロを**休催認定しない**、自己申告の0件開催日/予定件数とQ1の差・7日窓欠損/重複をHOLD。公式スケジュール独立真正性は未確認で`hypothetical_roi_authorized=false`。既存8+10件、新規12件、**GitHub版SHA一致で隔離30/30 PASS**、構文PASS。実DB0/67窓、Railway/main/V4/BUY操作なし。
+
+## Next ONE task — 実DB 1日smokeまでの安全な接続導線を設計
+Railway connectorにSQL実行権限がないことを前提に、既存コード/Workflowを**少数参照**して、実DBメタデータread-onlyプリフライトを最低コストで動かす既存導線の有無を確認。既存手段がなければ小型のread-only manual実行方法をdevに用意し、**実行はせず**SQL漏洩・タイムアウト・費用確認を先行。GitHub有料Actions/DB実行/Railway Agent/AI/V4/BUYは禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
