@@ -57,6 +57,8 @@
 ## Latest ONE result — 七日データ抽出入口（2026-10-11）
 dev `ops/v5_seven_day_archived_research_source_readonly.sql`を追加。1〜7日の完了済期間を名前付きバインドし、Q1全inventory、Q2艇番1〜6＋履歴/後日展示、Q3結果・払戻を**分離**。返還/VOID肯定原本はNULL/false維持。3SELECTに7日範囲・書込命令なしを静的検査。**実DB/SQLパーサ未実行**、課金0。欠損・重複をLIMIT/DISTINCTで隠さない。詳細は`docs/V5_FULL_PERIOD_BACKTEST_FAST_TRACK_20261011.md`。
 
-## Next ONE task — 初回実DB接続前の軽量索引・型監査
-Railwayの既存接続で**read-onlyメタデータのみ**（`pg_indexes`/information_schemaの対象4表）を最小1作業確認し、Q1〜Q3に必要な索引/カラム型が実在するか確定。大規模SQL・全期間実行・データ書込/新サービス/有料CI禁止。費用とタイムアウト条件を満たせない場合はHOLDして報告。次の本データsmokeも1日だけ、別作業。main/V4/Forward/BUY不変更。
+## Latest ONE result — Railway read-onlyプリフライト準備（2026-10-11）
+Railway既存プロジェクト`boat-v2-postgres`/productionをREAD-ONLY列挙。Postgres4 service（history archive=SUCCESS、Postgres-EKp2=SUCCESS、V3=SLEEPING、V4=SUCCESS）、staged changesなし。**Railway connectorは任意SQL実行をサポートせず、現DB索引/型のlive値は未照会・未証明**。devに`ops/v5_seven_day_archive_db_preflight_readonly.sql`（4表の必要20列/索引prefix/SELECT権限/READ ONLY txn/2秒timeout）を作成し、書込命令なしを静的検査。現DB変更・追加DB負荷なし。7日SQLの実行はHOLD。
+## Next ONE task — DBを動かさず7日抽出のオフライン3系統アダプタ
+Q1 inventory/Q2 6艇/Q3結果を結果漏洩させず別々に受ける軽量Python検査をdevで実装し、重複・行不足・返還NULL・PENDINGをHOLDで模擬テスト。Railway SQL実行経路（未接続）は別途確定まで保留。実DB、Actions、main/V4、BUY不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
