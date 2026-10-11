@@ -1,0 +1,46 @@
+name: V4 daily 1-3 race-count contract
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_daily_1to3_race_count_contract.py'
+      - 'tests/test_v4_daily_1to3_race_count_contract.py'
+      - 'docs/V4_DAILY_1TO3_RACE_COUNT_PREREG_20260924.md'
+      - '.github/workflows/v4-daily-1to3-race-count-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate frozen 1-3 race-count contract
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile             research/v4_daily_1to3_race_count_contract.py             tests/test_v4_daily_1to3_race_count_contract.py
+          python -m pip install pytest
+          pytest -q tests/test_v4_daily_1to3_race_count_contract.py
+          python - <<'PY'
+          from research.v4_daily_1to3_race_count_contract import contract_metadata
+          meta=contract_metadata()
+          assert meta['race_count_candidates'] == [1,2,3]
+          assert meta['points_per_race'] == 2
+          assert meta['zero_race_day_allowed'] is False
+          assert meta['more_than_three_races_allowed'] is False
+          assert meta['ticket_rerank_allowed'] is False
+          assert meta['market_input_allowed'] is False
+          assert meta['odds_gate_allowed'] is False
+          assert meta['production_change_allowed'] is False
+          assert meta['purchase_action'] is False
+          print('V4_DAILY_1TO3_RACE_COUNT_CONTRACT=PASS')
+          PY
