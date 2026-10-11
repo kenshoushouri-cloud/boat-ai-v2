@@ -17,3 +17,13 @@
 **現在の阻害要因**：既存PostgreSQL保存値→汎用7日`ArchivedRaceFactors`/結果への接続は未完成。大村12R専用のone-race SQL/guardを467日に単純再実行しない。公式6艇肯定出走・初取得原本・V5実収益・BUY適格性はHARD HOLD。
 
 **Next ONE task**：DBをまだ起動せず、既存スキーマ/クエリから7日一括の**read-only source adapter最小SQL**と欠損/返還null契約をdevに作成。最初の実DB smokeはSQL/索引/コストを確認後に別途判断。
+
+
+## 2026-10-11：七日一括のread-only保存値入口設計完了（DB未実行）
+
+追加SQL：`ops/v5_seven_day_archived_research_source_readonly.sql`。**Q1全race inventory / Q2艇番1〜6+直近成績+historical展示 / Q3事後result/3連単払戻**を独立SELECTに分離。アプリから`start_date`・`end_exclusive`をバインドし、1〜7日・2025-07-01以降・JST基準の完了日のみ。3SELECTとも日付範囲制限あり、書込命令なしを**静的検査**。PostgreSQLパーサ/実DBの検証は未実施。
+
+- Q2はLEFT JOINして欠損艇番をNULLとして残し、`DISTINCT`/代表行抽出をせず重複はオフラインHOLD。Q3も全inventory LEFT JOIN、欠損結果・重複結果は後段でPENDING/HOLD。結果・払戻は**予測用Q2に混ぜない**。
+- 公式返還欄の原本未確認のため`refund_boats=NULL`、`refund_section_verified=false`、`whole_race_void_verified=false`固定。`NULL`を「返還なし」に変換しない。DBの`official`文字列や保存払戻だけでは実ROIは出せない。
+- **稼働前の必須条件**：現DB read-only接続/権限、`pg_indexes`で`v2_races(race_date)`・`v2_race_entries(race_id,lane)`・展示`(race_id,snapshot_label,lane)`・`v2_results(race_id)`の索引実態、必要カラム/型、1日分の想定行数とpayload、`statement_timeout`・件数/通信量上限をチェック。展示複合indexはGitHubにCREATE定義があるが、**現DBで実在は未確認**。索引不足なら停止。重複検出のためSQLの結果`LIMIT`で行を隠さない。
+- 初回実データsmokeは**1日のみ・1回read-only**、索引/コスト確認後。問題なければ7日窓に拡張。学習Counterは**各日予測後**にその日の結果で更新し、7日結果を先に学習させない。
