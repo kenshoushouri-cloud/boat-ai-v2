@@ -11,7 +11,7 @@ import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from v5.offline_catalog_smoke_gate import (
@@ -166,6 +166,16 @@ def iter_server_cursor(conn, sql: str, params: Mapping, *, explicit_manual_read=
     """
     if explicit_manual_read is not True:
         raise StreamStopped("DB_FETCH_DISABLED_BY_DEFAULT")
+    expected_path = Path(__file__).resolve().parents[1] / "ops" / "v5_seven_day_archived_research_source_readonly.sql"
+    if sql not in reviewed_select_statements(expected_path).values():
+        raise StreamStopped("UNREVIEWED_QUERY_FORBIDDEN")
+    if (not isinstance(params, Mapping)
+            or set(params) != {"start_date", "end_exclusive"}
+            or type(params["start_date"]) is not date
+            or type(params["end_exclusive"]) is not date
+            or params["start_date"] < date(2025, 7, 1)
+            or params["end_exclusive"] != params["start_date"]+timedelta(days=1)):
+        raise StreamStopped("SINGLE_DAY_PARAMS_REQUIRED")
     with conn.cursor(name="v5_first_day_readonly") as cur:
         cur.itersize = 1
         cur.execute(sql, dict(params))
