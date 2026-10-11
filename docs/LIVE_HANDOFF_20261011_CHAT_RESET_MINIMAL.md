@@ -35,6 +35,8 @@
 ## Latest ONE finding — positive official six-start source absent
 限定コード監査を `docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md` に記録。historical beforeinfo は取得時 `snapshot_at=now`、reuse `source_snapshot_at` は独立初観測でない。racelist 6艇一致≠6艇出走確定。公式start-statusは肯定証拠未定義、`official_capture_pipeline` beforeinfoは**HTTP前HARD HOLD**。first-write設計/読戻しも first_observed_at=None でForward未承認。Railway/DB実状態は未確認。
 
-## Next ONE task — 公式6艇出走肯定証拠の原本・明示項目を限定調査
-既存`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`を踏まえ、公式出走表・締切前状態の**明示された6艇の肯定情報**が元原本とコードパーサで立証できるかを小範囲のread-only確認。確認できなければHARD HOLDのまま。`APPROVED_POSITIVE_SOURCE_SCHEMAS`は空、beforeinfoはHTTP前HOLD。main/V4/DB/Railway/BUYの変更禁止、無断公式サイト再取得なし。
+**2026-10-11 公式6艇出走肯定項目を限定read-only監査：** 出走表パーサは6艇lane/登番/級別と取消表示を読み、`active_verified=False`固定。`出走`テストHTMLは合成。beforeinfoの6艇展示タイム≠6艇出走確定。既存観測pilotは`th/dt`見出し件数のみ、原本は保存せず、positive contractの許可集合は空。詳細は`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`追記。公式GET/DB/Railway操作なし、**HARD HOLD維持**。
+
+## Next ONE task — 独立保存済みの公式出走肯定原文の有無を非破壊で確認
+既存GitHubのコード/狭い保存資料に、艇番と登番を紐づけた**肯定的な公式start-stateフィールド原文**の実証があるかread-onlyで確認（再取得HTTP・DB/Railway全量検索なし）。なければ未発見と明記し、根拠のない解禁はしない。必要な実データ取得やDB操作は別途安全審査と承認。main/V4/Forward/BUYは不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
