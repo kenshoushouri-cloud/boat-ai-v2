@@ -29,6 +29,9 @@ def counters():
     q["lw"] = Counter({1:5, 2:4, 3:3, 4:2, 5:1, 6:1})
     for k in ("lcs","lcw","rcs","rct"):
         q[k] = {i:Counter() for i in range(1,7)}
+    for i in range(1,7):
+        q["lcs"][i] = Counter({"A1":16})
+        q["lcw"][i] = Counter({"A1":q["lw"][i]})
     q["vc"]={"24":Counter({1:1, 2:1})}
     q["vn"]=Counter({"24":2})
     return q
@@ -129,6 +132,11 @@ class TestFrozenFactorExport(unittest.TestCase):
     def test_missing_training_source_not_assumed_verified(self):
         self.assertEqual(self.run_one(s=replace(state(),source_ref="")).reason,
                          "PRIOR_DAY_STATE_DATE_OR_SOURCE_UNVERIFIED")
+
+    def test_impossible_frozen_winner_totals_rejected(self):
+        s=state();cs=deepcopy(s.counters);cs["lw"][1]+=1
+        self.assertEqual(self.run_one(s=replace(s,counters=cs)).reason,
+                         "PRIOR_DAY_PRIMARY_COUNTS_INCONSISTENT")
 
     def test_missing_one_lane_rejected(self):
         self.assertEqual(self.run_one(rows=lanes()[:5]).reason,"SIX_LANES_REQUIRED")
