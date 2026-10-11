@@ -1,0 +1,112 @@
+name: Historical beforeinfo DB pilot
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/historical-beforeinfo-db-pilot.yml"
+      - "docs/HISTORICAL_BEFOREINFO_DB_PILOT_20260930.md"
+
+permissions:
+  contents: read
+
+jobs:
+  pilot:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      RAILWAY_DB_SERVICE: "postgres-recovery"
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Verify historical-only write contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("backfill_historical_beforeinfo_pg.py").read_text(encoding="utf-8").lower()
+          assert 'snapshot_label' in p and '"historical"' in p
+          assert '"v2_realtime_weather_snapshots"' in p
+          assert '"v2_realtime_exhibition_snapshots"' in p
+          assert '"v2_realtime_race_condition_snapshots"' in p
+          assert '"v2_realtime_racer_condition_snapshots"' in p
+          for forbidden in (
+              'upsert_rows("v2_race_entries"',
+              'upsert_rows("v2_races"',
+              'upsert_rows("v2_results"',
+              'upsert_rows("v2_odds',
+              'purchase_action=true',
+          ):
+              assert forbidden not in p
+          print("PASS historical-only write contract")
+          PY
+
+      - name: Backfill 24 historical beforeinfo races
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; export HIST_START_DATE=2025-07-01; export HIST_END_DATE=2025-07-01; export HIST_SNAPSHOT_LABEL=historical; export HIST_WORKERS=2; export HIST_SLEEP_SEC=0.20; export HIST_MAX_RACES=24; export HIST_BULK_RACES=24; export HIST_REQUIRE_SIX_EXHIBITION=1; exec python -u backfill_historical_beforeinfo_pg.py' \
+            2>&1 | tee historical-beforeinfo-pilot.log
+
+      - name: Read back historical coverage
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PYTHONPATH=.; python - <<"PY"
+          import json, os, psycopg
+          from psycopg.rows import dict_row
+          with psycopg.connect(os.environ["DATABASE_URL"],row_factory=dict_row,autocommit=False) as conn:
+              with conn.cursor() as c:
+                  c.execute("set transaction read only")
+                  q={}
+                  for table in (
+                      "v2_realtime_weather_snapshots",
+                      "v2_realtime_exhibition_snapshots",
+                      "v2_realtime_race_condition_snapshots",
+                      "v2_realtime_racer_condition_snapshots",
+                  ):
+                      c.execute(f"""select count(*) rows,count(distinct race_id) races
+                                   from {table}
+                                   where race_date=%s and snapshot_label=%s""",
+                                ("2025-07-01","historical"))
+                      q[table]=dict(c.fetchone())
+                  c.execute("""select count(*) full6 from (
+                                 select race_id from v2_realtime_exhibition_snapshots
+                                 where race_date=%s and snapshot_label=%s
+                                 group by race_id having count(distinct lane)=6
+                               ) x""",("2025-07-01","historical"))
+                  q["exhibition_full6"]=int(c.fetchone()["full6"])
+                  c.execute("""select count(*) full6 from (
+                                 select race_id from v2_realtime_racer_condition_snapshots
+                                 where race_date=%s and snapshot_label=%s
+                                 group by race_id having count(distinct lane)=6
+                               ) x""",("2025-07-01","historical"))
+                  q["racer_condition_full6"]=int(c.fetchone()["full6"])
+              conn.rollback()
+          print("HIST_BEFOREINFO_PILOT_COVERAGE="+json.dumps(q,sort_keys=True))
+          PY' 2>&1 | tee historical-beforeinfo-coverage.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-beforeinfo-db-pilot-20250701
+          path: |
+            historical-beforeinfo-pilot.log
+            historical-beforeinfo-coverage.log
+          retention-days: 90
+          if-no-files-found: error
