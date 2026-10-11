@@ -28,6 +28,8 @@
 
 - **コース履歴数値差分（2026-10-11）：** 開発ブランチに `tests/test_v5_offline_course_history_parity.py`（Git blob `40ee19e3`）を追加。隔離Pythonで6/6 PASS（元研究 `hday` 更新部分を正確に抜粋、実装/テストGit blob一致）。正常・特徴欠損・部分有効行では4 Counter一致、返還不明・重複・証拠不足では新V5が意図的にHOLD。実DBや原本真正性は未検証。
 
-## Next ONE task — 固定済み予測の実オブジェクトと日次台帳を接続
-開発ブランチのみで`FrozenDay`実オブジェクトと`offline_day_evidence_coverage`を安全に接続する小さなread-only adapter＋単体テストを追加。申告の`frozen_race_ids`と実固定集合の不一致を拒否、NO_BUY/PENDINGを母集団に残す。公式全レース網羅・独立肯定証拠は未取得のままHOLD。**main/V4/Railway/DB/BUY操作禁止**。
+- **2026-10-11 FrozenDay台帳接続：** 開発ブランチに`v5/offline_frozen_day_evidence_adapter.py`とテスト8件を追加。実`FrozenDay.races`対申告集合の不一致/重複/艇ID不一致を拒否。買い目あり=仮想`FROZEN`、空券= `NO_BUY`、未固定= `PENDING`（購入実績ではない）。既存ガードと合計19/19オフラインPASS、py_compile PASS。GitHub blob `776bd7f1`/`45c68f43`は実行コピーと一致。`PriorDayCounters`依存のみ既存軽量stub。公式全日網羅・出走6艇・締切前取得の独立証拠は依然未確認、BUY不可。`main`/V4/Railway/DB変更なし。
+
+## Next ONE task — V5小規模実データのread-only証拠不足分類
+DBへの全期間scanをせず、既存の保存済み1レース（`20260501_24_12`）を使い、`FrozenDay`/台帳接続の入力に足りない証拠項目だけを一覧化。後日展示・最終オッズを締切前入力に昇格させない。欠損はPENDING/HOLD。必要なら開発ブランチに小さなオフラインテストのみ追加。公式出走肯定資料・ROI未証明を維持し、`main`/V4/Railway/DBは変更しない。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
