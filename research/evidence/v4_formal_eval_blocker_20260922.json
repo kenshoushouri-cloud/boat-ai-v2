@@ -1,0 +1,81 @@
+{
+  "contract": "v4_formal_eval_blocker_evidence_v1",
+  "checked_at_jst": "2026-09-22T22:36:18+09:00",
+  "target_date": "2026-09-22",
+  "source_main_sha": "8867b77569d836b6c02a075fa6444550b1a46a6c",
+  "captures": [
+    {
+      "channel": "railway_fallback_to_github_workflow_dispatch",
+      "github_run_id": 35667553345,
+      "event": "workflow_dispatch",
+      "generated_at_jst": "2026-09-22T08:26:36.137106+09:00",
+      "artifact_id": 10670080150,
+      "artifact_name": "candidate-discovery-v4-prospective-freeze-35667553345",
+      "artifact_zip_sha256": "60ae93e3758679fc0109fd180bbd66a54978c0b483514a724bb5ace376c5a94c",
+      "artifact_json_sha256": "3e59a58c3704baeb991a102c58a4a92ff56670e1b1e7039cd5df42c6e68dd7d9",
+      "canonical_core_sha256": "1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9",
+      "core_races": 6,
+      "core_tickets": 12,
+      "legacy_shadow_rows": 0,
+      "earliest_core_deadline_jst": "2026-09-22T12:10:00+09:00",
+      "prospective_evidence_eligible": true,
+      "purchase_action": false,
+      "result": "PASS_PRE_RESULT_FREEZE"
+    },
+    {
+      "channel": "github_scheduled_primary_late_arrival",
+      "github_run_id": 35676316305,
+      "event": "schedule",
+      "generated_at_jst": "2026-09-22T10:35:38.887230+09:00",
+      "artifact_id": 10673271438,
+      "artifact_name": "candidate-discovery-v4-prospective-freeze-35676316305",
+      "artifact_zip_sha256": "63f9ffb0e5307b075a037a1e73bdeafef0d994a8430fb0c45cfac06e0823ed40",
+      "artifact_json_sha256": "b2c54f521a1415fdb7190b8e340c39442b7baaafacbcc2278e4b925c836a4eb1",
+      "canonical_core_sha256": "1514b991505565763f412bdc3515eb64613c4de61d49cd51748fb01af61373d9",
+      "core_races": 6,
+      "core_tickets": 12,
+      "legacy_shadow_rows": 9,
+      "earliest_core_deadline_jst": "2026-09-22T12:10:00+09:00",
+      "prospective_evidence_eligible": true,
+      "purchase_action": false,
+      "result": "PASS_PRE_RESULT_FREEZE"
+    }
+  ],
+  "fallback_dispatch": {
+    "railway_cron_jst": "08:25",
+    "railway_log_at_jst": "2026-09-22T08:26:27+09:00",
+    "action": "DISPATCH_FALLBACK",
+    "reason": "no_valid_primary_artifact_observable",
+    "duplicate_dispatch_observed": false
+  },
+  "arbitration": {
+    "contract": "candidate_discovery_v4_capture_arbiter",
+    "classification": "FORMAL_AVAILABLE",
+    "formal_run_id": 35667553345,
+    "later_diagnostic_run_ids": [
+      35676316305
+    ],
+    "canonical_core_equivalent": true,
+    "note": "earliest valid capture is formal; later valid capture is diagnostic only"
+  },
+  "frozen_core_races": [
+    "20260922_01_06",
+    "20260922_17_04",
+    "20260922_09_05",
+    "20260922_02_08",
+    "20260922_02_11",
+    "20260922_03_07"
+  ],
+  "post_result_blocker": {
+    "affected_race_id": "20260922_09_05",
+    "venue_id": "09",
+    "venue_name": "津",
+    "current_official_state": "cancelled",
+    "official_reference": "https://www.boatrace.jp/owpc/pc/site/index.html",
+    "evidence_timing_limitation": "Current official cancellation state is post-result evidence. No immutable pre-freeze raw payload proving the exact time the cancellation became observable is recorded here.",
+    "same_date_final_outcome_available": false
+  },
+  "classification": "FORMAL_AVAILABLE / POST_RESULT_UNEVALUABLE_CORE_RACE_CANCELLED / NO_5R_SHRINK / NO_SYNTHETIC_ZERO / NO_LATER_DATE_SUBSTITUTION / NO_REGENERATION / NO_RETUNE",
+  "purchase_action": false,
+  "production_mutation": false
+}
