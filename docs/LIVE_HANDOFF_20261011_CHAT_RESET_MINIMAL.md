@@ -60,8 +60,8 @@ dev `ops/v5_seven_day_archived_research_source_readonly.sql`を追加。1〜7日
 ## Latest ONE result — Railway read-onlyプリフライト準備（2026-10-11）
 Railway既存プロジェクト`boat-v2-postgres`/productionをREAD-ONLY列挙。Postgres4 service（history archive=SUCCESS、Postgres-EKp2=SUCCESS、V3=SLEEPING、V4=SUCCESS）、staged changesなし。**Railway connectorは任意SQL実行をサポートせず、現DB索引/型のlive値は未照会・未証明**。devに`ops/v5_seven_day_archive_db_preflight_readonly.sql`（4表の必要20列/索引prefix/SELECT権限/READ ONLY txn/2秒timeout）を作成し、書込命令なしを静的検査。現DB変更・追加DB負荷なし。7日SQLの実行はHOLD。
 ## Latest ONE result — 7日Q1/Q2/Q3隔離アダプタ（2026-10-11）
-devに`v5/offline_seven_day_stream_adapter.py`（GitHub blob`62c56775`）と`tests/test_v5_offline_seven_day_stream_adapter.py`（8件、blob`dda19d83`）を保存。Q1母集団、Q2で6艇/前日以前履歴/展示型を確認、欠損・重複・結果列混入をPENDINGに保持。Q3は**別関数**で結果を扱い、公式返還未照合なのでROI/BUYを決して認証しない。元コードの隔離試験は実施したが、**今回GitHub保存版の8件は未実行**。実DB処理0/67窓、Railway/DB/main/V4/BUY操作なし。
+devに`v5/offline_seven_day_stream_adapter.py`（GitHub blob`62c56775`）と`tests/test_v5_offline_seven_day_stream_adapter.py`（8件、blob`dda19d83`）を保存。Q1母集団、Q2で6艇/前日以前履歴/展示型を確認、欠損・重複・結果列混入をPENDINGに保持。Q3は**別関数**で結果を扱い、公式返還未照合なのでROI/BUYを決して認証しない。元コードの隔離試験は実施したが、**GitHub保存版blob一致で隔離8/8 PASS・py_compile PASS（2026-10-11）**。実DB処理0/67窓、Railway/DB/main/V4/BUY操作なし。
 
-## Next ONE task — 保存済みGitHub版8テストを隔離実行
-devブランチの新アダプタと8テストをGitHub blob SHA一致でローカル隔離実行し、PASS/FAILを確定。失敗時はdevのみ小修正。DB/Actions/Railway/main/V4/BUY変更なし。その後に索引・型のlive read-only検証ルートを検討。
+## Next ONE task — 7日Q1/Q2/Q3の複数レース・欠損日テスト
+既存`v5/offline_seven_day_stream_adapter.py`と`v5/offline_research_period_batches.py`の契約を、同日複数場・複数日・休催日/母集団欠損の**合成fixture**で追加検証し、結果由来のレース除外を防ぐ。修正はdevのみ、必要最小限。DB SQL実行不可のRailway接続状況を前提に、実DB smokeはHOLD、外部費用なし。main/V4/BUY不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
