@@ -126,7 +126,8 @@ def freeze_day_predictions(
         raise ValueError("DAY_PREDICTIONS_REQUIRED")
     seen = set()
     for race in predictions:
-        if (type(race) is not FrozenRace or not _ID.fullmatch(race.race_id)
+        if (type(race) is not FrozenRace or type(race.race_id) is not str
+                or not _ID.fullmatch(race.race_id)
                 or race.race_id in seen):
             raise ValueError("RACE_ID_OR_DUPLICATE_INVALID")
         seen.add(race.race_id)
@@ -145,6 +146,7 @@ def freeze_day_predictions(
                 or any(type(v) is not str or not v or v != v.strip().upper()
                        for v in race.racer_classes)
                 or type(race.exhibition_ranks) is not tuple
+                or len(race.exhibition_ranks) != 6
                 or set(race.exhibition_ranks) != set(_LANES)
                 or any(type(v) is not int for v in race.exhibition_ranks)
                 or type(race.selected_tickets) is not tuple):
