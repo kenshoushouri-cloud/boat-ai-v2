@@ -8,7 +8,8 @@ This is retrospective scenario linkage, NOT verified actual V5 betting returns.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import permutations
 from zoneinfo import ZoneInfo
@@ -21,6 +22,7 @@ from v5.offline_retrospective_trifecta_returns import (
 
 _JST = ZoneInfo("Asia/Tokyo")
 _EXPECTED = "SYNTHETIC_120_TICKET_PL_SHADOW_UNVALIDATED_HARD_HOLD"
+_RACE_ID = re.compile(r"20\\d{6}_(?:0[1-9]|1\\d|2[0-4])_(?:0[1-9]|1[0-2])\\Z")
 _ALL = frozenset("-".join(map(str, p)) for p in permutations(range(1, 7), 3))
 _GUARDS = (
     "original_first_observation_verified", "independently_authenticated_source",
@@ -58,12 +60,12 @@ class V5ScenarioJoin:
     settlements: tuple[OfficialSettlement, ...] = ()
     provenance_by_race: tuple[tuple[str, str], ...] = ()
     economics: RetrospectiveReturns | None = None
-    scenario_only: bool = True
-    predeadline_original_capture_verified: bool = False
-    independently_authenticated_official_source: bool = False
-    v5_real_roi_verified: bool = False
-    forward_eligible: bool = False
-    buy_eligible: bool = False
+    scenario_only: bool = field(default=True, init=False)
+    predeadline_original_capture_verified: bool = field(default=False, init=False)
+    independently_authenticated_official_source: bool = field(default=False, init=False)
+    v5_real_roi_verified: bool = field(default=False, init=False)
+    forward_eligible: bool = field(default=False, init=False)
+    buy_eligible: bool = field(default=False, init=False)
 
 
 def _aware(value: object) -> bool:
@@ -74,7 +76,10 @@ def _check_frozen(case: FrozenResearchRank) -> bool:
     rank = case.ranking
     if (type(rank) is not OfflineTrifectaShadowRanking
             or rank.reason != _EXPECTED or rank.synthetic_math_consistent is not True
-            or any(getattr(rank, flag, None) is not False for flag in _GUARDS)):
+            or any(getattr(rank, flag, None) is not False for flag in _GUARDS)
+            or type(rank.race_id) is not str
+            or _RACE_ID.fullmatch(rank.race_id) is None
+            or rank.race_id[:8] < "20250701"):
         return False
     if (not all(_aware(t) for t in
                 (case.decision_cutoff_at, case.race_deadline_at, case.materialized_at))
