@@ -1,0 +1,93 @@
+name: Research archive footprint production read-only
+
+on:
+  pull_request:
+    paths:
+      - 'research_archive_footprint_pg.py'
+      - '.github/workflows/research-archive-footprint-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readonly-footprint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=120000 -c temp_file_limit=65536 -c timezone=UTC
+      ARCHIVE_FOOTPRINT_MONTH: '2026-07'
+      ARCHIVE_FOOTPRINT_MIN_AGE_DAYS: '30'
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install read-only audit dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q psycopg[binary]
+          npm install -g @railway/cli >/dev/null 2>&1
+
+      - name: Resolve Production public database URL without publishing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+          railway variable list \
+            --project 268a5b17-0712-440a-884d-27f7fa887a2d \
+            --service postgres-recovery \
+            --environment production \
+            --json > railway-vars.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          data = json.loads(Path('railway-vars.json').read_text(encoding='utf-8'))
+          value = None
+          if isinstance(data, dict):
+              value = data.get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), dict):
+                  value = data['variables'].get('DATABASE_PUBLIC_URL')
+              if value is None and isinstance(data.get('variables'), list):
+                  for item in data['variables']:
+                      if isinstance(item, dict) and item.get('name') == 'DATABASE_PUBLIC_URL':
+                          value = item.get('value')
+                          break
+          if not value:
+              raise SystemExit('DATABASE_PUBLIC_URL unavailable')
+          print(f'::add-mask::{value}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'DATABASE_URL={value}\n')
+          PY
+          rm -f railway-vars.json
+
+      - name: Audit July logical footprint only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u research_archive_footprint_pg.py > archive-footprint.txt
+          grep -E '^(ARCHIVE_FOOTPRINT=|table=|ARCHIVE_FOOTPRINT_TOTAL)' archive-footprint.txt > archive-footprint-sanitized.txt
+          test -s archive-footprint-sanitized.txt
+          cat archive-footprint-sanitized.txt
+          {
+            echo '## Archive logical footprint — Production read-only'
+            echo
+            echo '```text'
+            cat archive-footprint-sanitized.txt
+            echo '```'
+            echo
+            echo 'Tuple payload bytes are logical row payload, not guaranteed physical volume reclaim.'
+            echo 'No export, upload, DB mutation, or retention change was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local audit outputs
+        if: always()
+        shell: bash
+        run: |
+          rm -f railway-vars.json archive-footprint.txt archive-footprint-sanitized.txt
