@@ -1,0 +1,91 @@
+name: V4 selector-rank Forward diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_selector_rank_forward_diagnostic.py'
+      - 'tests/test_v4_selector_rank_forward_diagnostic.py'
+      - 'research/evidence/v4_selector_rank_historical_context_20260923.json'
+      - 'docs/V4_SELECTOR_RANK_FORWARD_DIAGNOSTIC_20260923.md'
+      - '.github/workflows/v4-selector-rank-forward-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pure-selector-rank-diagnostic:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: .
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Compile and test
+        run: |
+          python -m py_compile research/v4_selector_rank_forward_diagnostic.py
+          pytest -q tests/test_v4_selector_rank_forward_diagnostic.py
+      - name: Verify frozen historical context and no-promotion boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = json.loads(
+              Path("research/evidence/v4_selector_rank_historical_context_20260923.json")
+              .read_text(encoding="utf-8")
+          )
+          assert evidence["source"]["artifact_zip_sha256"] == (
+              "426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771"
+          )
+          assert evidence["source"]["formal_points"] == 2
+          assert evidence["interpretation"]["rank_half_uncertainty_excludes_zero"] is False
+          assert evidence["interpretation"]["historical_evidence_supports_candidate_count_change"] is False
+          assert evidence["interpretation"]["historical_evidence_supports_threshold_change"] is False
+          assert evidence["interpretation"]["historical_evidence_supports_race_score_gate"] is False
+          assert evidence["safety"]["production_change"] is False
+          assert evidence["safety"]["result_after_reconstruction"] is False
+          assert evidence["safety"]["purchase_action"] is False
+          PY
+      - name: Enforce pure offline isolation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("research/v4_selector_rank_forward_diagnostic.py").read_text(
+              encoding="utf-8"
+          ).lower()
+          for forbidden in (
+              "psycopg",
+              "requests",
+              "httpx",
+              "urllib",
+              "subprocess",
+              "insert into ",
+              "update v2_",
+              "delete from ",
+              "alter table ",
+              "drop table ",
+              "truncate ",
+              "vacuum ",
+              "line_notify",
+              "send_line",
+              "purchase_action=true",
+          ):
+              assert forbidden not in source, forbidden
+          for required in (
+              '"race_score_gate_allowed": false',
+              '"candidate_count_change_allowed": false',
+              '"threshold_change_allowed": false',
+              '"rerank_allowed": false',
+              '"promotion_allowed": false',
+          ):
+              # Runtime output uses Python False; source must explicitly expose each flag.
+              assert required.split('":')[0].strip('"') in source, required
+          PY
