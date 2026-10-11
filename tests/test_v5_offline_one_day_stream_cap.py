@@ -1,7 +1,7 @@
 """Synthetic one-row-at-a-time limit guards. No DB / Railway calls."""
 import unittest
 from datetime import date
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from v5.offline_one_day_stream_cap import (
     FeatureStream, StreamStopped, read_one_day_features, read_one_day_postrace,
     iter_server_cursor, reviewed_select_statements,
@@ -110,6 +110,15 @@ class StreamCapTests(unittest.TestCase):
             next(source)
         conn.cursor.assert_not_called()
 
+    def test_server_cursor_rejects_unreviewed_query_and_range(self):
+        conn=Mock()
+        with patch("v5.offline_one_day_stream_cap.reviewed_select_statements",return_value={"Q1":"SELECT 1"}):
+            with self.assertRaisesRegex(StreamStopped,"UNREVIEWED_QUERY_FORBIDDEN"):
+                next(iter_server_cursor(conn,"DELETE FROM v2_races",{"start_date":DAY,"end_exclusive":DAY.replace(day=2)},explicit_manual_read=True))
+            with self.assertRaisesRegex(StreamStopped,"SINGLE_DAY_PARAMS_REQUIRED"):
+                next(iter_server_cursor(conn,"SELECT 1",{"start_date":DAY,"end_exclusive":date(2026,5,9)},explicit_manual_read=True))
+        conn.cursor.assert_not_called()
+
     def test_one_row_fetch_cursor_is_closed_on_overrun(self):
         class Cursor:
             itersize=100
@@ -123,9 +132,10 @@ class StreamCapTests(unittest.TestCase):
         cur=Cursor()
         conn=Mock();conn.cursor.return_value=cur
         def factory(_label):
-            return iter_server_cursor(conn,"SELECT 1",{},explicit_manual_read=True)
-        with self.assertRaisesRegex(StreamStopped,"Q1_ROW_LIMIT_EXCEEDED"):
-            read_one_day_features(DAY,factory,FirstDaySmoke(DAY,max_inventory_rows=1))
+            return iter_server_cursor(conn,"SELECT 1",{"start_date":DAY,"end_exclusive":date(2026,5,2)},explicit_manual_read=True)
+        with patch("v5.offline_one_day_stream_cap.reviewed_select_statements",return_value={"Q1":"SELECT 1"}):
+            with self.assertRaisesRegex(StreamStopped,"Q1_ROW_LIMIT_EXCEEDED"):
+                read_one_day_features(DAY,factory,FirstDaySmoke(DAY,max_inventory_rows=1))
         self.assertEqual(cur.itersize,1)
         self.assertEqual(cur.n,2)
         self.assertTrue(cur.closed)
