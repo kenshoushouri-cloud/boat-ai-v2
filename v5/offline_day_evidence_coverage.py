@@ -134,6 +134,13 @@ def audit_day_evidence_coverage(
         if (type(row.six_lane_source_contract) is not str
                 or row.six_lane_source_contract not in APPROVED_POSITIVE_SOURCE_SCHEMAS):
             reasons.append("OFFICIAL_POSITIVE_SOURCE_UNAPPROVED")
+        # A late archival write is visible even when no decision cutoff or
+        # independently proven first-observation timestamp is available.
+        # This says when the saved snapshot was recorded, NOT when the
+        # underlying exhibition information first existed publicly.
+        if (_aware(row.exhibition_snapshot_at) and _aware(row.deadline_at)
+                and row.exhibition_snapshot_at > row.deadline_at):
+            reasons.append("EXHIBITION_SNAPSHOT_RECORDED_AFTER_DEADLINE")
         if (not _aware(row.exhibition_first_observed_at)
                 or not _aware(row.exhibition_snapshot_at)):
             reasons.append("ORIGINAL_FIRST_OBSERVATION_UNKNOWN")
@@ -158,6 +165,7 @@ def audit_day_evidence_coverage(
                                             "DECISION_CLOCK_INVALID",
                                             "ORIGINAL_FIRST_OBSERVATION_UNKNOWN",
                                             "EXHIBITION_AFTER_DECISION_CUTOFF",
+                                            "EXHIBITION_SNAPSHOT_RECORDED_AFTER_DEADLINE",
                                             "OBSERVATION_AFTER_SNAPSHOT_INCONSISTENT"))))
     return DayEvidenceAudit(day, tuple(output), len(inventory), len(frozen_set),
                             sum(r.decision == "NO_BUY" for r in ledger),
