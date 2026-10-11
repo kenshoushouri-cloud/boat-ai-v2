@@ -127,6 +127,12 @@ def export_prior_day_factors(
                 or k != "vc" and any(x not in c[k] for x in range(1, 7))):
             return fail("PRIOR_DAY_COUNTER_SHAPE_INVALID")
 
+    if (sum(c["lw"].values()) != state.completed_races
+            or any(sum(c["lcs"][lane].values()) != state.completed_races
+                   or sum(c["lcw"][lane].values()) != c["lw"][lane]
+                   for lane in range(1, 7))):
+        return fail("PRIOR_DAY_PRIMARY_COUNTS_INCONSISTENT")
+
     # Original research helper imports do not call main() or the database.
     from research import v5_lc_rf_exrank_rc_plus_opponent_pg as b
     from research import v5_lane_class_plus_venue_residual_pg as vr
