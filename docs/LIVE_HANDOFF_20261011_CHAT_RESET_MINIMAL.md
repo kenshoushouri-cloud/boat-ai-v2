@@ -30,6 +30,8 @@
 
 - **2026-10-11 FrozenDay台帳接続：** 開発ブランチに`v5/offline_frozen_day_evidence_adapter.py`とテスト8件を追加。実`FrozenDay.races`対申告集合の不一致/重複/艇ID不一致を拒否。買い目あり=仮想`FROZEN`、空券= `NO_BUY`、未固定= `PENDING`（購入実績ではない）。既存ガードと合計19/19オフラインPASS、py_compile PASS。GitHub blob `776bd7f1`/`45c68f43`は実行コピーと一致。`PriorDayCounters`依存のみ既存軽量stub。公式全日網羅・出走6艇・締切前取得の独立証拠は依然未確認、BUY不可。`main`/V4/Railway/DB変更なし。
 
-## Next ONE task — V5小規模実データのread-only証拠不足分類
-DBへの全期間scanをせず、既存の保存済み1レース（`20260501_24_12`）を使い、`FrozenDay`/台帳接続の入力に足りない証拠項目だけを一覧化。後日展示・最終オッズを締切前入力に昇格させない。欠損はPENDING/HOLD。必要なら開発ブランチに小さなオフラインテストのみ追加。公式出走肯定資料・ROI未証明を維持し、`main`/V4/Railway/DBは変更しない。
+- **大村12R 1件限定・read-only不足証拠分類（2026-10-11）：** `docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`作成。30履歴は前日以前だが初観測未証明、保存展示2026-08-15/オッズ2026-08-03は締切後、6艇の独立公式出走肯定証拠・V5固定買い目・返還・母集団網羅は不足、PENDING/HARD HOLD。`offline_day_evidence_coverage.py`でcutoff不明でも締切後保存を警告、模擬テスト1件追加（**未実行・PASS未確認**）。新しいDB読取なし、main/V4/Railway未変更。
+
+## Next ONE task — 公式6艇肯定証拠と初回保存の既存経路を特定
+GitHub開発ブランチで、beforeinfo原本・出走6艇の肯定証拠・`first_observed_at`/`source_snapshot_at`の保存処理を**狭いコード範囲でread-only**確認し、前処理経路の欠落を特定。大量履歴やRailway一括scan禁止。今回追加の大村12Rテスト実行は未済であることを維持し、コード確認後に独立した小作業で隔離実行。肯定証拠がない限りForward/BUYはHOLD。main/V4/Railway/DB変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
