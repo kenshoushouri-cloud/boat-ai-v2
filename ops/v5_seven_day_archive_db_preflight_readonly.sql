@@ -18,7 +18,7 @@ WITH required(table_name, column_name) AS (
     ('v2_race_entries', 'race_id'),
     ('v2_race_entries', 'lane'),
     ('v2_race_entries', 'racer_number'),
-    ('v2_race_entries', 'racer_class'),
+    ('v2_race_entries', 'racer_class_text'),
     ('v2_race_entries', 'recent_form'),
     ('v2_realtime_exhibition_snapshots', 'race_id'),
     ('v2_realtime_exhibition_snapshots', 'lane'),
