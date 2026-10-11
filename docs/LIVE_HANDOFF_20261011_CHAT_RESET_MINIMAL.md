@@ -87,6 +87,10 @@ GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**H
 ユーザーがRailway Data > Queryで`2025-07-01`をlive確認: `q1_inventory_rows=144`, `unique_race_ids=144`, `Q1_ONE_DAY_COUNT_ONLY_NOT_COVERAGE_PROOF`。重複0、400件上限内。**公式全レースの独立母集団証明ではない**。この1日Q1カウントは全期間バックテスト67窓の実処理完了とは計上しない。
 devに`ops/v5_candidate_v4_first_day_q2_shape_readonly_20261011.sql` (blob `70301192`)を保存。**2025-07-01のQ1 144件/一意144を再確認した場合だけ**144×6=864 slotの出走表+historical展示を別々にindexed LEFT JOIN集計し、選手番号/文字級別/最近成績JSON型、展示欠損/重複/後日snapshotの件数を結果**1行**で表示。Q3・払戻・レースIDを表示せず、0件/重複はHOLD、Q3/ROI/Forward/BUY不可。書込/無制限全期間scanのない単一SELECTを静的8条件検査。**PostgreSQL上では未実行**、CPU/通信量は実測前、実データ処理0/67窓。
 
-## Next ONE task — candidate-v4の初日Q2実DB集計を1回だけ確認
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記Q2 SQL単一SELECTを実行し、返る1行（`expected_lane_slots,entry_rows,missing_entry_slots,duplicate_entry_slots,valid_text_grade_rows,recent_form_container_rows,historical_exhibition_rows,missing_historical_exhibition_slots,q2_verdict`等）をユーザーから受け取る。欠損/重複/後日保存は勝手に補完せずHOLD/研究限定。必要なら集計結果に応じてQ2補完ルートを確定。Railway Agent/AI/Actions、DB書込/V4改変/BUY禁止。
+## Latest ONE result — 2025-07-01 Q2実DB構造確認と締切後展示（2026-10-11）
+ユーザーによるcandidate-v4 Data Queryの実測: Q1=144件、6艇想定864slot、エントリー864・選手番号864・文字級別864・recent_form配列/オブジェクト864、欠損/重複0。historical展示864/864・展示順位864で見かけ上完全。ただし**historical展示のsnapshot_atが締切より後なのは864/864件**。as-of予想入力として使用不可。Q2の`Q2_SHAPE_COUNTS_ONLY_NOT_ASOF_VERIFIED`は時間真正性を保証しない。レース・展示行の実データ全体は未抽出、real ROI未証明、全期間67窓の完了0件。
+次の調査用にdev `ops/v5_candidate_v4_first_day_exhibition_asof_candidates_readonly_20261011.sql` (GitHub blob `28fc25d3`) 追加。`2025-07-01` Q1=144でのみ、索引に沿って`learning_all`と`final_ab`の行数・締切前/後件数・6艇全rank一意の締切前候補レース数を1行に集計するSELECT。個別レースID・結果・払戻・rawは出力せず、DB書込なしの静的9/9確認。Railway実DBでは**未実行**。締切前タイムスタンプだけでは元観測の真正性は証明不可。
+
+## Next ONE task — 実DBの別展示ラベルの締切前候補件数を確認
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query`で上記新SQLを1回だけ実行し、返る1行を確認。候補0なら2025-07-01の展示をV5 as-of要因には採用しない。候補ありでも原本のfirst observed証明まで真ROI/Forward/BUYはHARD HOLD。費用上限・V4保護・NO Actions/Agent/AI継続。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
