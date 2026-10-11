@@ -39,6 +39,8 @@
 
 - **2026-10-11既存保存証拠の限定監査：** 江戸川1Rの既存GitHub観測は匿名化hash/時刻/見出し集計のみ。原本HTML・lane/racer別肯定状態を保存せず、初観測も未認証。positive reviewed schema/approval空。監査書`docs/V5_OFFICIAL_SIX_START_FIRST_CAPTURE_PATH_AUDIT_20261011.md`追記、再HTTP/Actions/DB/Railway実行なし。**6艇肯定証拠未発見/Forward/BUY HOLD維持**。
 
-## Next ONE task — V5事後再構築研究バックテストの安全な接続点を特定
-Forwardの公式6艇肯定証拠待ちを維持しつつ、別経路の**研究用 retrospective closing-price sensitivity**を進める。`v5/offline_archived_six_lane_bridge.py`→3連単券固定→返還/VOID/PENDING込の収支Adapterについて、既存コードの必要フィールドと未接続点を狭いread-onlyで確認。過去の事後展示・最終オッズを当時の実購入証拠と呼ばず、実ROIの主張をしない。1作業のみ、main/V4/DB/Railway/BUY変更なし。
+- **2026-10-11 研究用3連単接続監査：** `docs/V5_OFFLINE_TRIFECTA_BACKTEST_JOIN_GAPS_20261011.md`を開発ブランチに作成。6艇→PL120券→指定N券→`StoredResultRow`→VOID/返還/PENDING込の仮想払戻まで純粋関数あり（合成テストあり、今回未実行）。**実DB→入力dataclass変換、全日NO_BUY/PENDING台帳との結合は未実証**。0券が収支Joinに非対応、最終オッズの直接入力なし。実ROI/締切前BUY未証明。main/V4/Railway/DB未変更。
+
+## Next ONE task — 全レース台帳と選定買い目の統合契約
+GitHub開発ブランチで `FrozenDay`/全日NO_BUY・PENDING と `FrozenResearchRank`/選定候補を結ぶ**read-onlyオフライン**入力突合せ仕様を定義。結果/払戻の数式は変更せず、0件購入を残し、選定母集団の縮小・結果リーク・返還不明の偽装を拒否する小規模テスト候補を示す。実DB照会・Railway/有料Actions・main/V4/BUY変更は禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
