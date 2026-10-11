@@ -1,21 +1,13 @@
-# Handoff Latest
+# 最新引き継ぎへの唯一の入口
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261010_CHAT_RESET_COMPACT.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`
 
-次チャットで読むのは次の3点だけ:
-1. `docs/HANDOFF_LATEST.md`
-2. current compact handoff
-3. `docs/NEXT_CHAT_START_HERE.md`
+新チャットの開始時に確認するのは次の2点だけ：
+1. 本ファイル `docs/HANDOFF_LATEST.md`
+2. 上記 current compact handoff を全文
 
-最優先:
-- **最重要：V5目標は月間純利益＋50,000円（未検証・非保証）、候補1～3レース/日（0も可）。ChatGPT＋Railwayの合計は月6,000円以内・理想5,000円以内。Railwayは月10ドル以下が理想／10～12ドルを実務目標／15ドルで警戒／次回請求20ドルを上限目標。費用は税込・円換算で確認。詳細・安全条件はcurrent compact handoffの冒頭を優先。**
-- 古いhandoff / PROJECT_HISTORY / 長いworkflow / 過去chatは大量参照しない。
-- 1回に1作業、tool call最小限。pending commandを重複実行しない。
-- SHA/run/件数/容量は必要時だけlive取得。
-- **V5は主力システム（開発中・本番未切替）**。V4は収益不振を理由に再構築された旧本番であり、**V4対V5の収益比較は必須ではない**。V5単独の実3連単回収率・締切前Forward・損失を検証。V4は切替まで現行Productionとして保護、切替後に安全停止。既存の research/ ファイル名は互換性維持。
-- Railway費用 <= USD20、理想 <= USD15。Agent/AI禁止。
-- 実行開始時は推定所要時間を表示する。
+`docs/NEXT_CHAT_START_HERE.md` は**新チャットに貼る案内**であり、内容確認に必要な場合以外は毎回全文を読まない。過去の`LIVE_HANDOFF_*`（旧`20261010_CHAT_RESET_COMPACT.md`約38KBを含む）、PROJECT_HISTORY、長いworkflow、過去会話は履歴扱い。**大量参照禁止。**
 
-**Next ONE task:** 上記 current compact handoff の最終「Next ONE task」を参照。ここには過去run・comment IDを固定しない。
+V5が主力（未本番）、V4 Production保護。V5純利益目標 **+50,000円/月＝未検証**、1–3レース/日または0。ChatGPT+Railway合計**6,000円/月以内、理想5,000円以内**、Railway理想$10、実務$10–12、$15警戒、請求上限目標$20。無断BUY・DB削除/移行・本番変更禁止、Railway Agent/AI禁止。
 
-`COMPACT_ONLY / ONE_TASK_ONLY / NO_BULK_HISTORY / NO_DUPLICATE_RUN / SHOW_ESTIMATED_RUNTIME`
+**Next ONE task:** current handoff末尾を参照。実行時間目安を添え、1回1作業・最小tool call・短い報告。SHA/run/件数/容量はその場で必要時だけlive取得。タイムアウト後の重複実行禁止。
