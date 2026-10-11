@@ -41,8 +41,8 @@
 
 - **2026-10-11 研究用3連単接続監査：** `docs/V5_OFFLINE_TRIFECTA_BACKTEST_JOIN_GAPS_20261011.md`を開発ブランチに作成。6艇→PL120券→指定N券→`StoredResultRow`→VOID/返還/PENDING込の仮想払戻まで純粋関数あり（合成テストあり、今回未実行）。**実DB→入力dataclass変換、全日NO_BUY/PENDING台帳との結合は未実証**。0券が収支Joinに非対応、最終オッズの直接入力なし。実ROI/締切前BUY未証明。main/V4/Railway/DB未変更。
 
-- **2026-10-11 全日・全レース台帳＋仮想買い目統合：** dev branch `v5/offline_whole_day_research_ledger.py`（blob `5ef42718`）＋`tests/test_v5_offline_whole_day_research_ledger.py`（blob `1a780edd`、9ケース）追加。実`FrozenDay`/日次PENDING・NO_BUY含む申告inventoryを残し、仮想FROZEN ID/券順/決定cutoffと`FrozenResearchRank`を一致照合。結果は**照合後にのみ**Joinへ渡し、NO_BUY/未固定レースの結果も監査に保持。0購入日はROIなし、返還不明/結果未着は仮想ROI保留。**9ケースGitHub保存済み・未実行/PASS未確認**。公式全日網羅・本当の締切前券凍結は未証明、Forward/BUY=false。main/V4/Railway/DB不変更。
+- **2026-10-11 全日・全レース台帳＋仮想買い目統合：** dev branch `v5/offline_whole_day_research_ledger.py`（blob `5ef42718`）＋`tests/test_v5_offline_whole_day_research_ledger.py`（blob `1a780edd`、9ケース）追加。実`FrozenDay`/日次PENDING・NO_BUY含む申告inventoryを残し、仮想FROZEN ID/券順/決定cutoffと`FrozenResearchRank`を一致照合。結果は**照合後にのみ**Joinへ渡し、NO_BUY/未固定レースの結果も監査に保持。0購入日はROIなし、返還不明/結果未着は仮想ROI保留。**9/9オフライン実行PASS**。ローカル `git hash-object` とGitHub SHAが一致：`5ef42718`/`1a780edd`。払戻・結果Join・順位モジュールも実GitHub SHA一致、未使用の予測依存2件のみ軽量stub。公式全日網羅・本当の締切前券凍結は未証明、Forward/BUY=false。main/V4/Railway/DB不変更。
 
-## Next ONE task — 全日台帳統合9テストを隔離Python実行
-`tests/test_v5_offline_whole_day_research_ledger.py` をGitHubとSHA一致するコードでオフライン実行。以前の軽量 `PriorDayCounters` stub は必要な部分だけに限定、PL/結果Join/払戻は**実GitHubコード**を使用。失敗ならdev branchのみ小修正。PASSの捏造禁止。main/V4/Railway/DB/有料CI/BUY禁止。
+## Next ONE task — 保存済み大村12RをV5仮想研究入力へread-only対応付け
+既存の1件限定保存値と`docs/V5_OOMURA_20260501_24_12_EVIDENCE_GAPS_20261011.md`を用い、`ArchivedRaceFactors`/`StoredResultRow`の各必須フィールドの実証済み・不明を小表で突合せ。特に6艇選手番号、前日までのCounter、払い戻し返還、意思決定時刻を推測補完しない。足りなければHOLD、仮想収支もROIも捏造しない。最初はread-only GitHub確認のみ。main/V4/Railway/DB/BUY不変更。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
