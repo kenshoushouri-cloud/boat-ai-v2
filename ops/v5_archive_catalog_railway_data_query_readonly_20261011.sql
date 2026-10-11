@@ -1,7 +1,7 @@
--- V5 FIRST real-DB metadata check via Railway: history archive service > Data > Query.
+-- V5 metadata check via Railway candidate-v4 historical research DB > Data > Query.
 -- SINGLE SELECT. No role/transaction/schema changes, no application table scan.
 -- This query is a small metadata inspection, not proof of source identity or
--- authorization to run historical race queries. Never run on candidate-v4.
+-- authorization to run historical race queries. No application table scans.
 WITH required_cols(table_name, column_name, allowed_udt) AS (
   VALUES
     ('v2_races','race_id',ARRAY['text','varchar']::text[]),
@@ -10,7 +10,7 @@ WITH required_cols(table_name, column_name, allowed_udt) AS (
     ('v2_race_entries','race_id',ARRAY['text','varchar']::text[]),
     ('v2_race_entries','lane',ARRAY['int2','int4','int8']::text[]),
     ('v2_race_entries','racer_number',ARRAY['int2','int4','int8']::text[]),
-    ('v2_race_entries','racer_class',ARRAY['text','varchar']::text[]),
+    ('v2_race_entries','racer_class_text',ARRAY['text','varchar']::text[]),
     ('v2_race_entries','recent_form',ARRAY['jsonb']::text[]),
     ('v2_realtime_exhibition_snapshots','race_id',ARRAY['text','varchar']::text[]),
     ('v2_realtime_exhibition_snapshots','lane',ARRAY['int2','int4','int8']::text[]),
