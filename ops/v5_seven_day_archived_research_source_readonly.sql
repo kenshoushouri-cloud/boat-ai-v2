@@ -48,7 +48,9 @@ inventory AS MATERIALIZED (
       ON r.race_date >= b.start_day AND r.race_date < b.end_day
 )
 SELECT r.race_id, r.race_date, r.deadline_at, lanes.lane,
-       e.racer_number, e.racer_class,
+       e.racer_number,
+       CASE WHEN e.racer_class_text IN ('A1','A2','B1','B2')
+            THEN e.racer_class_text ELSE NULL::text END AS racer_class,
        jsonb_typeof(e.recent_form) AS recent_form_json_type,
        CASE
          WHEN jsonb_typeof(e.recent_form) = 'array'
