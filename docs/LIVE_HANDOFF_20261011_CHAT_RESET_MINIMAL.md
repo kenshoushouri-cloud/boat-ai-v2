@@ -68,18 +68,12 @@ dev `tests/test_v5_offline_seven_day_multi_race_coverage.py`新規10件（GitHub
 ## Latest ONE result — 開催日/Q1欠損ゲート（2026-10-11）
 dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5_offline_calendar_denominator_gate.py` (`d0cbe6ff`)を追加。既存7日Q1アダプタと期間planを結合し、Q1行ゼロを**休催認定しない**、自己申告の0件開催日/予定件数とQ1の差・7日窓欠損/重複をHOLD。公式スケジュール独立真正性は未確認で`hypothetical_roi_authorized=false`。既存8+10件、新規12件、**GitHub版SHA一致で隔離30/30 PASS**、構文PASS。実DB0/67窓、Railway/main/V4/BUY操作なし。
 
-## Latest ONE result — ローカルDBカタログread-only接続導線（2026-10-11）
-既存`v5/historical_odds_readonly_sample_audit_pg.py`のREAD ONLY/短時間timeoutの方式を参照。既存GitHub Actions接続は費用・V4誤操作リスクのため利用しない。devに`ops/v5_archive_preflight_manual.py` (blob`aac2533e`) と`tests/test_v5_archive_preflight_manual.py` (blob`07814d04`) を追加、**隔離7/7 PASS・構文PASS・GitHub SHA一致**。デフォルト接続禁止、二重opt-in、history-archive手動確認、psqlのlibpq環境認証、接続3秒/SQL2秒/ロック250ms、read-only、固定SQL blob`fa930650`のみ、秘密情報をログに出さない。手順`docs/V5_MANUAL_CATALOG_PREFLIGHT_20261011.md`。**実DB照会もRailway Actionsも未実行、実データ0/67窓。**
+## Latest V5 batch DB-gate status (2026-10-11)
+- dev: 7日Q1/Q2/Q3、休催日分母、catalog20列/4index判定、初回1日stream上限、巨大JSONをNULL HOLDにする1日SQLまで実装。SQLは静的検証、合成試験のみ。Q3は予測Q2と分離、返還未証明。実データ**0/67窓**。Forward/BUY/実ROI HARD HOLD。
+- **新最短経路**: Railway公式2026-03-20からData UIでRaw SQL利用可。dev `ops/v5_archive_catalog_railway_data_query_readonly_20261011.sql` (blob `118625fc`)はカタログのみの単一SELECTで20列/4index/SELECT権限を確認（アプリ表scan/書込なし）。Railway `boat-v2-postgres` production `postgres-history-archive` live/SUCCESS、stagedなしをread-only確認。手順 `docs/V5_MANUAL_CATALOG_PREFLIGHT_20261011.md` に記録。
+- このチャットのRailway連携はSQLの直接実行不可。**ユーザーがRailway Data > Queryから単一SELECTを1回実行する必要がある**。出力1行のみ（機密URL/パスワード不要）。`SHAPE_OK_SOURCE_NOT_AUTHENTICATED`でも研究・BUYの権限には昇格しない。全期間実走のためのDB索引・型のLIVE結果は現時点で未取得。
+- コスト $10–12理想、$15未満優先、$20最大。Railway Agent/AI・有料CI/Actions・DB書込・V4/main/BUY禁止。
 
-## Latest ONE result — カタログ検査結果・初日上限ゲート（2026-10-11）
-dev `v5/offline_catalog_smoke_gate.py`（GitHub blob `5200a99d`）、`tests/test_v5_offline_catalog_smoke_gate.py`（`05074d2c`）を追加。GitHub保存版SHA一致の隔離単体**12/12 PASS**、構文PASS。既存psql出力20列+4索引+1接続を厳密解析、型/索引/SELECT/READ ONLY/2秒timeout/出力切れ・余分行をHOLD。初回1日計測上限: Q1<=400、Q2<=2400、Q3<=400、合計<=4MB、Q2=6×Q1/Q3=Q1でない場合HOLD。**上限は取得後のオフライン検査でありDB通信量を制限する仕組みではない。** カタログ成功の自己申告も実DB同一性や実行承認を証明しない。実DB0/67窓、Railway/V4/main/BUY変更なし。
-
-## Latest ONE result — 初回1日stream上限制御（2026-10-11）
-dev `v5/offline_one_day_stream_cap.py` blob `83791cb8`、`tests/test_v5_offline_one_day_stream_cap.py` blob `393eab5b`を保存し隔離Python新規15/15＋既存catalog12/12＝**27/27 PASS**、構文PASS、GitHub SHA一致。Q1<=400、Q2<=2400、Q3<=400、client復号payload<=4MB、1行<=64KBで行ごとに即時HOLD/iterator close、`fetchone`とcursor itersize=1を模擬確認。対象SQLはGitHub blob `9c3ecd56`固定、start/endは厳密に1日、Q3は`selection_sealed=True`まで呼ばず、真正凍結の証明はしない。**通信のTCP厳密上限でもPostgresクエリ自体のCPU上限でもなく、巨大1行は受信後検出**。DB実行0/67窓、Railway/Actions/V4/BUY不変更。
-
-## Latest ONE result — 初回1日のサイズ保護SQL完成（2026-10-11）
-dev `ops/v5_one_day_archived_size_guarded_readonly.sql` (blob `02751441`) 新規、`v5/offline_one_day_stream_cap.py` (blob `6063bf72`)をそのSQLにSHA固定、`tests/test_v5_one_day_guarded_sql_contract.py` (blob `12d9e269`) 4件追加。隔離Python**既存15＋新規4=19/19 PASS**・構文PASS、3ファイルGitHub SHA一致。SQL Q1/Q2/Q3日付幅1日、Q2 recent_form JSON<=12KB、展示raw<=4KB、識別子/文字列のサイズ超過は**NULLでHOLD、切り詰め/重複隠しなし**。予測Q2に払戻結果なし、Q3は後処理のみ。**サーバ側のサイズ評価自体のCPUや実TCPバイトを完全制限しない**。PG SQLパーサ/実DB未検証、実データ**0/67窓**、Railway/Actions/V4/main/BUY操作なし。元7日SQL`9c3ecd56`は変更せず保持。
-
-## Next ONE task — 初回read-onlyメタデータ実行経路の現実的な着手
-安全設計は揃ったため、追加の合成テストを増やさず、**現DB20列+4索引の本当の確認**を最優先。既存接続は任意SQL非対応。V4の停止/配置/データ変更は禁止、コスト$10-12理想/$20上限維持。信頼できる既存のread-only DBアクセス方法が見つからなければ、ユーザーに手動接続プリフライトの最小ステップだけ案内して進める。資格情報/URLをチャットに貼らせない。プリフライトのlive成功前は1日SELECTすら実行しない。実ROI/Forward/BUYはHARD HOLD。
+## Next ONE task — Railway Data UIのカタログ1行を評価
+ユーザーのSQL実行結果`check_result / checked_columns / checked_indexes / problem_columns / problem_indexes / problem_select_access`を確認。結果未提示ならlive合格を宣言しない。合格/停止理由を判定して、初回1日read-only smoke→7日バッチへの最短接続を進める。新サービスや既存DB変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
