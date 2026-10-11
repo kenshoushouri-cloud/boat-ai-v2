@@ -2,9 +2,12 @@
 -- ORIGINAL 7-day SELECTs remain unchanged in separate file.
 -- Oversize values -> NULL (HOLD); NEVER truncation, DISTINCT, LIMIT, or BUY.
 -- PostgreSQL schema/EXPLAIN/actual traffic NOT verified. Manual read-only only.
+-- Values above the guard become NULL => offline HOLD, never shorten histories.
+-- These guards do not cap query CPU/sort work or exact TCP transfer bytes.
+-- Require verified catalogue, READ ONLY role/txn, 2s statement timeout.
 -- SQL TEMPLATE for psycopg named parameters, NOT psql-ready:
 --   %(start_date)s      inclusive ISO date >= 2025-07-01
---   %(end_exclusive)s   exclusive ISO date; 1..7 days after start
+--   %(end_exclusive)s   exclusive ISO date; EXACTLY 1 day after start
 -- DO NOT execute on Railway without a separate schema/index/cost preflight.
 -- Read-only transaction, role, statement_timeout, row/network-size budget required.
 -- Run each SELECT SEPARATELY, in order: INVENTORY, LANES, RESULTS.
