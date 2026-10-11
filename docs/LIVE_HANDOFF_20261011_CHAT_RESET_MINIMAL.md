@@ -78,10 +78,11 @@ dev `v5/offline_calendar_denominator_gate.py` (blob `7deb6070`) + `tests/test_v5
 ユーザー実行済みの`postgres-history-archive` Data Query結果: DB=`boat_history_archive`、user relations=3（`archive.v2_realtime_race_condition_snapshots`, `archive.v2_realtime_racer_condition_snapshots`, `public.v2_recent_form_archive`）、`v2_races/v2_race_entries/v2_realtime_exhibition_snapshots/v2_results`は**0/4**。この**アーカイブ専用DBに対象4表がないだけで、消失や権限不良の確証ではない**。
 GitHub既存の運用記録`docs/LIVE_HANDOFF_20261007_2321_COMPACT.md`では**Historical research DB=`postgres-hobby-fullhistory-candidate-v4`**、元のProduction source=`Postgres-EKp2`。Railway live read-only metadataではcandidate-v4とPostgres-EKp2ともlive/SUCCESS/stagedなし。V4候補DBの過去空き容量が厳しいため**カタログ以外の行scan/DDL/保守禁止**。実データ0/67窓、Forward/ROI/BUY HARD HOLD。
 
-## Latest ONE result — candidate-v4実DB検査 19/20項目適合（2026-10-11）
-ユーザーによる`postgres-hobby-fullhistory-candidate-v4`のRailway Data UI検査結果: `HOLD_DO_NOT_READ_RACES`、required20列のうち不適合は**`v2_race_entries.racer_class`のみ**、4索引は`NONE`問題なし、4表SELECT権限問題`NONE`。既存`pg_schema_compat_v5.py`には`racer_class integer`と`racer_class_text text`の定義がある。旧V5プリフライトは`racer_class`をtext/varchar想定したため**型契約不一致の疑い**。DB削除/権限問題を意味しない。実DBは変更しない。
-dev `ops/v5_candidate_v4_racer_class_columns_readonly_20261011.sql`（blob `7087bba7`）追加。該当3列だけ`information_schema.columns`を参照する単一SELECT、DML/表scanなしを静的検査。**未実行**。実データ0/67窓、V4/main/BUY不変更。
+## Latest ONE result — candidate-v4 class型の実測とV5抽出修正（2026-10-11）
+- ユーザーRailway Data Query実測: `v2_race_entries.racer_class=int4` (nullable)、`racer_class_text=text` (nullable)、`racer_number=int4`。先行catalogは`racer_class`のtext想定以外19/20列、4表index/SELECT権限一致。別クエリで新text列も確認したので、**改訂版20列の型期待値は整合**（改訂版自体のlive再実行は未）。レース行/級別の中身は未照会。
+- dev初回SQL `ops/v5_one_day_archived_size_guarded_readonly.sql` blob `2e2e77d4`、7日SQL `ops/v5_seven_day_archived_research_source_readonly.sql` blob `0905a3d3`: Q2は`e.racer_class_text`がA1/A2/B1/B2の時だけ`AS racer_class`、それ以外NULL→HOLD。**整数級別の推測変換はしない**。catalog UI SQL blob `96105144` / psql metadata blob `7c69a740` / offline判定 `b1ca95c5`も級別text期待に更新。初回stream SHA `fbd1466c`、手動psql SHA `0a797571`に新SQL blobを固定。Regression単体テスト3件追記（GitHub保存、**このターンPython再実行なし**）。3系統SQL分離、pin、型、DMLなしを**12/12静的検査**。DB/本番/main/V4/BUY変更なし。
+- 最初の実データ確認に備え、dev `ops/v5_candidate_v4_first_day_q1_count_readonly_20261011.sql` blob `65b4145f`追加（**2025-07-01だけ**、indexed `v2_races`行数と一意レース数の1 SELECT、氏名/個別レース/結果出力なし、400件以上・0件・重複はHOLD）。静的9/9チェック、**実行は未**。実データ処理**0/67窓**、実ROI/Forward/BUY HARD HOLD。
 
-## Next ONE task — racer_classの実DB型確認後、Q2級別出力契約修正
-Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で上記診断SELECT1回の実DB結果3行を確認。`racer_class`が整数で`racer_class_text`が文字列なら、Q2を`racer_class_text AS racer_class`等に安全に置き換え、原本欠損はNULL/HOLD。数値コードから級別を推測変換しない。診断完了前は初回1日レース取得HOLD。コスト$10〜12理想/$20上限、Agent/AI・有料CI・DB書込・V4/BUY禁止。
+## Next ONE task — candidate-v4 2025-07-01 Q1件数のlive read-only確認
+Railway `boat-v2-postgres > production > postgres-hobby-fullhistory-candidate-v4 > Data > Query` で上記Q1 count SQLを**1回**実行し、`race_date_checked/q1_inventory_rows/unique_race_ids/q1_verdict`のみを共有。結果0件は休催の証明ではなく母集団HOLD。結果が適切なら次の1作業は初日6艇Q2の軽量検査。実行時費用を監視、SQL以外の書込/Actions/Agent/AI/新サービス/本番変更禁止。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
