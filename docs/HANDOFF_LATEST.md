@@ -1,13 +1,8 @@
-# 最新引き継ぎへの唯一の入口
+# 最新引き継ぎへの唯一の入口（2026-10-13）
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`
+**最新作業ブランチ**: `feature/v5-prior-day-counter-test-20261011`（**mainではない**）
+**Current compact handoff**: `docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md`（約4.6KB）
 
-新チャットの開始時に確認するのは次の2点だけ：
-1. 本ファイル `docs/HANDOFF_LATEST.md`
-2. 上記 current compact handoff を全文
+新チャットでは上記コンパクト引き継ぎのみ全文確認。旧 `docs/LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`（約21KB）や他の過去handoff、PROJECT_HISTORY、長いworkflow、過去ログは**履歴**として保管、必要な個別確認時だけ一部分参照。
 
-`docs/NEXT_CHAT_START_HERE.md` は**新チャットに貼る案内**であり、内容確認に必要な場合以外は毎回全文を読まない。過去の`LIVE_HANDOFF_*`（旧`20261010_CHAT_RESET_COMPACT.md`約38KBを含む）、PROJECT_HISTORY、長いworkflow、過去会話は履歴扱い。**大量参照禁止。**
-
-V5が主力（未本番）、V4 Production保護。V5純利益目標 **+50,000円/月＝未検証**、1–3レース/日または0。ChatGPT+Railway合計**6,000円/月以内、理想5,000円以内**、Railway理想$10、実務$10–12、$15警戒、請求上限目標$20。無断BUY・DB削除/移行・本番変更禁止、Railway Agent/AI禁止。
-
-**Next ONE task:** current handoff末尾を参照。実行時間目安を添え、1回1作業・最小tool call・短い報告。SHA/run/件数/容量はその場で必要時だけlive取得。タイムアウト後の重複実行禁止。
+**Next ONE task**: ConoHa VPS 2GBの申し込み完了メールがあり、Safariログイン「成功」表示後も `cp.conoha.jp` の「プラン選択/支払い」画面に戻る問題を**追加購入なしで**切り分ける。**2GB実機・管理画面・OS稼働は未確認**。ConoHaが解決してからRailway安全な段階移行。Railway Agent/AI・データ削除・BUYは禁止。1回1作業、短い出力、時間見積、必要時だけlive確認。
