@@ -13,7 +13,7 @@
 - **ConoHa**：2026-10-13に2GBをPayPal支払・申込/初期設定メール受領。ただしSafariでログイン成功後に再度申込/支払画面へ戻る。サポート回答待ち、**既存VPS管理画面/SSH/OSは未確認**。再購入・追加チャージ・新アカウント作成禁止。推奨Ubuntu24.04LTSは未設定確認。
 - **V5**：2025-07-01〜2026-10-10の計画67週OOS窓は**実行0/67、実ROI未検証**。2026-07-02は180レースでオッズ238券不足のPENDING。締切後の展示/オッズや日付のみ一致の履歴を当時の凍結証拠にしない。欠測/返還不明/NO_BUY/PENDINGを勝手に補完・母数除外しない。
 - **GitHubで安全なオフライン準備完了**：V5プランDAG `ops/conoha/v5_offline_dag.py`（20/20テスト）、直列RAM/容量ガード `ops/conoha/v5_serial_resource_guard.sh`（9/9テスト）、実機診断 `ops/conoha/v5_host_preflight_readonly.sh`。**実機結線/予測は未実施**。
-- **バックアップ**：4DB用 `ops/backup/railway_pg_to_drive_stream.sh` は既定plan無通信、モック**14/14 PASS**。旧V3 Actions fallbackは未配線。**最新4DBの外部暗号化バックアップ0/4、独立フル復元0/4**。本日 `ops/backup/test_age_ssh_tempkey_roundtrip.sh` 作成、Bash構文PASS・GitHub blob照合PASS。隔離Linuxに`age`/`ssh-keygen`が無く実age往復は**未検証（exit69）**。Python cryptographyで使い捨てSSH Ed25519鍵形式・署名往復だけPASS（age互換性の証明ではない）。本人秘密鍵未使用。
+- **バックアップ**：4DB暗号化scriptは既定無通信、モック14/14 PASS。使い捨て鍵の`age`実テスト用scriptを追加・構文PASS、ただし隔離Linuxに`age`/`ssh-keygen`がなく**実暗号化・復号未実施**。本人の実鍵往復未検証。**最新4DBの外部暗号化バックアップ0/4・独立復元0/4**。詳細`ops/backup/BACKUP_SAFE_MODES_20261014.md`。
 - **過去の別資産**：10/1旧CMS暗号化Actions artifact3件は2026-12-30失効予定（当時の隔離復元job成功）。うち約302.7MB ZIP 1件は私有Drive AへiPhoneでコピー済だが**Drive側SHA/独立復元未検証**。現在の4DBバックアップを代替しない。Railway `archive-restore-key-20261001` の復元鍵変数を保護。
 
 ## 保全対象4DB（移行時の混同禁止）
@@ -39,7 +39,7 @@
 - **禁止**：無承認のV4本番変更、mainマージ、4DB/サービス/cron/旧CMS資産/復元鍵の停止・削除、DB wake/接続・dump/復元・大容量転送/購入・課金、バックテスト未検証のBUY。復元前の元データ削除禁止。既に走った作業は再実行前に現状確認。
 
 ## Next ONE task
-**Next ONE task（ConoHa待機中）**：4DB用オフラインbackupモックを旧V3以外の`archive/v4/v5`へ拡張し、宛先・別鍵・本人承認を取り違えた場合の即停止を検証。実`age`の使い捨て鍵往復は`age`・`ssh-keygen`を安全に導入できる本人管理環境（ConoHa復旧後等）まで保留し、実行時は`ops/backup/test_age_ssh_tempkey_roundtrip.sh`使用。**本人の本物の復元秘密鍵は外部に送らない**。実DB接続・Drive転送・GitHub Actions実行・BUYは禁止。
+**ConoHa待機中の次の1作業**：バックアップ用モックを`archive/v4/v5`へ拡張、誤宛先・鍵・承認では実行拒否する検証。`age`実往復はConoHa等の安全な環境で必要ツールが使えるまで延期。本人鍵の持出し・実DB接続・Drive転送・CI実行・BUY禁止。
 
 ## 詳細は必要時だけ個別参照
 - `docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`（V5順序/品質/再試行）
