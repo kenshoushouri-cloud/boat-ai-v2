@@ -127,6 +127,22 @@ class TestDailyCounterUpdate(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "COURSE_ROW_INVALID"):
             roll_forward_day(p, f, (outcome(),), tuple(rows))
 
+    def test_duplicate_finishes_never_contaminate_course_counters(self):
+        p = state()
+        frozen = freeze_day_predictions(p, DAY, (predicted(),))
+        rows = list(histories())
+        # Two finishers are incorrectly recorded as 1st (and 6th is absent).
+        rows[-1] = replace(rows[-1], finish_position=1)
+        done = roll_forward_day(p, frozen, (outcome(),), tuple(rows))
+        self.assertEqual(done.state.completed_races, 1)
+        self.assertEqual(done.fitted_race_ids, (predicted().race_id,))
+        self.assertEqual(done.course_rows_applied, 0)
+        self.assertEqual(sum(done.state.counters["cs"].values()), 0)
+        self.assertEqual(sum(done.state.counters["ct"].values()), 0)
+        self.assertEqual(done.all_course_rows, tuple(rows))
+        self.assertFalse(done.forward_eligible)
+        self.assertFalse(done.buy_eligible)
+
     def test_baseline_counter_tampering_rejected(self):
         p = state()
         f = freeze_day_predictions(p, DAY, (predicted(),))
