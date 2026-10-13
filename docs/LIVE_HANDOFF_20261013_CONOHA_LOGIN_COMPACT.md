@@ -8,6 +8,8 @@
 
 - **2026-10-14 Workflow実行時間の調査制約**: GitHub接続では既知`run_id`のjobs/stepsは取得できるが時刻/所要分を返さず、日付別のrun一覧もツール対象外。原因は**仮説段階**。ConoHa移行方針は2GB→検証後4GB(必要時・別承認)、現Railway保護。次ONE taskはiPhoneで `https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/workflows/exhibition-st-forward-scheduled-collector.yml?query=created%3A2026-10-01` を表示し10/1の実行一覧を確認。停止・削除/有料実行しない。
 
+- **2026-10-14 07:09 JST GitHub Actions 10/1 実画面**: `exhibition-st-forward-scheduled-collector.yml` の `created:2026-10-01` は **3 runのみ**: #188 09:53 JST 13秒 失敗、#189 15:37 JST 28秒 失敗、#190 22:50 JST 25秒 失敗。合計66秒で、10/1 GitHub Actions Linux 1,858minの主因ではない。**ただし収集失敗の理由と実欠測の有無は未確認**。次ONE task: GitHub Actions #190 のrun詳細で失敗箇所確認（ログに秘密があれば送らない）、Railwayは変更/起動せず、cron停止禁止。詳細 `docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
