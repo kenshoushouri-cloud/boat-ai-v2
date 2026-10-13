@@ -23,4 +23,4 @@
 
 ## 移行/バックアップとの関係
 - 先に旧V3/履歴archive/V4/V5の**暗号化外部コピーと独立復元**。ConoHaの管理画面問題が解決するまで、接続/デプロイ/DB移設なし。Railway本番と元4DB、復元鍵、旧CMS artifactを保持。
-- 次 ONE task は`ops/backup/test_railway_pg_to_drive_stream_offline.sh`の**作成済み14ケースを非課金・ローカルLinuxで実行し、必要なら安全なガードだけ修正**。実DBアクセス/課金/Secrets/Keys/BUYは禁止。
+- **2026-10-14追記**：`ops/backup/test_railway_pg_to_drive_stream_offline.sh`の14ケースは隔離Linuxで**14/14 PASS**。最新の作業順と工程は必ずcurrent compact handoffの「Next ONE task」を優先する。実DBアクセス/課金/Secrets/所有秘密鍵/BUYは禁止。
