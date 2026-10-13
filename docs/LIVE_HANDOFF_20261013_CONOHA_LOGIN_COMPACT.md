@@ -6,6 +6,7 @@
 **本人のiSHでRailway SSH鍵とは別のpassphrase付きEd25519鍵を復元専用に作成→iSH外2箇所に安全に保管→実`age`暗号化/復号自己テストを準備。** iSH は Alpine 3.14 x86、公式`apk add age`対象はv3.15以降のため、古いOSへ新しいrepositoryを混ぜない。公式ageはSSH Ed25519公開鍵にも対応し、`ops/backup/v3_to_artifact_encrypt.sh`も受け入れ可能なよう更新済み（未接続・実テスト未完）。既に登録した**Railway SSH鍵をage鍵として使い回さない**。秘密鍵・パスフレーズ・DB URL・Google OAuth JSON/tokenをチャット/GitHubへ投稿させない。必要ならConoHaサポート回答待ち。
 その次に、承認を得て旧V3のみGitHub Runner側で**事前接続検証**→暗号化バックアップ→Google A外部保管→独立復元。履歴archiveは公開TCPなしで別経路が必要。**現DB dump・独立復元は未実施**。
 
+- **2026-10-14 00:29 JST**: ユーザーからConoHaサポート**返信未着**を確認。再購入/再チャージ不要、待機中はGitHub側のみ。`ops/backup/v3_to_artifact_encrypt.sh`に、ユーザー承認済み公開鍵の**固定SHA256**および追跡`.pub`実ファイルとの**二重照合**を追加。外部入力に見た目が正しい別のrecipient/hashが来ても停止。`ops/backup/test_v3_to_artifact_guard.sh`も実際の公開鍵使用・誤鍵拒否に変更。**GitHub上のコード更新であり、更新後の実Bash試験/実age復号/DB接続/CI実行は未実施**。次ONE taskは可能な環境でoffline Bash/age実体テスト、またはConoHaサポート返信の確認（質問を繰り返さない）。
 - **2026-10-14 00:19 JST**: iSHで`command -v age`は`AGE_NOT_AVAILABLE`。古いiSH Alpine3.14 x86へ非対応パッケージや異なるAlpineリポジトリを導入しない。復元専用公開鍵はGitHub`ops/backup/keys/v3_recovery_recipient_20261013.pub`、秘密鍵はiSH・iPhoneファイル・本人がiCloud.comで同期確認済みのiCloudにのみ保管、GitHubに秘密鍵なし。`ops/backup/test_v3_recovery_age_roundtrip_offline.sh`を**未実行の自己検証スクリプト**として追加。信頼できる`age`実行環境（ConoHa管理アクセス復旧・互換する安全なiSH導入経路など）で秘密鍵を本人端末から持ち出さずに自己テストするまで復号成功とはみなさない。ConoHa追加購入・GitHub Actions実行・RailwayのDB起動/ダンプ/転送は依然未承認。次ONE taskはage実行可能な環境の選定（ソフト追加前に安全性・費用確認）。
 
 ## Source /目的と最重要ガード
