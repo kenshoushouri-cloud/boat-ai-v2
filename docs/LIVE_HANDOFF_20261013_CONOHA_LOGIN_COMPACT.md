@@ -3,7 +3,7 @@
 最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
 
 ## Next ONE task
-**旧V3の新規暗号化バックアップ用`age`復号鍵を、本人のiPhoneまたは安全な別の環境で独立生成・複数箇所に保全し、少量の暗号化→復号テストに成功できる経路を調べる。** iSH は Alpine 3.14 x86、公式`apk add age`対象はv3.15以降のため、古いOSへ新しいrepositoryを混ぜない。既に登録した**Railway SSH鍵をage鍵として使い回さない**。秘密鍵・パスフレーズ・DB URL・Google OAuth JSON/tokenをチャット/GitHubへ投稿させない。必要ならConoHaサポート回答待ち。
+**本人のiSHでRailway SSH鍵とは別のpassphrase付きEd25519鍵を復元専用に作成→iSH外2箇所に安全に保管→実`age`暗号化/復号自己テストを準備。** iSH は Alpine 3.14 x86、公式`apk add age`対象はv3.15以降のため、古いOSへ新しいrepositoryを混ぜない。公式ageはSSH Ed25519公開鍵にも対応し、`ops/backup/v3_to_artifact_encrypt.sh`も受け入れ可能なよう更新済み（未接続・実テスト未完）。既に登録した**Railway SSH鍵をage鍵として使い回さない**。秘密鍵・パスフレーズ・DB URL・Google OAuth JSON/tokenをチャット/GitHubへ投稿させない。必要ならConoHaサポート回答待ち。
 その次に、承認を得て旧V3のみGitHub Runner側で**事前接続検証**→暗号化バックアップ→Google A外部保管→独立復元。履歴archiveは公開TCPなしで別経路が必要。**現DB dump・独立復元は未実施**。
 
 ## Source /目的と最重要ガード
