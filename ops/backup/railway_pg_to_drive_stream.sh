@@ -29,7 +29,7 @@ fi
 : "${AGE_RECIPIENT:?Set public age1 recipient; NEVER the private key}"
 [[ "$AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]] || fail 'invalid_age_recipient'
 [[ "$DRIVE_EXPECTED_FOLDER_ID" =~ ^[A-Za-z0-9_-]{12,}$ ]] || fail 'invalid_drive_folder_id'
-for bin in pg_dump psql age rclone sha256sum mkfifo python3 tee awk grep; do
+for bin in pg_dump psql age rclone sha256sum md5sum mkfifo python3 tee awk grep; do
   command -v "$bin" >/dev/null || fail "missing_tool_${bin}"
 done
 [[ "$(pg_dump --version)" == *' 18.'* ]] || fail 'pg_dump_18_required'
@@ -72,33 +72,60 @@ if [[ "$mode" == preflight ]]; then
   printf 'BACKUP_TRANSFER=NOT_STARTED\n'
   exit 0
 fi
-# pg_dump -Fc is internally gzip-compressed; globals (roles/tablespaces)
-# are NOT included and require a separate verified inventory. age encrypts the complete stream.
-# A FIFO records SHA-256 of ciphertext without writing any dump to a volume.
+# pg_dump -Fc is internally compressed, age encrypts the whole stream.
+# An incomplete or unverified transfer MUST NOT appear under a normal backup name.
+# A failed .uploading file may remain; never auto-delete remote data.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-filename="boat-ai-${target}-${stamp}.dump.age"
+run_id="$(python3 -c 'import secrets; print(secrets.token_hex(5))')"
+filename="boat-ai-${target}-${stamp}-${run_id}.dump.age"
+staged="${filename}.uploading"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf -- "$tmpdir"' EXIT
-mkfifo "$tmpdir/hash-fifo"
+mkfifo "$tmpdir/hash-fifo" "$tmpdir/md5-fifo"
 sha256sum < "$tmpdir/hash-fifo" > "$tmpdir/sha256" &
 sha_pid=$!
+md5sum < "$tmpdir/md5-fifo" > "$tmpdir/md5" &
+md5_pid=$!
 
+# Neither source database nor its attached volume receives a backup file.
+# On pipeline failure, pipefail forces a nonzero exit; no promotion occurs.
 if pg_dump "$SOURCE_DATABASE_URL" --format=custom --compress=gzip:6 \
     --no-owner --no-acl \
   | age -r "$AGE_RECIPIENT" \
-  | tee "$tmpdir/hash-fifo" \
-  | rclone rcat "${remote}:${filename}" --drive-chunk-size 16M; then
-  wait "$sha_pid" || fail 'sha256_failed'
+  | tee "$tmpdir/hash-fifo" "$tmpdir/md5-fifo" \
+  | rclone rcat "${remote}:${staged}" --drive-chunk-size 16M; then
+  wait "$sha_pid" || fail 'local_sha256_failed'
+  wait "$md5_pid" || fail 'local_md5_failed'
 else
   wait "$sha_pid" || true
-  fail 'dump_encrypt_or_upload_failed; remote_partial_possible'
+  wait "$md5_pid" || true
+  fail 'pipeline_failed; unverified_uploading_file_may_remain'
 fi
 
 checksum="$(awk '{print $1}' "$tmpdir/sha256")"
-[[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid_checksum'
+local_md5="$(awk '{print $1}' "$tmpdir/md5")"
+[[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid_local_sha256'
+[[ "$local_md5" =~ ^[0-9a-f]{32}$ ]] || fail 'invalid_local_md5'
+
+# Google Drive provides an MD5 checksum for binary files. Compare it against
+# the local encrypted stream without downloading gigabytes a second time.
+# MD5 here is an accidental-transfer-corruption check, NOT a substitute for
+# authenticated age decryption and a separate, complete restore drill.
+remote_md5="$(rclone md5sum "${remote}:${staged}" | awk 'NR == 1 {print $1}')" \
+  || fail 'remote_md5_unavailable; staging_not_promoted'
+[[ "$remote_md5" == "$local_md5" ]] \
+  || fail 'remote_md5_mismatch; staging_not_promoted'
+
+# Write checksum metadata BEFORE promoting the encrypted backup.
 printf '%s  %s\n' "$checksum" "$filename" \
-  | rclone rcat "${remote}:${filename}.sha256"
+  | rclone rcat "${remote}:${filename}.sha256" \
+  || fail 'checksum_upload_failed; staging_not_promoted'
+
+rclone moveto "${remote}:${staged}" "${remote}:${filename}" \
+  || fail 'promotion_failed; check_staging_and_final_paths'
 rclone lsf "${remote}:" --files-only | grep -Fxq "$filename" \
-  || fail 'remote_backup_file_not_listed'
+  || fail 'promoted_backup_not_listed'
+
 printf 'BACKUP_UPLOAD_DONE target=%s encrypted_file=%s local_sha256=%s\n' "$target" "$filename" "$checksum"
-printf 'REMOTE_BYTES_CHECKED=NO; RESTORE_VERIFIED=NO; DO_NOT_DELETE_SOURCE_OR_STOP_PRODUCTION\n'
+printf 'REMOTE_MD5_MATCH=YES; REMOTE_SHA256_VERIFIED=NO; RESTORE_VERIFIED=NO\n'
+printf 'DO_NOT_DELETE_SOURCE_OR_STOP_PRODUCTION\n'
