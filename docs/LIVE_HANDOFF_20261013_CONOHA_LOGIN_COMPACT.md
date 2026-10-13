@@ -50,5 +50,7 @@
 
 - **2026-10-13 18:58 JST外部保存1件確認**: 利用者がiPhone Safari経由でGitHub Actions旧V3関連CMS ZIPをGoogle A Drive `boat-ai-v3-temp-202610`にアップロード。Drive list_folder/get metadata live確認: file ID `1lnMh-PefAfLObPnc14pbbDNRWZ3dZT8n`, name `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066.zip`, size **302656753 bytes**＝GitHub run `36812386066`, artifact `11139857666`と完全一致、parent folder ID `1RDS1JEAgSIrQm3FJQWMOO0sJ-FwheYIf`, `shared=false`。Google A初の外部保存実績。**サイズのみ照合済／Drive上ファイルSHA/MD5や独立復元は未検証／旧CMS秘密鍵は別途保全必要／現Railway V3 DBまたはhistory archive DBの新規dumpではない**。復旧確認前にRailway/鍵/artifact削除禁止。Drive OAuthのiSH自動認証は引き続き未完。次は履歴archiveや現在のV3の外部保全経路確立（ConoHaの復旧状況をユーザーに確認）または別CMS ZIPのコピーを慎重に検討。Railway変更なし。
 
+- **2026-10-13 19時：Google A上旧CMS ZIP整合性検証の限界**: iPhoneアップロード済`1lnMh-PefAfLObPnc14pbbDNRWZ3dZT8n`はDrive版情報でも1revision・302656753bytes、非共有・指定フォルダ在籍を確認。GitHub original ZIPは現作業コンテナで`sha256=e9e2f99e8503529430d0e9f9e58604d2b4abee2db2185ffd190c8de88a4ba42c`、ZIP testzip PASS、3エントリ(CMS/PEM/manifest)。Drive connector `fetch(download_raw_file=true,include_base64=false)`は413（256MiB/268435456bytes制限）で失敗、Drive metadata/list revisionはchecksumを返さないため**Drive上の内容hash一致をまだ確認できない**。アップロードサイズ一致を完全照合・復元PASSと表現しない。ツールの再トライやRailway起動・移動・消去はしない。次はConoHa VPS管理画面復旧→認証済みホストによるDrive API/Rclone hash・独立restore、もしくはiPhone手元コピーのsha256測定だがDrive上原本との同一性は別途要検証。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
