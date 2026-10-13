@@ -1,0 +1,110 @@
+# INERT DRAFT ONLY: outside .github/workflows and cannot be dispatched.
+# DO NOT MOVE this file into .github/workflows without new user approval.
+# DO NOT turn on the execute job until age roundtrip, PG18 install, costs,
+# data identity and GitHub Secrets handling have been separately verified.
+name: "[DRAFT] Boat AI V3 encrypted snapshot (manual)"
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "plan only; execute currently HARD DISABLED"
+        type: choice
+        required: true
+        options:
+          - plan
+          - execute
+        default: plan
+      v3_backup_approval:
+        description: "Separate human authorization, not an automatic consent"
+        type: string
+        default: "NO"
+      railway_cost_approval:
+        description: "Separate permission for V3 wake / Network cost"
+        type: string
+        default: "NO"
+      recovery_key_test:
+        description: "Confirmed real age roundtrip with the OWNER private key"
+        type: string
+        default: "NO"
+permissions:
+  contents: read
+concurrency:
+  group: boat-ai-v3-encrypted-snapshot-manual
+  cancel-in-progress: false
+
+jobs:
+  offline_plan:
+    if: ${{ inputs.mode == 'plan' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout selected source (no secrets)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Offline-only guards, no database or network credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n ops/backup/v3_to_artifact_encrypt.sh
+          bash -n ops/backup/test_v3_to_artifact_guard.sh
+          bash ops/backup/test_v3_to_artifact_guard.sh
+          bash ops/backup/v3_to_artifact_encrypt.sh
+          echo "V3_DRAFT_PLAN_COMPLETE_NO_DB_CONNECTION"
+
+  encrypted_snapshot:
+    # HARD HOLD. Moving this file into workflows must NOT activate this job.
+    # This line may only be reconsidered after fresh explicit user approval.
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Verify separate operator, cost and recovery-test approvals
+        shell: bash
+        env:
+          OPERATOR_APPROVAL: ${{ inputs.v3_backup_approval }}
+          COST_APPROVAL: ${{ inputs.railway_cost_approval }}
+          RECOVERY_TEST: ${{ inputs.recovery_key_test }}
+        run: |
+          set -euo pipefail
+          [[ "$OPERATOR_APPROVAL" == YES_SINGLE_V3_ENCRYPTED_SNAPSHOT ]] || exit 40
+          [[ "$COST_APPROVAL" == YES ]] || exit 41
+          [[ "$RECOVERY_TEST" == YES ]] || exit 42
+      - name: Checkout code without retained token
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Dependency and provenance gate (INTENTIONALLY NOT IMPLEMENTED)
+        shell: bash
+        run: |
+          echo "HARD HOLD: review pinned PostgreSQL18 and age binaries first"
+          exit 70
+      - name: Run V3-only exporter (blocked by earlier holds)
+        shell: bash
+        env:
+          V3_BACKUP_MODE: execute
+          V3_BACKUP_TARGET: v3
+          V3_EXPECTED_SERVICE_ID: 03652c28-20fa-4807-aa8c-8e71b6f21d26
+          V3_BACKUP_EXECUTE_APPROVED: ${{ inputs.v3_backup_approval }}
+          V3_CONFIRM_WAKE_AND_NETWORK_COST: ${{ inputs.railway_cost_approval }}
+          V3_RECOVERY_KEY_VERIFIED_OFFLINE: ${{ inputs.recovery_key_test }}
+          V3_SOURCE_DATABASE_URL: ${{ secrets.BOAT_V3_BACKUP_DB_URL }}
+          V3_EXPECTED_HOST: ${{ vars.BOAT_V3_BACKUP_EXPECTED_HOST }}
+          V3_EXPECTED_PORT: ${{ vars.BOAT_V3_BACKUP_EXPECTED_PORT }}
+          V3_EXPECTED_DATABASE: ${{ vars.BOAT_V3_BACKUP_EXPECTED_DB }}
+        run: |
+          set +x
+          set -euo pipefail
+          export V3_AGE_RECIPIENT="$(tr -d '\r\n' < ops/backup/keys/v3_recovery_recipient_20261013.pub)"
+          export V3_AGE_RECIPIENT_SHA256='da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234'
+          bash ops/backup/v3_to_artifact_encrypt.sh
+      - name: Upload ONLY encrypted .age and its SHA256 (blocked)
+        uses: actions/upload-artifact@v4
+        with:
+          name: boat-ai-v3-encrypted-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/boat-ai-v3-encrypted/*.dump.age
+            ${{ runner.temp }}/boat-ai-v3-encrypted/*.dump.age.sha256
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
