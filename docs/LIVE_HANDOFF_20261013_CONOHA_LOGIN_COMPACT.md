@@ -42,5 +42,7 @@
 
 - **2026-10-13 14時台／旧V3・archiveバックアップ優先**: live Railway read-only: 旧V3 `postgres-hobby-fullhistory-candidate-v3` はSLEEPING、公開TCP proxyあり、5GB volume維持；履歴archive `postgres-history-archive` はSUCCESS、公開TCP proxyなし/privateのみ、5GB volume維持。**どちらも未バックアップ・未復元**。`ops/backup/railway_pg_to_drive_stream.sh` に送信元URLのホスト＋**明示TCPポート**一致（`SOURCE_EXPECTED_PORT`）ガードを追加、`tests/test_backup_stream_shell_mock.py` に不一致3ケース追加。今回の新コード自体の実行テストは未実施。`ops/backup/DRIVE_IPHONE_OAUTH_PREFLIGHT_20261013.md` を4DB・2アカウント構成、無料iPhone iSH+rcloneによるConoHa未復旧時の本人OAuth準備候補で更新（iSH現行実機は未検証）。`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md` にV3/archiveの独立復元対象を追加。**次のONE task**: iPhoneの無料`iSH Shell`を導入し`apk update && apk add rclone`、`rclone version`の導入確認のみ。ユーザー秘密情報の入力・OAuth・新規課金・Railway追加ジョブ/サービス・データ転送/削除は承認前にしない。
 
+- **2026-10-13 17時台：iPhone iSH→Safari OAuthのブロッカー**: 利用者がiSH内rclone v1.75.2 (GOMAXPROCS=1/GODEBUG=asyncpreemptoff=1) を導入し、新規Google OAuth desktopクライアントのJSONをiPhone内で保管。`boat-drive-v3`のOAuth設定は`Waiting for code...`まで進んだが、同じiPhoneのSafariからiSHの`127.0.0.1:53682`に「サーバーに接続できない」。**認証未完、Google Driveファイル転送未実施、Railway元データ未変更**。iSHバックグラウンド停止/ローカル接続制約の可能性。秘密認証URLやclient_secret/JSONはGitHub/ChatGPTに保存しない。同じURLの連続再試行やiSH位置情報での強制常駐はしない。次のONE taskはConoHaサポート返答/既存VPS操作復旧を待ち、iPhone SSHアプリのローカルポートフォワード可否を確認（あるいは別の認証端末を利用）。V3/archiveのA保存とV4/V5保護の方針維持。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
