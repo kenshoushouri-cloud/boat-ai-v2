@@ -6,6 +6,8 @@
 2026-10-14ユーザー承認方針：**ConoHa 2GBで構築・実測→V5移行/独立復元確認→Railwayの稼働費解消後、必要なら4GBへ変更を別承認**。ConoHaログインはサポート返答待ちで再購入禁止。GitHubはコード/履歴を残し、長時間ActionsをConoHaへ段階移管する。2026-10-01と10-04の個人Github Free UsageはActions Linux **1,858min / 1,850min**、storage **31.36 / 46.43 GB-hr**、請求は両日**$0**（ユーザー画面）。main read-only監査：`exhibition-st-forward-scheduled-collector.yml`が日中5分cron＋最大90分ループ（timeout100）、`racer-course-top3-forward-scheduled-collector.yml`が毎日cron＋120分ループ（timeout130）、実時間コストの**候補だが因果未確定**。詳細`docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。**Next ONE taskは10/1／10/4のGitHub Actions実run/job durationを調査し候補を実証。** 収集停止でForward証拠が欠けるため、代替収集/移管と検証前にcron停止・削除禁止。GitHub Actions実バックアップ・Railway起動・DB接続・Secrets登録・ConoHa増額・BUYは引き続きHARD HOLD。
 
 
+- **2026-10-14 Workflow実行時間の調査制約**: GitHub接続では既知`run_id`のjobs/stepsは取得できるが時刻/所要分を返さず、日付別のrun一覧もツール対象外。原因は**仮説段階**。ConoHa移行方針は2GB→検証後4GB(必要時・別承認)、現Railway保護。次ONE taskはiPhoneで `https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/workflows/exhibition-st-forward-scheduled-collector.yml?query=created%3A2026-10-01` を表示し10/1の実行一覧を確認。停止・削除/有料実行しない。
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
