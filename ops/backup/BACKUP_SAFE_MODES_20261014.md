@@ -14,6 +14,12 @@
 - モック`ops/backup/test_backup_target_binding_offline.py`を**29/29 PASS**、4ターゲットの既知フォルダIDのハッシュ一致と誤サービス拒否を隔離Linuxで確認。**本検査は宣言されたサービスIDとフォルダIDを照合するだけ**で、Railway現DBの実体・Google Driveの認証者/所有権・復号可能性・本番書込み可否は**未検証**。オンライン検証と実バックアップは別承認。
 - 従来の14件バックアップモックは前回実行済。**2026-10-14更新**：4DB固定処理を結線したGitHub blob SHA一致ソースで、隔離Linuxにて旧14件を再実行**14/14 PASS**。同じ配置で新29件も再実行**29/29 PASS**（合計43/43）。実オンラインpreflight/execute、実`age`、Google認証、復元は**未実施**。本番導入前には双方のスイートを同一ソースで再実行する。
 
+## 2026-10-14：バックアップ本体との結合テスト
+- `ops/backup/test_backup_preflight_integration_offline.py`：GitHub blobと隔離Linuxテスト済ファイルのSHA一致、Python `unittest` **32/32 PASS**。本体スクリプト＋宛先固定プログラム＋公開鍵を一時ディレクトリへ複製し、Driveフォルダhash**だけ**を合成IDのhashへ置換。実パスワード、実Drive ID、本人秘密鍵は使用しない。
+- `pg_dump`/`psql`/`age`/`rclone`は外部処理拒否モック。V3/archive/V4/V5それぞれに対し、サービスID誤り・他DBのID・他DBフォルダ・費用/対象承認不足は**外部ツール起動前に拒否**。正しい模擬`preflight`は宛先固定を通過後、`rclone listremotes`のモックで停止し、**DB接続・Google認証は行わない**。
+- `execute`も本人承認がない経路を拒否。archive/V4/V5は復元鍵ピン未登録のため、対象別承認の文字列を入力しても停止。V3の実フルバックアップ、暗号化、ストレージアップロード、独立復元は**未実施**。有効な模擬設定が通ったことは**実所有者・Railwayサーバーの真正性の証明ではない**。
+- **次はオフラインの異常系**：一時中断/転送失敗の時に `.uploading`を正常バックアップへ昇格せず、暗号化SHA metadataを成功扱いしないかを、ダミーデータと拒否モックで検査する。実通信・実DB・CIジョブ無し。
+
 ## V3専用の鍵
 - 旧V3はユーザーがiSHで作った**別用途Ed25519復元秘密鍵**に対応する公開鍵を `keys/v3_recovery_recipient_20261013.pub` に固定。
 - SHA-256固定値は `da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234`（公開鍵1行・末尾改行除去）。SSH fingerprintとは別。
