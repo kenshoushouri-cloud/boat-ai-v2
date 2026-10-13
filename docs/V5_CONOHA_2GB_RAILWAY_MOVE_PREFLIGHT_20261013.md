@@ -50,6 +50,15 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 - Railway連携機能からは**既存Backupsの有無・保持状況を直接閲覧不可**。Railway画面の各DBサービス > Backupsでユーザーが別途確認し、結果を記録する。バックアップの存在を推測しない。
 - **ConoHa障害中はV4本番/必要cronを停止せず**、一時バックアップの取得・整合性確認を先行。不要な旧V3・試験サービスの停止は依存・課金効果をread-only確認した後に個別承認。データ削除・停止・新規課金・本番切替・BUY禁止。
 
+## 2026-10-13 追加方針：旧V3・履歴アーカイブもGoogle Aへ一時退避（ユーザー承認）
+- **Google A (V4と同じ個人アカウント)**: V4=`boat-ai-v4-temp-202610`（既存）。旧V3=`boat-ai-v3-temp-202610`（**未作成/未検証**）、履歴アーカイブ=`boat-ai-history-archive-temp-202610`（**未作成/未検証**）。V4用既存フォルダの中には混在させず、My Drive直下の独立フォルダを推奨。Google BはV5専用のまま。既存の利用中Google第三アカウントを使用しない。
+- 現在read-only Railway metrics: V4 `Postgres-EKp2` 3.8063GB、V3 `postgres-hobby-fullhistory-candidate-v3` 4.5526GB（SLEEPING、CPU/RAM=0）、archive `postgres-history-archive` 2.3396GB（約0.052GB RAM）。3DBの物理使用量合計約10.70GB、Google A前回確認空き約14.93GB。**実`pg_dump -Fc`サイズ・暗号化サイズ・空き/Google Driveクォータは未実測**で、raw DB使用量だけでは転送可否を確約しない。
+- 旧V3はSLEEPING維持し、read-only現状調査のために不要に起動しない。バックアップ時に起動・転送が必要なら料金とユーザー承認を別途確認。
+- archiveはV5研究DBから手動起動する`.github/workflows/recent-form-archive-write-verified.yml`で過去に利用される構造であり、アーカイブ固有テーブル/データと現在の依存関係は**未照合**。バックアップの完全復元と不要判定前に削除/停止しない。
+- `ops/backup/railway_pg_to_drive_stream.sh`は **BACKUP_TARGET=v3 / archive** を追加済み。宛先はA用の**独立した**rclone remote `boat-drive-v3` / `boat-drive-archive`でそれぞれフォルダID照合。V4=`boat-drive-v4`, V5=`boat-drive-v5`。**コード変更のみ**で実認証・転送・Railway書込なし。実行前にはDBホストおよびGoogleアカウント本人認証とフォルダ所有先の独立検証が必要。
+- 実行順: A内の旧V3/履歴用フォルダ作成と空き容量確認 → rclone OAuth別接続構築 → 小容量非機密テスト → 各DBごと暗号化フルバックアップ → Drive再取得SHA-256照合 → PG18隔離環境で別々に全件復元 → 固有データとV4/V5利用関係の検証 → **削除の別承認**。Google Aへの単一保管は暫定であり、恒久的な異障害ドメインの追加コピーは別途設計。
+- **Railway削除/休止・ConoHa変更・課金・実転送なし**。次はiPhoneでAの2つの独立フォルダを作成し、各々の直リンクだけ確認する（共有公開やOAuth/DB/age秘密情報の貼付は禁止）。
+
 ## 安全な移行ゲート（順守順）
 
 1. **契約はユーザー自身**: ConoHa VPS 2GB/SSD100GB、1か月・請求額・残高自動通知・更新条件を申込画面で確認。申込完了まで移行操作不可。契約資格情報をGitHub/チャットに貼らない。
