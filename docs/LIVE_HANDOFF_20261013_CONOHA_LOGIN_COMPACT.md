@@ -3,10 +3,10 @@
 最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
 
 ## Next ONE task
-**進行方針**: V5運用はConoHa VPS 2GB内でデータ取得/DB/AI/バックテスト/定期実行を一元化、GitHubはコードと履歴に限定、Railwayは元4DBのバックアップ・独立復元・V4本番維持に最低限使用。ConoHa管理画面アクセスはサポート返答待ち、**追加購入・再チャージ禁止**。ConoHa4GBはRailway費用解消後に負荷実測し必要なら**別承認**。
-- **2026-10-14 今回完了**: `ops/conoha/v5_offline_dag.py`＋`ops/conoha/test_v5_offline_dag.py` をfeature branchに保存。独立Linuxで実際に**20/20 Python offline tests PASS**、GitHub blob SHAとローカル tested `git hash-object`双方一致。設計`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`。出走表→直前情報/オッズ→締切前証拠gate→shadow予想→競走後結果→監査→手動backtestの論理DAG。欠測・締切後取得・historical擬装・重複・循環依存・未来情報の混入・BUYをfail closed。**plan ONLY／DB接続なし／サーバー実装・実予測なし**。既存`v5_serial_resource_guard.sh`はすべての将来writerを通す必要あり（現時点未接続）。
-- **前回バックアップ安全準備**: `ops/backup/railway_pg_to_drive_stream.sh`は既定plan無通信、静的validate、オンライン接続/費用/実行/復号鍵テストの別ゲートを追加済。旧V3 age SSH公開鍵固定。`ops/backup/test_railway_pg_to_drive_stream_offline.sh`に**14件のオフラインテストを作成済、未実行**。`ops/backup/BACKUP_SAFE_MODES_20261014.md`参照。**実バックアップ0、独立フル復元0、本人鍵で実age roundtrip未検証**。
-- **Next ONE task**: 14件のバックアップ用モックテストを**非課金の隔離Linuxで実行**し、失敗時は安全性を優先して修正。実Railway接続/起動・GitHub Actions稼働・ConoHa課金操作・データ転送/削除・BUYは禁止。ConoHa管理画面復旧時は診断`v5_host_preflight_readonly.sh`、その後に復元鍵の実ageラウンドトリップを順番に行う。
+**基本方針**：ConoHa VPS 2GB上にV5収集・DB・予測・バックテスト・cronを集約、GitHubはコード/履歴保管。Railwayは4DB元データの保全とV4本番稼働を守り、独立復元後にユーザー承認で縮退。ConoHa管理画面はサポート待ち、既存VPS状態未確認。**再購入禁止、Railway原本停止・削除禁止、BUY HARD HOLD**。
+- **今回完了（2026-10-14）**：作業ブランチの`ops/backup/railway_pg_to_drive_stream.sh`、`ops/backup/test_railway_pg_to_drive_stream_offline.sh`、`ops/backup/keys/v3_recovery_recipient_20261013.pub`を隔離Linuxに正確に再現。**3ファイルの`git hash-object`とGitHub blob SHA一致**、`bash -n` PASS、バックアップ用モックテスト**14/14 PASS**、さらに秘密引数/traceの静的チェックPASS。模擬`psql/pg_dump/age/rclone`でネットワーク実接続拒否。**これは実`age`暗号化・復号試験ではなく、Railway DB取得/Google Drive転送/PG18復元も実行0**。scriptはデフォルトplanで無通信。`ops/backup/BACKUP_SAFE_MODES_20261014.md`に安全手順あり。
+- **V5進捗**：`ops/conoha/v5_offline_dag.py`＋テスト20/20 PASS。ConoHa RAM/ディスク診断`v5_host_preflight_readonly.sh`、直列実行ガード`v5_serial_resource_guard.sh`は作成済みだが実機未導入。2025-07以降の原本/正しい締切前証拠/欠測・PENDING保護。
+- **Next ONE task**：実`age`の互換性を**隔離Linuxの一時テスト鍵だけで**検証し、SSH Ed25519公開鍵→age暗号化→対応SSH秘密鍵→復号のラウンドトリップと改変検知を確認する。ユーザー所有の本物の復元鍵はチャット/外部環境へ移さない。本物の鍵での復号はiPhone/ConoHa本人端末内で別途実施・確認するまで`BACKUP_RESTORE_KEY_VERIFIED=YES`を設定禁止。実データdump/外部保存/復元はすべて別承認。
 
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
