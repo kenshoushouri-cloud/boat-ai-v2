@@ -60,5 +60,7 @@
 
 - **2026-10-13 20時台 Railway SSH登録完了（本人申告）**: iPhone iSH(Alpine)に`openssh-keygen`を導入し、パスフレーズ付きEd25519鍵を`/root/.ssh/railway_boat_ai_20261013`と`.pub`で作成。`.pub`のみ本人がRailway Account Settings→Your SSH Keysへ登録成功と報告。秘密鍵・パスフレーズはチャット/GitHubに送っていない。登録と接続成功は別で、SSH疎通・CIからの接続・現V3/archive DBバックアップは**未実施**。次ONE taskはiSH内の公開鍵fingerprint読取による登録前準備確認（鍵値はチャットに送らせない）。プロジェクトtokenでSSH接続可能と決めつけない。追加課金／Railwayサービス変更なし。
 
+- **2026-10-13 20:26 iPhone SSH整備**: iSHでEd25519 passphrase付きkey生成済・Railway公開鍵登録済（本人報告）。`apk add openssh-client`は一度`ncurses-terminfo-base`のみエラーだったが`ssh -V`⇒`OpenSSH_8.6p1`成功、`apk add ncurses-terminfo-base`再実施⇒`OK: 47 MiB in 26 packages`で修復成功。**Railway公式による新しい選択肢**: CLI不要で`ssh -i /root/.ssh/railway_boat_ai_20261013 <service-instance-id>@ssh.railway.com`による直接SSH可能（非公開ドメインサービスは**Service IDではなくService Instance ID**が必要、公式: `https://docs.railway.com/cli/ssh`）。古いAlpine i386にRailway CLIの無理な導入をしない。次ONE task: iPhone Safari Railway `postgres-history-archive`のサービス画面を開き、Service Instance IDを取得できるUIを探す（画面送付時にDB_URL/パスワードを隠す）。**実接続/pg_dump/起動/課金はまだなし**。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
