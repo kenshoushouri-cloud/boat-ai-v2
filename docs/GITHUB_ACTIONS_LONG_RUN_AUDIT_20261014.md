@@ -24,6 +24,14 @@ GitHub Free本人Billing画面の2026-10-01はLinux **1,858分**、10-04はLinux
 - 移管時も欠測回避を最優先し、同時にGitHubとConoHaで二重writeしない。移行→Forwardデータ一致確認→GitHub schedule停止/削減は**別承認後**。
 - 旧CMS暗号化artifact3件、復元鍵、V4本番、V5研究を保護。BUY HARD HOLD。
 
+## 2026-10-14 read-only Railway 展示情報保存経路確認
+- Railway cron-data-prepare は run_daily_data_prepare_pg.py を起動し、当該ファイルに直接の展示ST収集処理を確認できず。直近Cron成功。
+- Railway cron-final-check は run_final_pg.py → v25_final_realtime_pipeline_pg.py → v21_realtime_collector_pg_safe.py 経由で legacy.save_exhibition_and_entries を実行する構成。直近Cron succeeded (2026-10-13T14:47:55Z)。
+- 2026-10-13のRailway cron-final-checkログを saved_exhibition_rows で限定検索。保存件数6・12・18・24・30などの正数が複数記録。通常展示の保存処理が動作している証拠だが、DB全日分の完全性保証ではない。
+- 2026-10-01の同ログ検索は0件で、取得不能/保存期間/ログ仕様などは未判別。当日のデータ保存・欠測を断定しない。
+- Forward専用の v2_exhibition_st_forward_shadow へのinsertは独立した collect_exhibition_st_forward_shadow_pg.py に存在。Railway全37サービス名に展示ST専用名はなく、別サービス内部から呼び出される可能性は未調査。通常展示とForward締切前固定は別、代替取得は未証明。
+- Next ONE task: 専用collectorの呼出し元をmain静的検索。必要なら別承認で安全なread-only DB表件数検証。既存cron/DB/Actionsに変更なし。
+
 ## Next ONE task
 **該当する10/1／10/4付近のGitHub Actions Run/Job時間を読み取り専用で突き合わせ**、workflow別の実行分数を特定して停止候補と移行優先順位を決定する。履歴API制限で該当Run IDの直接取得が難しければ、ユーザーにSafariのGitHub Actions画面から実行履歴1件を指定してもらう。費用・機能維持を確認できるまで自動停止しない。
 
