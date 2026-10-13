@@ -4,7 +4,7 @@
 
 ## 操作モードと接続の有無
 - 引数・秘密情報なしで実行すると**`plan`（既定）**：`BACKUP_STATUS=NOT_EXECUTED`、DB/Drive/ConoHa通信ゼロ。
-- **`validate`**：指定DB名・ホスト・ポート・TLS、復元用公開鍵、SHA256ピン、PG18クライアント等の**ローカル静的確認のみ**。DB・Drive APIへアクセスしない。ダミー資格情報を使う回帰テストは `test_railway_pg_to_drive_stream_offline.sh`。このファイルはテスト作成済み、**実行済みとは記録しない**。
+- **`validate`**：指定DB名・ホスト・ポート・TLS、復元用公開鍵、SHA256ピン、PG18クライアント等の**ローカル静的確認のみ**。DB・Drive APIへアクセスしない。ダミー資格情報を使う回帰テストは `test_railway_pg_to_drive_stream_offline.sh`。このファイルは2026-10-14に隔離Linuxで**14/14 PASS**、ただし実DB/実age/Drive通信は未試験。
 - **`preflight`**：Railway DBのSELECTによる読取接続とDriveのアクセス確認が発生する。**`BACKUP_CONNECT_APPROVED=YES` と `BACKUP_NETWORK_COST_APPROVED=YES` が必要**。休止V3のwakeやRailway通信/稼働費の可能性がある。事前承認無しに実行しない。
 - **`execute`**：上記に加えて `BACKUP_EXECUTE_APPROVED=YES` と `BACKUP_RESTORE_KEY_VERIFIED=YES` が必要。後者は**本人秘密鍵での実`age`暗号化・復号ラウンドトリップ成功時のみ**。未検証でYESと偽らない。実際のPG18/age/rclone環境準備、Google OAuth本人認証、費用・DB正体・復元先確認と個別の本人許可が前提。
 
@@ -18,4 +18,4 @@
 - 4 DBの移行と必要な独立バックアップが検証され、個別に本人承認されるまで、Railway本番/研究DB・cron・秘密鍵サービスは停止/削除禁止。
 - ConoHaはまず2GB。必要な場合のみRailway費用解消後に追加承認して4GBを検討。V5 BUY HARD HOLD。
 
-**Next**: テスト用スクリプトを非課金のローカルLinuxで実行してガードを確認。その後ConoHa管理画面復旧→所有復元鍵での実`age`ラウンドトリップ→小容量の暗号化DBバックアップ＋独立復元へ進む。勝手に実DBへ接続しない。
+**Next**: current compact handoffの「Next ONE task」を最優先。一時的なテスト鍵のみで実`age`暗号化→復号・改変検知を確認し、ConoHa管理画面復旧後に所有復元鍵の実往復・小容量暗号化DBバックアップ＋独立復元へ段階移行。勝手に実DBへ接続しない。
