@@ -8,6 +8,7 @@
 
 - **2026-10-14 Workflow実行時間の調査制約**: GitHub接続では既知`run_id`のjobs/stepsは取得できるが時刻/所要分を返さず、日付別のrun一覧もツール対象外。原因は**仮説段階**。ConoHa移行方針は2GB→検証後4GB(必要時・別承認)、現Railway保護。次ONE taskはiPhoneで `https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/workflows/exhibition-st-forward-scheduled-collector.yml?query=created%3A2026-10-01` を表示し10/1の実行一覧を確認。停止・削除/有料実行しない。
 
+- **2026-10-14 07:13 JST 失敗原因確定に近づく**: #190 `collect`は23秒で失敗、`Load public database URL without publishing it`の7秒ステップで`DATABASE_PUBLIC_URL not found`、本体収集ループはskipped。main workflowの`--service postgres`はRailway production live一覧に無いサービス名。V4本番DBは`Postgres-EKp2`、live TCP proxy 0、変数名`DATABASE_URL`はあり`DATABASE_PUBLIC_URL`無し（秘密値の取得なし）。原因は旧接続設定と現在構成の不一致と判断。展示ST実欠測・別経路取得は未確認。**Next ONE task: Railway側の展示ST取得代替ジョブ/サービスをread-onlyで確認**。cron停止・公開proxy新設・V4本番への設定変更・run再実行禁止。詳細`docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
 - **2026-10-14 07:09 JST GitHub Actions 10/1 実画面**: `exhibition-st-forward-scheduled-collector.yml` の `created:2026-10-01` は **3 runのみ**: #188 09:53 JST 13秒 失敗、#189 15:37 JST 28秒 失敗、#190 22:50 JST 25秒 失敗。合計66秒で、10/1 GitHub Actions Linux 1,858minの主因ではない。**ただし収集失敗の理由と実欠測の有無は未確認**。次ONE task: GitHub Actions #190 のrun詳細で失敗箇所確認（ログに秘密があれば送らない）、Railwayは変更/起動せず、cron停止禁止。詳細 `docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
 
 ## Source /目的と最重要ガード
