@@ -259,7 +259,11 @@ def roll_forward_day(
         if (len(hs) == 6 and
                 all(h.start_course in _LANES and h.finish_position in _LANES
                     for h in hs.values()) and
-                {h.start_course for h in hs.values()} == set(_LANES)):
+                {h.start_course for h in hs.values()} == set(_LANES) and
+                # A valid six-finish result has one each of 1..6. Do not
+                # silently count duplicated/missing places as top-three
+                # course evidence, even when a race winner is confirmed.
+                {h.finish_position for h in hs.values()} == set(_LANES)):
             # Same research cs/ct/rcs/rct rule; applied AFTER day predictions.
             for h in hs.values():
                 course = h.start_course
