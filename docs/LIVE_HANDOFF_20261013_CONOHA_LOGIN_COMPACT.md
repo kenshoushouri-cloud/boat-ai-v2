@@ -3,10 +3,10 @@
 最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
 
 ## Next ONE task
-**ConoHa 2GBにV5の実行・DB・収集・バックテストを段階的に一元化。** GitHubはコード/変更履歴/オフサイト復旧、Railwayは4DBの安全な外部バックアップ・独立復元/現V4本番維持に限定し、旧Railway/GitHub Actionsの個別修理は優先しない。ConoHa管理画面はサポート返答待ち、同一VPSの存在/OSは未確認。**再購入・再チャージ禁止**。
-- **今回完了（2026-10-14）**: `ops/conoha/v5_serial_resource_guard.sh` と `ops/conoha/test_v5_serial_resource_guard_offline.sh` を作業ブランチに新規保存。Bash構文PASS、**独立Linuxの9/9オフラインテストPASS**。ガードは既定`--plan`（read-only/no job）、明示`--execute`でも`V5_CONOHA_EXECUTION_ENABLED=YES`が無ければ拒否。空きRAM768MiB、ルート空き25GiB、最大30分の**仮しきい値**、共通`flock`で重複起動を拒否、失敗時hold/timeout。ただし**ガードを通らないジョブは制御できず**、DB専用ボリュームや将来の全処理の実消費も未検証。ConoHa実機未導入・未実行。2ファイルともローカル`git hash-object`とGitHub blob SHAが完全一致。既存`ops/conoha/v5_host_preflight_readonly.sh`も実機未実行。
-- **次の1作業**: ConoHa復旧を待ちながら、V5処理の実行順序と競合するcron/二重write/欠測時リトライ規則を**設計・静的調査**。実機ログインが可能になったら`v5_host_preflight_readonly.sh`でRAM/diskを実測し、しきい値調整・V5実行の有効化は別承認。ConoHa2GBから開始し、Railway費用解消後の増強は必要時かつ本人別承認。
-- **HARD HOLD**: Railway・V4本番・4DB原本削除/停止禁止、実バックアップ/復元未完了、ConoHa実移行/有料CI/cron切替/自動購入は禁止。2025-07以降の原本保護、締切前欠測は後から再現証拠を作れないためmissingを記録。
+**方針**：ConoHa VPS 2GBでV5のDB・公式収集・予測・バックテスト・定期処理を段階的に一元管理。GitHubはコード/履歴、Railwayは移行前の4DB保全とV4本番維持に限り、旧Actions収集障害の深追いをやめる。ConoHa管理画面はサポート返答待ち（既存VPS実機未確認）、追加購入・再チャージ禁止。Railway停止/削除/起動、費用発生する操作、BUYは個別承認までHOLD。
+- **今回 2026-10-14 バックアップ準備**：`ops/backup/railway_pg_to_drive_stream.sh`の既定を**plan・無通信**へ変更。`validate`は静的オフライン、`preflight`はDB+Driveに接続するため`BACKUP_CONNECT_APPROVED=YES`と`BACKUP_NETWORK_COST_APPROVED=YES`が必須。`execute`はさらに`BACKUP_EXECUTE_APPROVED=YES`、所有鍵で実復号確認後のみ`BACKUP_RESTORE_KEY_VERIFIED=YES`。旧V3は固定SHA＋リポジトリ公開鍵でSSH age recipient照合。DB URIをpg_dump/psqlのargvに入れずPGDATABASEへ、URLのTLS/DB名も事前検証。**コード静的レビュー9/9 PASS**、`ops/backup/test_railway_pg_to_drive_stream_offline.sh`に**14件テストを新規作成したが未実行**。運用ガイド`ops/backup/BACKUP_SAFE_MODES_20261014.md`。**実DBバックアップ0、独立フル復元0**。iPhone持主鍵を使った実`age`復号も未実施。
+- **V5側の済作業**：`ops/conoha/v5_host_preflight_readonly.sh`、`ops/conoha/v5_serial_resource_guard.sh`（実行既定OFF、RAM/容量・二重起動防止）、後者のモックテスト9/9（過去実施）。ConoHa実機への導入/検証は未実施。
+- **次の1作業**：ConoHaが復旧する前に、V5の取得→事前品質検査→予測→結果照合→バックテストを**2GBで直列実行するDAG・重複write防止・欠測再試行**を設計する。バックアップの次ゲートは非課金Linuxで新モックテスト実行、次に所有秘密鍵で実age復号成功確認→初めて実DB転送と独立復元を個別承認。旧CMS artifact3件と復元鍵サービス、元4DBは削除禁止。
 
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
