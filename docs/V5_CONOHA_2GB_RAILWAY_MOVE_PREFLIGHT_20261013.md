@@ -17,6 +17,12 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 
 **ConoHa VPS 3.0: OSテンプレート `Ubuntu 24.04 LTS (64bit)` のServer版**を推奨。24.04は標準サポート2029年まで、ConoHa公式テンプレートあり。Ubuntu 26.04も提供されるが、既存V5 Python/PostgreSQL/Docker依存関係の安定性を優先し24.04から開始。アプリケーションテンプレート(DockerやWordPress等)ではなく素のOSイメージを選び、DB版数確認後に必要な環境だけ導入。2GBではGUI不要、SSH公開鍵・最低限ポートだけ許可、DBポート5432公開禁止、swapは必要性を測って設定。秘密鍵/パスワード共有禁止。OS選択と本番切替・課金契約は別判断。
 
+### 取得経路の確認（2026-10-13・設計確定、未実行）
+- Railway live設定: **V4本番 `Postgres-EKp2` はprivate endpointあり・公開TCP proxyなし**。**V5研究 `postgres-hobby-fullhistory-candidate-v4` は公開TCP proxyあり**。両者ともPostgreSQL 18系イメージ。V4のポートを新たに公開して取得することは禁止。
+- 候補: Railway内の**一時的な単発転送ジョブ**からprivate networkでV4/V5へ接続し、PG18系`pg_dump -Fc`をストリーム圧縮・暗号化してGoogle Driveへ転送。Railway DB volumeへ巨大ファイルを出力しない。Google OAuth/権限は秘密情報として安全に設定し、実行後撤去。iPhoneのみでの初回Drive認証経路、ワーカーRAM/一時領域、転送料金は未確認。
+- Google A: V4本番、Google B: V5研究用を第一案とし、各容量と暗号化バックアップ実サイズで確定する。**独立コピーの確認と復元検証まではRailwayを縮退・削除しない**。
+- 現時点で実施したのはDB接続経路の**read-only確認と本書更新のみ**。サービス作成・OAuth連携・dump・転送・DB/cron変更・購入はまだしない。作成・転送・費用発生はユーザー明示承認後。
+
 ## ConoHa復旧待ちの一時バックアップ方針（2026-10-13確定）
 
 - **V4本番 `Postgres-EKp2` とV5研究用 `postgres-hobby-fullhistory-candidate-v4` の両方を保全**。名称candidate-v4はV4本番を指さない。履歴アーカイブと旧V3も削除せず、依存関係・固有データを確認して保存範囲を確定する。
