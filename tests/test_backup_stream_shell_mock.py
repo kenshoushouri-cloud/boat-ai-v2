@@ -86,6 +86,7 @@ class BackupShellMockTest(unittest.TestCase):
                 "BACKUP_MODE": mode,
                 "SOURCE_DATABASE_URL": "postgresql://postgres:" + secret + "@v3.internal:5432/railway",
                 "SOURCE_EXPECTED_HOST": "v3.internal",
+                "SOURCE_EXPECTED_PORT": "5432",
                 "SOURCE_EXPECTED_DATABASE": "railway",
                 "DRIVE_EXPECTED_FOLDER_ID": "folderABC1234567890",
                 "AGE_RECIPIENT": recipient,
@@ -123,6 +124,18 @@ class BackupShellMockTest(unittest.TestCase):
                                 ("folder", "drive_root_folder_mismatch")):
             with self.subTest(fault=fault):
                 code, out, count = self.execute(fault=fault)
+                self.assertNotEqual(code, 0)
+                self.assertIn(expected, out)
+                self.assertEqual(count, 0)
+
+    def test_refuse_wrong_source_port_before_transfer(self):
+        for port, expected in (
+            ("46406", "source_port_mismatch"),
+            ("0", "expected_source_port_out_of_range"),
+            ("wrong", "expected_source_port_invalid"),
+        ):
+            with self.subTest(port=port):
+                code, out, count = self.execute(extra={"SOURCE_EXPECTED_PORT": port})
                 self.assertNotEqual(code, 0)
                 self.assertIn(expected, out)
                 self.assertEqual(count, 0)
