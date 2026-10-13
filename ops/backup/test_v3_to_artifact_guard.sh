@@ -31,6 +31,24 @@ assert_fail() {
   printf 'PASS %s\n' "$label"
 }
 
+# Non-network regression checks: never reveal the source URI through process argv.
+if grep -Eq '(psql|pg_dump)[[:space:]]+"\$V3_SOURCE_DATABASE_URL"' "$script"; then
+  echo 'FAIL database URI passed as command argument' >&2; exit 1
+fi
+grep -Fq 'set +x # Disable inherited shell tracing' "$script" || {
+  echo 'FAIL shell trace protection absent' >&2; exit 1
+}
+grep -Fq 'export PGDATABASE="$V3_SOURCE_DATABASE_URL"' "$script" || {
+  echo 'FAIL PGDATABASE secret transport absent' >&2; exit 1
+}
+grep -Fq 'unset V3_SOURCE_DATABASE_URL' "$script" || {
+  echo 'FAIL source URL left in redundant environment variable' >&2; exit 1
+}
+grep -Fq 'age -R "$script_dir/keys/v3_recovery_recipient_20261013.pub"' "$script" || {
+  echo 'FAIL age not using pinned recipient file' >&2; exit 1
+}
+printf 'PASS secret_url_absent_from_argv_and_tracing_disabled\n'
+
 [[ "$(bash "$script")" == *'V3_ARTIFACT_STATUS=NOT_EXECUTED'* ]] || exit 1
 printf 'PASS default_plan_has_no_side_effects\n'
 assert_fail wrong_target target_must_be_v3 env V3_BACKUP_MODE=execute bash "$script"
