@@ -1,8 +1,9 @@
-# 最新引き継ぎへの唯一の入口（2026-10-13）
+# 最新引き継ぎへの入口（2026-10-14）
 
-**最新作業ブランチ**: `feature/v5-prior-day-counter-test-20261011`（**mainではない**）
-**Current compact handoff**: `docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md`（約4.6KB）
+**作業ブランチ**: `feature/v5-prior-day-counter-test-20261011`（mainは無断変更禁止）
 
-新チャットでは上記コンパクト引き継ぎのみ全文確認。旧 `docs/LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`（約21KB）や他の過去handoff、PROJECT_HISTORY、長いworkflow、過去ログは**履歴**として保管、必要な個別確認時だけ一部分参照。
+**Current compact handoff（最優先）**: `docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md`
 
-**Next ONE task**: ConoHa VPS 2GBの申し込み完了メールがあり、Safariログイン「成功」表示後も `cp.conoha.jp` の「プラン選択/支払い」画面に戻る問題を**追加購入なしで**切り分ける。**2GB実機・管理画面・OS稼働は未確認**。ConoHaが解決してからRailway安全な段階移行。Railway Agent/AI・データ削除・BUYは禁止。1回1作業、短い出力、時間見積、必要時だけlive確認。
+新チャットはこのファイル→current compact handoff→`docs/NEXT_CHAT_START_HERE.md`だけを参照。旧handoff、PROJECT_HISTORY、長いworkflow/過去ログを大量に読まない。SHA、実行結果、容量は必要なものだけlive取得。
+
+**次の1作業は必ずcurrent compact handoffのNext ONE taskを参照**。ConoHa管理画面はサポート待ち、追加購入・再チャージ禁止。ConoHa 2GBでV5運用構築（Railway維持費解消後に必要なら4GB増額）。Railwayは安全な外部バックアップ・独立復元・本番維持に限定、GitHubは主にコード保管。V4本番保護、BUY HARD HOLD。1回1作業・最小tool call・低コスト。
