@@ -23,6 +23,11 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 - Google A: V4本番、Google B: V5研究用を第一案とし、各容量と暗号化バックアップ実サイズで確定する。**独立コピーの確認と復元検証まではRailwayを縮退・削除しない**。
 - 現時点で実施したのはDB接続経路の**read-only確認と本書更新のみ**。サービス作成・OAuth連携・dump・転送・DB/cron変更・購入はまだしない。作成・転送・費用発生はユーザー明示承認後。
 
+### Google Driveフォルダの作成状況（2026-10-13）
+- A: `boat-ai-v4-temp-202610` はGoogle Drive connectorで実在・空フォルダを確認済み。
+- B: ユーザーが `boat-ai-v5-temp-202610` 作成完了を報告。現接続中のDrive connector検索では該当フォルダ0件。**別アカウントのため未検証**であり、存在しないと断定しない。A/Bを混同してバックアップを投入しない。
+- 次のONE task: Bの独立Googleアカウントに対する安全な認証・保存先指定を検討し、Bの実フォルダ確認と大容量ストリーミング転送の認証を混同しない。OAuth権限情報をチャット/GitHubに貼らない。新規課金、データ転送、Railway設定変更は未承認。
+
 ### iPhoneのみのGoogle Drive認証方針（2026-10-13）
 - Google Drive A/Bは個人用無料アカウント。**GoogleのサービスアカウントをMy Driveに直接アップロードする方式は採用しない**（サービスアカウントはMy Driveのファイル所有/容量を持たない）。`rclone`のDrive接続はユーザー本人のOAuth 2.0認証が必要。rclone共用OAuth client_idは2026年中の提供終了が告知されているため、継続前提にしない。
 - 通常のrclone headless設定は別端末にrclone + browser、またはSSHポート転送が必要。**iPhone単独で同方式を実行できることは未検証**。無理にOAuthコード、refresh token、rclone.conf、Googleパスワードをチャット/GitHubへ貼らせない。
