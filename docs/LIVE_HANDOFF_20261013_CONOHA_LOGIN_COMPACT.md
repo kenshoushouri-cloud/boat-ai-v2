@@ -1,34 +1,48 @@
-# 新競艇AI No.2 — current compact handoff（2026-10-13 夜）
+# 新競艇AI No.2 — 最新コンパクト引き継ぎ（2026-10-14 JST）
 
-最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
+## 読み方・運用ルール
+- 入口 `docs/HANDOFF_LATEST.md` → **本ファイルのみ全文**。新チャット開始文は `docs/NEXT_CHAT_START_HERE.md`。古いhandoff/PROJECT_HISTORY/長いworkflow/ログは必要な個別箇所のみ。詳細は末尾の参照先で追える。**本ファイルを肥大化させず更新時は古い経過を要約・置換**。
+- Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更しない**。1回に1作業、短時間・最小tool call、時間目安を示す。SHA/run/件数/容量は固定値にせず必要時だけlive再取得。利用者は**iPhone Safari/iSHのみ**（PC前提禁止）。
+
+## 目的・採用方針
+- **強化型V5を主力**に、競艇の公式出走表・選手/級別/調子/コース/モーター・交換直後の母数・展示/ST/気象/オッズを取得し、検証で精度が上がる特徴量のみ予測に採用。不採用の元データも保存。V4の購入判断を無検証で移植しない。
+- V5の正しい予測・回収率をバックテストと実Forwardで検証し、安定運用後に自動購入を**最後に別承認**。目標月利益+5万円は未実証、**BUY HARD HOLD**、LINE仮候補通知は不要。
+- 最終構成は**ConoHa VPS 2GB内にDB・収集・V5・cron・監視・バックテストを原則一元化**（バックテストは低負荷・直列）。GitHubはソース/履歴、VPS外には暗号化バックアップ。Railwayの旧収集/Actions障害の修理を深追いせず、移行まで元データと現V4稼働を維持。
+
+## 現在の実績・未完了（2026-10-14）
+- **ConoHa**：2026-10-13に2GBをPayPal支払・申込/初期設定メール受領。ただしSafariでログイン成功後に再度申込/支払画面へ戻る。サポート回答待ち、**既存VPS管理画面/SSH/OSは未確認**。再購入・追加チャージ・新アカウント作成禁止。推奨Ubuntu24.04LTSは未設定確認。
+- **V5**：2025-07-01〜2026-10-10の計画67週OOS窓は**実行0/67、実ROI未検証**。2026-07-02は180レースでオッズ238券不足のPENDING。締切後の展示/オッズや日付のみ一致の履歴を当時の凍結証拠にしない。欠測/返還不明/NO_BUY/PENDINGを勝手に補完・母数除外しない。
+- **GitHubで安全なオフライン準備完了**：V5プランDAG `ops/conoha/v5_offline_dag.py`（20/20テスト）、直列RAM/容量ガード `ops/conoha/v5_serial_resource_guard.sh`（9/9テスト）、実機診断 `ops/conoha/v5_host_preflight_readonly.sh`。**実機結線/予測は未実施**。
+- **バックアップ**：4DB用 `ops/backup/railway_pg_to_drive_stream.sh` を既定plan無通信に修正、モックテスト**14/14 PASS**。旧V3専用GitHub Actions fallback `ops/backup/v3_to_artifact_encrypt.sh`は未配線・実行禁止。**最新4DBの外部暗号化バックアップは0/4、独立フル復元0/4、所有鍵での実age往復検証も未完**。
+- **過去の別資産**：10/1旧CMS暗号化Actions artifact3件は2026-12-30失効予定（当時の隔離復元job成功）。うち約302.7MB ZIP 1件は私有Drive AへiPhoneでコピー済だが**Drive側SHA/独立復元未検証**。現在の4DBバックアップを代替しない。Railway `archive-restore-key-20261001` の復元鍵変数を保護。
+
+## 保全対象4DB（移行時の混同禁止）
+|順|Railway原本（実データを必ず現状確認）|一時保存先|
+|---|---|---|
+|1|`postgres-hobby-fullhistory-candidate-v3`（旧V3・休止、起動費注意）|私有Google A / V3専用フォルダ|
+|2|`postgres-history-archive`（履歴アーカイブ・公開TCP無し）|私有Google A / archive専用フォルダ|
+|3|`Postgres-EKp2`（**V4本番**・公開TCP無し）|私有Google A / V4専用フォルダ|
+|4|`postgres-hobby-fullhistory-candidate-v4`（**名称v4だがV5研究用**）|私有Google B / V5専用フォルダ|
+- **2025-07-01以降の全保有履歴を保全**。保存容量は現在値ではないので都度計測。別GoogleアカウントのDrive認証/rclone OAuthは未完（iSHでSafari localhost callback失敗）。公開DBポート増設を安易にしない。
+- 復元専用Ed25519秘密鍵は本人のiPhone/iSH・本人管理iCloud側で保全、GitHubには**公開鍵のみ** `ops/backup/keys/v3_recovery_recipient_20261013.pub`。秘密鍵・パスフレーズ・OAuth token・DB URLをチャット/リポジトリに載せない。公開鍵固定SHAの詳細は `ops/backup/BACKUP_SAFE_MODES_20261014.md`。
+
+## 工程・タイムスケジュール（希望と現実を分離）
+- **当初目標は2026年10月中旬に稼働開始**だったが、10/14時点でConoHaログイン・実4DBバックアップ・復元・67週バックテストが未完のため**達成日を約束できない**。安全性・実測優先。以下はConoHaアクセス復旧日を **T0** とした暫定目安で、承認・容量・通信・サポート対応により延長あり。
+- **T0前（現在）**：追加費用なしでGitHub feature branchのガード/復元鍵互換性/直列運用設計をオフラインで検証。ConoHaサポート回答を待つ。
+- **T0〜1日目の目安**：既存ConoHa VPSの契約/画面/OS/SSHを確認、診断スクリプトでCPU/RAM/空き容量を測定、安全な初期設定を本人承認のもと実施。本人復元鍵で実age往復確認。
+- **T0以降・数日〜（容量次第）**：Drive A/B本人認証、少量の暗号化テスト→旧V3・archive・V4・V5を**各1DBずつ**暗号化退避→遠隔SHA→独立PG18全件復元/同時点照合。取得/ネットワーク費用と起動は都度承認。**復元完了まではRailway削除/停止しない**。
+- **バックアップ検証後・数日〜数週間**：ConoHa 2GBで収集→締切前品質検査→V5 shadow予想→競走後結果→監査→2025-07以降67週OOSバックテスト。RAM/ディスク/WALを実測し直列化・欠測再試行。Forward検証、費用/障害復旧、V4との比較を経て運用判断。自動購入は最後の別承認。
+- **全コピー・独立復元・機能照合がPASSした後**：ユーザー個別承認でRailway/古いActionsを段階縮退。元DB削除はさらに別承認。ConoHa 4GB化は2GB実負荷とRailway費用解消後に必要なら追加承認。
+
+## 費用・絶対保護条件
+- ChatGPT＋Railway予算は理想月5,000円以下/上限目安6,000円。ConoHa/外部保存/二重稼働費も**総額**で評価。Railway費は可能なら$10〜12、$15警戒/$20超回避。CPU/RAM/Network/WAL/CIを節約。**Railway Agent/AI使用禁止**。
+- **禁止**：無承認のV4本番変更、mainマージ、4DB/サービス/cron/旧CMS資産/復元鍵の停止・削除、DB wake/接続・dump/復元・大容量転送/購入・課金、バックテスト未検証のBUY。復元前の元データ削除禁止。既に走った作業は再実行前に現状確認。
 
 ## Next ONE task
-**基本方針**：ConoHa VPS 2GB上にV5収集・DB・予測・バックテスト・cronを集約、GitHubはコード/履歴保管。Railwayは4DB元データの保全とV4本番稼働を守り、独立復元後にユーザー承認で縮退。ConoHa管理画面はサポート待ち、既存VPS状態未確認。**再購入禁止、Railway原本停止・削除禁止、BUY HARD HOLD**。
-- **今回完了（2026-10-14）**：作業ブランチの`ops/backup/railway_pg_to_drive_stream.sh`、`ops/backup/test_railway_pg_to_drive_stream_offline.sh`、`ops/backup/keys/v3_recovery_recipient_20261013.pub`を隔離Linuxに正確に再現。**3ファイルの`git hash-object`とGitHub blob SHA一致**、`bash -n` PASS、バックアップ用モックテスト**14/14 PASS**、さらに秘密引数/traceの静的チェックPASS。模擬`psql/pg_dump/age/rclone`でネットワーク実接続拒否。**これは実`age`暗号化・復号試験ではなく、Railway DB取得/Google Drive転送/PG18復元も実行0**。scriptはデフォルトplanで無通信。`ops/backup/BACKUP_SAFE_MODES_20261014.md`に安全手順あり。
-- **V5進捗**：`ops/conoha/v5_offline_dag.py`＋テスト20/20 PASS。ConoHa RAM/ディスク診断`v5_host_preflight_readonly.sh`、直列実行ガード`v5_serial_resource_guard.sh`は作成済みだが実機未導入。2025-07以降の原本/正しい締切前証拠/欠測・PENDING保護。
-- **Next ONE task**：実`age`の互換性を**隔離Linuxの一時テスト鍵だけで**検証し、SSH Ed25519公開鍵→age暗号化→対応SSH秘密鍵→復号のラウンドトリップと改変検知を確認する。ユーザー所有の本物の復元鍵はチャット/外部環境へ移さない。本物の鍵での復号はiPhone/ConoHa本人端末内で別途実施・確認するまで`BACKUP_RESTORE_KEY_VERIFIED=YES`を設定禁止。実データdump/外部保存/復元はすべて別承認。
+隔離された非課金Linuxで**一時的なテスト用SSH Ed25519鍵のみ**を使い、実`age`で暗号化→復号→改変検知を検証する。**本人の実秘密鍵は送信/取出ししない**。終了後、所有鍵での実復号確認は本人端末/ConoHaで別途実施。ここまで**実DB接続・Drive転送・GitHub Actions実行・BUYはしない**。
 
-## Source /目的と最重要ガード
-- Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
-- 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
-- V5 2025-07-01〜2026-10-10の67週間窓は計画済み**実バックテスト0/67**、買付ROI/実収益は未検証。7/2は180レースに対しオッズ238券不足でPENDING。目標+5万円/月は未証明。
-- ChatGPT＋Railway費用計月6,000円以内（理想5,000円）。Railway月$10–12目標、$15警戒、$20上限目標（なるべくさらに安く）。VPS/外部保管/移行重複期間も総額で評価。**ConoHaはまず契約済み2GBで構築・実測し、Railway依存サービスが安全に縮退し費用が実際に解消された時点で、必要なら4GBへの変更を選択肢にする（本人の追加費用承認必須）**。メモリ不足時に無理に2GB稼働を続けない。同時実行制御を優先。Railway Agent/AI禁止、無用なCPU/RAM/Network/WAL/高コストCI禁止。**V4/V5/DB/サービス/課金/バックアップ実行は都度承認**。
-
-- **2026-10-14 00時時点の復元鍵進捗**: iSHでRailway接続用とは別のpassphrase付きEd25519鍵を作成、`ssh-keygen -y`で解除成功。秘密鍵は本人端末iSH原本・iPhoneローカルコピー・iCloud Driveコピーが保存でき、利用者がiCloud.comから表示確認。**外部復号テスト未実施**、iCloudの同一アカウント・秘密鍵パスフレーズの独立保管を継続。公開鍵だけを`ops/backup/keys/v3_recovery_recipient_20261013.pub`へ作業ブランチに保存。SSH鍵fingerprint `SHA256:uTpac9KfROoNEOQoHxeT6IIXchtD/PqJUbRhRXEmPY8`（本人端末表示と公開鍵から照合）、**recipient行全体**のSHA-256は `da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234`。両者はハッシュ対象が異なる。秘密鍵/パスフレーズをGitHubに絶対保存しない。次は「公開鍵固定と独立暗号化/復号テストの準備」。
-
-## 4 DB・バックアップ優先順位
-1. **旧V3** `postgres-hobby-fullhistory-candidate-v3`：10/13時点SLEEPING、既存公開TCP proxyは1件。Railway起動・ネットワーク負担の可能性。**優先退避先：私有Google A`boat-ai-v3-temp-202610`**。
-2. **履歴archive** `postgres-history-archive`：10/13 SUCCESS、Postgres SSL18イメージ、公開TCP proxy**0**。Web ConsoleはiPhone SafariでConnectedと表示するが**文字入力不可**。同じ操作を再要求しない。私有Google A`boat-ai-history-archive-temp-202610`に独立保存。公開TCPを安易に追加しない。
-3. **V4本番 source** `Postgres-EKp2`→私有Google A`boat-ai-v4-temp-202610`。
-4. **V5研究用** `postgres-hobby-fullhistory-candidate-v4`（名前にv4でも旧V4本番ではない）→私有Google B`boat-ai-v5-temp-202610`。
-容量は変動しRAW volume占有とpg_dump圧縮サイズは異なる。**Railway元DBを消すのは外部複数コピー・暗号鍵・SHA照合・独立PG18フル復元・同一データ照合を終え、別途個別承認を得てから**。
-- 10/1の旧CMS暗号化バックアップはGitHub Actions artifact 3件（runs`36812386066`,`36867010147`,`36934788763`、API上期限2026-12-30、当時隔離復元job成功）。**現在の旧V3/history DBのバックアップではない**。復元秘密鍵用Railwayサービス`archive-restore-key-20261001`の`ARCHIVE_CMS_PRIVATE_KEY_B64*`変数が必要な旧スナップショットがある。鍵を消さない/投稿しない。
-- **外部保存実績1件**: 10/1旧V3関連CMS ZIPのGitHub artifact`11139857666`（302,656,753 bytes）を利用者がiPhoneからGoogle A旧V3専用の非共有フォルダへアップロード。Drive file`1lnMh-PefAfLObPnc14pbbDNRWZ3dZT8n`、サイズ一致、**Drive側SHA-256と独立復元は未完**。Google Drive connectorの大容量再取得は256MiB上限で不可。
-- Google AのV4/旧V3/archive、BのV5に非共有専用フォルダを用意済み。秘密フォルダIDはGitHubに書かず、必要時にlive確認。
-
-## 現状：iPhone・ConoHa・スクリプト
-- 2026-10-13 ConoHa VPS 2GBをPayPalで支払い、申込完了/初期設定完了メール受信。**Safariログイン成功後に新規申込画面へ戻る**ため管理画面の既存VPS・OS/SSH稼働は未確認。サポート連絡済、回答待ち（10/13 19時頃のGmail調査では未着）。**再購入・追加チャージ・アカウント作り直し禁止**。OS推奨Ubuntu24.04LTS、実設定未確認。
-- iSHにOpenSSH8.6+鍵gen・rclone v1.75.2 linux/386導入済（rclone起動要`GOMAXPROCS=1 GODEBUG=asyncpreemptoff=1`）。Railway専用Ed25519 SSH鍵をiSH内にパスフレーズ付き作成し公開鍵をRailway accountに**本人が登録済**。秘密鍵は非共有。SSH実疎通は未実施。Railway CLI未導入・非公開サービスのService Instance ID未取得。Web Console短縮IDからコピーできるのは`railway ssh --project=...`であり**Service Instance IDではない**。この操作の再指示禁止。
-- Google Cloud Aに本人Desktop OAuth client作成・JSONはiPhone内保管。iSH rclone OAuthは`Waiting for code`まで進んだがSafari`127.0.0.1:53682`接続失敗で**認証未完**。ChatGPT Google Drive連携のtokenをrcloneに流用不可。ConoHa SSHトンネルなど別経路待ち。
-- `ops/backup/railway_pg_to_drive_stream.sh`: PostgreSQL18→age→Google A/B rcloneの一回限り暗号化バックアップ設計、モック確認のみで**実転送0・復元0**。対応runbook `ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`。
-- **NEW** `ops/backup/v3_to_artifact_encrypt.sh`: **旧V3専用・未配線**（自動 workflow登録なし）のGitHub Actions Runner用pg_dump18→ageストリーム→encrypted artifactファイル＋SHA sidecar。デフォルト`plan`でno-op。サービスID、host/port/DB/TLS、age公開鍵fingerprint、PG18、GitHub Runner、実行・起動/Network費用・復号鍵自己テストの**独立承認ゲート**あり。 `ops/backup/test_v3_to_artifact_guard.sh`とともにfeature branchに作成済、ローカル`bash -n`＋モック停止条件**11/11 PASS**。**実PG18/age/CI/転送/復元未試験**。GitHub Secrets登録やworkflow連結なし。詳細`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`。
+## 詳細は必要時だけ個別参照
+- `docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`（V5順序/品質/再試行）
+- `docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`（OS/DB移行設計）
+- `ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`（暗号化/復元）
+- `docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`（旧Actionsの調査・GitHub実請求$0時点情報）
