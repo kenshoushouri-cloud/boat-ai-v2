@@ -3,10 +3,10 @@
 最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
 
 ## Next ONE task
-**ConoHa VPS 2GBを主軸にV5を完成させる。** ユーザー合意: GitHubはコード/履歴保管、ConoHaで予想AI・DB・収集・バックテスト・定期処理を段階的に一元管理。Railwayは移行前の4DB暗号化バックアップ/独立復元、本番維持、料金抑制だけ優先し、旧GitHub収集の個別修理を深追いしない。ConoHa管理画面はサポート回答待ち（10/14時点未確認）、**再購入・追加PayPalチャージ禁止**。
-- **今回完了 2026-10-14**: `ops/conoha/v5_host_preflight_readonly.sh` を作業ブランチに作成。VPSログイン復旧後に実行する、OS/アーキテクチャ/CPU/総・空きRAM/swap/ルート空き容量だけを読む**無通信・無書込の診断**。手元の隔離Linuxで実Bash `bash -n`PASS／通常実行PASS／危険コマンド静的スキャン該当なし、ローカル`git hash-object`とGitHub blob SHA一致。**これはConoHa実機の試験ではない**。実機で未実行、2GB運用性能も未実証。
-- **次の1作業**: ConoHaアクセスが戻るまで、V5の**2GB RAM向けジョブ直列化・実行前後の監視/過負荷防止**をGitHub feature branch内で未接続の設計・オフラインテスト。サポート返答時は既存VPSへのログイン確認→本診断→順に設定する。実デプロイ・実DB転送・有料CI・サービス停止・Railway変更は別承認。
-- ConoHaは**2GBから始め、Railway費用解消後に必要なら4GBへ増額**（別承認）。過去の締切前未取得情報は遡及して作れずmissingとして扱う。**BUY HARD HOLD**、自動購入最後。
+**ConoHa 2GBにV5の実行・DB・収集・バックテストを段階的に一元化。** GitHubはコード/変更履歴/オフサイト復旧、Railwayは4DBの安全な外部バックアップ・独立復元/現V4本番維持に限定し、旧Railway/GitHub Actionsの個別修理は優先しない。ConoHa管理画面はサポート返答待ち、同一VPSの存在/OSは未確認。**再購入・再チャージ禁止**。
+- **今回完了（2026-10-14）**: `ops/conoha/v5_serial_resource_guard.sh` と `ops/conoha/test_v5_serial_resource_guard_offline.sh` を作業ブランチに新規保存。Bash構文PASS、**独立Linuxの9/9オフラインテストPASS**。ガードは既定`--plan`（read-only/no job）、明示`--execute`でも`V5_CONOHA_EXECUTION_ENABLED=YES`が無ければ拒否。空きRAM768MiB、ルート空き25GiB、最大30分の**仮しきい値**、共通`flock`で重複起動を拒否、失敗時hold/timeout。ただし**ガードを通らないジョブは制御できず**、DB専用ボリュームや将来の全処理の実消費も未検証。ConoHa実機未導入・未実行。2ファイルともローカル`git hash-object`とGitHub blob SHAが完全一致。既存`ops/conoha/v5_host_preflight_readonly.sh`も実機未実行。
+- **次の1作業**: ConoHa復旧を待ちながら、V5処理の実行順序と競合するcron/二重write/欠測時リトライ規則を**設計・静的調査**。実機ログインが可能になったら`v5_host_preflight_readonly.sh`でRAM/diskを実測し、しきい値調整・V5実行の有効化は別承認。ConoHa2GBから開始し、Railway費用解消後の増強は必要時かつ本人別承認。
+- **HARD HOLD**: Railway・V4本番・4DB原本削除/停止禁止、実バックアップ/復元未完了、ConoHa実移行/有料CI/cron切替/自動購入は禁止。2025-07以降の原本保護、締切前欠測は後から再現証拠を作れないためmissingを記録。
 
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
