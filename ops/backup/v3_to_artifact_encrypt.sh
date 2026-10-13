@@ -58,6 +58,18 @@ fi
 actual_recipient_sha="$(printf '%s' "$V3_AGE_RECIPIENT" | sha256sum | awk '{print $1}')"
 [[ "$actual_recipient_sha" == "$V3_AGE_RECIPIENT_SHA256" ]] || fail 'recipient_pin_mismatch'
 
+# Second, independent fixed pin and tracked public-key match.
+# Prevent a simultaneous wrong-key + wrong-hash input from passing the first check.
+v3_preapproved_recipient_sha='da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234'
+[[ "$actual_recipient_sha" == "$v3_preapproved_recipient_sha" ]] || fail 'recipient_not_preapproved_v3_key'
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+recovery_pub_file="$script_dir/keys/v3_recovery_recipient_20261013.pub"
+[[ -f "$recovery_pub_file" ]] || fail 'recovery_public_key_file_missing'
+pinned_recipient="$(tr -d '\r\n' < "$recovery_pub_file")"
+[[ "$pinned_recipient" == "$V3_AGE_RECIPIENT" ]] || fail 'recipient_not_matching_tracked_public_key'
+unset pinned_recipient recovery_pub_file v3_preapproved_recipient_sha
+
+
 # Check the URL in-memory. NEVER echo URI, username, passwords or full env.
 source_identity="$(python3 - <<'PY'
 import os, sys
