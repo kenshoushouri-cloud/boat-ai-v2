@@ -57,13 +57,36 @@ PY
 rclone listremotes | grep -Fxq "${remote}:" || fail 'matching_rclone_remote_not_configured'
 # config show can contain OAuth secrets; capture in memory, NEVER print.
 remote_config="$(rclone config show "$remote")" || fail 'rclone_config_unreadable'
+# Keep OAuth tokens in memory and never log the remote config.
 configured_folder="$(printf '%s\n' "$remote_config" | awk -F '=' '
   /^[[:space:]]*root_folder_id[[:space:]]*=/ {
     sub(/^[[:space:]]*/, "", $2); sub(/[[:space:]]*$/, "", $2); print $2
   }
 ')"
+configured_client_id="$(printf '%s\n' "$remote_config" | awk -F '=' '
+  /^[[:space:]]*client_id[[:space:]]*=/ {
+    sub(/^[[:space:]]*/, "", $2); sub(/[[:space:]]*$/, "", $2); print $2
+  }
+')"
+configured_scope="$(printf '%s\n' "$remote_config" | awk -F '=' '
+  /^[[:space:]]*scope[[:space:]]*=/ {
+    sub(/^[[:space:]]*/, "", $2); sub(/[[:space:]]*$/, "", $2); print $2
+  }
+')"
+configured_type="$(printf '%s\n' "$remote_config" | awk -F '=' '
+  /^[[:space:]]*type[[:space:]]*=/ {
+    sub(/^[[:space:]]*/, "", $2); sub(/[[:space:]]*$/, "", $2); print $2
+  }
+')"
 unset remote_config
+[[ "$configured_type" == drive ]] || fail 'remote_backend_not_google_drive'
 [[ "$configured_folder" == "$DRIVE_EXPECTED_FOLDER_ID" ]] || fail 'drive_root_folder_mismatch'
+# The rclone shared client_id is being retired in 2026.
+[[ "$configured_client_id" == *.apps.googleusercontent.com ]] \
+  || fail 'private_oauth_client_id_required'
+# Existing user-created folders are not accessible using drive.file by default.
+# This scope grants access to all Drive files in the chosen dedicated account.
+[[ "$configured_scope" == drive ]] || fail 'drive_scope_must_be_explicitly_full'
 
 # Read-only connection test (does not count rows or scan application tables).
 export PGOPTIONS='-c default_transaction_read_only=on'
