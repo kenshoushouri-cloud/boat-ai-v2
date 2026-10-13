@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # ONE-SHOT V4 or V5 PostgreSQL 18 logical backup, encrypted to Google Drive.
 # NOT a cron. No backup is stored in a Railway PostgreSQL volume.
-# Requires separately configured rclone remotes:
-#   boat-drive-v4 -> Google account A, root_folder_id = V4 private folder
-#   boat-drive-v5 -> Google account B, root_folder_id = V5 private folder
+# Requires separately configured rclone remotes and private folder IDs:
+#   boat-drive-v4      -> Google account A, V4 folder
+#   boat-drive-v3      -> Google account A, independent V3 folder
+#   boat-drive-archive -> Google account A, independent history-archive folder
+#   boat-drive-v5      -> Google account B, V5 folder
+# Same Google account A does NOT mean reusing V4's private folder.
 # Do not put DATABASE_URL, OAuth tokens, private age keys or rclone.conf in GitHub/chat.
 set -euo pipefail
 umask 077
@@ -12,9 +15,11 @@ fail() { printf 'BACKUP_ABORT=%s\n' "$1" >&2; exit 1; }
 mode="${BACKUP_MODE:-preflight}"
 target="${BACKUP_TARGET:-}"
 case "$target" in
-  v4) remote='boat-drive-v4' ;;
-  v5) remote='boat-drive-v5' ;;
-  *) fail 'BACKUP_TARGET_must_be_v4_or_v5' ;;
+  v4)      remote='boat-drive-v4' ;;
+  v3)      remote='boat-drive-v3' ;;
+  archive) remote='boat-drive-archive' ;;
+  v5)      remote='boat-drive-v5' ;;
+  *) fail 'BACKUP_TARGET_must_be_v3_v4_v5_or_archive' ;;
 esac
 case "$mode" in preflight|execute) ;; *) fail 'invalid_BACKUP_MODE' ;; esac
 
