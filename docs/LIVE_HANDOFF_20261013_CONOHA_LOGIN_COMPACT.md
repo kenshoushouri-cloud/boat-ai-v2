@@ -52,5 +52,7 @@
 
 - **2026-10-13 19時：Google A上旧CMS ZIP整合性検証の限界**: iPhoneアップロード済`1lnMh-PefAfLObPnc14pbbDNRWZ3dZT8n`はDrive版情報でも1revision・302656753bytes、非共有・指定フォルダ在籍を確認。GitHub original ZIPは現作業コンテナで`sha256=e9e2f99e8503529430d0e9f9e58604d2b4abee2db2185ffd190c8de88a4ba42c`、ZIP testzip PASS、3エントリ(CMS/PEM/manifest)。Drive connector `fetch(download_raw_file=true,include_base64=false)`は413（256MiB/268435456bytes制限）で失敗、Drive metadata/list revisionはchecksumを返さないため**Drive上の内容hash一致をまだ確認できない**。アップロードサイズ一致を完全照合・復元PASSと表現しない。ツールの再トライやRailway起動・移動・消去はしない。次はConoHa VPS管理画面復旧→認証済みホストによるDrive API/Rclone hash・独立restore、もしくはiPhone手元コピーのsha256測定だがDrive上原本との同一性は別途要検証。
 
+- **2026-10-13 19時台 Next alternative**: GmailでConoHa支払確認・VPS 2GB申込完了・管理画面ログイン通知あり。サポート返信は未検出。ConoHa待ちの代替として`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`を設計（Railway SSH/非TTY→外部CIでPG18ダンプ→age暗号化→GitHub Actions短期artifact→本人がGoogle Driveへ保存）。**設計のみ**、SSH鍵の有無未確認、Railway起動/通信/Actions/ダンプ/復元未実行。次は低コストで既存Railway SSH鍵登録・CI利用可能性の確認。実DB接続と実dumpは別承認。秘密鍵はRailway/GitHub外に独立保管、過去CMSと区別。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
