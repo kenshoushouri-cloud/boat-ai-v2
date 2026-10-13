@@ -27,6 +27,13 @@ GitHub Free本人Billing画面の2026-10-01はLinux **1,858分**、10-04はLinux
 ## Next ONE task
 **該当する10/1／10/4付近のGitHub Actions Run/Job時間を読み取り専用で突き合わせ**、workflow別の実行分数を特定して停止候補と移行優先順位を決定する。履歴API制限で該当Run IDの直接取得が難しければ、ユーザーにSafariのGitHub Actions画面から実行履歴1件を指定してもらう。費用・機能維持を確認できるまで自動停止しない。
 
+## 2026-10-14 07:13：展示ST #190 collect失敗の実原因（UI + Railway read-only）
+- GitHub UIの #190 job `collect` は23秒で失敗。`actions/checkout`, `setup-python`, `setup-node`, `Install dependencies` は成功。次の **`Load public database URL without publishing it` が7秒で失敗**。表示エラーは **`DATABASE_PUBLIC_URL not found`** と `exit code 1`。その後の `Run delayed-schedule resilient collection loop` は**skipped**。**このrunで展示ST収集処理は実施されていない**。他のRailwayサービス等による代替取得や実欠測は未確認。
+- GitHub main `.github/workflows/exhibition-st-forward-scheduled-collector.yml`は `railway variable list --service postgres --environment production --json` の出力から `DATABASE_PUBLIC_URL` を拾う旧設定。
+- Railway live `boat-v2-postgres` production `list_services`のDB名は `Postgres-EKp2`、`postgres-history-archive`、`postgres-hobby-fullhistory-candidate-v3`、`postgres-hobby-fullhistory-candidate-v4`。**`postgres`完全一致のServiceは存在せず**。現V4本番 `Postgres-EKp2`の`describe_service`は最新デプロイSUCCESS、**TCP proxy 0**、変数名 `DATABASE_URL` はあるが `DATABASE_PUBLIC_URL`は**無い**（変数の値は取得していない）。
+- 原因評価：**旧サービス名＋PUBLIC_URL前提が現productionと不一致**。これが#190のmissing URLと整合する。公開TCPを急いで新設しない。収集先DBの契約/時点固定/サービスのどれが正しいか現行実装から特定して安全に移行すべき。V4本番への無断変更は禁止。
+- 次ONE task：既存の**Railway側展示ST収集ジョブの有無・稼働状態・収集先**をread-onlyで確かめ、代替取得の有無を調査する。**既存workflowを書き換えたり再実行したりcron停止しない**。
+
 ## 2026-10-14 追加実測：展示STの10月1日（ユーザーGitHub Actions画面）
 - GitHub UIは `created:2026-10-01` で **3 run results**。すべてmainのScheduledで失敗（赤×）。
 - #188 09:53 JST 13秒、#189 15:37 JST 28秒、#190 22:50 JST 25秒。表示分の実行時間合計 **66秒＝約1.1分**。個々のrunページ/原因ログは未確認。
