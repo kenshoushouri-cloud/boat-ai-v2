@@ -46,5 +46,7 @@
 
 - **2026-10-13 18時／履歴archive依存監査（read-only）**: Railway production 37サービス維持、V3 SLEEPING、history archive SUCCESS。主要8件の変数**名**で通常cronに明示`ARCHIVE_DATABASE_URL`なし、ただし共通`DATABASE_URL`の値は非確認で依存なしの証明にはならない。重要：`archive-restore-key-20261001`に過去`*.dump.cms`用`ARCHIVE_CMS_PRIVATE_KEY_B64*`変数が複数残り、旧V3 parity・V4 final-syncワークフローでその復号鍵を使用。**旧CMSアーティファクト鍵と、履歴アーカイブPostgreSQL DB、今後のage鍵は別物**。過去CMS artifactは3件live存在確認（run 36812386066、36867010147、36934788763、いずれも2026-12-30期限、当時の独立PG18復元job成功）。**現在DBのフルバックアップ証明ではない**。現在の再ダウンロード・SHA/鍵再照合・再復元およびDriveへのコピー未実施。期限前の外部コピーが必要。鍵/アーティファクト/DBは一律削除禁止。詳細は`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`を更新。Drive OAuthは未完・実バックアップ0件。次のONE taskはサポート回答後のConoHa管理画面アクセスまたはiPhone SSH安全認証経路の確認。Railway/Drive書込・再起動・請求変更なし。
 
+- **2026-10-13 GitHub旧V3暗号化アーカイブ取得**: live Actions run `36812386066`, artifact `11139857666` （約303MB・GitHub保管期限2026-12-30）をZIPとして取得し、ZIP全エントリ整合性PASS。中身は`*.dump.cms`、公開証明書、非秘密manifestのみ（復号秘密鍵は含まない）。ZIP SHA-256 `e9e2f99e8503529430d0e9f9e58604d2b4abee2db2185ffd190c8de88a4ba42c`。manifest上、当時の隔離PG18復元ハッシュ・構造一致実績あり。**現DBのバックアップではない**。GitHub→Google Driveコネクタ直接受け渡しは`file_uri`型不一致で失敗し、Google A旧V3用非共有フォルダはliveで空0件を再確認。ZIPはチャットの一時添付として利用可能だが**Google Driveへの実アップロードは0件**。次は本人がiPhoneでZIPをGoogle A/V3フォルダへ保存→Drive上のサイズ確認（無理ならConoHa OAuth復旧待ち）。別途CMS秘密鍵の保全・完全復元が必要。Railway DB・cron・課金変更なし。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
