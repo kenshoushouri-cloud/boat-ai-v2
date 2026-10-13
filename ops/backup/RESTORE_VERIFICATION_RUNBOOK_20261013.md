@@ -17,6 +17,16 @@
 - 追加のVPS容量、メモリ、DBサービス、外部転送、書込・費用が発生する作業は**その直前にユーザー承認**。ConoHaのVPS復旧とOS/SSH保護を先に済ませる。
 - 2026-10-13時点、バックアップスクリプト `ops/backup/railway_pg_to_drive_stream.sh` は**モック検証のみ**。実DBバックアップを勝手に始めない。
 
+## 0.1 別途保全が必要な過去の暗号化スナップショット鍵（2026-10-13 read-only監査）
+
+- live Railway `archive-restore-key-20261001` サービスの**環境変数名のみ**に `ARCHIVE_CMS_PRIVATE_KEY_B64` と `ARCHIVE_CMS_PRIVATE_KEY_B64_PARITY_*` を確認。値・秘密鍵は表示も出力もしていない。
+- GitHub `.github/workflows/railway-hobby-fullhistory-v3-parity-readonly.yml` と `railway-hobby-v4-final-sync-safe.yml` 等が、この鍵を利用して**過去のGitHub Actions保管 `.dump.cms` アーティファクト**を復号・復元する設計であることをコードで確認。これらは今回新設の`pg_dump | age | Google Drive`方式とは**別の旧世代のバックアップ**。Google DriveへPostgreSQL DBをコピーしてもCMS秘密鍵やActions上の過去アーティファクトが自動保全されるわけではない。
+- **現時点でarchive PostgreSQL DBのデータ自体がこの鍵で暗号化されていると確認できたわけではない。** 鍵サービスと`postgres-history-archive`は別サービス。名前から同一用途と決めつけない。
+- 旧CMSアーティファクトについては、実在・有効な保持期限・`manifest`・公開証明書・秘密鍵との対応・独立復元可能性を**別途**確認。GitHub Actions artifactsの保持期限切れもあり得るため、記録されたrun番号や成功ログだけで存在/復元可能と判断しない。
+- **削除禁止**: `archive-restore-key-20261001`サービス、復元に関係する鍵変数、対応する旧CMSアーティファクト、V3/履歴archiveのDBは、用途・独立コピー・復元検証が終わり、ユーザーが個別に承認するまで削除しない。鍵やOAuth秘密をGitHubドキュメント/チャット/公開Driveへ載せない。
+- 主要8サービス（historical-recent-form-runner、historical-backfill、cron-data-prepare、cron-learning-all、candidate-v4 DB、archive-restore-key、backtest-analysis、cron-final-check）の環境変数**名**を調査。通常cronの7件に明示的な`ARCHIVE_DATABASE_URL`名は見当たらなかったが、共通`DATABASE_URL`の実値は非開示であり、GitHubの手動アーカイブworkflowもあるため、**これをもって依存なしと判断しない**。元DBの停止判断前に別途依存調査が必要。
+- 今回はread-onlyのAPI・GitHubコード調査のみ。Railwayサービス変更/再起動/起動・dump・Drive転送・復元・削除なし。
+
 ## 1. アーカイブ候補の受入れ（まだ本番実行しない）
 
 1. 各Googleアカウントの本人認可がrclone側で完了し、対象remotesの`root_folder_id`がそれぞれの非共有フォルダと一致することを確認。**OAuth秘密、DB URL、復号秘密鍵はGitHub/チャットに貼らない**。
