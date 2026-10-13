@@ -18,4 +18,4 @@
 - 4 DBの移行と必要な独立バックアップが検証され、個別に本人承認されるまで、Railway本番/研究DB・cron・秘密鍵サービスは停止/削除禁止。
 - ConoHaはまず2GB。必要な場合のみRailway費用解消後に追加承認して4GBを検討。V5 BUY HARD HOLD。
 
-**Next**: current compact handoffの「Next ONE task」を最優先。一時的なテスト鍵のみで実`age`暗号化→復号・改変検知を確認し、ConoHa管理画面復旧後に所有復元鍵の実往復・小容量暗号化DBバックアップ＋独立復元へ段階移行。勝手に実DBへ接続しない。
+**2026-10-14 追記**：`ops/backup/test_age_ssh_tempkey_roundtrip.sh`を追加（持主鍵を扱わず、使い捨てEd25519鍵でage往復/改変検知する設計）。隔離Linuxで`bash -n`PASS、デフォルトは`age`が未導入のため**exit69＝実age未実行**。ssh-keygenも未導入。Python cryptographyでは使い捨てOpenSSH鍵形式/署名検証のみPASS（age互換性未確認）。ツール取得用外部ネットワークにも到達できず**成功とみなさない**。ConoHa復旧後に必要コマンドを正規手段で用意し、本人秘密鍵を持ち出さず使い捨て鍵→所有鍵往復→実DB退避/復元の順に確認。最新のNext ONE taskはcurrent compact handoffを優先。
