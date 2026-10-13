@@ -36,5 +36,7 @@
 
 - **2026-10-13 V5 Counter品質改善（ConoHa待機中）**: `v5/offline_prior_day_counter_update.py` のコース学習を修正。6艇の確定着順に重複・欠落がある場合、`cs/ct/rcs/rct` の更新を抑止し、元のcourse_rowsおよび確認済みレース勝者の学習は維持。`tests/test_v5_offline_prior_day_counter_update.py` に再発防止ケースを追加。独立述語模擬6ケースPASS、**リポジトリ全テスト・Railway実DB・精度改善は未検証**。変更はfeature branchのみ、本番V4・Railway費用影響なし。次のONE taskはV5ユニットテストの実環境実行方法を確認（高コストCIは避ける）。
 
+- **Google Drive Aへの追加退避方針（2026-10-13）**: V4本番に加えてSLEEPING旧V3（live使用4.5526GB）と履歴アーカイブ（2.3396GB）を**同じGoogle Aアカウントの独立2フォルダ**へ暗号化退避する。V4（3.8063GB）と合算raw約10.70GB、A空き以前約14.93GBだが実圧縮ファイル/Drive残容量は未実測。V5はGoogle B維持。`ops/backup/railway_pg_to_drive_stream.sh`に`v3/archive`ターゲット/別root_folder_idチェックを追加し、詳細は`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`に記録。履歴archiveはrecent-form手動転送workflow依存の可能性があり参照/固有データ未確認。**実転送、フォルダ作成、暗号化実検証、独立復元、削除は未実施**。次はユーザーがAにV3とarchiveの独立2フォルダを作成、次いで秘密を開示せず接続先照合。実データ削除は別承認。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
