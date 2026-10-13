@@ -28,12 +28,13 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 - B: ユーザーが `boat-ai-v5-temp-202610` 作成完了とフォルダ直リンクを提示。現接続中のDrive connector(A)でBのフォルダmetadata取得は404（権限外と考えられる）で**未検証**。フォルダID/URLは公開リポジトリに記録せず、今後Bのアカウント本人認証・フォルダ名・非共有を確認する。A/Bを混同してバックアップを投入しない。
 - 次のONE task: Bの独立Googleアカウントに対する安全な認証・保存先指定を検討し、Bの実フォルダ確認と大容量ストリーミング転送の認証を混同しない。OAuth権限情報をチャット/GitHubに貼らない。新規課金、データ転送、Railway設定変更は未承認。
 
-### iPhoneのみのGoogle Drive認証方針（2026-10-13）
-- Google Drive A/Bは個人用無料アカウント。**GoogleのサービスアカウントをMy Driveに直接アップロードする方式は採用しない**（サービスアカウントはMy Driveのファイル所有/容量を持たない）。`rclone`のDrive接続はユーザー本人のOAuth 2.0認証が必要。rclone共用OAuth client_idは2026年中の提供終了が告知されているため、継続前提にしない。
-- 通常のrclone headless設定は別端末にrclone + browser、またはSSHポート転送が必要。**iPhone単独で同方式を実行できることは未検証**。無理にOAuthコード、refresh token、rclone.conf、Googleパスワードをチャット/GitHubへ貼らせない。
-- 認証の実装候補は本人のブラウザ認証を使うHTTPS OAuth構成（Google Cloud OAuthクライアント・承認画面・限定権限・Railway側秘密保持）。必要な設定・コストとセキュリティを確認してから、ユーザーの別途承認を得て一時サービスを用意する。2026-10-13時点で**OAuth・Drive接続・dump・アップロードはすべて未実施**。
-- 無課金で先にできること：本人がiPhoneのGoogle DriveでA/Bそれぞれに非共有の移行専用フォルダを作成。例：`boat-ai-v4-temp-202610`、`boat-ai-v5-temp-202610`。フォルダ共有や認証情報送信は禁止。これだけではバックアップできていない。
-- RailwayのV4はprivate endpointのみ、V5はpublic proxyあり。取得が必要な場合はRailway内部の一時ジョブからPG18互換`pg_dump`をストリームして暗号化・外部保管する案を維持し、新規サービス/公開ポート/費用発生操作は承認まで禁止。
+### iPhoneのみのGoogle Drive認証・転送ゲート（2026-10-13、調査済み・未実行）
+- **保存先**: A（接続済み・空フォルダを確認）= V4本番、B（ユーザーから直リンク受領・別アカウントで現在のconnectorからはアクセス不可）= V5研究用。使用中の第三アカウントは使わない。
+- **API認証**: ChatGPTのGoogle Driveコネクタの権限はRailway/rcloneへ移植できない。各Googleアカウント本人のOAuth 2.0同意が別途必要。Google Drive APIの狭い`drive.file`は原則推奨だが、事前作成した既存フォルダの使用にはGoogle Picker等の追加許可が要る。rclone標準の`drive`権限はDrive全体へ及ぶため、隔離されたA/Bの限定用途・承認画面確認が必要。サービスアカウントで個人My Driveへ直接保存する案は採用しない。
+- **iPhone制約**: 公式rcloneのヘッドレスOAuthは別のrclone実行端末またはSSHローカルポート転送等を要する。iPhone単独での安全なブラウザ認証・ポート転送経路は**未検証**。安易な公開OAuthリダイレクト/トークン貼付/共有リンク化をしない。rclone共用Google OAuth clientは2026年に廃止予定なので長期依存しない。
+- **移行ジョブ案（実行前に明示承認）**: Railway内部の一時ジョブからPG18互換`pg_dump -Fc`を取得し、公開ポート増設をせずストリーム暗号化（例: age）→認証済みGoogle Drive A/Bへ送る。DB Volume内へダンプを置かず、再試行前にサイズ・空き容量・通信費を確認する。転送先はフォルダIDだけでなくOAuthのアカウント識別を確認。
+- **実行ゲート**: A/Bの本人認証→各フォルダへ少量の非秘密テストファイルを書き込み確認→暗号鍵を別保管→まず小規模ダンプで`pg_restore`実地試験→V4/V5本体→SHA-256/スキーマ・行数/別環境復元照合。完了まで元DB/必要cron維持、BUY禁止。
+- **Next ONE task**: iPhone-onlyで実行可能な安全なOAuthブートストラップ手段（ConoHa復旧後のSSHトンネル等）を1案に絞り、必要なアプリ機能/料金/Google権限を確認。実現できなければ追加費用と復元性を比較して代替保存先を承認取得。**OAuth・一時ジョブ・dump・Driveへの転送は未実施**。Googleのパスワード、OAuthコード/refresh token、rclone.conf、復号鍵をGitHub/チャットに載せない。
 
 ### Google Drive 2アカウント容量確認（2026-10-13）
 - アカウントA：使用0.07GB、15GB無料枠想定で空き約14.93GB。アカウントB：使用0.01GB、空き約14.99GB。合計空き約29.92GBだが**容量は合算利用できない**。使用中の第三アカウントは触らない。
