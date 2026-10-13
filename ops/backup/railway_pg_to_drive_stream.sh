@@ -8,11 +8,20 @@
 #   boat-drive-v5      -> Google account B, V5 folder
 # Same Google account A does NOT mean reusing V4's private folder.
 # Do not put DATABASE_URL, OAuth tokens, private age keys or rclone.conf in GitHub/chat.
+set +x # Never inherit tracing into any credential-handling path.
 set -euo pipefail
 umask 077
 
 fail() { printf 'BACKUP_ABORT=%s\n' "$1" >&2; exit 1; }
-mode="${BACKUP_MODE:-preflight}"
+mode="${BACKUP_MODE:-plan}"
+case "$mode" in
+  plan)
+    printf 'BACKUP_STATUS=NOT_EXECUTED\n'
+    printf 'BACKUP_CONNECTION=NOT_ATTEMPTED\n'
+    exit 0 ;;
+  validate|preflight|execute) ;;
+  *) fail 'invalid_BACKUP_MODE' ;;
+esac
 target="${BACKUP_TARGET:-}"
 case "$target" in
   v4)      remote='boat-drive-v4' ;;
@@ -21,11 +30,15 @@ case "$target" in
   v5)      remote='boat-drive-v5' ;;
   *) fail 'BACKUP_TARGET_must_be_v3_v4_v5_or_archive' ;;
 esac
-case "$mode" in preflight|execute) ;; *) fail 'invalid_BACKUP_MODE' ;; esac
-
-# Execute mode fails before any connection unless separately authorized.
+# These approvals must precede any database access, including read-only preflight.
+# A read-only SELECT can wake sleeping Railway and incur usage charges.
+if [[ "$mode" == preflight || "$mode" == execute ]]; then
+  [[ "${BACKUP_CONNECT_APPROVED:-}" == YES ]] || fail 'connection_not_approved'
+  [[ "${BACKUP_NETWORK_COST_APPROVED:-}" == YES ]] || fail 'network_cost_not_approved'
+fi
 if [[ "$mode" == execute ]]; then
   [[ "${BACKUP_EXECUTE_APPROVED:-}" == YES ]] || fail 'execution_not_approved'
+  [[ "${BACKUP_RESTORE_KEY_VERIFIED:-}" == YES ]] || fail 'recovery_key_test_not_confirmed'
 fi
 
 : "${SOURCE_DATABASE_URL:?Set source Railway DB URL in secret variables}"
@@ -33,12 +46,29 @@ fi
 : "${SOURCE_EXPECTED_PORT:?Independently verify the source TCP port for this target}"
 : "${SOURCE_EXPECTED_DATABASE:?Independently verify the approved DB name for this target}"
 : "${DRIVE_EXPECTED_FOLDER_ID:?Set the approved private Drive folder ID}"
-: "${AGE_RECIPIENT:?Set public age1 recipient; NEVER the private key}"
-: "${AGE_EXPECTED_RECIPIENT_SHA256:?Pin independently verified recovery public key fingerprint}"
-[[ "$AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]] || fail 'invalid_age_recipient'
+: "${AGE_RECIPIENT:?Set public age1 OR dedicated ssh-ed25519 public recipient; NEVER the private key}"
+: "${AGE_EXPECTED_RECIPIENT_SHA256:?Pin independently verified full recipient line hash}"
+if [[ "$AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]]; then
+  :
+elif [[ "$AGE_RECIPIENT" =~ ^ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]][^[:space:]]+)?$ ]]; then
+  :
+else
+  fail 'invalid_age_recipient'
+fi
 [[ "$AGE_EXPECTED_RECIPIENT_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid_expected_age_fingerprint'
 recipient_fingerprint="$(printf '%s' "$AGE_RECIPIENT" | sha256sum | awk '{print $1}')"
 [[ "$recipient_fingerprint" == "$AGE_EXPECTED_RECIPIENT_SHA256" ]] || fail 'age_recipient_fingerprint_mismatch'
+# V3 has a separately pinned user-owned SSH recovery recipient. Reject swapped
+# recipient AND swapped hash even if they match one another.
+if [[ "$target" == v3 ]]; then
+  [[ "$recipient_fingerprint" == da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234 ]] \
+    || fail 'v3_recipient_not_preapproved'
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  tracked_v3_pub="$(tr -d '\r\n' < "$script_dir/keys/v3_recovery_recipient_20261013.pub")" \
+    || fail 'v3_public_key_unavailable'
+  [[ "$tracked_v3_pub" == "$AGE_RECIPIENT" ]] || fail 'v3_recipient_not_matching_tracked_key'
+  unset tracked_v3_pub
+fi
 # This fingerprint must be documented separately from the AGE_RECIPIENT
 # env var; otherwise a simultaneous accidental change could pass the check.
 [[ "$DRIVE_EXPECTED_FOLDER_ID" =~ ^[A-Za-z0-9_-]{12,}$ ]] || fail 'invalid_drive_folder_id'
@@ -59,17 +89,36 @@ try:
     parsed = urlsplit(os.environ['SOURCE_DATABASE_URL'])
     if parsed.scheme not in ('postgres', 'postgresql') or not parsed.hostname:
         raise ValueError('invalid URI')
+    if not parsed.username or parsed.password is None:
+        raise ValueError('credentials required')
     port = parsed.port
     if port is None or not 1 <= port <= 65535:
         raise ValueError('explicit port required')
-    print(f'{parsed.hostname}|{port}')
-except (ValueError, KeyError):
+    from urllib.parse import parse_qs, unquote
+    import re
+    sslmode = parse_qs(parsed.query).get('sslmode', [''])[-1]
+    if sslmode not in ('require', 'verify-ca', 'verify-full'):
+        raise ValueError('TLS required')
+    db = unquote(parsed.path.lstrip('/'))
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,63}', db):
+        raise ValueError('invalid DB name')
+    print(f'{parsed.hostname}|{port}|{db}')
+except (ValueError, KeyError, TypeError):
     raise SystemExit(11)
 PY
 )" || fail 'source_url_malformed_or_missing_port'
-IFS='|' read -r actual_host actual_port <<< "$actual_endpoint"
+IFS='|' read -r actual_host actual_port actual_db <<< "$actual_endpoint"
 [[ "$actual_host" == "$SOURCE_EXPECTED_HOST" ]] || fail 'source_host_mismatch'
 [[ "$actual_port" == "$SOURCE_EXPECTED_PORT" ]] || fail 'source_port_mismatch'
+[[ "$actual_db" == "$SOURCE_EXPECTED_DATABASE" ]] || fail 'source_database_name_mismatch'
+unset actual_endpoint actual_host actual_port actual_db
+
+# Static validation: no database connection and no Drive API call.
+if [[ "$mode" == validate ]]; then
+  printf 'BACKUP_STATIC_PREFLIGHT=PASS\n'
+  printf 'BACKUP_CONNECTION=NOT_ATTEMPTED\n'
+  exit 0
+fi
 
 rclone listremotes | grep -Fxq "${remote}:" || fail 'matching_rclone_remote_not_configured'
 # config show can contain OAuth secrets; capture in memory, NEVER print.
@@ -107,7 +156,10 @@ unset remote_config
 
 # Read-only connection test (does not count rows or scan application tables).
 export PGOPTIONS='-c default_transaction_read_only=on'
-db_identity="$(psql "$SOURCE_DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -F '|' \
+# libpq accepts PostgreSQL URLs via PGDATABASE. Keep credentials out of argv.
+export PGDATABASE="$SOURCE_DATABASE_URL"
+unset SOURCE_DATABASE_URL
+db_identity="$(psql -X -A -t -v ON_ERROR_STOP=1 -F '|' \
   -c "select current_database(), current_setting('server_version_num')")" \
   || fail 'db_readonly_preflight_failed'
 IFS='|' read -r actual_database db_version <<< "$db_identity"
@@ -137,7 +189,7 @@ md5_pid=$!
 
 # Neither source database nor its attached volume receives a backup file.
 # On pipeline failure, pipefail forces a nonzero exit; no promotion occurs.
-if pg_dump "$SOURCE_DATABASE_URL" --format=custom --compress=gzip:6 \
+if pg_dump --format=custom --compress=gzip:6 \
     --no-owner --no-acl \
   | age -r "$AGE_RECIPIENT" \
   | tee "$tmpdir/hash-fifo" "$tmpdir/md5-fifo" \
