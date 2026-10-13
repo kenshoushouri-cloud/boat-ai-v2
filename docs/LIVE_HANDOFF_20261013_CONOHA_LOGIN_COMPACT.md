@@ -11,6 +11,8 @@
 
 - **2026-10-14朝：V3暗号化バックアップ offline TEST 実測**: GitHub `ops/backup/v3_to_artifact_encrypt.sh` と `ops/backup/test_v3_to_artifact_guard.sh`、公開鍵 `.pub` を取込み、`git hash-object`がGitHub live blob SHAと一致することを確認。実Bash `bash -n` PASS、模擬DBクライアント経由で **22/22 CASES PASS**（無承認、V3以外、非CI、誤service/host/port/database/URL/TLS、recipient pin/公開鍵file改変/欠落、PG接続無しのvalidate含む）。テストを22ケースへ拡張してfeature branch更新、GH blob SHA再照合PASS。**本物のpg_dump/age/復元、Railway実接続、Actions実行はいずれも0**。ConoHaサポート返答はユーザー2026-10-14 00時台報告で未着、その後の確認は未。次ONE taskはユーザー操作無しで進められる**GitHub Actionsを未配線のまま秘密情報非露出を静的監査**し、ConoHa復旧後の実age往復/旧V3バックアップを明示承認の上で進める。旧V3は起動させない、費用増禁止。
 
+- **2026-10-14朝 旧V3 secret leakage対策実測**: `ops/backup/v3_to_artifact_encrypt.sh`でDB URIをpsql/pg_dumpコマンド**引数から排除**し、libpq `PGDATABASE`環境変数へ切替、直後に冗長な`V3_SOURCE_DATABASE_URL`をunset。`set +x`でshell tracing無効化。`age -R`は承認済み公開鍵ファイルのみ使用。`ops/backup/test_v3_to_artifact_guard.sh`に回帰ガード追加。**GitHub現行blobとローカルgit hash-object完全一致**、2本の`bash -n` PASS、オフライン模擬**23/23 PASS**。これでargv経由の露出を低減（環境変数への機密保持配慮は継続）。**実Postgres/age/CI、Railway起動・転送・料金操作は未実施**。次ONE taskはConoHaサポート進展待ちか、未配線のGitHub Actions実行前の静的プライバシー監査。
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
