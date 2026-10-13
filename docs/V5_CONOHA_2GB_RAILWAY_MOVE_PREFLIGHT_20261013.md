@@ -25,7 +25,7 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 
 ### Google Driveフォルダの作成状況（2026-10-13）
 - A: `boat-ai-v4-temp-202610` はGoogle Drive connectorで実在・空フォルダを確認済み。
-- B: ユーザーが `boat-ai-v5-temp-202610` 作成完了を報告。現接続中のDrive connector検索では該当フォルダ0件。**別アカウントのため未検証**であり、存在しないと断定しない。A/Bを混同してバックアップを投入しない。
+- B: ユーザーが `boat-ai-v5-temp-202610` 作成完了とフォルダ直リンクを提示。現接続中のDrive connector(A)でBのフォルダmetadata取得は404（権限外と考えられる）で**未検証**。フォルダID/URLは公開リポジトリに記録せず、今後Bのアカウント本人認証・フォルダ名・非共有を確認する。A/Bを混同してバックアップを投入しない。
 - 次のONE task: Bの独立Googleアカウントに対する安全な認証・保存先指定を検討し、Bの実フォルダ確認と大容量ストリーミング転送の認証を混同しない。OAuth権限情報をチャット/GitHubに貼らない。新規課金、データ転送、Railway設定変更は未承認。
 
 ### iPhoneのみのGoogle Drive認証方針（2026-10-13）
