@@ -26,3 +26,9 @@ GitHub Free本人Billing画面の2026-10-01はLinux **1,858分**、10-04はLinux
 
 ## Next ONE task
 **該当する10/1／10/4付近のGitHub Actions Run/Job時間を読み取り専用で突き合わせ**、workflow別の実行分数を特定して停止候補と移行優先順位を決定する。履歴API制限で該当Run IDの直接取得が難しければ、ユーザーにSafariのGitHub Actions画面から実行履歴1件を指定してもらう。費用・機能維持を確認できるまで自動停止しない。
+
+## 2026-10-14 追加調査：実行履歴との突き合わせ
+- GitHub連携の利用可能なActionは既知`run_id`からのjobs取得で、**指定日のworkflow runs全件リスト/APIでの日時・duration取得は未対応**。公開REST/Action画面への外部アクセス試行も現在の実行環境ではアクセス不能。したがって10/1・10/4の各1,858/1,850分をworkflowごとに帰属することはまだできていない。
+- 既知の`run_id=36812386066`（過去の暗号化parity artifact）はjob名`parity`・結論`success`と工程名を取得。**タイムスタンプや実行時間は返らないため、これ一件から日別利用量の原因は断定不可**。
+- 調査するURL（iPhone Safari GitHubログイン後）: `https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/workflows/exhibition-st-forward-scheduled-collector.yml?query=created%3A2026-10-01`。GitHub公式はworkflow run一覧の`created`日付フィルタ対応を案内。まずこのworkflowの10/1実行一覧（runリンク・時刻・durationがあれば）を1画面だけ確認し、その後10/4を比較する。
+- **この調査でcronを変更/停止しない。** Forwardデータ欠落と二重取得を避ける。
