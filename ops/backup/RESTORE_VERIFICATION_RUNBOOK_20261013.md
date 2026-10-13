@@ -7,10 +7,12 @@
 
 |対象|Railway原本サービス|個人Google Drive保存先|復元テスト先|
 |---|---|---|---|
+|旧V3|postgres-hobby-fullhistory-candidate-v3|Google① / boat-ai-v3-temp-202610|独立テストDB `boat_ai_drill_v3_*`|
+|履歴アーカイブ|postgres-history-archive|Google① / boat-ai-history-archive-temp-202610|独立テストDB `boat_ai_drill_archive_*`|
 |V4本番|Postgres-EKp2|Google① / boat-ai-v4-temp-202610|独立テストDB `boat_ai_drill_v4_*`|
 |V5主力研究|postgres-hobby-fullhistory-candidate-v4|Google② / boat-ai-v5-temp-202610|独立テストDB `boat_ai_drill_v5_*`|
 
-- **一度に片方だけ**。まずV5の小規模復元ドリル。V4本番、V3休眠、archive DB、cronは動かさない/削除しない。
+- **一度に1DBだけ**。先に旧V3と履歴アーカイブの小規模復元ドリルを行い、続けてV4本番・V5主力の保護を進める。休止旧V3を無断起動しない。V4本番・必要cronは停止/削除しない。
 - 復元先は**本番/研究用のRailway DBでも、運用開始予定の本番VPS DBでもない**。安全な隔離PG18インスタンスと、名前を決めた**空のテストDB**が必須。
 - 追加のVPS容量、メモリ、DBサービス、外部転送、書込・費用が発生する作業は**その直前にユーザー承認**。ConoHaのVPS復旧とOS/SSH保護を先に済ませる。
 - 2026-10-13時点、バックアップスクリプト `ops/backup/railway_pg_to_drive_stream.sh` は**モック検証のみ**。実DBバックアップを勝手に始めない。
@@ -18,7 +20,7 @@
 ## 1. アーカイブ候補の受入れ（まだ本番実行しない）
 
 1. 各Googleアカウントの本人認可がrclone側で完了し、対象remotesの`root_folder_id`がそれぞれの非共有フォルダと一致することを確認。**OAuth秘密、DB URL、復号秘密鍵はGitHub/チャットに貼らない**。
-2. ファイル名が `boat-ai-v4-...dump.age` または `boat-ai-v5-...dump.age` で、`.uploading`ではないこと。対応する `.sha256` が存在すること。
+2. ファイル名が `boat-ai-v3-...dump.age`、`boat-ai-archive-...dump.age`、`boat-ai-v4-...dump.age` または `boat-ai-v5-...dump.age` で、`.uploading`ではないこと。対応する `.sha256` が存在すること。
 3. テスト環境の**DB専用ボリューム外**に暗号化アーカイブを一時取得し、対応するSHA-256をファイル全体に対して再計算・比較。Google Drive内のMD5一致やファイル一覧掲載だけでは代替不可。
 4. 受信側で `age` による**ファイル全体の認証付き復号**がエラーなしに終了すること。秘密鍵はRailwayから独立した安全な場所で保持。復号ファイルは極力作らずパイプで処理する。
 5. `pg_restore -l`でPostgreSQLカスタム形式のTOCを確認（**TOC読取だけでは全データの健全性は証明できない**）。
@@ -28,7 +30,7 @@
 
 事前条件を**すべて確認できない時はSTOP**:
 - 独立したPG18が実際に起動し、接続先がそのインスタンスの**専用localhostポート**であることを確認（Railway/既存の本番VPS DBではない）。ネットワーク経路と`inet_server_addr()`、`inet_server_port()`、`current_database()`を照合。
-- `RESTORE_TEST_DATABASE_URL`はユーザー承認済みの `boat_ai_drill_v4_*` または `boat_ai_drill_v5_*` の**空DBだけ**を指す。テスト用所有者以外の権限を与えない。接続文字列/パスワードをログ・チャットに出さない。
+- `RESTORE_TEST_DATABASE_URL`はユーザー承認済みの `boat_ai_drill_v3_*`、`boat_ai_drill_archive_*`、`boat_ai_drill_v4_*` または `boat_ai_drill_v5_*` の**空DBだけ**を指す。テスト用所有者以外の権限を与えない。接続文字列/パスワードをログ・チャットに出さない。
 - `PG18`対応`pg_restore`と`age`、暗号化アーカイブ、復号秘密鍵が利用可能。容量・空きディスク/メモリ/時間/費用を予測してから実施。V5はRailway DB実測約4.9GBだが、論理dump・復元サイズは未測定。
 - 別途本人が**今回の復元実行を承認**。不明な拡張やロール依存で失敗すれば、成功扱いにしない。
 
@@ -57,7 +59,7 @@ age -d -i "$AGE_IDENTITY_FILE" "$ENC_BACKUP_FILE" \
 
 |段階|PASS条件|現状|
 |---|---|---|
-|S0 保存先・DB対応|A/V4、B/V5の本人認可とID一致|未完|
+|S0 保存先・DB対応|A/V3・archive・V4、B/V5の本人認可とID一致|未完|
 |S1 暗号化コピー|完全な実バックアップがGoogle Driveに存在|未実施|
 |S2 遠隔全体照合|再取得した暗号化ファイルのSHA-256一致|未実施|
 |S3 独立復号|全体復号、TOC可読、改変時エラー|未実施|
@@ -69,4 +71,4 @@ age -d -i "$AGE_IDENTITY_FILE" "$ENC_BACKUP_FILE" \
 
 ## 5. 直近のONE task
 
-ConoHaの既存VPSにログインできるかサポート返答待ち。先にiPhoneのみで可能な**暗号化テストの実施環境**と独立PG18の実行資源を確認する。VPS未復旧ならRailwayに復元用サービスを無断追加しない。
+ConoHaの既存VPSはサポート返答待ち。iPhoneの無料iSHにAlpine版rcloneを導入し`rclone version`だけ確認する案を先行。本人OAuth同意はその後。実PG18の復元先は未確保で、VPS未復旧ならRailwayに復元用サービスを無断追加しない。
