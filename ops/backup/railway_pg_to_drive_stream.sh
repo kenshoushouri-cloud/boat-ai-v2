@@ -72,6 +72,17 @@ fi
 # This fingerprint must be documented separately from the AGE_RECIPIENT
 # env var; otherwise a simultaneous accidental change could pass the check.
 [[ "$DRIVE_EXPECTED_FOLDER_ID" =~ ^[A-Za-z0-9_-]{12,}$ ]] || fail 'invalid_drive_folder_id'
+# A separate, committed target manifest locks each source SERVICE ID,
+# designated Drive remote and a hash of its separately approved folder ID.
+# No actual ownership proof is implied; verify the live service/account later.
+# Historic validate mode remains no-network even with synthetic test folders.
+if [[ "$mode" == preflight || "$mode" == execute ]]; then
+  command -v python3 >/dev/null 2>&1 || fail 'missing_tool_python3'
+  binding_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  python3 "$binding_dir/backup_target_binding.py" "$target" "$mode" "$remote" \
+    || fail 'target_binding_not_approved'
+  unset binding_dir
+fi
 for bin in pg_dump psql age rclone sha256sum md5sum mkfifo python3 tee awk grep; do
   command -v "$bin" >/dev/null || fail "missing_tool_${bin}"
 done
@@ -116,6 +127,7 @@ unset actual_endpoint actual_host actual_port actual_db
 # Static validation: no database connection and no Drive API call.
 if [[ "$mode" == validate ]]; then
   printf 'BACKUP_STATIC_PREFLIGHT=PASS\n'
+  printf 'BACKUP_TARGET_BINDING=DEFERRED_UNTIL_ONLINE_MODE\n'
   printf 'BACKUP_CONNECTION=NOT_ATTEMPTED\n'
   exit 0
 fi
