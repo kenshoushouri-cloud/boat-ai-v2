@@ -48,5 +48,7 @@
 
 - **2026-10-13 GitHub旧V3暗号化アーカイブ取得**: live Actions run `36812386066`, artifact `11139857666` （約303MB・GitHub保管期限2026-12-30）をZIPとして取得し、ZIP全エントリ整合性PASS。中身は`*.dump.cms`、公開証明書、非秘密manifestのみ（復号秘密鍵は含まない）。ZIP SHA-256 `e9e2f99e8503529430d0e9f9e58604d2b4abee2db2185ffd190c8de88a4ba42c`。manifest上、当時の隔離PG18復元ハッシュ・構造一致実績あり。**現DBのバックアップではない**。GitHub→Google Driveコネクタ直接受け渡しは`file_uri`型不一致で失敗し、Google A旧V3用非共有フォルダはliveで空0件を再確認。ZIPはチャットの一時添付として利用可能だが**Google Driveへの実アップロードは0件**。次は本人がiPhoneでZIPをGoogle A/V3フォルダへ保存→Drive上のサイズ確認（無理ならConoHa OAuth復旧待ち）。別途CMS秘密鍵の保全・完全復元が必要。Railway DB・cron・課金変更なし。
 
+- **2026-10-13 18:58 JST外部保存1件確認**: 利用者がiPhone Safari経由でGitHub Actions旧V3関連CMS ZIPをGoogle A Drive `boat-ai-v3-temp-202610`にアップロード。Drive list_folder/get metadata live確認: file ID `1lnMh-PefAfLObPnc14pbbDNRWZ3dZT8n`, name `boat-ai-pre-hobby-restorable-20261001-v3-parity-36812386066.zip`, size **302656753 bytes**＝GitHub run `36812386066`, artifact `11139857666`と完全一致、parent folder ID `1RDS1JEAgSIrQm3FJQWMOO0sJ-FwheYIf`, `shared=false`。Google A初の外部保存実績。**サイズのみ照合済／Drive上ファイルSHA/MD5や独立復元は未検証／旧CMS秘密鍵は別途保全必要／現Railway V3 DBまたはhistory archive DBの新規dumpではない**。復旧確認前にRailway/鍵/artifact削除禁止。Drive OAuthのiSH自動認証は引き続き未完。次は履歴archiveや現在のV3の外部保全経路確立（ConoHaの復旧状況をユーザーに確認）または別CMS ZIPのコピーを慎重に検討。Railway変更なし。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
