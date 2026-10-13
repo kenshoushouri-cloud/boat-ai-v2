@@ -6,6 +6,8 @@
 **GitHub Actionsの実バックアップは禁止継続。** 2026-10-14 GitHub repository metadataでは`boat-ai-v2`は**public**（標準Linux Runnerの実行時間無料。ただしartifact保存量は本人plan・容量で費用/利用停止リスク）。`ops/backup/V3_GH_ACTIONS_COST_PERMISSIONS_PREFLIGHT_20261014.md`にread-only監査と公式料金、権限・公開artifact漏洩・秘密鍵/DB情報ガードを整理。関連inert draft `ops/backup/GITHUB_ACTIONS_V3_MANUAL_DRAFT_20261014.yml.txt` はworkflows外のため登録されていない。**Next ONE taskは、本人がGitHubのBilling/Usage画面でActions artifact現在使用量とBudgetを閲覧し、支払い/個人情報を隠した画面または数値で報告すること**。無断でworkflow登録・GitHub Secrets登録・CI起動・Railway wake・DB接続・dump・アップロード禁止。ConoHaサポート返事は10/14朝も不明、前回本人報告時点では未着。繰り返し問い合わせない。既存のSSHキー/age公開鍵と本人だけの復号秘密鍵保管は継続。
 
 
+- **2026-10-14 06:54頃 GitHub本人Billing画面確認**: 個人プランGitHub Free、2026-10-01〜31表示のgross metered usage **$52.97**、included usage discountも**$52.97**、Next payment due「—」。10/1 usage内訳は **Actions Linux 1,858min × $0.006 ≈ $11.15 / billed $0、Actions storage 31.36 GB-hr × $0.000336 ≈ $0.01 / billed $0**。この日の使用量相当額のほぼ全額がRunner時間で、保存容量ではない。これは**10/1のGB-hrであり現在artifact全保管量/残quotaとは別**。リポジトリmetadata報告サイズ約7,270KBもActions artifact容量ではない。削除は一切せず、重要な旧CMS artifact3件（12/30期限）と復号鍵を保護。次の1手は同様に費用の大きい10/4の日別行を開いてLinux/storageの内訳を比較、または本人がGitHub Usage上部のProduct別表示へ切替できればActionsの現行quotaを確認。GitHub Runnerを減らす検討を先に行い、source files整理は依存監査後に限定。
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
