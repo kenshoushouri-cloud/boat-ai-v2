@@ -33,5 +33,15 @@ iPhoneだけで旧V3、履歴archive、後続V4/V5の**現時点DB**を独立し
 - **実際のSSHトンネル接続/パフォーマンス/課金は未確認**。アーカイブDBの接続試験、V3 sleeping解除、GitHub Runner実行はユーザー承認前には行わない。
 - 公式: https://docs.railway.com/cli/ssh ; https://docs.railway.com/cli/connect
 
+## 2026-10-13 21時追記：iPhoneブラウザConsole/SSH経路の切り分け
+
+- ユーザー実機でRailway`postgres-history-archive`のWeb Consoleに`Connected`表示が出るが、iPhone Safariで**貼り付け・手入力不可**。これ以上Console入力を強要しない。
+- Consoleにある短縮IDコピーも`railway ssh --project=... --environment=... --service=...`という**CLI用コマンド**を返した。SSHの直接接続に必要な**Service Instance IDは取得できていない**。同一操作の再要求は禁止。
+- Railwayプラグインでlive`postgres-history-archive`のイメージが`ghcr.io/railwayapp-templates/postgres-ssl:18`、最新デプロイ`SUCCESS`、TCPプロキシ0件を確認。これは**PG18イメージという設定の確認のみ**で、DBの実際の稼働中`pg_dump --version`を実行できたわけではない。
+- Railway公式`railway ssh`/connectの確認ではCLIまたはservice instance IDを使うSSH経路があり、これには登録済みSSH鍵が必要。鍵はユーザーiSHで生成/パスフレーズ設定済・Railwayに公開鍵登録済だが、**iSHはAlpine 3.14 x86のためCLIのインストールを強行しない**。既存アプリ接続も`Service Instance ID`は返さない。
+- **着手可能性の高い順番を変更**: (A) 旧V3 DBは既存公開TCPが1件あるため、本人承認の上で**GitHub Actions runnerからPostgreSQL18の読み取り専用接続→`pg_dump -Fc`→公開復号先鍵でage暗号化→短期artifact**を検討（Safariによる過去ZIPの外部Drive手動保存実績あり）。ただしV3はsleep中のため、通信/起動費用・接続先host**とport**固定・独立復元必須。(B) 履歴archiveは公開TCPがなく、Railway SSH tunnel/GitHub Runner接続は今なお未検証、別扱い。**archiveの公開TCPを安易に新設しない**。
+- **暗号鍵が未整備**。新しいバックアップの秘密鍵はRailway/GitHub外で復号可能なよう利用者が生成して独立保管し、**先に実際の復号テスト**。過去の`ARCHIVE_CMS_PRIVATE_KEY_B64*`、ユーザーのRailwayログイン用SSH鍵、ageバックアップ復号鍵を同一視しない。利用者の許諾なく既存SSH鍵をbackup暗号鍵に流用しない。
+- 実DB接続・V3 wake・GitHub workflow実行・データ転送・Driveアップロードは**未実施**。Railwayデータ・cron・秘密情報は変更しない。
+
 ## Next ONE task
-利用者本人がRailwayの**Account Settings → SSH Keys**で登録鍵の有無だけ確認する（追加/削除はしない）。確認結果は`登録あり`／`登録なし`のみ。認証鍵そのものを送らせない。
+**公開TCPが既存で確認済みの旧V3**に限定したGitHub Actions **暗号化バックアップ用の実行前ガード/モック設計**を準備。DB接続・V3のスリープ解除・CI実行は禁止し、ageの独立復号鍵保管方法を先に確定する。履歴archiveはSSHトンネル成立まで変更なし。
