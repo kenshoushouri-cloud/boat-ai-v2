@@ -28,5 +28,7 @@
 - 調査用GitHub read-only SQL `ops/v5_candidate_v4_july02_two_odds_gaps_status_readonly_20261012.sql` **まだRailway未実行**。移行/ConoHaログイン問題とは独立して保留。過去の江戸川公式GETや同じオフラインテストを無闇に再実行しない。
 
 - **2026-10-13 バックアップ準備**: `ops/backup/railway_pg_to_drive_stream.sh` を作業ブランチに作成。PG18 `pg_dump -Fc`→age暗号化→rclone Google Drive A/B の一回限りストリーミング処理。標準はpreflight、実行には明示承認フラグ。**コード作成のみで実行・転送・復元・Railway変更なし**。rcloneの2つの独立したGoogle OAuth接続・フォルダ固定・復元試験は未完了。ChatGPT Google Drive連携とは別認証。AのV4フォルダは確認済み、BのV5フォルダはユーザーリンク受領だがコネクタの複数アカウント識別エラーで未検証。iPhone専用OAuth準備は `ops/backup/DRIVE_IPHONE_OAUTH_PREFLIGHT_20261013.md` に記録。rclone共用client_idは2026年廃止予定。候補はConoHa復旧後のSSHトンネル（第一）／iSHでのiPhone単体rcloneの動作検証（未確認）。OAuthトークン・age復号鍵・DB認証は非公開。バックアップスクリプトは**接続先DBホスト・Drive root_folder_idの一致を実行前に確認するfail-closed検査**、承認なし実行防止、remote実体未照合の明示を追加。隔離モック試験はpreflight/no-upload・承認なし・接続先相違・転送成功時SHA一致・pg_dump失敗の計6ケースPASS。**Google本物のOAuth/ファイルのremote完全性/age暗号化/実DB転送/独立復元はいずれも未実施**。新規クラウド作成、書込、費用発生は個別承認。
+- **2026-10-13 age復元テスト準備**: `ops/backup/test_age_roundtrip_offline.sh` をブランチに作成。模擬入力134KB、age暗号化→復号→SHA-256一致→改変検知を試す単独テスト。ローカル `bash -n` PASS。ただし検証用環境に実際の `age` コマンドがなく、**本物の暗号化テストはSKIPPED（未検証）**。ConoHaか検証可能な別環境で実age導入後に実行する。DB/Google/Railwayは無変更。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
