@@ -3,6 +3,7 @@
 # V3 only: Railway public TCP -> PostgreSQL 18 pg_dump -> age-encrypted local artifact.
 # Intended for ephemeral GitHub Actions runner ONLY after specific user approval.
 # No plaintext dump is written to disk; no DB writes; no Railway service changes.
+set +x # Disable inherited shell tracing before any connection credentials are read.
 set -euo pipefail
 umask 077
 
@@ -109,10 +110,15 @@ if [[ "$mode" == validate ]]; then
   exit 0
 fi
 
-# The first line after this point may contact (and wake) old V3. No automatic workflow calls this script.
+# The first line after this point may contact (and wake) old V3.
+# libpq accepts a postgres:// URI in PGDATABASE. Keep credentials in runner
+# process environment, never in CLI arguments/argv, command output or files.
+export PGDATABASE="$V3_SOURCE_DATABASE_URL"
+unset V3_SOURCE_DATABASE_URL
 export PGSSLMODE=require
 export PGOPTIONS='-c default_transaction_read_only=on'
-db_identity="$(psql "$V3_SOURCE_DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -F '|' \
+export PGCONNECT_TIMEOUT=15
+db_identity="$(psql -X -A -t -v ON_ERROR_STOP=1 -F '|' \
   -c "SELECT current_database(), current_setting('server_version_num'), pg_is_in_recovery()")" \
   || fail 'read_only_db_connection_failed'
 IFS='|' read -r db_name db_version in_recovery <<< "$db_identity"
@@ -131,8 +137,8 @@ cleanup() { rm -f -- "$staged"; }
 trap cleanup EXIT
 
 # pg_dump is read-only. Encrypted data only is written to the runner's ephemeral directory.
-pg_dump "$V3_SOURCE_DATABASE_URL" --format=custom --compress=gzip:6 --no-owner --no-acl \
-  | age -r "$V3_AGE_RECIPIENT" > "$staged" \
+pg_dump --format=custom --compress=gzip:6 --no-owner --no-acl \
+  | age -R "$script_dir/keys/v3_recovery_recipient_20261013.pub" > "$staged" \
   || fail 'encrypted_pipeline_failed'
 [[ -s "$staged" ]] || fail 'encrypted_output_empty'
 mv -- "$staged" "$completed"
