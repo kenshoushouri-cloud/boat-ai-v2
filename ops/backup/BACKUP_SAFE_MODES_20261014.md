@@ -8,6 +8,12 @@
 - **`preflight`**：Railway DBのSELECTによる読取接続とDriveのアクセス確認が発生する。**`BACKUP_CONNECT_APPROVED=YES` と `BACKUP_NETWORK_COST_APPROVED=YES` が必要**。休止V3のwakeやRailway通信/稼働費の可能性がある。事前承認無しに実行しない。
 - **`execute`**：上記に加えて `BACKUP_EXECUTE_APPROVED=YES` と `BACKUP_RESTORE_KEY_VERIFIED=YES` が必要。後者は**本人秘密鍵での実`age`暗号化・復号ラウンドトリップ成功時のみ**。未検証でYESと偽らない。実際のPG18/age/rclone環境準備、Google OAuth本人認証、費用・DB正体・復元先確認と個別の本人許可が前提。
 
+## 2026-10-14：4DB宛先固定・取り違え防止（非通信）
+- `ops/backup/backup_target_binding.py`は`v3/archive/v4/v5`のRailway service UUID・rclone remote名・独立のDrive folder ID SHA-256を固定。Driveフォルダの**生IDはGitHubに記録しない**。V3は別途復元用公開鍵SHAも固定。
+- `preflight/execute`のみ、DB/Driveの実接続**前**に`SOURCE_EXPECTED_SERVICE_ID`と`DRIVE_EXPECTED_FOLDER_ID`を固定値と照合する。`validate`は従来通り無通信・ダミーIDも使えるため**宛先固定照合は保留**と明示。`execute`ではさらに`BACKUP_EXECUTE_TARGET_APPROVED=YES_SINGLE_<TARGET>_ENCRYPTED_SNAPSHOT`（TARGET=V3/ARCHIVE/V4/V5）が必要。**archive/V4/V5は所有者復元鍵の固定ピン未登録なので、承認値を入れても実行拒否**する。実行可能にする前に本人鍵・独立復号の検証とピン登録が必要。
+- モック`ops/backup/test_backup_target_binding_offline.py`を**29/29 PASS**、4ターゲットの既知フォルダIDのハッシュ一致と誤サービス拒否を隔離Linuxで確認。**本検査は宣言されたサービスIDとフォルダIDを照合するだけ**で、Railway現DBの実体・Google Driveの認証者/所有権・復号可能性・本番書込み可否は**未検証**。オンライン検証と実バックアップは別承認。
+- 従来の14件バックアップモックは前回実行済。今回追加後の**結合状態での旧14件の再実行は未実施**。本番導入前には双方のスイートを同一ソースで再実行する。
+
 ## V3専用の鍵
 - 旧V3はユーザーがiSHで作った**別用途Ed25519復元秘密鍵**に対応する公開鍵を `keys/v3_recovery_recipient_20261013.pub` に固定。
 - SHA-256固定値は `da094443ccc50f1e0d253d02c670c52bedeb64ac2c479888659a62e05d978234`（公開鍵1行・末尾改行除去）。SSH fingerprintとは別。
