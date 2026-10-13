@@ -56,5 +56,7 @@
 
 - **SSH実装ブロッカー（2026-10-13）**: Railway公式`railway ssh`には登録済アカウントSSH鍵が必要。CLI project token`RAILWAY_TOKEN`はSSH鍵の管理不可、workspace token/本人ログインが必要。ChatGPT Railwayプラグインでは鍵登録一覧を参照できず、鍵の有無**未確認**。live read-only TCP proxyを調査: V3 1件、history archive 0件。次の1作業: 利用者がRailway Account Settings→SSH Keysを**見るだけ**（ある/なしの報告、鍵内容は非共有）。詳細`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`。Railway起動/SSH接続/ダンプ未実施。
 
+- **2026-10-13 19:27 SSH鍵未登録確認**: 利用者本人のRailway Account Settings → Your SSH Keysスクリーンショットに`You have no SSH keys yet`が表示され、現アカウントにSSH鍵0件と判明。Default Cloud Agentは本案件で不要（Railway Agent/AI禁止）。次は**本人の明示同意**を得てiSH内でRailway専用Ed25519鍵ペアを作成し公開鍵だけをRailwayに登録する候補。秘密鍵はユーザー端末からチャット/GitHubソースに提出しない。GitHub Actionsに使う場合は後続の秘密鍵取扱いの別途承認と連携が必要。SSH鍵追加/DB接続/バックアップ/課金操作は未実施。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
