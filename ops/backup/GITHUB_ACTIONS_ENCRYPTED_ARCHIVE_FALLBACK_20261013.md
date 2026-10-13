@@ -43,5 +43,12 @@ iPhoneだけで旧V3、履歴archive、後続V4/V5の**現時点DB**を独立し
 - **暗号鍵が未整備**。新しいバックアップの秘密鍵はRailway/GitHub外で復号可能なよう利用者が生成して独立保管し、**先に実際の復号テスト**。過去の`ARCHIVE_CMS_PRIVATE_KEY_B64*`、ユーザーのRailwayログイン用SSH鍵、ageバックアップ復号鍵を同一視しない。利用者の許諾なく既存SSH鍵をbackup暗号鍵に流用しない。
 - 実DB接続・V3 wake・GitHub workflow実行・データ転送・Driveアップロードは**未実施**。Railwayデータ・cron・秘密情報は変更しない。
 
+## 2026-10-13 21時以降：旧V3用・手動暗号化エクスポートガード実装
+
+- `ops/backup/v3_to_artifact_encrypt.sh` を**feature branchに作成済み**。GitHub Actions workflowに接続しておらず**自動/手動実バックアップは不可能な未配線状態**。デフォルトは`plan`でDB接続しない。明示的に`execute`に変更した後も、旧V3 service IDの一致、GitHub Runner限定、run ID確認、**別途の実行承認・スリープ解除/Network費用承認・復号鍵の独立復元確認**の3ゲートを全て要求し、DB URLを読む前に停止できる。
+- DB接続に進む前にURLのホスト・ポート・DB名一致、TLS設定、公開 age1 recipientと独立ハッシュ、pg_dump/psql PostgreSQL18を検査。接続後はread-only識別クエリを行い、`pg_dump -Fc`→`age`暗号化の**ストリームだけ**をRunner上の一時ファイルに保存する設計。実体が旧V3であることは接続先DB識別情報でも別途確認する必要があり、名前・URL照合だけで同一性を完全証明しない。
+- `ops/backup/test_v3_to_artifact_guard.sh`: モックのみ使用、無接続の停止条件11件をローカル`bash`で実行し全件PASS。`bash -n`もPASS。**実PostgreSQL接続・実age暗号化/復号・実データRestoreは未試験**。
+- 専用GitHub workflow・GitHub Secrets・`age`復号用のユーザー保管秘密鍵は**まだ作っていない**。Railwayの旧V3はSLEEPING維持、archiveや本番V4/V5にも変更なし。
+
 ## Next ONE task
-**公開TCPが既存で確認済みの旧V3**に限定したGitHub Actions **暗号化バックアップ用の実行前ガード/モック設計**を準備。DB接続・V3のスリープ解除・CI実行は禁止し、ageの独立復号鍵保管方法を先に確定する。履歴archiveはSSHトンネル成立まで変更なし。
+新規の`age`復号用鍵を**Railway/GitHub外の本人端末で生成・独立保管できるか**、iSH(Alpine 3.14 x86)で利用可能な安全なインストール方式を確認する。**Railway SSH Ed25519鍵は代用せず**、秘密鍵をチャット・GitHubに渡さない。本人操作/実費用が必要な場合は一度に1操作で案内し、実バックアップの前に暗号化→復号の小規模自己テストを行う。
