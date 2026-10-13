@@ -36,11 +36,11 @@ elif name == "age":
 elif name == "rclone":
     command = args[0]
     if command == "listremotes":
-        print("boat-drive-v3:\\nboat-drive-v4:\\nboat-drive-v5:\\nboat-drive-archive:")
+        print("boat-drive-v3:\nboat-drive-v4:\nboat-drive-v5:\nboat-drive-archive:")
     elif command == "config":
-        print("[boat-drive-v3]\\ntype=drive\\nroot_folder_id="
+        print("[boat-drive-v3]\ntype=drive\nroot_folder_id="
               + ("wrong_folder" if fault == "folder" else os.environ["DRIVE_EXPECTED_FOLDER_ID"])
-              + "\\nclient_id=11111-abcd.apps.googleusercontent.com\\nscope=drive")
+              + "\nclient_id=11111-abcd.apps.googleusercontent.com\nscope=drive")
     elif command == "lsf":
         if "--files-only" in args:
             for p in root.iterdir(): print(p.name)
