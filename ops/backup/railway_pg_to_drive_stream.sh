@@ -30,6 +30,7 @@ fi
 
 : "${SOURCE_DATABASE_URL:?Set source Railway DB URL in secret variables}"
 : "${SOURCE_EXPECTED_HOST:?Independently verify the approved DB host for this target}"
+: "${SOURCE_EXPECTED_PORT:?Independently verify the source TCP port for this target}"
 : "${SOURCE_EXPECTED_DATABASE:?Independently verify the approved DB name for this target}"
 : "${DRIVE_EXPECTED_FOLDER_ID:?Set the approved private Drive folder ID}"
 : "${AGE_RECIPIENT:?Set public age1 recipient; NEVER the private key}"
@@ -46,20 +47,29 @@ for bin in pg_dump psql age rclone sha256sum md5sum mkfifo python3 tee awk grep;
 done
 [[ "$(pg_dump --version)" == *' 18.'* ]] || fail 'pg_dump_18_required'
 [[ "$(psql --version)" == *' 18.'* ]] || fail 'psql_18_required'
-# Check DB URI host without printing credentials from SOURCE_DATABASE_URL.
-actual_host="$(python3 - <<'PY'
+# Check host AND port; Railway TCP proxy domains can be shared by services.
+# Never log the source URI (which may contain a password).
+[[ "$SOURCE_EXPECTED_PORT" =~ ^[0-9]{1,5}$ ]] || fail 'expected_source_port_invalid'
+(( 10#$SOURCE_EXPECTED_PORT >= 1 && 10#$SOURCE_EXPECTED_PORT <= 65535 )) \
+  || fail 'expected_source_port_out_of_range'
+actual_endpoint="$(python3 - <<'PY'
 import os
 from urllib.parse import urlsplit
 try:
     parsed = urlsplit(os.environ['SOURCE_DATABASE_URL'])
     if parsed.scheme not in ('postgres', 'postgresql') or not parsed.hostname:
         raise ValueError('invalid URI')
-    print(parsed.hostname)
+    port = parsed.port
+    if port is None or not 1 <= port <= 65535:
+        raise ValueError('explicit port required')
+    print(f'{parsed.hostname}|{port}')
 except (ValueError, KeyError):
     raise SystemExit(11)
 PY
-)" || fail 'source_url_malformed'
+)" || fail 'source_url_malformed_or_missing_port'
+IFS='|' read -r actual_host actual_port <<< "$actual_endpoint"
 [[ "$actual_host" == "$SOURCE_EXPECTED_HOST" ]] || fail 'source_host_mismatch'
+[[ "$actual_port" == "$SOURCE_EXPECTED_PORT" ]] || fail 'source_port_mismatch'
 
 rclone listremotes | grep -Fxq "${remote}:" || fail 'matching_rclone_remote_not_configured'
 # config show can contain OAuth secrets; capture in memory, NEVER print.
