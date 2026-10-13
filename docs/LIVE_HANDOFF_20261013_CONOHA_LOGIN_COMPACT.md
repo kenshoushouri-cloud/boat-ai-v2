@@ -3,18 +3,10 @@
 最初は`docs/HANDOFF_LATEST.md`→その指定current compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。古いhandoff、PROJECT_HISTORY、長いworkflow/ログは通常参照禁止。**1回に1作業、ツール最小、短い結果と所要時間、SHA/run/容量はその作業でlive再取得**。止まった作業を重複実行しない。ユーザーは**iPhone（Safari・iSH Shell）のみ**。1手順ずつ／コピーボタン推奨。
 
 ## Next ONE task
-2026-10-14ユーザー承認方針：**ConoHa 2GBで構築・実測→V5移行/独立復元確認→Railwayの稼働費解消後、必要なら4GBへ変更を別承認**。ConoHaログインはサポート返答待ちで再購入禁止。GitHubはコード/履歴を残し、長時間ActionsをConoHaへ段階移管する。2026-10-01と10-04の個人Github Free UsageはActions Linux **1,858min / 1,850min**、storage **31.36 / 46.43 GB-hr**、請求は両日**$0**（ユーザー画面）。main read-only監査：`exhibition-st-forward-scheduled-collector.yml`が日中5分cron＋最大90分ループ（timeout100）、`racer-course-top3-forward-scheduled-collector.yml`が毎日cron＋120分ループ（timeout130）、実時間コストの**候補だが因果未確定**。詳細`docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。**Next ONE taskは10/1／10/4のGitHub Actions実run/job durationを調査し候補を実証。** 収集停止でForward証拠が欠けるため、代替収集/移管と検証前にcron停止・削除禁止。GitHub Actions実バックアップ・Railway起動・DB接続・Secrets登録・ConoHa増額・BUYは引き続きHARD HOLD。
-
-
-- **2026-10-14 Workflow実行時間の調査制約**: GitHub接続では既知`run_id`のjobs/stepsは取得できるが時刻/所要分を返さず、日付別のrun一覧もツール対象外。原因は**仮説段階**。ConoHa移行方針は2GB→検証後4GB(必要時・別承認)、現Railway保護。次ONE taskはiPhoneで `https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/workflows/exhibition-st-forward-scheduled-collector.yml?query=created%3A2026-10-01` を表示し10/1の実行一覧を確認。停止・削除/有料実行しない。
-
-- **2026-10-14 07:13 JST 失敗原因確定に近づく**: #190 `collect`は23秒で失敗、`Load public database URL without publishing it`の7秒ステップで`DATABASE_PUBLIC_URL not found`、本体収集ループはskipped。main workflowの`--service postgres`はRailway production live一覧に無いサービス名。V4本番DBは`Postgres-EKp2`、live TCP proxy 0、変数名`DATABASE_URL`はあり`DATABASE_PUBLIC_URL`無し（秘密値の取得なし）。原因は旧接続設定と現在構成の不一致と判断。展示ST実欠測・別経路取得は未確認。**Next ONE task: Railway側の展示ST取得代替ジョブ/サービスをread-onlyで確認**。cron停止・公開proxy新設・V4本番への設定変更・run再実行禁止。詳細`docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
-- **2026-10-14 07:09 JST GitHub Actions 10/1 実画面**: `exhibition-st-forward-scheduled-collector.yml` の `created:2026-10-01` は **3 runのみ**: #188 09:53 JST 13秒 失敗、#189 15:37 JST 28秒 失敗、#190 22:50 JST 25秒 失敗。合計66秒で、10/1 GitHub Actions Linux 1,858minの主因ではない。**ただし収集失敗の理由と実欠測の有無は未確認**。次ONE task: GitHub Actions #190 のrun詳細で失敗箇所確認（ログに秘密があれば送らない）、Railwayは変更/起動せず、cron停止禁止。詳細 `docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
-
-- 2026-10-14 Railway展示情報の代替経路read-only調査: cron-final-check → run_final_pg.py → v25_final_realtime_pipeline_pg.py → v21_realtime_collector_pg_safe.py → save_exhibition_and_entries で通常展示を保存する実装あり。10/13 Railwayログ saved_exhibition_rows は6〜30等の正数が複数、直近Cron succeeded。10/1の同ログ検索は0件のため当日データ保存は未確認。展示STの締切前Forward専用表 v2_exhibition_st_forward_shadow とは別。専用collector collect_exhibition_st_forward_shadow_pg.py がRailway他サービスから実行されていたか・表にデータがあるかは不明。Next ONE taskは専用collector呼出し経路のmain静的調査。DB接続・停止・削除・公開proxy追加は禁止。詳細 docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md。
-
-
-- **2026-10-14 方針転換（ユーザー提案・推奨）— ConoHa新システム完成優先（Railway修理は原則停止）**: 移行予定のRailwayに対する展示ST Forward個別不具合の深追い・旧GitHub Actionsの修理を優先しない。Railwayは**V4本番維持、4 DBの暗号化バックアップ、独立復元検証、移行完了までのデータ保全、費用把握**の必要最小限read-only確認に限定（停止・削除は別承認）。ConoHa 2GB管理画面のサポート回答待ち、再購入禁止。復旧後、旧V3・履歴archive優先に全4DB退避→復元検証→ConoHaでV5データ取得/品質監視/不具合修正/2025年7月以降バックテスト→運用検証→Railway段階停止。過去の締切前に記録されなかった展示/オッズ等は後から真の当時証拠にできず、missing/PENDINGとして扱う。2GB負荷計測、Railway費用解消後に必要かつ本人承認があれば4GB。**BUY HARD HOLD、自動購入は最終、V4を無断変更しない**。Next ONE task: ConoHa回答が届くまで移行設計・暗号化復元テストの非課金準備、回答後は既存VPSへの安全なログイン確認。
+**ConoHa VPS 2GBを主軸にV5を完成させる。** ユーザー合意: GitHubはコード/履歴保管、ConoHaで予想AI・DB・収集・バックテスト・定期処理を段階的に一元管理。Railwayは移行前の4DB暗号化バックアップ/独立復元、本番維持、料金抑制だけ優先し、旧GitHub収集の個別修理を深追いしない。ConoHa管理画面はサポート回答待ち（10/14時点未確認）、**再購入・追加PayPalチャージ禁止**。
+- **今回完了 2026-10-14**: `ops/conoha/v5_host_preflight_readonly.sh` を作業ブランチに作成。VPSログイン復旧後に実行する、OS/アーキテクチャ/CPU/総・空きRAM/swap/ルート空き容量だけを読む**無通信・無書込の診断**。手元の隔離Linuxで実Bash `bash -n`PASS／通常実行PASS／危険コマンド静的スキャン該当なし、ローカル`git hash-object`とGitHub blob SHA一致。**これはConoHa実機の試験ではない**。実機で未実行、2GB運用性能も未実証。
+- **次の1作業**: ConoHaアクセスが戻るまで、V5の**2GB RAM向けジョブ直列化・実行前後の監視/過負荷防止**をGitHub feature branch内で未接続の設計・オフラインテスト。サポート返答時は既存VPSへのログイン確認→本診断→順に設定する。実デプロイ・実DB転送・有料CI・サービス停止・Railway変更は別承認。
+- ConoHaは**2GBから始め、Railway費用解消後に必要なら4GBへ増額**（別承認）。過去の締切前未取得情報は遡及して作れずmissingとして扱う。**BUY HARD HOLD**、自動購入最後。
 
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
