@@ -13,7 +13,7 @@
 - **ConoHa**：2026-10-13に2GBをPayPal支払・申込/初期設定メール受領。ただしSafariでログイン成功後に再度申込/支払画面へ戻る。サポート回答待ち、**既存VPS管理画面/SSH/OSは未確認**。再購入・追加チャージ・新アカウント作成禁止。推奨Ubuntu24.04LTSは未設定確認。
 - **V5**：2025-07-01〜2026-10-10の計画67週OOS窓は**実行0/67、実ROI未検証**。2026-07-02は180レースでオッズ238券不足のPENDING。締切後の展示/オッズや日付のみ一致の履歴を当時の凍結証拠にしない。欠測/返還不明/NO_BUY/PENDINGを勝手に補完・母数除外しない。
 - **GitHubで安全なオフライン準備完了**：V5プランDAG `ops/conoha/v5_offline_dag.py`（20/20テスト）、直列RAM/容量ガード `ops/conoha/v5_serial_resource_guard.sh`（9/9テスト）、実機診断 `ops/conoha/v5_host_preflight_readonly.sh`。**実機結線/予測は未実施**。
-- **バックアップ**：4DB script既定plan無通信、以前のモック14/14 PASS。今回`ops/backup/backup_target_binding.py`を接続し、4DBのサービスID/Driveフォルダhash/remoteの取り違えを事前拒否、実行は対象別承認必須。`archive/V4/V5`は復元鍵未固定につき**実行HOLD**。新規29/29＋修正後旧14/14を**同じ隔離Linuxで再実行・計43/43 PASS**。実オンラインpreflight/executeのend-to-endは未検証。**実age暗号化/所有鍵復号未検証、最新4DB外部バックアップ0/4、独立復元0/4**。詳細`ops/backup/BACKUP_SAFE_MODES_20261014.md`。
+- **バックアップ**：4DB用既定plan無通信、service ID/Drive folder hash/鍵/別承認を事前照合。旧14/14＋宛先29/29＋**本体との結合32/32**＝計75件のオフラインテストPASS（別スイート、累計）。実DB/Driveを模擬ツールで遮断、GitHub同一ソースのSHA照合済。archive/V4/V5は復元鍵ピン未確定につき**実行HOLD**。**実age/本人鍵往復・最新4DB外部コピー0/4・独立復元0/4**。詳細`ops/backup/BACKUP_SAFE_MODES_20261014.md`。
 - **過去の別資産**：10/1旧CMS暗号化Actions artifact3件は2026-12-30失効予定（当時の隔離復元job成功）。うち約302.7MB ZIP 1件は私有Drive AへiPhoneでコピー済だが**Drive側SHA/独立復元未検証**。現在の4DBバックアップを代替しない。Railway `archive-restore-key-20261001` の復元鍵変数を保護。
 
 ## 保全対象4DB（移行時の混同禁止）
@@ -39,7 +39,7 @@
 - **禁止**：無承認のV4本番変更、mainマージ、4DB/サービス/cron/旧CMS資産/復元鍵の停止・削除、DB wake/接続・dump/復元・大容量転送/購入・課金、バックテスト未検証のBUY。復元前の元データ削除禁止。既に走った作業は再実行前に現状確認。
 
 ## Next ONE task
-**ConoHa待機中の次の1作業**：DB/Drive実通信ゼロのモックを用い、`preflight`モードで**4DB宛先固定ゲートが本体から確実に呼ばれ、DB接続前に不正な組合せを拒否すること**を実行確認。実`age`往復は正規ツールが揃うまで保留。実DB接続/Drive転送/本人鍵持出し/BUYは禁止。
+**ConoHa待機中の次の1作業**：バックアップ転送の**途中失敗で未完了ファイルが正常バックアップへ昇格しないこと**を、ダミーデータ＋通信遮断モックでオフライン検証。実age/本人鍵往復はConoHa等の安全なツール環境が整うまでHOLD。実DB接続/Drive転送/本人鍵持出し/BUYは禁止。
 
 ## 詳細は必要時だけ個別参照
 - `docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`（V5順序/品質/再試行）
