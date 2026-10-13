@@ -44,7 +44,16 @@ fi
 [[ "$V3_EXPECTED_PORT" =~ ^[0-9]{1,5}$ ]] || fail 'expected_port_invalid'
 (( 10#$V3_EXPECTED_PORT >= 1 && 10#$V3_EXPECTED_PORT <= 65535 )) \
   || fail 'expected_port_out_of_range'
-[[ "$V3_AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]] || fail 'recipient_format_invalid'
+# age supports native age1... and full ssh-ed25519 authorized_keys public recipients.
+# The latter permits iSH to generate a DISTINCT passphrase-protected recovery key
+# with existing ssh-keygen; do not reuse the Railway account's login SSH key.
+if [[ "$V3_AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]]; then
+  :
+elif [[ "$V3_AGE_RECIPIENT" =~ ^ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]][^[:space:]]+)?$ ]]; then
+  :
+else
+  fail 'recipient_format_invalid'
+fi
 [[ "$V3_AGE_RECIPIENT_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'recipient_pin_format_invalid'
 actual_recipient_sha="$(printf '%s' "$V3_AGE_RECIPIENT" | sha256sum | awk '{print $1}')"
 [[ "$actual_recipient_sha" == "$V3_AGE_RECIPIENT_SHA256" ]] || fail 'recipient_pin_mismatch'
