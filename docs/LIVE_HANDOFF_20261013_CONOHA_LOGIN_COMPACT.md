@@ -14,6 +14,8 @@
 - 2026-10-14 Railway展示情報の代替経路read-only調査: cron-final-check → run_final_pg.py → v25_final_realtime_pipeline_pg.py → v21_realtime_collector_pg_safe.py → save_exhibition_and_entries で通常展示を保存する実装あり。10/13 Railwayログ saved_exhibition_rows は6〜30等の正数が複数、直近Cron succeeded。10/1の同ログ検索は0件のため当日データ保存は未確認。展示STの締切前Forward専用表 v2_exhibition_st_forward_shadow とは別。専用collector collect_exhibition_st_forward_shadow_pg.py がRailway他サービスから実行されていたか・表にデータがあるかは不明。Next ONE taskは専用collector呼出し経路のmain静的調査。DB接続・停止・削除・公開proxy追加は禁止。詳細 docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md。
 
 
+- **2026-10-14 方針転換（ユーザー提案・推奨）— ConoHa新システム完成優先（Railway修理は原則停止）**: 移行予定のRailwayに対する展示ST Forward個別不具合の深追い・旧GitHub Actionsの修理を優先しない。Railwayは**V4本番維持、4 DBの暗号化バックアップ、独立復元検証、移行完了までのデータ保全、費用把握**の必要最小限read-only確認に限定（停止・削除は別承認）。ConoHa 2GB管理画面のサポート回答待ち、再購入禁止。復旧後、旧V3・履歴archive優先に全4DB退避→復元検証→ConoHaでV5データ取得/品質監視/不具合修正/2025年7月以降バックテスト→運用検証→Railway段階停止。過去の締切前に記録されなかった展示/オッズ等は後から真の当時証拠にできず、missing/PENDINGとして扱う。2GB負荷計測、Railway費用解消後に必要かつ本人承認があれば4GB。**BUY HARD HOLD、自動購入は最終、V4を無断変更しない**。Next ONE task: ConoHa回答が届くまで移行設計・暗号化復元テストの非課金準備、回答後は既存VPSへの安全なログイン確認。
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
