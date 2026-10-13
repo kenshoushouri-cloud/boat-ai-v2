@@ -40,7 +40,7 @@ assert_fail missing_approval backup_not_approved env V3_BACKUP_MODE=execute V3_B
 assert_fail missing_cost_confirmation wake_and_network_cost_not_approved env V3_BACKUP_MODE=execute V3_BACKUP_TARGET=v3 V3_EXPECTED_SERVICE_ID="$service" GITHUB_ACTIONS=true GITHUB_RUN_ID=12345678 V3_BACKUP_EXECUTE_APPROVED=YES_SINGLE_V3_ENCRYPTED_SNAPSHOT bash "$script"
 assert_fail missing_restore_confirmation recovery_key_test_not_confirmed env V3_BACKUP_MODE=execute V3_BACKUP_TARGET=v3 V3_EXPECTED_SERVICE_ID="$service" GITHUB_ACTIONS=true GITHUB_RUN_ID=12345678 V3_BACKUP_EXECUTE_APPROVED=YES_SINGLE_V3_ENCRYPTED_SNAPSHOT V3_CONFIRM_WAKE_AND_NETWORK_COST=YES bash "$script"
 
-recipient='age1a0b123456789qwertyuio'
+recipient="$(tr -d '\r\n' < "$(dirname "$script")/keys/v3_recovery_recipient_20261013.pub")"
 hash="$(printf '%s' "$recipient" | sha256sum | awk '{print $1}')"
 export V3_BACKUP_TARGET=v3 V3_EXPECTED_SERVICE_ID="$service" GITHUB_ACTIONS=true GITHUB_RUN_ID=12345678
 export V3_SOURCE_DATABASE_URL='postgresql://mock:mock@safe.example:46406/boatdb?sslmode=require'
@@ -53,12 +53,16 @@ assert_fail wrong_host source_host_mismatch env V3_BACKUP_MODE=validate V3_EXPEC
 res="$(V3_BACKUP_MODE=validate bash "$script")"
 [[ "$res" == *'V3_ARTIFACT_STATIC_PREFLIGHT=PASS'* && "$res" == *'V3_ARTIFACT_DB_CONNECTION=NOT_ATTEMPTED'* ]] || { echo "FAIL validate: $res" >&2; exit 1; }
 printf 'PASS validate_has_no_db_connection\n'
-# The dedicated SSH Ed25519 recovery recipient is supported by age officially.
-ssh_recipient='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGYzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM='
-ssh_hash="$(printf '%s' "$ssh_recipient" | sha256sum | awk '{print $1}')"
-res="$(V3_BACKUP_MODE=validate V3_AGE_RECIPIENT="$ssh_recipient" V3_AGE_RECIPIENT_SHA256="$ssh_hash" bash "$script")"
-[[ "$res" == *'V3_ARTIFACT_STATIC_PREFLIGHT=PASS'* && "$res" == *'V3_ARTIFACT_DB_CONNECTION=NOT_ATTEMPTED'* ]] || {
-  echo 'FAIL ssh_recipient_validate' >&2; exit 1
-}
+# SSH recipient must match both the tracked file and a fixed, independently approved hash.
 printf 'PASS dedicated_ssh_recipient_validate_without_connection\n'
-assert_fail invalid_ssh_recipient recipient_format_invalid env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT='ssh-ed25519 not*base64' bash "$script"
+other_recipient='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGYzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM='
+other_hash="$(printf '%s' "$other_recipient" | sha256sum | awk '{print $1}')"
+assert_fail valid_looking_wrong_recipient recipient_not_preapproved_v3_key \
+  env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT="$other_recipient" \
+  V3_AGE_RECIPIENT_SHA256="$other_hash" bash "$script"
+assert_fail invalid_ssh_recipient recipient_format_invalid \
+  env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT='ssh-ed25519 not*base64' bash "$script"
+assert_fail valid_age1_wrong_recipient recipient_not_preapproved_v3_key \
+  env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT='age1a0b123456789qwertyuio' \
+  V3_AGE_RECIPIENT_SHA256="$(printf '%s' age1a0b123456789qwertyuio | sha256sum | awk '{print $1}')" \
+  bash "$script"
