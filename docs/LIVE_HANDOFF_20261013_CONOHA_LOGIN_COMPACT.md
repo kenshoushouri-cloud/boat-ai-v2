@@ -44,5 +44,7 @@
 
 - **2026-10-13 17時台：iPhone iSH→Safari OAuthのブロッカー**: 利用者がiSH内rclone v1.75.2 (GOMAXPROCS=1/GODEBUG=asyncpreemptoff=1) を導入し、新規Google OAuth desktopクライアントのJSONをiPhone内で保管。`boat-drive-v3`のOAuth設定は`Waiting for code...`まで進んだが、同じiPhoneのSafariからiSHの`127.0.0.1:53682`に「サーバーに接続できない」。**認証未完、Google Driveファイル転送未実施、Railway元データ未変更**。iSHバックグラウンド停止/ローカル接続制約の可能性。秘密認証URLやclient_secret/JSONはGitHub/ChatGPTに保存しない。同じURLの連続再試行やiSH位置情報での強制常駐はしない。次のONE taskはConoHaサポート返答/既存VPS操作復旧を待ち、iPhone SSHアプリのローカルポートフォワード可否を確認（あるいは別の認証端末を利用）。V3/archiveのA保存とV4/V5保護の方針維持。
 
+- **2026-10-13 18時／履歴archive依存監査（read-only）**: Railway production 37サービス維持、V3 SLEEPING、history archive SUCCESS。主要8件の変数**名**で通常cronに明示`ARCHIVE_DATABASE_URL`なし、ただし共通`DATABASE_URL`の値は非確認で依存なしの証明にはならない。重要：`archive-restore-key-20261001`に過去`*.dump.cms`用`ARCHIVE_CMS_PRIVATE_KEY_B64*`変数が複数残り、旧V3 parity・V4 final-syncワークフローでその復号鍵を使用。**旧CMSアーティファクト鍵と、履歴アーカイブPostgreSQL DB、今後のage鍵は別物**。過去CMS artifactの保持期限・秘密鍵照合・復元可能性は未検証、鍵/アーティファクト/DBは一律削除・解除禁止。詳細は`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`を更新。Drive OAuthは未完・実バックアップ0件。次のONE taskはサポート回答後のConoHa管理画面アクセスまたはiPhone SSH安全認証経路の確認。Railway/Drive書込・再起動・請求変更なし。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
