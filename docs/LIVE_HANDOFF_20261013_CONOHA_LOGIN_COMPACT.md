@@ -64,5 +64,9 @@
 
 - **2026-10-13夜の方針修正（iPhone Console入力不可）**: Railway `postgres-history-archive`のWeb Console ConnectedでもiPhone Safariの貼付/入力不可、短縮IDのコピーもCLI用`railway ssh`文字列のみ。**再度同じ操作をさせない。** Railway live読み取り専用でarchiveイメージ`ghcr.io/railwayapp-templates/postgres-ssl:18`・デプロイ SUCCESS・公開TCP 0件を確認（runtimeのpg_dumpコマンドは未検証）。一方旧V3は公開TCP1件あり。ConoHa未復旧の代替としてGitHub Actions runnerから**V3だけ**公開TCP via read-only PG18 `pg_dump -Fc`→age暗号化→短期GitHub artifact→本人が私有Google Driveへ保存する工程を優先検討。**age新規復号鍵の独立安全保管が先決**。SSH接続先IDの取得や履歴archiveの公開proxy新設を無理に進めない。Railway DB接続/既存sleep解除/転送/CI/課金は未実施。詳細`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`。Next ONE taskはV3のみの手動実行前ガードと暗号鍵準備の切り分け。 
 
+- **2026-10-13 夜 V3単独・暗号化バックアップ準備**: feature branchに`ops/backup/v3_to_artifact_encrypt.sh`（未配線・planデフォルト・V3 service/host/port/PG18/age recipientハッシュ/実行・費用・復号鍵テスト承認ゲート、実行時pg_dump→ageストリームで平文保存なし）と`ops/backup/test_v3_to_artifact_guard.sh`を追加。モック無接続11項目＋bash -n全PASS。**GitHub Actions workflowには接続していない、age鍵未作成、V3の接続・起動・dump・外部保存未実施**。詳細`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`。
+
 ## 安全な作業開始規則
-**最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
+**Next ONE task**: iPhone iSH（Alpine 3.14 x86）で新規`age`復号鍵を独立生成・暗号化/復号テストできる安全な方式を選ぶ。現在のRailway SSH鍵や旧CMS鍵を流用しない。Alpine v3.14へ安易に新しいrepositoryを混ぜない。秘密鍵・DB URL・OAuth tokenをチャット/GitHubに送らない。
+
+ConoHaログイン後の申込画面問題はサポート回答待ち。**再購入/再チャージ禁止**。旧V3はSLEEPING保護、history archive公開TCPなし。Railwayデータ移行/起動/ジョブ実行/Network転送/課金操作は個別承認まで禁止。V4本番・V5・復元鍵保護・BUY HARD HOLDを維持。1回に1作業、短く、SHA/run/状態は必要時live再取得。
