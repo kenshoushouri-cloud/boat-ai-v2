@@ -23,6 +23,13 @@ Railway boat-v2-postgres / production の直近24h計測（以前の会話時点
 - Google A: V4本番、Google B: V5研究用を第一案とし、各容量と暗号化バックアップ実サイズで確定する。**独立コピーの確認と復元検証まではRailwayを縮退・削除しない**。
 - 現時点で実施したのはDB接続経路の**read-only確認と本書更新のみ**。サービス作成・OAuth連携・dump・転送・DB/cron変更・購入はまだしない。作成・転送・費用発生はユーザー明示承認後。
 
+### iPhoneのみのGoogle Drive認証方針（2026-10-13）
+- Google Drive A/Bは個人用無料アカウント。**GoogleのサービスアカウントをMy Driveに直接アップロードする方式は採用しない**（サービスアカウントはMy Driveのファイル所有/容量を持たない）。`rclone`のDrive接続はユーザー本人のOAuth 2.0認証が必要。rclone共用OAuth client_idは2026年中の提供終了が告知されているため、継続前提にしない。
+- 通常のrclone headless設定は別端末にrclone + browser、またはSSHポート転送が必要。**iPhone単独で同方式を実行できることは未検証**。無理にOAuthコード、refresh token、rclone.conf、Googleパスワードをチャット/GitHubへ貼らせない。
+- 認証の実装候補は本人のブラウザ認証を使うHTTPS OAuth構成（Google Cloud OAuthクライアント・承認画面・限定権限・Railway側秘密保持）。必要な設定・コストとセキュリティを確認してから、ユーザーの別途承認を得て一時サービスを用意する。2026-10-13時点で**OAuth・Drive接続・dump・アップロードはすべて未実施**。
+- 無課金で先にできること：本人がiPhoneのGoogle DriveでA/Bそれぞれに非共有の移行専用フォルダを作成。例：`boat-ai-v4-temp-202610`、`boat-ai-v5-temp-202610`。フォルダ共有や認証情報送信は禁止。これだけではバックアップできていない。
+- RailwayのV4はprivate endpointのみ、V5はpublic proxyあり。取得が必要な場合はRailway内部の一時ジョブからPG18互換`pg_dump`をストリームして暗号化・外部保管する案を維持し、新規サービス/公開ポート/費用発生操作は承認まで禁止。
+
 ### Google Drive 2アカウント容量確認（2026-10-13）
 - アカウントA：使用0.07GB、15GB無料枠想定で空き約14.93GB。アカウントB：使用0.01GB、空き約14.99GB。合計空き約29.92GBだが**容量は合算利用できない**。使用中の第三アカウントは触らない。
 - 一時移行の保存先候補：A=V4本番、B=V5研究用。**圧縮dumpの実サイズ・暗号化・ハッシュ照合・独立復元が未完了**で、容量確認だけをもってバックアップ完了としない。
