@@ -66,3 +66,22 @@ assert_fail valid_age1_wrong_recipient recipient_not_preapproved_v3_key \
   env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT='age1a0b123456789qwertyuio' \
   V3_AGE_RECIPIENT_SHA256="$(printf '%s' age1a0b123456789qwertyuio | sha256sum | awk '{print $1}')" \
   bash "$script"
+assert_fail wrong_database source_database_mismatch \
+  env V3_BACKUP_MODE=validate V3_EXPECTED_DATABASE=wrongdb bash "$script"
+assert_fail non_github_runner github_actions_runner_required \
+  env V3_BACKUP_MODE=validate GITHUB_ACTIONS=false bash "$script"
+assert_fail invalid_run_id github_run_id_required \
+  env V3_BACKUP_MODE=validate GITHUB_RUN_ID=invalid bash "$script"
+assert_fail invalid_expected_port expected_port_invalid \
+  env V3_BACKUP_MODE=validate V3_EXPECTED_PORT=nonnumeric bash "$script"
+assert_fail invalid_database_url url_malformed_or_insecure \
+  env V3_BACKUP_MODE=validate V3_SOURCE_DATABASE_URL='mysql://mock:mock@safe.example:46406/boatdb' bash "$script"
+# Tampering with the tracked public key must abort before any network call.
+mkdir -p "$tmp/tampered/keys"
+cp "$script" "$tmp/tampered/v3_to_artifact_encrypt.sh"
+printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGYzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM=' > "$tmp/tampered/keys/v3_recovery_recipient_20261013.pub"
+assert_fail tampered_tracked_pub recipient_not_matching_tracked_public_key \
+  env V3_BACKUP_MODE=validate bash "$tmp/tampered/v3_to_artifact_encrypt.sh"
+rm "$tmp/tampered/keys/v3_recovery_recipient_20261013.pub"
+assert_fail missing_tracked_pub recovery_public_key_file_missing \
+  env V3_BACKUP_MODE=validate bash "$tmp/tampered/v3_to_artifact_encrypt.sh"
