@@ -26,5 +26,12 @@ iPhoneだけで旧V3、履歴archive、後続V4/V5の**現時点DB**を独立し
 - この代替案によるSSH接続、現DBのdump、age鍵生成、GitHub Actions実行、Google Drive新規ファイル保存、独立復元は**0件**。
 - ConoHaの2026-10-13契約・支払・設定完了の通知をGmailで再確認。サポートの新回答は確認できず、パネルアクセスはまだ未確認。
 
+## 2026-10-13 SSH鍵の非破壊的な事前確認
+- Railway公式`railway ssh`の要件: Railwayアカウントに**SSH公開鍵の登録が必要**。アカウントの`railway ssh keys list`（またはWebの**Account Settings → SSH Keys**）で登録状況を確認できる。既存のChatGPT Railway連携にはアカウントSSH鍵一覧取得・ターミナル接続のアクションが無く、**登録有無は未確認**。鍵登録は本人の承認後、既存鍵の有無を確認してから。
+- Railway公式: **project token (`RAILWAY_TOKEN`)ではSSH鍵管理をサポートしない**。workspace token (`RAILWAY_API_TOKEN`)又は`railway login`が必要と明記。過去のGitHub CIで`RAILWAY_TOKEN`を使えたことは、SSH鍵管理やCIのSSH接続成功の証明ではない。資格情報はGitHub・チャットに平文保存しない。
+- live Railwayの`list_tcp_proxies`（読み取り専用）: V3サービスに公開TCP proxyが1件、履歴archiveには0件。したがってarchiveは公開TCPの使い回しができず、SSHトンネルなど**別経路**が必要。秘密のDB接続URL／パスワードは取得・表示しない。
+- **実際のSSHトンネル接続/パフォーマンス/課金は未確認**。アーカイブDBの接続試験、V3 sleeping解除、GitHub Runner実行はユーザー承認前には行わない。
+- 公式: https://docs.railway.com/cli/ssh ; https://docs.railway.com/cli/connect
+
 ## Next ONE task
-**低コスト・read-onlyでSSHが既存設定のみで利用可能か事前確認する**（先にユーザー承認が必要な実接続は保留）。証明できなければConoHaのサポート回答待ちに戻す。SSH鍵/DB秘密情報をチャットに送らせない。
+利用者本人がRailwayの**Account Settings → SSH Keys**で登録鍵の有無だけ確認する（追加/削除はしない）。確認結果は`登録あり`／`登録なし`のみ。認証鍵そのものを送らせない。
