@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ONE-SHOT V4 or V5 PostgreSQL 18 logical backup, encrypted to Google Drive.
+# ONE-SHOT V3/V4/V5/archive PostgreSQL 18 logical backup, encrypted to Google Drive.
 # NOT a cron. No backup is stored in a Railway PostgreSQL volume.
 # Requires separately configured rclone remotes and private folder IDs:
 #   boat-drive-v4      -> Google account A, V4 folder
@@ -30,9 +30,16 @@ fi
 
 : "${SOURCE_DATABASE_URL:?Set source Railway DB URL in secret variables}"
 : "${SOURCE_EXPECTED_HOST:?Independently verify the approved DB host for this target}"
+: "${SOURCE_EXPECTED_DATABASE:?Independently verify the approved DB name for this target}"
 : "${DRIVE_EXPECTED_FOLDER_ID:?Set the approved private Drive folder ID}"
 : "${AGE_RECIPIENT:?Set public age1 recipient; NEVER the private key}"
+: "${AGE_EXPECTED_RECIPIENT_SHA256:?Pin independently verified recovery public key fingerprint}"
 [[ "$AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]] || fail 'invalid_age_recipient'
+[[ "$AGE_EXPECTED_RECIPIENT_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'invalid_expected_age_fingerprint'
+recipient_fingerprint="$(printf '%s' "$AGE_RECIPIENT" | sha256sum | awk '{print $1}')"
+[[ "$recipient_fingerprint" == "$AGE_EXPECTED_RECIPIENT_SHA256" ]] || fail 'age_recipient_fingerprint_mismatch'
+# This fingerprint must be documented separately from the AGE_RECIPIENT
+# env var; otherwise a simultaneous accidental change could pass the check.
 [[ "$DRIVE_EXPECTED_FOLDER_ID" =~ ^[A-Za-z0-9_-]{12,}$ ]] || fail 'invalid_drive_folder_id'
 for bin in pg_dump psql age rclone sha256sum md5sum mkfifo python3 tee awk grep; do
   command -v "$bin" >/dev/null || fail "missing_tool_${bin}"
@@ -90,8 +97,11 @@ unset remote_config
 
 # Read-only connection test (does not count rows or scan application tables).
 export PGOPTIONS='-c default_transaction_read_only=on'
-db_version="$(psql "$SOURCE_DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 \
-  -c "select current_setting('server_version_num')")" || fail 'db_readonly_preflight_failed'
+db_identity="$(psql "$SOURCE_DATABASE_URL" -X -A -t -v ON_ERROR_STOP=1 -F '|' \
+  -c "select current_database(), current_setting('server_version_num')")" \
+  || fail 'db_readonly_preflight_failed'
+IFS='|' read -r actual_database db_version <<< "$db_identity"
+[[ "$actual_database" == "$SOURCE_EXPECTED_DATABASE" ]] || fail 'source_database_name_mismatch'
 [[ "$db_version" =~ ^18[0-9]{4}$ ]] || fail 'source_postgres_18_required'
 rclone lsf "${remote}:" --max-depth 1 >/dev/null || fail 'drive_folder_not_accessible'
 printf 'BACKUP_PREFLIGHT_OK target=%s pg_major=18 root_folder_confirmed=YES\n' "$target"
