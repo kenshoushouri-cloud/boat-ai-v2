@@ -50,5 +50,13 @@ iPhoneだけで旧V3、履歴archive、後続V4/V5の**現時点DB**を独立し
 - `ops/backup/test_v3_to_artifact_guard.sh`: モックのみ使用、無接続の停止条件11件をローカル`bash`で実行し全件PASS。`bash -n`もPASS。**実PostgreSQL接続・実age暗号化/復号・実データRestoreは未試験**。
 - 専用GitHub workflow・GitHub Secrets・`age`復号用のユーザー保管秘密鍵は**まだ作っていない**。Railwayの旧V3はSLEEPING維持、archiveや本番V4/V5にも変更なし。
 
+## 2026-10-13 21時台：iSH（Alpine 3.14 x86）の復元用鍵候補
+
+- 公式`age` README は**Linux 386の現在版配布を確認できず**、通常apk導入はAlpine3.15以上。iSH Alpine3.14に新しいapkリポジトリを混ぜたり、出所不明バイナリを導入しない。
+- 代案は`age`が公式対応する**SSH Ed25519公開鍵 recipient**を別途生成する方法（https://github.com/FiloSottile/age/blob/main/README.md#ssh-keys）。ユーザーiSHに導入済の`ssh-keygen -t ed25519`で**復元専用の別鍵**を作る。Railway SSH認証の既存秘密鍵は絶対に流用しない。新規秘密鍵には長いパスフレーズを付与し、iSH外の独立した安全な場所2箇所へ保管（秘密鍵・パスフレーズをGitHub/ChatGPTへ送らない）。
+- age暗号化は公開鍵全行を `age -r "ssh-ed25519 AAA..."`、復号は**本人のみが持つ** SSH秘密鍵で `age -d -i ./boat_ai_backup_recovery_20261013`。公式は`age -R 公開鍵ファイル`も明記。暗号文に公開鍵tagが現れるため匿名性は低下するが、個人の暗号化保全の用途では許容性を別途評価。
+- `ops/backup/v3_to_artifact_encrypt.sh`の recipient 形式ガードを`age1...`と`ssh-ed25519 ...`の両方に対応。未配線・plan default・無承認実行禁止は継続。テストスクリプトにもSSH受信者の受理と異常文字列の拒否を追加。**GitHubのファイル更新だけ、実暗号化→復号テストは未実施**。
+- **実バックアップの必須保留条件**: passphrase付き専用秘密鍵の独立バックアップ完了、検証可能な環境での**本物のage暗号化→本人秘密鍵での復号テスト成功**。鍵作成だけではこの条件は満たせない。
+
 ## Next ONE task
 新規の`age`復号用鍵を**Railway/GitHub外の本人端末で生成・独立保管できるか**、iSH(Alpine 3.14 x86)で利用可能な安全なインストール方式を確認する。**Railway SSH Ed25519鍵は代用せず**、秘密鍵をチャット・GitHubに渡さない。本人操作/実費用が必要な場合は一度に1操作で案内し、実バックアップの前に暗号化→復号の小規模自己テストを行う。
