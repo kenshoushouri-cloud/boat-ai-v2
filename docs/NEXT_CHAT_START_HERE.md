@@ -1,4 +1,4 @@
-# 次チャット開始文 — 2026-10-13短縮
+# 次チャット開始案内（2026-10-14）
 
 @GitHub
 @Railway
@@ -6,10 +6,10 @@
 新競艇AI開発プロジェクトNo.2の続きです。
 
 Repository: `kenshoushouri-cloud/boat-ai-v2`
-**作業branch**: `feature/v5-prior-day-counter-test-20261011`（mainではなく、このbranchを明示して読む）
+作業branch: `feature/v5-prior-day-counter-test-20261011`（mainに無断マージしない）
 
-最初にbranch上の`docs/HANDOFF_LATEST.md`と、そこが指す**current compact handoffだけ**全文読んでください。古いhandoff・PROJECT_HISTORY・過去チャット・workflow/ログの大量読み込みは禁止。
+最初に作業ブランチの`docs/HANDOFF_LATEST.md`→指定されたcurrent compact handoff→本ファイルだけを確認してください。古いhandoff/PROJECT_HISTORY/長いworkflow/過去チャットを大量に参照しないでください。
 
-**最初の1作業**: ConoHa VPS 2GB申込完了メールあり、PayPal支払い済み、Safariで「ログイン成功」でも新規プラン選択・支払画面に戻る件を**二重契約/二重払いなしに**解消し、既存VPSの管理画面への到達を確認。未確認の稼働や移行完了を主張しない。
+**Next ONE taskはcurrent compact handoffの記載を優先**。ConoHa 2GB上でV5予想AI・DB・収集・バックテストを一元化する方針。ConoHaのログイン問題はサポート返答待ち、再購入しない。アクセス復旧前に行えるGitHub作業ブランチ内の安全なオフライン準備を進め、1回に1作業、目安時間を簡潔に示してください。
 
-V5主力・V4本番保護、Railway費用最小化、SQL/DB/Production/LINE/購入額保護、自動購入最後に別途承認。**1回に1作業・最小tool call・実行時間目安・短い結果**。SHA/run/容量は必要なものだけlive確認。Railway Agent/AI禁止、タイムアウト時は重複実行せず確認。
+Railwayは4DBの安全保全/独立復元が済むまで停止・削除禁止。V4本番保護、V5主力、費用最小化、Railway Agent/AI禁止、BUY HARD HOLD。実データ移行・cron変更・課金・自動購入は都度別承認。
