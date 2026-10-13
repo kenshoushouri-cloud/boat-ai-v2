@@ -11,6 +11,9 @@
 - **2026-10-14 07:13 JST 失敗原因確定に近づく**: #190 `collect`は23秒で失敗、`Load public database URL without publishing it`の7秒ステップで`DATABASE_PUBLIC_URL not found`、本体収集ループはskipped。main workflowの`--service postgres`はRailway production live一覧に無いサービス名。V4本番DBは`Postgres-EKp2`、live TCP proxy 0、変数名`DATABASE_URL`はあり`DATABASE_PUBLIC_URL`無し（秘密値の取得なし）。原因は旧接続設定と現在構成の不一致と判断。展示ST実欠測・別経路取得は未確認。**Next ONE task: Railway側の展示ST取得代替ジョブ/サービスをread-onlyで確認**。cron停止・公開proxy新設・V4本番への設定変更・run再実行禁止。詳細`docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
 - **2026-10-14 07:09 JST GitHub Actions 10/1 実画面**: `exhibition-st-forward-scheduled-collector.yml` の `created:2026-10-01` は **3 runのみ**: #188 09:53 JST 13秒 失敗、#189 15:37 JST 28秒 失敗、#190 22:50 JST 25秒 失敗。合計66秒で、10/1 GitHub Actions Linux 1,858minの主因ではない。**ただし収集失敗の理由と実欠測の有無は未確認**。次ONE task: GitHub Actions #190 のrun詳細で失敗箇所確認（ログに秘密があれば送らない）、Railwayは変更/起動せず、cron停止禁止。詳細 `docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md`。
 
+- 2026-10-14 Railway展示情報の代替経路read-only調査: cron-final-check → run_final_pg.py → v25_final_realtime_pipeline_pg.py → v21_realtime_collector_pg_safe.py → save_exhibition_and_entries で通常展示を保存する実装あり。10/13 Railwayログ saved_exhibition_rows は6〜30等の正数が複数、直近Cron succeeded。10/1の同ログ検索は0件のため当日データ保存は未確認。展示STの締切前Forward専用表 v2_exhibition_st_forward_shadow とは別。専用collector collect_exhibition_st_forward_shadow_pg.py がRailway他サービスから実行されていたか・表にデータがあるかは不明。Next ONE taskは専用collector呼出し経路のmain静的調査。DB接続・停止・削除・公開proxy追加は禁止。詳細 docs/GITHUB_ACTIONS_LONG_RUN_AUDIT_20261014.md。
+
+
 ## Source /目的と最重要ガード
 - Repo `kenshoushouri-cloud/boat-ai-v2`、作業ブランチ `feature/v5-prior-day-counter-test-20261011`。**main・V4本番を無断変更/マージしない**。V5強化型を主力として構築（旧V4買い目の安易な流用禁止）、将来は自動購入。しかし**BUY HARD HOLD**: Forward/ROI実績未検証、購入操作は最後・別承認。LINE仮候補通知不要。
 - 2025-07-01から全保有期間のデータを可能な限り保持。精度悪化でモデルに不採用でもデータ自体は保管。締切前に観測・凍結されていない過去展示/オッズを当時の証拠として偽装しない。返還不明・PENDING・NO_BUY・欠測は勝手に補完/母数除外しない。
