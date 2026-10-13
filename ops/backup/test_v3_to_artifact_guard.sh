@@ -53,3 +53,12 @@ assert_fail wrong_host source_host_mismatch env V3_BACKUP_MODE=validate V3_EXPEC
 res="$(V3_BACKUP_MODE=validate bash "$script")"
 [[ "$res" == *'V3_ARTIFACT_STATIC_PREFLIGHT=PASS'* && "$res" == *'V3_ARTIFACT_DB_CONNECTION=NOT_ATTEMPTED'* ]] || { echo "FAIL validate: $res" >&2; exit 1; }
 printf 'PASS validate_has_no_db_connection\n'
+# The dedicated SSH Ed25519 recovery recipient is supported by age officially.
+ssh_recipient='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGYzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM='
+ssh_hash="$(printf '%s' "$ssh_recipient" | sha256sum | awk '{print $1}')"
+res="$(V3_BACKUP_MODE=validate V3_AGE_RECIPIENT="$ssh_recipient" V3_AGE_RECIPIENT_SHA256="$ssh_hash" bash "$script")"
+[[ "$res" == *'V3_ARTIFACT_STATIC_PREFLIGHT=PASS'* && "$res" == *'V3_ARTIFACT_DB_CONNECTION=NOT_ATTEMPTED'* ]] || {
+  echo 'FAIL ssh_recipient_validate' >&2; exit 1
+}
+printf 'PASS dedicated_ssh_recipient_validate_without_connection\n'
+assert_fail invalid_ssh_recipient recipient_format_invalid env V3_BACKUP_MODE=validate V3_AGE_RECIPIENT='ssh-ed25519 not*base64' bash "$script"
