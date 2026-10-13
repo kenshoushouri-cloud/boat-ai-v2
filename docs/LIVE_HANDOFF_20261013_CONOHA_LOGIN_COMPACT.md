@@ -58,5 +58,7 @@
 
 - **2026-10-13 19:27 SSH鍵未登録確認**: 利用者本人のRailway Account Settings → Your SSH Keysスクリーンショットに`You have no SSH keys yet`が表示され、現アカウントにSSH鍵0件と判明。Default Cloud Agentは本案件で不要（Railway Agent/AI禁止）。次は**本人の明示同意**を得てiSH内でRailway専用Ed25519鍵ペアを作成し公開鍵だけをRailwayに登録する候補。秘密鍵はユーザー端末からチャット/GitHubソースに提出しない。GitHub Actionsに使う場合は後続の秘密鍵取扱いの別途承認と連携が必要。SSH鍵追加/DB接続/バックアップ/課金操作は未実施。
 
+- **2026-10-13 20時台 Railway SSH登録完了（本人申告）**: iPhone iSH(Alpine)に`openssh-keygen`を導入し、パスフレーズ付きEd25519鍵を`/root/.ssh/railway_boat_ai_20261013`と`.pub`で作成。`.pub`のみ本人がRailway Account Settings→Your SSH Keysへ登録成功と報告。秘密鍵・パスフレーズはチャット/GitHubに送っていない。登録と接続成功は別で、SSH疎通・CIからの接続・現V3/archive DBバックアップは**未実施**。次ONE taskはiSH内の公開鍵fingerprint読取による登録前準備確認（鍵値はチャットに送らせない）。プロジェクトtokenでSSH接続可能と決めつけない。追加課金／Railwayサービス変更なし。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
