@@ -54,5 +54,7 @@
 
 - **2026-10-13 19時台 Next alternative**: GmailでConoHa支払確認・VPS 2GB申込完了・管理画面ログイン通知あり。サポート返信は未検出。ConoHa待ちの代替として`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`を設計（Railway SSH/非TTY→外部CIでPG18ダンプ→age暗号化→GitHub Actions短期artifact→本人がGoogle Driveへ保存）。**設計のみ**、SSH鍵の有無未確認、Railway起動/通信/Actions/ダンプ/復元未実行。次は低コストで既存Railway SSH鍵登録・CI利用可能性の確認。実DB接続と実dumpは別承認。秘密鍵はRailway/GitHub外に独立保管、過去CMSと区別。
 
+- **SSH実装ブロッカー（2026-10-13）**: Railway公式`railway ssh`には登録済アカウントSSH鍵が必要。CLI project token`RAILWAY_TOKEN`はSSH鍵の管理不可、workspace token/本人ログインが必要。ChatGPT Railwayプラグインでは鍵登録一覧を参照できず、鍵の有無**未確認**。live read-only TCP proxyを調査: V3 1件、history archive 0件。次の1作業: 利用者がRailway Account Settings→SSH Keysを**見るだけ**（ある/なしの報告、鍵内容は非共有）。詳細`ops/backup/GITHUB_ACTIONS_ENCRYPTED_ARCHIVE_FALLBACK_20261013.md`。Railway起動/SSH接続/ダンプ未実施。
+
 ## 安全な作業開始規則
 **最初のONE taskはConoHaログイン成功→申込画面に戻る現象の切り分け**。安全に管理画面に到達するまでRailwayデータ移行開始はしない。ConoHa費用発生操作・新規契約/課金・サーバー停止・大規模バックアップ/転送・DB書込/削除・本番変更・BUYは無断で行わない。1作業の目安時間を簡潔に示す。新情報が出たらこのファイルのみ短く更新し、古い経過は追記し過ぎず差し替える。
