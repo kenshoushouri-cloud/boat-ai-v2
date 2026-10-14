@@ -30,6 +30,10 @@
 - `ops/conoha`に新guardはあるが、今回読んだworkflowには`v5_serial_resource_guard.sh --execute --`の起動宣言は見つからない。
 - 未読の334 workflow、`.railway/compact-bridge`以下、Railway Dashboard service cron、VPS systemd/cron、別entrypoint、実環境`V5_SERIAL_LOCK_FILE`は未確認。**この結果を「全件安全」「全件不稼働」と解釈禁止**。
 
+## main と作業branchの定期writer宣言照合（10/14）
+
+**2/2 完全一致**（GitHub Contents のblob SHA比較および起動宣言確認）。展示ST workflow SHA `a90d4f88e2fccf8fe4270ac6f4541e78260c2312`: `schedule: */5 22,23,0-12 * * *` (UTC)、`EXH_ST_FORWARD_DRY_RUN: '0'`、`python -u collect_exhibition_st_forward_shadow_pg.py`。選手コース workflow SHA `3ed72123a3230ad5dbe04500731be80efbec3810`: `schedule: 45 21 * * *` (UTC)、`RACER_COURSE_FORWARD_DRY_RUN: '0'`、`python -u collect_racer_course_top3_forward_shadow_pg.py`。**mainに定義は存在**するが、Actionsの有効・無効、直近起動/成功/DB書込状況は未確認。ConoHa共通guard経由の宣言なし。**削除・停止・実行・移行は一切していない**。
+
 ## Next ONE task
 
-まずConoHaサポート返信を確認。復旧なら2GB VPS read-only診断。未復旧なら**今回抽出した2件の定期writer workflowだけ**について、実際のdefault branchに同じschedule/実行コマンドが宣言されているか**read-onlyで差分確認**する。実行・停止・デプロイ・V4/4DB/Secrets/BUYは触れない。
+ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**上記2workflowの直近GitHub Actions runメタデータだけ**read-only確認し、schedule起動実績の有無・状態を区別する。ログ/Secrets/DB/稼働変更/再実行/課金/BUY禁止。
