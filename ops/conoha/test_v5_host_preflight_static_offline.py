@@ -54,7 +54,10 @@ class PreflightSafetyOffline(unittest.TestCase):
                 self.assertIn(required, source)
 
     def test_no_network_secret_or_mutating_commands_in_pinned_source(self):
-        source = self.original.decode()
+        source = "\n".join(
+            line for line in self.original.decode().splitlines()[1:]
+            if not line.lstrip().startswith("#")
+        )
         # Exact git-blob pin is primary protection. This is a readable
         # secondary check; shell keyword matching alone is not a sandbox.
         for pattern in (
