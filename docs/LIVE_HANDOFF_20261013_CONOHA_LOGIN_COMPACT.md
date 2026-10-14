@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** ConoHaの既存Ubuntu24.04.3 LTS rootコンソールで**`apt-get -s install rclone`を1回実行**し、rclone導入時の新規追加/upgrade/remove・依存パッケージを**シミュレーションのみ**で確認。`-s`は実インストールやネットワーク通信を行わない。画面を見て導入可否と個別承認を次段階で判断。rclone本体は未導入、Google A/B OAuthや容量は未確認、PG18も未導入。ConoHa ageテストPASS・CLEAN_OK確認済、**現行Railway4DBの実暗号化バックアップと独立復元は0/4**。Railway4DB/V4/main/cron/BUYを保護し、パッケージ導入/OS更新・再起動・PGDG追加・実DB接続・有料作業は別承認までHOLD。
+**次ONE task（2026-10-14 21:07 JST）**：本人のConoHa Ubuntu24.04.3 rootコンソール画像で`apt-get -s install rclone`完了を確認。**0 upgraded/1 newly installed(rclone 1.60.1+dfsg-3ubuntu0.24.04.6)/0 removed、依存追加なし**。これはシミュレーションのみ、**実rclone未導入**。次は**rclone単独導入の明示承認を確認**し、本人が承認した場合に限り`apt-get install --no-install-recommends rclone`を実行、計画外の変更なら中断。導入後の`rclone version`とGoogle Drive A/B本人OAuth・保存容量/接続先の確認は別作業。Ubuntu package rcloneは旧版のため、実Drive OAuth/CLI互換性は未検証。ConoHa age1.1.1の使い捨て鍵暗号化/復号・bit identical・CLEAN_OKは実機PASS。ただし本人秘密鍵/DB restore/Google Drive uploadは未実施、4DB暗号化外部バックアップ/独立復元0/4。Railway4DB/V4/main/cron/BUY、OS更新・再起動/PGDG追加/実DB接続/実データ転送は別承認HOLD。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
