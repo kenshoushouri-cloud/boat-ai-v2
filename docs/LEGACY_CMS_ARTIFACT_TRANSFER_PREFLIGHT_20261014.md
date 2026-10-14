@@ -26,5 +26,12 @@
 3. 本人が**対象1件・宛先・費用/通信リスクに明示同意**した後だけ転送。保存先ファイル名にRun IDを付け、同名v2を区別する（`20261001-run-36810769041.zip`等）。既存ZIP上書き/移動/削除なし。
 4. Drive側のサイズ/非共有状態だけで成功とせず、再取得ZIPの全体SHA-256をGitHubのdigestと照合し、可能なら正しいCMS鍵で全体復号→隔離PG18全復元を別作業で検証。**旧CMS成果物は現行Railway4DBのバックアップの代用不可**。実DB暗号化退避/独立復元0/4を維持。
 
+## 2026-10-14：転送後の旧CMS ZIP検証コード追加
+
+- `ops/backup/verify_legacy_cms_zip_offline.py`をfeatureへ追加し、**ダミーZIP 14/14 offline PASS**。ローカルテストコードとGitHub保存コードのGit blob一致（`7587461cf2f379357b74248a8d8c8013a1adaa32`）。
+- 4件の公開GitHub Artifact metadataをrun ID・サイズ・SHA-256で固定し、`--directory`、`--filename`、`--run-id`を要求。**同名v2を別runとして検証**し、サイズ違い、同サイズ改竄、別run誤指定、パス移動、symlink/hardlink等を拒否。1MiB単位のread-onlyハッシュ計算のみで、ZIP展開・CMS復号・ネットワーク・DB・Driveへのアクセスはしない。
+- 実ZIPは**0件照合**で、Driveの既存ZIPもSHA未確認。テストPASSは**ローカルZIPバイト整合性の検証コードが動作した**ことだけを示す。CMS秘密鍵の有無・独立復元・Google Drive遠隔バイト一致は一切保証しない。
+- 実ファイルを本人の安全なローカルフォルダへ**承認済み経路で取得した後に限り**、例：`python3 ops/backup/verify_legacy_cms_zip_offline.py --directory /path/to/safe/folder --filename boat-ai-pre-hobby-20261001.zip --run-id 36796803697`で検査する。本人の秘密鍵、アカウント情報、個人パスをChatGPT/GitHubへ貼らない。転送・大容量downloadを本ターンでは開始しない。
+
 ## Next ONE task
 ConoHaサポート返信/既存2GB管理画面到達を先に確認。未復旧なら**本人のGoogle Drive A残容量（数字のみ）を確認**し、上記3件から最も早く失効する1件の転送可能性/費用・空き容量条件を再評価。現時点で実ファイル取得・アップロード、Railway接続、鍵操作、BUYは一切行わない。
