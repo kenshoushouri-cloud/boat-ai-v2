@@ -40,8 +40,9 @@
 
 - 展示ST: run [`38491689226`](https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/runs/38491689226)、2026-10-14 00:42:32Z（09:42:32 JST）、`event=schedule`, `head_branch=main`, `status=completed`, `conclusion=failure`。
 - 選手コース: run [`38491242338`](https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/runs/38491242338)、2026-10-14 00:37:39Z（09:37:39 JST）、同じく`schedule/main/completed/failure`。
-- 原因、失敗step、DB実書込み、Runner費用および他のcron稼働状況は未確認。**ConoHa共通lockの動作証拠にはならず、復旧・手動再実行・停止を行っていない**。
+- jobs/stepsメタデータを追加確認：展示ST run `38491689226`（collect job `115618118381`）、選手コース run `38491242338`（collect job `115616673072`）とも**Step 6「Load public database URL without publishing it」でfailure**。Step 5 dependenciesはsuccess、Step 7 collection loopはskipped、cleanupはsuccess。`validate` jobは両runでskipped。
+- **今回のrunではcollection loop未実行**。失敗の根本原因/DB URL値/実際のDBアクセス/Runner利用料/他のcronは未確認。スケジュールによるCI消費リスクは継続し得るが請求額は推定しない。**ConoHa共通lockの動作証拠ではなく、復旧・再実行・停止を行っていない**。
 
 ## Next ONE task
 
-ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**2件の失敗runのjobs/stepsメタデータだけ**read-only確認し、CI費用・失敗箇所への影響を分類する。ログ/Secrets/DB/ジョブ実行・再実行・停止/BUYは禁止。旧研究収集の修復は優先しない。
+ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**旧研究の失敗した定期Actions2件に限り、直近run件数・時間のメタデータからCI消費リスクをread-only棚卸し**する。費用額は根拠なしに推定しない。ログ/Secrets/DB/再実行/停止/BUY禁止、旧収集の修復は優先しない。
