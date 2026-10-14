@@ -21,6 +21,18 @@ class Rejected(RuntimeError):
     pass
 
 
+class FakeFirstWriteRejected(RuntimeError):
+    pass
+
+
+class FakeUnverifiedCapture(ValueError):
+    pass
+
+
+class FakeRacelistNotVerified(ValueError):
+    pass
+
+
 class FakeSession:
     def get(self, *args, **kwargs):
         raise AssertionError("REAL_OR_MOCK_HTTP_SHOULD_NOT_BE_CALLED")
@@ -91,9 +103,9 @@ class CaptureEntrypointOfflineTests(unittest.TestCase):
         module = ast.Module(body=fn, type_ignores=[])
         ns = {
             "CapturePipelineNotReady": Rejected,
-            "FirstWriteRejected": Rejected,
-            "UnverifiedCapture": Rejected,
-            "RacelistNotVerified": Rejected,
+            "FirstWriteRejected": FakeFirstWriteRejected,
+            "UnverifiedCapture": FakeUnverifiedCapture,
+            "RacelistNotVerified": FakeRacelistNotVerified,
             "capture_v5_official_response": capture,
             "persist_first_http_capture": persist,
             "bind_first_write_racelist": roster,
