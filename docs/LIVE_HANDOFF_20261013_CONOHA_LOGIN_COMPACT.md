@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**最優先の次ONE task：** Ubuntuの**バージョン（例22.04/24.04）**がConoHa管理画面に表示されるか本人が確認。表示がなければ「バージョン不明」と報告し、**本人の許可後**ブラウザーコンソールからOS版・メモリ・ディスクのread-only診断を行う。IP/UUID/会員/鍵を共有しない。Google A残量未確認、旧CMS未保全3件907MB転送HOLD。Railway4DB/main/V4/cron・SSH・再起動/追加課金/BUY禁止。
+**最優先の次ONE task：** 本人がConoHa管理画面でUbuntuバージョン表示を探したが**見当たらないと報告**。既存の`boat-ai-v5-main`詳細の**「コンソール」を開き、ログイン画面が表示されるかを確認**する。ConoHa公式 https://support.conoha.jp/v/console/ を参照。本人自身が安全にログインできた場合のみ、読み取り専用`cat /etc/os-release`（パスワードは本人のみ保持）でUbuntu VERSION_IDを確認。IP・UUID・収容ホスト・会員ID・認証画面・秘密鍵を共有しない。OS再インストール/再起動/設定変更・SSH・追加課金禁止。Google A残容量/旧CMS907MB転送HOLD、Railway4DB/main/V4/cron/BUY保護。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
