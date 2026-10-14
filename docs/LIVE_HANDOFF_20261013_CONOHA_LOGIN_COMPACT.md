@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** 本人がConoHa rootブラウザーコンソールで**`apt-cache policy postgresql-client-18 age rclone`**を1回実行し、ローカルAPTのInstalled/Candidateを確認（通信/変更なし）。公式PGDGのUbuntu24.04向けPG18 clientは導入可能、Ubuntuセキュリティ更新+再起動は別承認、rclone共有Google client_idは2026年廃止予定で独自OAuthが必要。詳細`docs/CONOHA_MIGRATION_PKG_SECURITY_PREFLIGHT_20261014.md`。**インストール/更新/再起動/DB接続/転送は未承認**。4DB実バックアップ/隔離復元0/4、旧CMS3件907MB/Drive A残量HOLD、V4/main/cron/鍵/BUY保護。
+**次ONE task：** ConoHa本人コンソールで**`apt-get -s install age`**を1回実行し、追加パッケージと予期しないupgradeの有無を非通信・非変更で確認。19:29 JSTの実`apt-cache policy`で`age` Installed none/Candidate 1.1.1-1ubuntu0.24.04.3、`rclone` Installed none/Candidate 1.60.1+dfsg-3ubuntu0.24.04.6、`postgresql-client-18`は**Unable to locate**。PG18は署名検証済み公式PGDG（Ubuntu noble）の別承認付き準備。詳細`docs/CONOHA_MIGRATION_PKG_SECURITY_PREFLIGHT_20261014.md`。**install/update/reboot/新規repo追加/実DB接続/データ転送は個別承認前にしない**。Railway4DB・V4/main/cron・BUY保護。Google A残量/旧CMS907MB転送HOLD。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
