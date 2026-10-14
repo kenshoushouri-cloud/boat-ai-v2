@@ -9,7 +9,7 @@ Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-count
 - 最終構成は**購入済みConoHa VPS 2GBにV5のDB・公式収集・予測・cron・監視・低負荷バックテストを一元化**、GitHubはコード/履歴、VPS外に暗号化バックアップ。旧Railway/Actions収集障害の個別修理を優先しない。RailwayのV4本番と4DB原本は安全な移行完了まで保護。
 
 ## 現状・確定した保留点（10/14）
-- **ConoHa 10/14 本人確認**：管理画面ログイン復旧。本人Safari画像でVPS Ver.3.0 の既存`boat-ai-v5-main`**1台/起動中/メモリ2GB/CPU3Core/ブートSSD100GB/追加ディスク無/有効期限2026-11-13/自動更新ON/自動バックアップ無効/IP欄あり**。本人回答で**OSはUbuntu**、ただし**バージョン未確認（24.04と推測しない）**、VPS内での実OS・空き容量・メモリ・SSH認証/ホスト鍵も未確認。画面にIP/UUID等が写ってもGitHub転記禁止。新規購入/再起動/再構築/更新・有料バックアップON禁止。実接続前に本人照合と別承認。
+- **ConoHa 10/14 本人画面確認（OS確定）**：既存`boat-ai-v5-main`がVPS Ver.3.0で**1台・起動中・2GB/CPU3Core・ブートSSD100GB・追加ディスク無・有効期限2026-11-13・自動更新ON・自動バックアップ無効・IP欄あり**。本人がブラウザーコンソールを開き、tty1上部に**`Ubuntu 24.04.3 LTS`表示を画像で確認**（OSテンプレートではなくゲストのログイン画面）。**ログインは未実施**。`login:`欄に`cat /etc/os-release`が入力されていたが、それはログイン名欄なのでコマンドは未実行。実CPU/RAM使用量・ディスク空き・SSH/ログイン認証/ホスト鍵は未検査。**画面に現れたIP/UUID/ホスト名・秘密情報をGitHubへ転記しない**。設定変更/課金/再起動/再構築/OS変更は禁止。
 - **V5の精度**：2025-07-01〜2026-10-10の67週間OOS計画は**実行0/67、実ROI/収益未検証**。7/2の180レースでオッズ238券不足、PENDING。締切後に取得した展示/オッズ・日付だけ同じ履歴を締切前観測と偽らない。欠測/返還不明/NO_BUY/PENDINGを勝手に埋めたり母数から外したりしない。
 - **実装準備のみ**：`ops/conoha/v5_offline_dag.py`論理DAG20/20 PASS、`ops/conoha/v5_serial_resource_guard.sh`の重複起動/時間/資源9/9＋権限/シンボリックリンク11/11 PASS。GitHub既存writer/cron候補11ファイル・28コード根拠を静的照合し、`docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`へ記録。**現行Railwayの稼働cron、V5 writer結線、VPS実機運用は未確認**。featureにwriter共通ロック静的checker＋18件のテスト定義を追加（本ターンの実テスト実行なし）。`docs/V5_CONOHA_CRON_ACTIONS_ENTRYPOINT_SCOPE_20261014.md`でworkflow345件中関連11件を限定静的照合：**旧研究のschedule付きwriter2経路はmain/feature同一、DRY_RUN=0、ConoHa共通flock不使用**。10/12〜14 UTCのmain定期runは対象計**10件（展示ST7・選手コース3）、全件failure**、各11〜18秒/合計144秒はメタデータ経過時間。直近2件はStep6 DB URL取得失敗→収集Step7 skipped。repo public＋標準Ubuntu runnerのため**Actions runner分の追加料金0**（artifact等別）。根本原因/実DB書込は未検証、V5本番HOLD。`docs/V5_PREDEADLINE_FREEZE_ENTRY_STATIC_AUDIT_20261014.md`：beforeinfo**HTTP前HOLD**、6艇肯定出走証拠なし・prewrite gateも拒否。racelist/K保存も前時点証明なし、Forward=False。`v5/test_capture_entry_forward_hold_offline.py`は**隔離Python 3.13で16/16実動作PASS**（初回7件のモック例外設計不備を修正、原本/テストのGit blob一致）。AST入口＋fake HTTP/DB限定で、実取得・DB格納やROIは未検証。本番未配線。旧PRE/旧v25 finalをV5へ流用しない。
 - **バックアップ**：4DB暗号化取得スクリプト既定無通信、モック75件＋中断11件＋ローカル3点(.dump.age/.sha256/.ready)照合21件PASS。すべて**オフライン模擬検査のみ**。現行4DBの実暗号化外部バックアップ**0/4**、独立フル復元**0/4**。archive/V4/V5用復元鍵の固定照合未完→実バックアップHOLD。本人の実`age`復号も未検証。iSHのAlpine3.14独自repoでは`age`導入失敗；環境改変禁止。V3本人鍵テストを安全強化（ローカル鍵パス/権限/リンク拒否/trace禁止）、`test_v3_recovery_key_local_guard_offline.py`のダミー鍵模擬**16/16 PASS**。`docs/V3_OWNER_AGE_RECOVERY_KEY_OFFLINE_REVIEW_20261014.md`に記録。V3公開鍵SHA固定一致、本人秘密鍵/実age復号は未検証（iSH ageなし）。archive/V4/V5の公開鍵ピン、Drive A/B OAuth、独立PG18/同時点照合未了（4DB実退避/復元0/4）。
@@ -27,7 +27,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 
 ## 工程と目安（T0＝既存ConoHa VPSのアクセス復旧日）
 **当初の2026年10月中旬運用開始目標は、VPS実機未確認/未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
-1. **現在（既存VPS起動・2GB/3Core/SSD100GB・Ubuntu名称確認済）**：Ubuntu**版の確認**を優先。管理画面に表示なしなら、本人承認の上でブラウザーコンソールから`cat /etc/os-release`等の非変更読取を計画。V5/バックアップは非通信検査のみ。
+1. **現在（ConoHa Ubuntu 24.04.3 LTS・2GB/3Core/SSD100GBの画面確認済）**：次は安全な本人ログイン方式の確認のみ。既存コンソールは`login:`待ち、コマンド未実行。実機資源のread-only診断は認証・正しい既存VPSとの照合と別承認後。V5/バックアップはoffline継続。
 2. **T0〜1日程度**：既存2GBのOS/SSH/CPU/RAM/diskを`ops/conoha/v5_host_preflight_readonly.sh`で実測、本人承認で初期設定。安全なホストで一時鍵による実`age`往復→本人鍵のローカル復号確認。
 3. **T0後、数日〜容量/認証次第**：Drive A/B本人OAuth、4DBを**1DBずつ**暗号化退避、外部全体SHA＋隔離フル復元。同期間のRailway停止なし、通信費/起動も事前承認。
 4. **バックアップ検証後、数日〜数週間**：V5出走→締切前公式情報/オッズ→証拠gate→shadow予想→公式結果→監査を直列化し、2025-07以降67週OOS・Forward精度/ROI・負荷を測定。欠測はそのまま扱う。リアルタイム取得と重いバックテストを同時実行しない。
@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**最優先の次ONE task：** 本人がConoHa管理画面でUbuntuバージョン表示を探したが**見当たらないと報告**。既存の`boat-ai-v5-main`詳細の**「コンソール」を開き、ログイン画面が表示されるかを確認**する。ConoHa公式 https://support.conoha.jp/v/console/ を参照。本人自身が安全にログインできた場合のみ、読み取り専用`cat /etc/os-release`（パスワードは本人のみ保持）でUbuntu VERSION_IDを確認。IP・UUID・収容ホスト・会員ID・認証画面・秘密鍵を共有しない。OS再インストール/再起動/設定変更・SSH・追加課金禁止。Google A残容量/旧CMS907MB転送HOLD、Railway4DB/main/V4/cron/BUY保護。
+**最優先の次ONE task：** ConoHa Ubuntu 24.04.3 LTSのブラウザーコンソール`login:`で入力が混ざっているため、**いったん入力を消し、既存契約時に設定したログインユーザー名（不明なら本人がConoHa公式管理画面/初期設定から確認）を特定する**。ユーザー名/パスワード/画面内ホストやIPはChatGPT/GitHubに送らず、失敗の連続試行をしない。認証完了後に本人承認でOS/メモリ/ディスクのread-only診断。契約変更・新規課金/サーバー再起動/SSH総当り禁止。Google A残量未確認、旧CMS3件907MB転送HOLD。Railway4DB/main/V4/cron/BUY保護。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
