@@ -13,7 +13,7 @@
 - **ConoHa**：10/13のVPS 2GB申込完了/支払確認メール受信済。**10/14 Gmail再確認でサポート返信なし**。Safariログイン後に申込/支払画面へ戻る問題は未解決、既存VPSのOS/IP/SSH未確認。**再購入・追加チャージ禁止**。推奨Ubuntu24.04LTSは実機未検証。
 - **V5**：2025-07-01〜2026-10-10の計画67週OOS窓は**実行0/67、実ROI未検証**。2026-07-02は180レースでオッズ238券不足のPENDING。締切後の展示/オッズや日付のみ一致の履歴を当時の凍結証拠にしない。欠測/返還不明/NO_BUY/PENDINGを勝手に補完・母数除外しない。
 - **GitHubで安全なオフライン準備完了**：V5プランDAG `ops/conoha/v5_offline_dag.py`（20/20テスト）、直列RAM/容量ガード `ops/conoha/v5_serial_resource_guard.sh`（9/9テスト）、実機診断 `ops/conoha/v5_host_preflight_readonly.sh`。**実機結線/予測は未実施**。
-- **バックアップ**：4DB既定無通信、service/Drive/鍵/別承認ゲートの既存テスト75件PASS、途中失敗11/11 PASS。**今回、`.dump.age`＋`.sha256`＋`.ready`をローカルで照合する読取専用プログラム・21/21テストPASS**。GitHub SHA＝ローカルテスト済ファイル一致。**これは3ファイルの整合性のみ**。archive/V4/V5復元鍵ピン未確定で実行HOLD。**実age/本人鍵復号・現行4DB外部バックアップ0/4・独立復元0/4**。詳細`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`。
+- **バックアップ**：4DB既定無通信、service/Drive/鍵/別承認ゲートの既存テスト75件PASS、途中失敗11/11 PASS。**今回、`.dump.age`＋`.sha256`＋`.ready`をローカルで照合する読取専用プログラム・21/21テストPASS**。GitHub SHA＝ローカルテスト済ファイル一致。**これは3ファイルの整合性のみ**。archive/V4/V5復元鍵ピン未確定で実行HOLD。**実age/本人鍵復号・現行4DB外部バックアップ0/4・独立復元0/4**。iPhone iSH固定Alpine 3.14の`apk.ish.app`に`age`がなく`apk add age`失敗（本人画像で確認）。OS/リポジトリ変更禁止。詳細`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`。
 - **過去の別資産**：10/1旧CMS暗号化Actions artifact3件は2026-12-30失効予定（当時の隔離復元job成功）。うち約302.7MB ZIP 1件は私有Drive AへiPhoneでコピー済だが**Drive側SHA/独立復元未検証**。現在の4DBバックアップを代替しない。Railway `archive-restore-key-20261001` の復元鍵変数を保護。
 
 ## 保全対象4DB（移行時の混同禁止）
@@ -39,7 +39,7 @@
 - **禁止**：無承認のV4本番変更、mainマージ、4DB/サービス/cron/旧CMS資産/復元鍵の停止・削除、DB wake/接続・dump/復元・大容量転送/購入・課金、バックテスト未検証のBUY。復元前の元データ削除禁止。既に走った作業は再実行前に現状確認。
 
 ## Next ONE task
-**Next ONE task**：ConoHaサポート返信待ちの間、**利用者のiPhone iSH内で**正規Alpine communityの`age`を`apk update && apk add age && age --version`で導入/確認（本人の操作1回）。確認後に**鍵を外部に出さず**ローカル小サンプルで実復号を検証。手順`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。実バックアップ・DB接続/Drive転送/BUYとRailway削除は禁止。ConoHaのOS/IP/SSH復旧後は読取専用ホスト診断へ切替。
+**Next ONE task**：ConoHa既存2GB VPSのサポート回答・管理画面復旧待ち。復旧後、**再購入せず**実機OS/SSH・RAM/ディスクを読取専用診断し、信頼できるOSの正規パッケージで`age`の**使い捨て鍵往復**を検証する。本人iSHに`age`を強行導入しない（固定Alpine3.14リポジトリにパッケージ無し）。手順`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。本人秘密鍵の持出し、Railway停止/削除、実DB/Drive、BUYは別承認まで禁止。
 
 ## 詳細は必要時だけ個別参照
 - `docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`（V5順序/品質/再試行）
