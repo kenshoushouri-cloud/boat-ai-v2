@@ -16,10 +16,10 @@
 
 - **BUY HARD HOLD**、Forward未解禁、67週OOS 0/67、実ROI未検証。履歴・日時だけの後付けを締切前証拠として採用しない。PENDING/UNKNOWN/NO_BUYを削らない。
 - 本ターンの監査は**ソース読取だけ**。テストPASS・実通信・実DB凍結を新たに確認したものではない。既存V4本番と4DB原本、CMS鍵、main、cron、料金は無変更。
-## 2026-10-14：入口安全ゲートのテスト追加（実行未確認）
+## 2026-10-14：入口安全ゲートの隔離オフライン動作検証
 
 - `v5/test_capture_entry_forward_hold_offline.py`をfeatureへ追加。**16件のPython unittest定義**：beforeinfo事前HOLD（HTTP/DBを呼ばない）、偽の6艇確認入力、依存欠落、opt-in要件、racelist/K保存後の`forward_eligible=False`、偽の`first_observed_at`/first-write確定フラグを拒否。
 - 監査済み実入口`v5/official_capture_pipeline.py`のGit blob `0831dcfc768ef2598f97f1615b94bed3b3eec2a8`をテスト内で固定。ASTから該当関数のみ抽出、fake HTTPとfake DBで注入する設計。**ユーザー環境への通信/DB/有料CIは行わない**。
-- 本ターン実施できたのはGitHub上の**ソース/テスト内容の静的チェック16/16 PASS**。**Python unittestの実行は未実施であり、動作試験PASSとは記録しない**。ConoHaログイン通知のみでサポート回答なし、VPS実機未確認。
+- **実行結果：Python 3.13 / `python3 -I` 隔離ローカル環境で16/16 PASS。** GitHub原本とテストのblob一致を確認してから実行。初回9/16 PASS・7/16失敗は**モックの例外3種類を全て`Rejected`に別名登録したテスト側の誤り**で、修正後16/16 PASS。修正テストGit blob=`6d42ccdb921523d351a28112929bd5e5d975743d`、入口元blob=`0831dcfc768ef2598f97f1615b94bed3b3eec2a8`。修正版はfeatureに保存しblob一致確認済。ASTで入口関数のみ実行し、HTTP/DBはstubなので**実HTTP・SQL・DB・Forward評価のE2E確認ではない**。ConoHaサポート返信・VPS実機は未確認。
 
-**Next ONE task：** ConoHaの返信/既存2GB管理画面の本人確認を先に行う。未復旧なら作業branchの`v5/test_capture_entry_forward_hold_offline.py`を**隔離オフライン環境でPython unittest実行**し、実行結果を明確に記録。V4/4DB/ConoHa/実HTTP/実DB/BUYは触らない。
+**Next ONE task：** ConoHaの返信/既存2GB管理画面を先に確認。未復旧なら**V5入口の早期HOLD/DB非接続テストと本体の`first-write`契約の間で、実公式時刻とForward判定を誤って承認し得る未検証経路がないか、1件の静的照合**を行う。V4/4DB/ConoHa/実HTTP/実DB/BUY禁止。
