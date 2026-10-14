@@ -9,7 +9,7 @@ Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-count
 - 最終構成は**購入済みConoHa VPS 2GBにV5のDB・公式収集・予測・cron・監視・低負荷バックテストを一元化**、GitHubはコード/履歴、VPS外に暗号化バックアップ。旧Railway/Actions収集障害の個別修理を優先しない。RailwayのV4本番と4DB原本は安全な移行完了まで保護。
 
 ## 現状・確定した保留点（10/14）
-- **ConoHa 10/14 実機確認・依存コマンド診断**：既存`boat-ai-v5-main` Ubuntu24.04.3 LTS/2GB/CPU3Core/SSD100GB、rootログイン可。実機`free`:Mem1.9Gi、MemAvailable1,569,100kB(約1.50GiB)、Swap2Gi; `df -h /`:99G/Used5.4G/Avail89G/6%。Timezone=Asia/Tokyo、NTPSynchronized=yes。`command -v python3 git pg_dump psql age rclone` の画面出力は**`/usr/bin/python3`と`/usr/bin/git`のみ**。pg_dump/psql/age/rcloneは現PATHから解決不可（未インストールと断定しない）。OSログイン時に**99 updates、14 standard security updates、`System restart required`**を表示。Ubuntu26.04へのアップグレード案内は出るが**実施しない**。セキュリティ更新・再起動も影響/別承認まで保留。実DB/HTTP/SSH/Google OAuth/復元未実行。IP/UUID/hostname/鍵等の秘密はGitHubへ記載禁止。Railway4DB/V4保護、4DBバックアップ/独立復元0/4、V5 BUY HOLD。
+- **ConoHa 10/14 VPS構築前・移行優先に変更**：既存`boat-ai-v5-main`Ubuntu24.04.3 LTS、2GB/3Core/SSD100GB、本人rootコンソール確認済。MemAvailable=1,569,100kB（約1.50GiB）、Swap2Gi、ルートSSD Size99G/Used5.4G/Avail89G/6%、Timezone=Asia/Tokyo・NTPSynchronized=yes。**Python3.12.3/Git2.43.0**を本人画面で確認。`pg_dump`/`psql`/`age`/`rclone`は現PATHから解決不可（未導入と断定しない）。Ubuntuログイン時99 updates/14 standard security updates・restart requiredの表示あり。**Ubuntu26.04アップグレードは実行禁止**。安全なセキュリティ更新・計画再起動は実施前に別承認。既存OS/DB/cron/SSH/アカウント変更・追加課金は保留。IP/UUID/hostname/鍵はGitHubへ転記しない。**Railway料金削減のためV5追加試験よりもバックアップとConoHaデータ移行を優先**するが、現行4DB実暗号化退避/独立復元は0/4、即座のRailway停止は禁止。
 - **V5の精度**：2025-07-01〜2026-10-10の67週間OOS計画は**実行0/67、実ROI/収益未検証**。7/2の180レースでオッズ238券不足、PENDING。締切後に取得した展示/オッズ・日付だけ同じ履歴を締切前観測と偽らない。欠測/返還不明/NO_BUY/PENDINGを勝手に埋めたり母数から外したりしない。
 - **実装準備のみ**：`ops/conoha/v5_offline_dag.py`論理DAG20/20 PASS、`ops/conoha/v5_serial_resource_guard.sh`の重複起動/時間/資源9/9＋権限/シンボリックリンク11/11 PASS。GitHub既存writer/cron候補11ファイル・28コード根拠を静的照合し、`docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`へ記録。**現行Railwayの稼働cron、V5 writer結線、VPS実機運用は未確認**。featureにwriter共通ロック静的checker＋18件のテスト定義を追加（本ターンの実テスト実行なし）。`docs/V5_CONOHA_CRON_ACTIONS_ENTRYPOINT_SCOPE_20261014.md`でworkflow345件中関連11件を限定静的照合：**旧研究のschedule付きwriter2経路はmain/feature同一、DRY_RUN=0、ConoHa共通flock不使用**。10/12〜14 UTCのmain定期runは対象計**10件（展示ST7・選手コース3）、全件failure**、各11〜18秒/合計144秒はメタデータ経過時間。直近2件はStep6 DB URL取得失敗→収集Step7 skipped。repo public＋標準Ubuntu runnerのため**Actions runner分の追加料金0**（artifact等別）。根本原因/実DB書込は未検証、V5本番HOLD。`docs/V5_PREDEADLINE_FREEZE_ENTRY_STATIC_AUDIT_20261014.md`：beforeinfo**HTTP前HOLD**、6艇肯定出走証拠なし・prewrite gateも拒否。racelist/K保存も前時点証明なし、Forward=False。`v5/test_capture_entry_forward_hold_offline.py`は**隔離Python 3.13で16/16実動作PASS**（初回7件のモック例外設計不備を修正、原本/テストのGit blob一致）。AST入口＋fake HTTP/DB限定で、実取得・DB格納やROIは未検証。本番未配線。旧PRE/旧v25 finalをV5へ流用しない。
 - **バックアップ**：4DB暗号化取得スクリプト既定無通信、モック75件＋中断11件＋ローカル3点(.dump.age/.sha256/.ready)照合21件PASS。すべて**オフライン模擬検査のみ**。現行4DBの実暗号化外部バックアップ**0/4**、独立フル復元**0/4**。archive/V4/V5用復元鍵の固定照合未完→実バックアップHOLD。本人の実`age`復号も未検証。iSHのAlpine3.14独自repoでは`age`導入失敗；環境改変禁止。V3本人鍵テストを安全強化（ローカル鍵パス/権限/リンク拒否/trace禁止）、`test_v3_recovery_key_local_guard_offline.py`のダミー鍵模擬**16/16 PASS**。`docs/V3_OWNER_AGE_RECOVERY_KEY_OFFLINE_REVIEW_20261014.md`に記録。V3公開鍵SHA固定一致、本人秘密鍵/実age復号は未検証（iSH ageなし）。archive/V4/V5の公開鍵ピン、Drive A/B OAuth、独立PG18/同時点照合未了（4DB実退避/復元0/4）。
@@ -26,8 +26,8 @@ Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-count
 Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**元DB/cron/秘密鍵サービス停止・削除禁止**。まず各DBの全量暗号化コピー→再取得SHA照合→本人鍵で全体復号→**独立した隔離PG18への全復元/同時点データ照合**→ユーザー個別承認。2025-07-01以降の原本を保全。復元用Ed25519秘密鍵・passphraseは本人iPhone/iSH/iCloud側のみ、公開鍵だけGitHub；秘密/DB URL/OAuth tokenをチャットやGitHubへ貼らない。
 
 ## 工程と目安（T0＝既存ConoHa VPSのアクセス復旧日）
-**当初の2026年10月中旬運用開始目標は、VPS実機未確認/未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
-1. **現在（ConoHa実機OS/CPU/RAM/ディスク/NTPとpython3/gitのPATH確認済）**：次は両ソフトのバージョンを非変更で読み取り、2GB VPSの最小依存構成を決める。インストール・OSアップグレード・再起動は別承認。
+**当初の2026年10月中旬運用開始目標は、VPS到達済でも未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
+1. **T0=2026-10-14：ConoHa 2GB実機到達済**：Python3.12.3/Git2.43.0確認済。最優先は安全なUbuntu24.04セキュリティ更新・事前承認付き計画再起動と、PG18 client/age/rcloneの最小導入計画。以後原本/宛先/鍵/Driveの前提を揃え**1DBずつ**暗号化コピー・再取得SHA・隔離PG18フル復元。**実コピー/復元を先行、V5追加開発・67週OOSは後続**。
 2. **T0〜1日程度**：既存2GBのOS/SSH/CPU/RAM/diskを`ops/conoha/v5_host_preflight_readonly.sh`で実測、本人承認で初期設定。安全なホストで一時鍵による実`age`往復→本人鍵のローカル復号確認。
 3. **T0後、数日〜容量/認証次第**：Drive A/B本人OAuth、4DBを**1DBずつ**暗号化退避、外部全体SHA＋隔離フル復元。同期間のRailway停止なし、通信費/起動も事前承認。
 4. **バックアップ検証後、数日〜数週間**：V5出走→締切前公式情報/オッズ→証拠gate→shadow予想→公式結果→監査を直列化し、2025-07以降67週OOS・Forward精度/ROI・負荷を測定。欠測はそのまま扱う。リアルタイム取得と重いバックテストを同時実行しない。
@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** 本人ConoHa rootコンソールで`python3 --version; git --version`を1回実行し、表示結果だけ確認。次工程でpg_dump/psql・age・rcloneの版/導入要否、バックアップ安全ゲートとセキュリティ更新/計画再起動を別途設計（無断導入しない）。Google Drive A残容量未確認、旧CMS未保全3件907MB実転送HOLD、Railway4DB/main/V4/cron/SSH変更/追加課金/BUYは禁止。
+**次ONE task：** Railwayの費用削減を目的に、ConoHa Ubuntu24.04.3での**セキュリティ更新/計画再起動とPostgreSQL18 client・age・rclone導入の事前手順/リスクをread-onlyで確定**。新しいパッケージのインストール・更新・再起動・Railway DB wake/接続/転送はユーザーの個別承認前に実施しない。バックアップ暗号化の本人鍵・Google A/B認証・Drive A残容量を検証し、旧V3/履歴archive→V5→V4本番の順は費用/復旧条件で調整。データ保護と独立復元の完了後にのみRailwayサービスを段階縮退。現状4DB退避/復元0/4、旧CMS3件907MB転送HOLD、V4/main/cron/鍵/BUY禁止。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
