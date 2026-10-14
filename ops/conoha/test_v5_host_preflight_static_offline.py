@@ -104,7 +104,7 @@ class PreflightSafetyOffline(unittest.TestCase):
             }.items():
                 wrapper = mockbin / name
                 wrapper.write_text(
-                    "#!/bin/sh\nprintf '%s' " + "'" +
+                    "#!/bin/sh\nprintf '%b' " + "'" +
                     output.replace("'", "'\\''").replace("\n", "\\n") +
                     "'\n",
                     encoding="utf-8",
