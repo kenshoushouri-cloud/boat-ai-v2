@@ -12,7 +12,7 @@
 ## 現在の実績・未完了（2026-10-14）
 - **ConoHa**：10/13のVPS 2GB申込完了/支払確認メール受信済。**10/14 Gmail再確認でサポート返信なし**。Safariログイン後に申込/支払画面へ戻る問題は未解決、既存VPSのOS/IP/SSH未確認。**再購入・追加チャージ禁止**。推奨Ubuntu24.04LTSは実機未検証。
 - **V5**：2025-07-01〜2026-10-10の計画67週OOS窓は**実行0/67、実ROI未検証**。2026-07-02は180レースでオッズ238券不足のPENDING。締切後の展示/オッズや日付のみ一致の履歴を当時の凍結証拠にしない。欠測/返還不明/NO_BUY/PENDINGを勝手に補完・母数除外しない。
-- **GitHubオフライン準備**：V5プランDAG20/20 PASS、直列RAM/容量ガード既存9/9 PASS。**今回、所有者/書込権限・symlink/hardlinkを拒否するロック権限ガードを追加し11/11 PASS**、既存9/9も同じ隔離Linuxで再実行。3つのGitHub blob SHAがローカルテスト済ソースと一致。実機診断`ops/conoha/v5_host_preflight_readonly.sh`は用意済み。**ConoHa実機に未導入・実予測未実行**。
+- **GitHubオフライン準備**：V5論理DAG20/20、直列ガード既存9/9＋所有者/リンク検査11/11が隔離LinuxでPASS（実機未導入）。**今回GitHub featureブランチで11ファイル・28個のコード根拠を静的照合PASS**、`docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`に既存収集/結果writer・PRE/LINE経路と未配線V5の区別を記録。**現行Railway cronの実稼働やV5 readinessを確認したものではない**。
 - **バックアップ**：4DB既定無通信、service/Drive/鍵/別承認ゲートの既存テスト75件PASS、途中失敗11/11 PASS。**今回、`.dump.age`＋`.sha256`＋`.ready`をローカルで照合する読取専用プログラム・21/21テストPASS**。GitHub SHA＝ローカルテスト済ファイル一致。**これは3ファイルの整合性のみ**。archive/V4/V5復元鍵ピン未確定で実行HOLD。**実age/本人鍵復号・現行4DB外部バックアップ0/4・独立復元0/4**。iPhone iSH固定Alpine 3.14の`apk.ish.app`に`age`がなく`apk add age`失敗（本人画像で確認）。OS/リポジトリ変更禁止。詳細`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`。
 - **過去の別資産**：10/1旧CMS暗号化Actions artifact3件は2026-12-30失効予定（当時の隔離復元job成功）。うち約302.7MB ZIP 1件は私有Drive AへiPhoneでコピー済だが**Drive側SHA/独立復元未検証**。現在の4DBバックアップを代替しない。Railway `archive-restore-key-20261001` の復元鍵変数を保護。
 
@@ -39,9 +39,10 @@
 - **禁止**：無承認のV4本番変更、mainマージ、4DB/サービス/cron/旧CMS資産/復元鍵の停止・削除、DB wake/接続・dump/復元・大容量転送/購入・課金、バックテスト未検証のBUY。復元前の元データ削除禁止。既に走った作業は再実行前に現状確認。
 
 ## Next ONE task
-**Next ONE task**：ConoHaサポート返信を確認。管理画面復旧時は**再購入なし**で既存2GB VPSのOS/SSH/RAM/ディスクを読取専用診断し、その後安全な使い捨て鍵で実`age`復号を試験。未復旧なら**V5の既存書込経路/cronを静的調査し、直列ロックを通るべき処理一覧**を確定（実接続/本番変更なし）。iSH固定Alpine3.14に`age`の無理な導入禁止。本人秘密鍵持出し/4DB停止・削除/BUYは禁止。
+**Next ONE task**：ConoHaサポート回答を優先確認。管理画面復旧時は再購入せず既存2GB VPSのread-only OS/SSH/RAM/容量診断。未復旧なら`docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`を元に、V5の新規writerが共通ロックを迂回しないかを検査する**読取専用・オフライン静的チェッカー**を作る。iSH固定Alpine3.14へage強行導入禁止。本人鍵持出し、DB実接続/cron起動、Railway停止/削除、BUYは禁止。
 
 ## 詳細は必要時だけ個別参照
+- `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`（既存writer・通知入口・V5未配線・ロック対象）
 - `docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`（V5順序/品質/再試行）
 - `docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`（OS/DB移行設計）
 - `ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`（暗号化/復元）
