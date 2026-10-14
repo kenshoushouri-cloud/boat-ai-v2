@@ -32,6 +32,10 @@ apt-cache policy postgresql-client-18 age rclone
 
 本人がConoHa VPS上で`apt-get -s install age`を実行。画面から`0 upgraded, 1 newly installed, 0 to remove`、`Inst age (1.1.1-1ubuntu0.24.04.3)`、`Conf age`を確認。インストール対象は**age 1件のみ**、既存パッケージのアップグレード/削除は計画に含まれない。**実インストール・ネットワーク転送・実暗号化はまだ0件**。シミュレーション時のAPT索引と実際のinstall時の状況が変わる可能性はあり、想定外の追加/削除/アップグレードが表示されたら中止。OSリリースアップグレード・再起動禁止。費用/認証/原本DB保護条件を維持。次は本人の明示承認後、ageのみをインストールして`age --version`を確認する。
 
+## 1c. 19:39 JST：age単独導入完了（本人画面）
+
+本人の明示承認後、ConoHa Ubuntu24.04.3 VPSコンソールから`apt-get install --no-install-recommends age`を実行したスクリーンショットを確認。**age 1.1.1-1ubuntu0.24.04.3のunpack/setting up完了**、パッケージ取得1,630kB、追加ディスク使用見込5,969kB、0 upgraded/1 newly installed/0 removed。needrestart出力は「Running kernel seems to be up-to-date」「No services need to be restarted」「No containers need to be restarted」。**今回のage導入に伴う即時再起動は不要**。ただし以前のUbuntuログインバナー「System restart required」が完全に解消したとは断定しない。**ageバイナリの実行結果と本人鍵による復号は未確認**。次は`age --version`を読取実行する1作業だけ。OS更新/PGDG追加/rclone/DB通信/Drive転送/再起動は引き続き禁止。
+
 ## 2. 導入時の必須条件（実施には別承認）
 
 1. **Ubuntu24.04の保守を先に計画**：ログイン時「99件の更新、うち14件の標準セキュリティ更新」「system restart required」。最新版へのOSリリース更新（26.04）は不要で**禁止**。先に更新影響（SSH/コンソール復旧経路、ディスク空き、データ損失リスク、サービスの有無）、再起動時刻を本人承認。Ubuntu24.04では`unattended-upgrades`と`needrestart`によりサービスが自動再起動され得る。意図しない時間のOS更新/再起動を実行しない。
@@ -49,4 +53,4 @@ apt-cache policy postgresql-client-18 age rclone
 - 本プロジェクト `ops/backup/BACKUP_SAFE_MODES_20261014.md`、`docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md` を参照。
 - 実VPSのAPTインデックス、利用可能バージョン、`unattended-upgrades`現設定、実backup鍵、接続・費用は**まだ未実測**。`apt-cache policy`後も更新・導入の承認は別途必要。
 
-**Next ONE task：** ageのみのインストールについて本人の明示承認を確認。承認されたらConoHa VPSで`apt-get install --no-install-recommends age`を実行、予定外の追加/更新/削除や費用があれば中断し、完了後`age --version`のみ確認する。PGDG/OS更新/再起動/DB接続と転送はHOLD。
+**Next ONE task：** ConoHa rootコンソールで`age --version`を1回だけ読み取り実行。本人鍵の復号・暗号化往復は未検証であり、次工程として使い捨て鍵による安全な実age試験を別承認・別作業で実施。PG18/OS更新/再起動/DB接続/転送はHOLD。
