@@ -37,6 +37,21 @@
 5. `pg_restore -l`でPostgreSQLカスタム形式のTOCを確認（**TOC読取だけでは全データの健全性は証明できない**）。
 6. PostgreSQL18の`pg_dump`は1 DBの論理バックアップ。ロール/パスワード、テーブルスペース等の**クラスタグローバル情報は含まれない**。独立した権限・拡張機能・設定/秘密変数・cron/通知の保全台帳が必要。`--no-owner --no-acl`を指定しているため原所有者/ACLの再現は別途評価する。
 
+### 1.1 ローカル3点セットの読取専用検査（実データ接続なし）
+
+復元候補を信頼できる端末へダウンロード後、`ops/backup/verify_backup_bundle_offline.py`を使用する。Python標準ライブラリのみ。例（**このコマンドは例示であり、実バックアップはまだ存在しない**）：
+
+```bash
+python3 ops/backup/verify_backup_bundle_offline.py \
+  --directory /path/to/already-downloaded-bundle \
+  --filename boat-ai-v3-20261014T100000Z-0123456789.dump.age \
+  --target v3
+```
+
+対象は `v3/archive/v4/v5`。**3ファイル（.dump.age/.sha256/.ready）必須**、両sidecarの完全一致、固定書式・対象名・日時、暗号化ファイル全体のSHA256一致、空ファイルやシンボリックリンク・対象の残留`.uploading`を拒否。暗号化ファイルは分割読込（小メモリ）。検査はローカルファイルへの**読取だけ**で、Drive認証・`age`復号・PostgreSQL復元や署名認証は**行わない**。
+
+2026-10-14 隔離Linuxでオフライン模擬21/21 PASS、GitHub保存ファイルSHA照合済み。**PASSは3点セットの内部整合性だけ**：SHAとマーカーを両方書き換える第三者からの真正性保護ではなく、Driveからの独立再取得・本物のage復号・隔離PG18フル復元を置き換えない。実ファイルの使用前に保存先Googleアカウントと取得経路も別途確認。
+
 ## 2. 別環境でのフル復元（承認後のみ）
 
 事前条件を**すべて確認できない時はSTOP**:
