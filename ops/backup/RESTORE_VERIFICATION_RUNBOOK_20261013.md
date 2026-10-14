@@ -31,7 +31,7 @@
 ## 1. アーカイブ候補の受入れ（まだ本番実行しない）
 
 1. 各Googleアカウントの本人認可がrclone側で完了し、対象remotesの`root_folder_id`がそれぞれの非共有フォルダと一致することを確認。**OAuth秘密、DB URL、復号秘密鍵はGitHub/チャットに貼らない**。
-2. ファイル名が `boat-ai-v3-...dump.age`、`boat-ai-archive-...dump.age`、`boat-ai-v4-...dump.age` または `boat-ai-v5-...dump.age` で、`.uploading`ではないこと。対応する `.sha256` が存在すること。
+2. ファイル名が `boat-ai-v3-...dump.age`、`boat-ai-archive-...dump.age`、`boat-ai-v4-...dump.age` または `boat-ai-v5-...dump.age` で、`.uploading`ではないこと。**同名の `.sha256` と `.ready` の両方が必須**。`.ready` は暗号化データの全転送・MD5比較・本体の最終名確認後に発行する完了目印。`.ready.uploading` や `.sha256` だけでは未完了扱い。`.ready` 内のSHA256と `.sha256` 側のSHA256および再取得した `.age` 実ファイル全体のSHA256を相互照合する。**`.ready`自体は独立復元成功の証明ではない**。
 3. テスト環境の**DB専用ボリューム外**に暗号化アーカイブを一時取得し、対応するSHA-256をファイル全体に対して再計算・比較。Google Drive内のMD5一致やファイル一覧掲載だけでは代替不可。
 4. 受信側で `age` による**ファイル全体の認証付き復号**がエラーなしに終了すること。秘密鍵はRailwayから独立した安全な場所で保持。復号ファイルは極力作らずパイプで処理する。
 5. `pg_restore -l`でPostgreSQLカスタム形式のTOCを確認（**TOC読取だけでは全データの健全性は証明できない**）。
