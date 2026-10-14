@@ -43,6 +43,14 @@
 - jobs/stepsメタデータを追加確認：展示ST run `38491689226`（collect job `115618118381`）、選手コース run `38491242338`（collect job `115616673072`）とも**Step 6「Load public database URL without publishing it」でfailure**。Step 5 dependenciesはsuccess、Step 7 collection loopはskipped、cleanupはsuccess。`validate` jobは両runでskipped。
 - **今回のrunではcollection loop未実行**。失敗の根本原因/DB URL値/実際のDBアクセス/Runner利用料/他のcronは未確認。スケジュールによるCI消費リスクは継続し得るが請求額は推定しない。**ConoHa共通lockの動作証拠ではなく、復旧・再実行・停止を行っていない**。
 
+## 定期Actionsの件数・時間と費用リスク（10/14 JST）
+
+- GitHub REST `actions/runs?event=schedule&created=2026-10-12..2026-10-14&per_page=100` を**1ページread-only**確認。期間はUTC日付。全リポジトリ16件のschedule runのうち、展示ST**7件**・選手コース**3件**、対象計**10件/10件failure**、すべて`main`で1回目の試行。取得範囲内でsuccess=0。
+- 対象10件の`run_started_at`→`updated_at`は各**11〜18秒**、合計**144秒（2分24秒）**。これは**メタデータ上の経過時間**でありRunnerの請求時間/作業CPU秒とは異なる。実行を試みた期間全体や今後の起動回数は保証しない。
+- Repo APIでは`visibility=public`。確認した2 workflowの`runs-on: ubuntu-24.04`は標準GitHub-hosted runner。GitHub公式docsによると**公開repoの標準runner実行時間は無料**であり、対象runの標準runner分の**追加料金は0**。その他のActions storage/artifacts/cacheや他サービス料金は未監査。料金は推計しない。
+- 失敗10件は旧研究系収集障害の証拠に留まる。**V5 writer未配線、Railway原本保護、本番HOLD**を維持し、旧収集の再実行・停止・修復は承認なく行わない。
+- 参考（2026-10-14確認）：https://docs.github.com/en/actions/reference/runners/github-hosted-runners 、https://docs.github.com/en/billing/concepts/product-billing/github-actions
+
 ## Next ONE task
 
-ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**旧研究の失敗した定期Actions2件に限り、直近run件数・時間のメタデータからCI消費リスクをread-only棚卸し**する。費用額は根拠なしに推定しない。ログ/Secrets/DB/再実行/停止/BUY禁止、旧収集の修復は優先しない。
+ConoHaサポート返信をまず確認。復旧なら既存2GB VPSのread-only診断。未復旧なら**既存の4DB暗号化バックアップ・独立復元の実行前提を、既存runbookとスクリプトから少数ファイルでread-only棚卸し**する。DB接続/復元/Secrets/cron実行・変更/課金/BUY禁止。
