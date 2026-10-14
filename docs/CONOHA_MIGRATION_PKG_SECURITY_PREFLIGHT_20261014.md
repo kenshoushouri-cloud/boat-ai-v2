@@ -28,6 +28,10 @@ apt-cache policy postgresql-client-18 age rclone
 
 **次の安全な1操作：** `apt-get -s install age` をrootコンソールで実行し、`Inst`予定/依存パッケージ/Unexpected Upgradeを確認する。`-s`は**simulate（非通信・非変更）**であり、**実インストールは行わない**。結果を評価してから実導入の別承認を求める。rclone・PG18・OS更新/再起動は別工程。
 
+## 1b. 19:34 JST：ageインストール事前シミュレーション実測
+
+本人がConoHa VPS上で`apt-get -s install age`を実行。画面から`0 upgraded, 1 newly installed, 0 to remove`、`Inst age (1.1.1-1ubuntu0.24.04.3)`、`Conf age`を確認。インストール対象は**age 1件のみ**、既存パッケージのアップグレード/削除は計画に含まれない。**実インストール・ネットワーク転送・実暗号化はまだ0件**。シミュレーション時のAPT索引と実際のinstall時の状況が変わる可能性はあり、想定外の追加/削除/アップグレードが表示されたら中止。OSリリースアップグレード・再起動禁止。費用/認証/原本DB保護条件を維持。次は本人の明示承認後、ageのみをインストールして`age --version`を確認する。
+
 ## 2. 導入時の必須条件（実施には別承認）
 
 1. **Ubuntu24.04の保守を先に計画**：ログイン時「99件の更新、うち14件の標準セキュリティ更新」「system restart required」。最新版へのOSリリース更新（26.04）は不要で**禁止**。先に更新影響（SSH/コンソール復旧経路、ディスク空き、データ損失リスク、サービスの有無）、再起動時刻を本人承認。Ubuntu24.04では`unattended-upgrades`と`needrestart`によりサービスが自動再起動され得る。意図しない時間のOS更新/再起動を実行しない。
@@ -45,4 +49,4 @@ apt-cache policy postgresql-client-18 age rclone
 - 本プロジェクト `ops/backup/BACKUP_SAFE_MODES_20261014.md`、`docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md` を参照。
 - 実VPSのAPTインデックス、利用可能バージョン、`unattended-upgrades`現設定、実backup鍵、接続・費用は**まだ未実測**。`apt-cache policy`後も更新・導入の承認は別途必要。
 
-**Next ONE task：** 本人コンソールで`apt-get -s install age`だけを実行し、依存関係と意図しないアップグレードの有無を確認。実インストール・PGDG追加・更新・再起動は承認までHOLD。
+**Next ONE task：** ageのみのインストールについて本人の明示承認を確認。承認されたらConoHa VPSで`apt-get install --no-install-recommends age`を実行、予定外の追加/更新/削除や費用があれば中断し、完了後`age --version`のみ確認する。PGDG/OS更新/再起動/DB接続と転送はHOLD。
