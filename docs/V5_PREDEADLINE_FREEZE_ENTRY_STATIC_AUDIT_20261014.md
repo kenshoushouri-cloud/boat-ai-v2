@@ -16,4 +16,10 @@
 
 - **BUY HARD HOLD**、Forward未解禁、67週OOS 0/67、実ROI未検証。履歴・日時だけの後付けを締切前証拠として採用しない。PENDING/UNKNOWN/NO_BUYを削らない。
 - 本ターンの監査は**ソース読取だけ**。テストPASS・実通信・実DB凍結を新たに確認したものではない。既存V4本番と4DB原本、CMS鍵、main、cron、料金は無変更。
-- **Next ONE task：** ConoHaサポート返信/既存2GBサーバーリストが復旧しているかを先に確認。未復旧なら**beforeinfo pre-HTTP HOLDとracelist/Kの非Forwardの戻り値**を、ダミーsession/DBを用いる**オフライン単体テスト**で1作業検証。実送信・DB接続・本番ジョブは起動しない。肯定出走証拠の契約は別の明示審査なしに解除しない。
+## 2026-10-14：入口安全ゲートのテスト追加（実行未確認）
+
+- `v5/test_capture_entry_forward_hold_offline.py`をfeatureへ追加。**16件のPython unittest定義**：beforeinfo事前HOLD（HTTP/DBを呼ばない）、偽の6艇確認入力、依存欠落、opt-in要件、racelist/K保存後の`forward_eligible=False`、偽の`first_observed_at`/first-write確定フラグを拒否。
+- 監査済み実入口`v5/official_capture_pipeline.py`のGit blob `0831dcfc768ef2598f97f1615b94bed3b3eec2a8`をテスト内で固定。ASTから該当関数のみ抽出、fake HTTPとfake DBで注入する設計。**ユーザー環境への通信/DB/有料CIは行わない**。
+- 本ターン実施できたのはGitHub上の**ソース/テスト内容の静的チェック16/16 PASS**。**Python unittestの実行は未実施であり、動作試験PASSとは記録しない**。ConoHaログイン通知のみでサポート回答なし、VPS実機未確認。
+
+**Next ONE task：** ConoHaの返信/既存2GB管理画面の本人確認を先に行う。未復旧なら作業branchの`v5/test_capture_entry_forward_hold_offline.py`を**隔離オフライン環境でPython unittest実行**し、実行結果を明確に記録。V4/4DB/ConoHa/実HTTP/実DB/BUYは触らない。
