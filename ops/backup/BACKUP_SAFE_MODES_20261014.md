@@ -18,13 +18,18 @@
 - `ops/backup/test_backup_preflight_integration_offline.py`：GitHub blobと隔離Linuxテスト済ファイルのSHA一致、Python `unittest` **32/32 PASS**。本体スクリプト＋宛先固定プログラム＋公開鍵を一時ディレクトリへ複製し、Driveフォルダhash**だけ**を合成IDのhashへ置換。実パスワード、実Drive ID、本人秘密鍵は使用しない。
 - `pg_dump`/`psql`/`age`/`rclone`は外部処理拒否モック。V3/archive/V4/V5それぞれに対し、サービスID誤り・他DBのID・他DBフォルダ・費用/対象承認不足は**外部ツール起動前に拒否**。正しい模擬`preflight`は宛先固定を通過後、`rclone listremotes`のモックで停止し、**DB接続・Google認証は行わない**。
 - `execute`も本人承認がない経路を拒否。archive/V4/V5は復元鍵ピン未登録のため、対象別承認の文字列を入力しても停止。V3の実フルバックアップ、暗号化、ストレージアップロード、独立復元は**未実施**。有効な模擬設定が通ったことは**実所有者・Railwayサーバーの真正性の証明ではない**。
-- **次はオフラインの異常系**：一時中断/転送失敗の時に `.uploading`を正常バックアップへ昇格せず、暗号化SHA metadataを成功扱いしないかを、ダミーデータと拒否モックで検査する。実通信・実DB・CIジョブ無し。
+- **実施済み**：途中中断・転送失敗の受入れ拒否試験は下記11件の結果を参照。実通信・実DB・CIジョブ無し。
 
 ## 2026-10-14：転送途中失敗・完了マーカー対策
 - `ops/backup/railway_pg_to_drive_stream.sh`は既存`.dump.age.uploading`→暗号化済み本体のMD5照合→`.sha256`出力→本体の最終名昇格/一覧確認**後に限り**、新たに`.ready.uploading`を作り、最後に`.ready`へ昇格する。どの段階でも失敗すれば`BACKUP_UPLOAD_DONE`を出さず終了。失敗ファイルは自動削除しない。
 - `ops/backup/test_backup_upload_failures_offline.py`を追加。模擬`pg_dump`/`age`/`rclone`で、実バックアップ処理の**転送段階を取り出し**、1成功＋10異常の**11/11ローカルテストPASS**（pg_dump/age失敗、転送中断、遠隔MD5不可/不一致、sidecar失敗、本体昇格/一覧失敗、`.ready`作成/昇格失敗）。外部通信・実DB・実age・本物のDriveを一切使用していない。**本体の前段認可から最後までの実データEnd-to-End試験ではない**。
 - 本体の最終名`.dump.age`と`.sha256`が存在しても、`.ready`無しなら**未完了**として取り込まない。復元手順 `ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md` で3ファイルとSHA一致が必須。`.ready`は「転送完了」目印であって**復号・全件復元・ROIの証明ではない**。
-- **次のONE task**：この3ファイルをチェックする**読取専用・オフライン受入れ検査**を実装して、欠落・改変・`.uploading`の拒否を検証。その後、実age対応端末・ConoHaアクセス・本人復元鍵の往復試験・実バックアップ・独立復元を順に承認する。
+- **実施済み**：3ファイルのオフライン受入れ検査を作成・21件PASS（次節）。今後の順序はcurrent compact handoffの「Next ONE task」を優先。
+
+## 2026-10-14：暗号化バックアップ3ファイルのローカル受入れ検査
+- `ops/backup/verify_backup_bundle_offline.py` は**ローカル読取専用**、Python標準ライブラリ。 `.dump.age`／`.sha256`／`.ready`の3点セット、指定対象（V3/archive/V4/V5）、SHA256全体照合、sidecarとmarkerの同一性、最終名/日付、一時`.uploading`残存・シンボリックリンクを確認。不合格なら終了コード2で拒否。暗号化ファイルはチャンク読込でメモリ使用量を抑える。実DB/Drive/通信/鍵なし。
+- `ops/backup/test_verify_backup_bundle_offline.py` を隔離Linuxで**21/21 PASS**。GitHub blob SHAはテスト済みローカル`git hash-object`と2ファイルとも一致。**実`age`復号、Googleアカウント所有者、実ファイルの独立再取得、隔離PostgreSQL18フル復元は未検証**。SHAおよびマーカーを一斉に偽造された場合の真正性確認にはならない。
+- 詳しい使い方・復元条件は `ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`。**最新4DBバックアップ・復元の実績は引き続き0/4**。
 
 ## V3専用の鍵
 - 旧V3はユーザーがiSHで作った**別用途Ed25519復元秘密鍵**に対応する公開鍵を `keys/v3_recovery_recipient_20261013.pub` に固定。
