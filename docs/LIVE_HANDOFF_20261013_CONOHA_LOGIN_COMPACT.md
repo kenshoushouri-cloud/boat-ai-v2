@@ -9,7 +9,7 @@ Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-count
 - 最終構成は**購入済みConoHa VPS 2GBにV5のDB・公式収集・予測・cron・監視・低負荷バックテストを一元化**、GitHubはコード/履歴、VPS外に暗号化バックアップ。旧Railway/Actions収集障害の個別修理を優先しない。RailwayのV4本番と4DB原本は安全な移行完了まで保護。
 
 ## 現状・確定した保留点（10/14）
-- **ConoHa**：10/13に2GBサービス申込完了・支払確認メールあり。Safariログイン後も申込/支払い画面に戻り、管理画面/OS/IP/SSH/実機容量**未確認**。サポートへ連絡済、10/14のコントロールパネル**ログイン通知のみ**（VPS復旧の証明ではない）、返信は未確認。`docs/CONOHA_2GB_SAFARI_ISH_READONLY_ACCESS_PREFLIGHT_20261014.md`にiPhone Safariから既存サーバーリスト/状態/IP表示を非秘密で確認する手順、公式サポート（メール24h受付・平日10〜18時対応、電話/チャット平日10〜18時）による**既存問合せの本人フォロー手順**を追記。公開公式ページからチケット進捗一覧の確実な操作は特定できず、10/14時点のGmailに返信なし。`v5_host_preflight_readonly.sh`はOS/資源情報を読めるが**IP/SSH接続・実料金は検査しない**。`test_v5_host_preflight_static_offline.py`の疑似OS/機密非表示検査**14/14 PASS**（元コード無変更、GitHub保存blob同一）。**再購入/再チャージ禁止**。Ubuntu24.04は推奨で実OS不明。
+- **ConoHa 10/14 17:41 JST更新**：ユーザー申告「サポートの対応によりConoHa管理画面へログイン可能になった」。**ログイン障害は解消したと本人報告**。10/13の既存VPS 2GB申込/決済完了メールあり。ただし**サーバーリストに既存2GBが表示されたか、起動状態、OS、IP欄、SSH、VPS実機容量は未確認**で、ログイン復旧だけをVPS稼働・接続成功としない。次は本人Safariで「サーバー→サーバーリスト」→既存2GBと状態/OS/IP欄有無を**表示だけ確認**（IP/アカウント/サーバーID/パスワード非共有）。手順`docs/CONOHA_2GB_SAFARI_ISH_READONLY_ACCESS_PREFLIGHT_20261014.md`。実機確認後、本人の明示承認の上でのみ既存SSH/コンソールから`ops/conoha/v5_host_preflight_readonly.sh`を実行。スクリプトの偽OS/秘匿チェック14/14 PASSは**実VPS診断ではない**。**再購入/再チャージ/新規作成/再構築/OS変更禁止**。Ubuntu24.04は推奨で実OS不明。
 - **V5の精度**：2025-07-01〜2026-10-10の67週間OOS計画は**実行0/67、実ROI/収益未検証**。7/2の180レースでオッズ238券不足、PENDING。締切後に取得した展示/オッズ・日付だけ同じ履歴を締切前観測と偽らない。欠測/返還不明/NO_BUY/PENDINGを勝手に埋めたり母数から外したりしない。
 - **実装準備のみ**：`ops/conoha/v5_offline_dag.py`論理DAG20/20 PASS、`ops/conoha/v5_serial_resource_guard.sh`の重複起動/時間/資源9/9＋権限/シンボリックリンク11/11 PASS。GitHub既存writer/cron候補11ファイル・28コード根拠を静的照合し、`docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`へ記録。**現行Railwayの稼働cron、V5 writer結線、VPS実機運用は未確認**。featureにwriter共通ロック静的checker＋18件のテスト定義を追加（本ターンの実テスト実行なし）。`docs/V5_CONOHA_CRON_ACTIONS_ENTRYPOINT_SCOPE_20261014.md`でworkflow345件中関連11件を限定静的照合：**旧研究のschedule付きwriter2経路はmain/feature同一、DRY_RUN=0、ConoHa共通flock不使用**。10/12〜14 UTCのmain定期runは対象計**10件（展示ST7・選手コース3）、全件failure**、各11〜18秒/合計144秒はメタデータ経過時間。直近2件はStep6 DB URL取得失敗→収集Step7 skipped。repo public＋標準Ubuntu runnerのため**Actions runner分の追加料金0**（artifact等別）。根本原因/実DB書込は未検証、V5本番HOLD。`docs/V5_PREDEADLINE_FREEZE_ENTRY_STATIC_AUDIT_20261014.md`：beforeinfo**HTTP前HOLD**、6艇肯定出走証拠なし・prewrite gateも拒否。racelist/K保存も前時点証明なし、Forward=False。`v5/test_capture_entry_forward_hold_offline.py`は**隔離Python 3.13で16/16実動作PASS**（初回7件のモック例外設計不備を修正、原本/テストのGit blob一致）。AST入口＋fake HTTP/DB限定で、実取得・DB格納やROIは未検証。本番未配線。旧PRE/旧v25 finalをV5へ流用しない。
 - **バックアップ**：4DB暗号化取得スクリプト既定無通信、モック75件＋中断11件＋ローカル3点(.dump.age/.sha256/.ready)照合21件PASS。すべて**オフライン模擬検査のみ**。現行4DBの実暗号化外部バックアップ**0/4**、独立フル復元**0/4**。archive/V4/V5用復元鍵の固定照合未完→実バックアップHOLD。本人の実`age`復号も未検証。iSHのAlpine3.14独自repoでは`age`導入失敗；環境改変禁止。V3本人鍵テストを安全強化（ローカル鍵パス/権限/リンク拒否/trace禁止）、`test_v3_recovery_key_local_guard_offline.py`のダミー鍵模擬**16/16 PASS**。`docs/V3_OWNER_AGE_RECOVERY_KEY_OFFLINE_REVIEW_20261014.md`に記録。V3公開鍵SHA固定一致、本人秘密鍵/実age復号は未検証（iSH ageなし）。archive/V4/V5の公開鍵ピン、Drive A/B OAuth、独立PG18/同時点照合未了（4DB実退避/復元0/4）。
@@ -26,8 +26,8 @@ Repo `kenshoushouri-cloud/boat-ai-v2`、作業branch `feature/v5-prior-day-count
 Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**元DB/cron/秘密鍵サービス停止・削除禁止**。まず各DBの全量暗号化コピー→再取得SHA照合→本人鍵で全体復号→**独立した隔離PG18への全復元/同時点データ照合**→ユーザー個別承認。2025-07-01以降の原本を保全。復元用Ed25519秘密鍵・passphraseは本人iPhone/iSH/iCloud側のみ、公開鍵だけGitHub；秘密/DB URL/OAuth tokenをチャットやGitHubへ貼らない。
 
 ## 工程と目安（T0＝既存ConoHa VPSのアクセス復旧日）
-**当初の2026年10月中旬運用開始目標は、未復旧/未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
-1. **T0前（現在）**：GitHub feature上でV5 writer/cron共通ロックの静的検査・無課金offline testsを実施。ConoHaサポート回答待ち。
+**当初の2026年10月中旬運用開始目標は、VPS実機未確認/未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
+1. **現在（ConoHa UIログイン復旧・VPS未確認）**：本人Safariで既存2GBのサーバーリスト、起動状態、OS表示、IP欄有無をread-only確認。V5/バックアップはfeature上で非通信検査のみ。
 2. **T0〜1日程度**：既存2GBのOS/SSH/CPU/RAM/diskを`ops/conoha/v5_host_preflight_readonly.sh`で実測、本人承認で初期設定。安全なホストで一時鍵による実`age`往復→本人鍵のローカル復号確認。
 3. **T0後、数日〜容量/認証次第**：Drive A/B本人OAuth、4DBを**1DBずつ**暗号化退避、外部全体SHA＋隔離フル復元。同期間のRailway停止なし、通信費/起動も事前承認。
 4. **バックアップ検証後、数日〜数週間**：V5出走→締切前公式情報/オッズ→証拠gate→shadow予想→公式結果→監査を直列化し、2025-07以降67週OOS・Forward精度/ROI・負荷を測定。欠測はそのまま扱う。リアルタイム取得と重いバックテストを同時実行しない。
@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**ConoHaサポート返信と既存2GB VPS管理画面の本人確認を最優先**。未復旧なら**V5 first-write executorの偽plan/DB不整合・transaction rollbackをダミーDBで隔離オフライン1作業検査**。Google A容量は本人確認待ち、旧CMS残り3件907MBの実転送は個別承認・残量/費用/連携制限確認までHOLD。main/4DB/V4/鍵/cron/SSH/追加課金/BUY禁止。
+**最優先の次ONE task：** 本人がConoHa Safariの「サーバー→サーバーリスト」で**既存2GB VPS1台の表示・起動状態・OS表示・IP欄有無**をread-only確認し、非機密の結果を共有（画面画像はIP/ID/会員/決済情報をマスク）。**管理画面ログイン復旧だけではT0のVPS実機到達ではない**。SSH・OS/ディスク実測・鍵操作は正しい既存VPSとの照合と別承認まで保留。Google A残量未確認、旧CMS3件907MB転送HOLD。Railway4DB、main、V4、cron、BUY、追加課金は禁止。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
