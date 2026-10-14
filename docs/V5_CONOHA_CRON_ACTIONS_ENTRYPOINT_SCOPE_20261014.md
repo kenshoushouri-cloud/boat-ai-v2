@@ -34,6 +34,14 @@
 
 **2/2 完全一致**（GitHub Contents のblob SHA比較および起動宣言確認）。展示ST workflow SHA `a90d4f88e2fccf8fe4270ac6f4541e78260c2312`: `schedule: */5 22,23,0-12 * * *` (UTC)、`EXH_ST_FORWARD_DRY_RUN: '0'`、`python -u collect_exhibition_st_forward_shadow_pg.py`。選手コース workflow SHA `3ed72123a3230ad5dbe04500731be80efbec3810`: `schedule: 45 21 * * *` (UTC)、`RACER_COURSE_FORWARD_DRY_RUN: '0'`、`python -u collect_racer_course_top3_forward_shadow_pg.py`。**mainに定義は存在**するが、Actionsの有効・無効、直近起動/成功/DB書込状況は未確認。ConoHa共通guard経由の宣言なし。**削除・停止・実行・移行は一切していない**。
 
+## GitHub Actions直近runメタデータ（10/14 JST）
+
+**mainの実schedule起動は2/2確認、直近は双方failure。** 公開GitHub APIの`actions/runs`一覧の先頭100件のみを取得した読取専用確認（全履歴や原因調査ではない）。
+
+- 展示ST: run [`38491689226`](https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/runs/38491689226)、2026-10-14 00:42:32Z（09:42:32 JST）、`event=schedule`, `head_branch=main`, `status=completed`, `conclusion=failure`。
+- 選手コース: run [`38491242338`](https://github.com/kenshoushouri-cloud/boat-ai-v2/actions/runs/38491242338)、2026-10-14 00:37:39Z（09:37:39 JST）、同じく`schedule/main/completed/failure`。
+- 原因、失敗step、DB実書込み、Runner費用および他のcron稼働状況は未確認。**ConoHa共通lockの動作証拠にはならず、復旧・手動再実行・停止を行っていない**。
+
 ## Next ONE task
 
-ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**上記2workflowの直近GitHub Actions runメタデータだけ**read-only確認し、schedule起動実績の有無・状態を区別する。ログ/Secrets/DB/稼働変更/再実行/課金/BUY禁止。
+ConoHaサポート返信をまず確認。復旧なら既存2GB VPSをread-only診断。未復旧なら**2件の失敗runのjobs/stepsメタデータだけ**read-only確認し、CI費用・失敗箇所への影響を分類する。ログ/Secrets/DB/ジョブ実行・再実行・停止/BUYは禁止。旧研究収集の修復は優先しない。
