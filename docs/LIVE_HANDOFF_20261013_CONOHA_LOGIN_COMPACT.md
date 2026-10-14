@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** 2026-10-14 20:17 JST、本人ConoHa rootコンソールで`command -v ssh-keygen age-keygen`を実行、**`/usr/bin/ssh-keygen` と `/usr/bin/age-keygen` のPATH存在を確認**。age 1.1.1インストール/起動確認済。次は**短いローカル・非通信の使い捨てSSH Ed25519鍵→age暗号化→age復号→平文一致のテスト1件**を本人操作で行う。`mktemp -d`の専用ディレクトリ・`umask 077`・subshell EXIT trapで生成物を消去。**所有者V3復元秘密鍵、実DB、Google Drive、SSH認証には触れない**。暗号化テスト成功でも本人鍵の実復元や4DBバックアップ成功とみなさない（実4DB退避/独立復元0/4）。次に改竄拒否のテストは別工程。PG18/rclone導入/OS update/reboot/実DB接続/転送は別承認HOLD。Railway4DB/V4/main/cron/BUY保護。
+**次ONE task（10/14 20:34 JST）**：本人ConoHa iPhone Safariコンソールで長い1行のage使い捨て鍵テストを貼り付けたところ、シェルが`>`継続プロンプトになり**試験未実行**。20:34の本人画像で`Ctrl+C`後**`root@...:~#`に復帰を確認**。鍵試験のPASSと断定禁止。age1.1.1/ssh-keygen/age-keygenは利用可能だが、**長い1行や複雑な引用符はiPhoneブラウザーコンソールに送らない**。次は操作を短文に分割し、まず`umask 077`だけを本人が入力し、成功後に安全な専用テンポラリディレクトリを作る手順を1回1コマンドで進める。元の秘密鍵・実DB/Driveは扱わず、終了時にテスト用ファイルだけ明示的に消去。Railway4DB、V4/main、OS再起動/更新、PG18/rclone追加、BUY、実バックアップ転送はHOLD。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
