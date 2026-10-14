@@ -27,7 +27,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 
 ## 工程と目安（T0＝既存ConoHa VPSのアクセス復旧日）
 **当初の2026年10月中旬運用開始目標は、VPS到達済でも未バックアップ/未OOSのため確約不可。** 下記は依存条件が満たされた場合の暫定見込み。
-1. **T0=2026-10-14：ConoHa 2GB実機到達済**：Python3.12.3/Git2.43.0確認済。最優先は安全なUbuntu24.04セキュリティ更新・事前承認付き計画再起動と、PG18 client/age/rcloneの最小導入計画。以後原本/宛先/鍵/Driveの前提を揃え**1DBずつ**暗号化コピー・再取得SHA・隔離PG18フル復元。**実コピー/復元を先行、V5追加開発・67週OOSは後続**。
+1. **T0=2026-10-14：ConoHa 2GB実機到達済**：Python3.12.3/Git2.43.0、Ubuntu24.04.3、RAM/SSD/NTP確認済。**最優先はデータ保護とRailway削減**。PG18 client・age・rclone導入とsecurity update/restartの公式手順を静的照合し、実VPSのAPT candidateをread-only確認する。必要な更新/パッケージ導入は本人個別承認後。旧V3/archive/V5/V4を費用・復元可能性で1DBずつ、全量暗号化→Drive再取得SHA→独立PG18フル復元してからRailway縮退。V5研究/OOSは後続。
 2. **T0〜1日程度**：既存2GBのOS/SSH/CPU/RAM/diskを`ops/conoha/v5_host_preflight_readonly.sh`で実測、本人承認で初期設定。安全なホストで一時鍵による実`age`往復→本人鍵のローカル復号確認。
 3. **T0後、数日〜容量/認証次第**：Drive A/B本人OAuth、4DBを**1DBずつ**暗号化退避、外部全体SHA＋隔離フル復元。同期間のRailway停止なし、通信費/起動も事前承認。
 4. **バックアップ検証後、数日〜数週間**：V5出走→締切前公式情報/オッズ→証拠gate→shadow予想→公式結果→監査を直列化し、2025-07以降67週OOS・Forward精度/ROI・負荷を測定。欠測はそのまま扱う。リアルタイム取得と重いバックテストを同時実行しない。
@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** Railwayの費用削減を目的に、ConoHa Ubuntu24.04.3での**セキュリティ更新/計画再起動とPostgreSQL18 client・age・rclone導入の事前手順/リスクをread-onlyで確定**。新しいパッケージのインストール・更新・再起動・Railway DB wake/接続/転送はユーザーの個別承認前に実施しない。バックアップ暗号化の本人鍵・Google A/B認証・Drive A残容量を検証し、旧V3/履歴archive→V5→V4本番の順は費用/復旧条件で調整。データ保護と独立復元の完了後にのみRailwayサービスを段階縮退。現状4DB退避/復元0/4、旧CMS3件907MB転送HOLD、V4/main/cron/鍵/BUY禁止。
+**次ONE task：** 本人がConoHa rootブラウザーコンソールで**`apt-cache policy postgresql-client-18 age rclone`**を1回実行し、ローカルAPTのInstalled/Candidateを確認（通信/変更なし）。公式PGDGのUbuntu24.04向けPG18 clientは導入可能、Ubuntuセキュリティ更新+再起動は別承認、rclone共有Google client_idは2026年廃止予定で独自OAuthが必要。詳細`docs/CONOHA_MIGRATION_PKG_SECURITY_PREFLIGHT_20261014.md`。**インストール/更新/再起動/DB接続/転送は未承認**。4DB実バックアップ/隔離復元0/4、旧CMS3件907MB/Drive A残量HOLD、V4/main/cron/鍵/BUY保護。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
