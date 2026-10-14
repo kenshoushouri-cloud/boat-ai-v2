@@ -14,6 +14,20 @@ apt-cache policy postgresql-client-18 age rclone
 - `postgresql-client-18` が`Candidate: (none)`でも異常断定せず、Ubuntu標準のAPTリストにPGDGがまだない可能性を確認する。**この段階ではリポジトリを追加しない**。
 - `age`/`rclone`についても存在/版を確認するだけ。出力内にプライベートなrepo URL、host、tokenが混ざる場合はマスクしてから共有する。
 
+## 1a. 2026-10-14 19:29 JST：本人VPSコンソール実測（read-only）
+
+`apt-cache policy postgresql-client-18 age rclone`を本人が実行し、画面で以下を確認。
+
+|パッケージ|Installed|Candidate（ローカルAPT索引）|
+|---|---|---|
+|`postgresql-client-18`|判定不可|**Unable to locate package**：現在のAPT索引で対象名が見つからない|
+|`age`|none|`1.1.1-1ubuntu0.24.04.3`|
+|`rclone`|none|`1.60.1+dfsg-3ubuntu0.24.04.6`|
+
+この結果は**APTキャッシュ上の候補**で、導入済み・取得成功・オンラインPGDGの有無を保証しない。Ubuntu標準リポジトリにage/rclone候補がある一方、PG18は公式PGDG追加の要否を確認する必要がある。安易なOS 26.04更新・無断リポジトリ追加はしない。
+
+**次の安全な1操作：** `apt-get -s install age` をrootコンソールで実行し、`Inst`予定/依存パッケージ/Unexpected Upgradeを確認する。`-s`は**simulate（非通信・非変更）**であり、**実インストールは行わない**。結果を評価してから実導入の別承認を求める。rclone・PG18・OS更新/再起動は別工程。
+
 ## 2. 導入時の必須条件（実施には別承認）
 
 1. **Ubuntu24.04の保守を先に計画**：ログイン時「99件の更新、うち14件の標準セキュリティ更新」「system restart required」。最新版へのOSリリース更新（26.04）は不要で**禁止**。先に更新影響（SSH/コンソール復旧経路、ディスク空き、データ損失リスク、サービスの有無）、再起動時刻を本人承認。Ubuntu24.04では`unattended-upgrades`と`needrestart`によりサービスが自動再起動され得る。意図しない時間のOS更新/再起動を実行しない。
@@ -31,4 +45,4 @@ apt-cache policy postgresql-client-18 age rclone
 - 本プロジェクト `ops/backup/BACKUP_SAFE_MODES_20261014.md`、`docs/LIVE_HANDOFF_20261013_CONOHA_LOGIN_COMPACT.md` を参照。
 - 実VPSのAPTインデックス、利用可能バージョン、`unattended-upgrades`現設定、実backup鍵、接続・費用は**まだ未実測**。`apt-cache policy`後も更新・導入の承認は別途必要。
 
-**Next ONE task：** 本人が`apt-cache policy postgresql-client-18 age rclone`の出力を共有し、次の1作業として導入候補/PGDG要否を判定。接続・update・install・restartはHOLD。
+**Next ONE task：** 本人コンソールで`apt-get -s install age`だけを実行し、依存関係と意図しないアップグレードの有無を確認。実インストール・PGDG追加・更新・再起動は承認までHOLD。
