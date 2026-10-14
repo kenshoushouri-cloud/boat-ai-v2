@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task：** 2026-10-14 19:39 JST、本人承認でConoHa既存Ubuntu24.04.3 VPSに**age 1.1.1-1ubuntu0.24.04.3を単独導入済み**（apt画面でsetting up完了、0 upgraded/1 newly installed/0 removed、取得1,630kB）。今回の導入ではneedrestartが再起動必要なサービスなしを表示。ただし以前の`System restart required`の解消は未判定、**再起動を実行しない**。次は本人rootコンソールで**`age --version`を1回だけ**実行し正常起動確認。実age往復/持主鍵復号・DB/Drive転送は未検証、4DB暗号化退避/独立復元0/4。PG18/rclone/OS更新/PGDG追加/再起動/接続は別承認HOLD。Railway4DB/V4/main/cron/BUY保護。詳細`docs/CONOHA_MIGRATION_PKG_SECURITY_PREFLIGHT_20261014.md`。
+**次ONE task：** 2026-10-14 19:58 JST、本人ConoHa rootコンソール画像で`age --version` **`1.1.1`の実表示を確認**。age Ubuntu導入・実バイナリ起動は完了、暗号化/復号往復および本人秘密鍵による復元は**未実施**。次は**`command -v ssh-keygen age-keygen`をread-onlyで1回確認**し、既存`ops/backup/test_age_ssh_tempkey_roundtrip.sh`の使い捨てSSH Ed25519鍵試験に必要なコマンドを確認する（秘密鍵/本番DBを使わない）。同試験スクリプトの実VPS取得と実行は別途手順/承認。PG18/rclone導入・OS更新/再起動・Railway DB接続/Drive転送は個別承認までHOLD。4DB実バックアップ/独立復元0/4、V4/main/cron/BUY保護。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
