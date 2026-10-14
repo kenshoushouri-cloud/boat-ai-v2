@@ -238,6 +238,20 @@ rclone moveto "${remote}:${staged}" "${remote}:${filename}" \
 rclone lsf "${remote}:" --files-only | grep -Fxq "$filename" \
   || fail 'promoted_backup_not_listed'
 
+# Commit marker: other programs MUST NOT accept .dump.age + .sha256 alone.
+# Publish it last, using staging + promotion, only after the encrypted object
+# was fully streamed, MD5 checked and listed under its final name.
+# This confirms transfer completion ONLY, not independent restore validity.
+ready_staged="${filename}.ready.uploading"
+ready_final="${filename}.ready"
+printf '%s  %s\n' "$checksum" "$filename" \
+  | rclone rcat "${remote}:${ready_staged}" \
+  || fail 'ready_marker_upload_failed; backup_not_committed'
+rclone moveto "${remote}:${ready_staged}" "${remote}:${ready_final}" \
+  || fail 'ready_marker_promotion_failed; backup_not_committed'
+rclone lsf "${remote}:" --files-only | grep -Fxq "$ready_final" \
+  || fail 'ready_marker_not_listed; backup_not_confirmed'
+
 printf 'BACKUP_UPLOAD_DONE target=%s encrypted_file=%s local_sha256=%s\n' "$target" "$filename" "$checksum"
 printf 'REMOTE_MD5_MATCH=YES; REMOTE_SHA256_VERIFIED=NO; RESTORE_VERIFIED=NO\n'
 printf 'DO_NOT_DELETE_SOURCE_OR_STOP_PRODUCTION\n'
