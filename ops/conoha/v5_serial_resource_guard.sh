@@ -80,8 +80,18 @@ lock_dir="$(dirname -- "$lock_file")"
 [[ -d "$lock_dir" && -w "$lock_dir" && ! -L "$lock_file" ]] || {
   printf 'V5_GUARD=LOCK_DIRECTORY_UNAVAILABLE\n' >&2; exit 73;
 }
-# The directory must be created and owned by the dedicated systemd user before deployment.
-exec 9>"$lock_file"
+# The lock must live in a dedicated, service-user-owned directory, not a
+# symlink, group/world writable directory or attacker-controlled hardlink.
+# The helper only checks local metadata and does not create the lock.
+guard_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -r "$guard_dir/v5_validate_lock_path.sh" ]] || {
+  printf 'V5_GUARD=LOCK_PERMISSION_CHECK_MISSING\n' >&2; exit 73;
+}
+bash "$guard_dir/v5_validate_lock_path.sh" "$lock_file" || {
+  printf 'V5_GUARD=LOCK_PERMISSION_CHECK_FAILED\n' >&2; exit 73;
+}
+# Append-only open avoids truncating any existing lock file. umask 077 applies.
+exec 9>>"$lock_file"
 if ! flock -n 9; then
   printf 'V5_GUARD=BUSY_SKIP_NO_SECOND_JOB\n'
   exit 75
