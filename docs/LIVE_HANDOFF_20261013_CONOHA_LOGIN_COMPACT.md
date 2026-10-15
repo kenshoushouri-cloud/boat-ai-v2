@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windowsでageのダミー暗号化・復号一致を実画面確認済。新しいage公開受領者のSHA256は独立照合済。公開受領者を作業branchの`ops/backup/keys/boat_ai_owner_age_recipient_20261015.pub`に登録（commit `2f1375ee625b50f51c2f20edc872479cbe8a65b4`）。旧V3の専用受領者は無変更。archive/v4/v5の受領者SHA256固定は未完で本番バックアップ不可。**次は静的な対象別SHA固定設定とオフライン検証。** Railway実バックアップ/復元0/4。本番DB・VPSは未操作。
+**次ONE task（2026-10-15）**：featureブランチの`ops/backup/backup_target_binding.py`でarchive/v4/v5の公開受領者SHA256を、Windows本人鍵から照合済みの新age受領者へ固定（commit `8df827b66ff4489103d10a2760d86bfac76ef2f8`）。旧V3専用SSH受領者・サービスID・Driveフォルダ固定は不変。GitHubから再取得したblob SHA `624d81fa2679daa6cabbf990f8ba3d4c3c86f5cb` と隔離Python検証用ファイルの`git hash-object`完全一致。**オフライン検証で4ターゲットの有効条件受理、誤公開鍵・誤サービス・誤remote・誤フォルダ・個別承認不足は全4ターゲット拒否、validate/preflightの静的契約、未登録将来鍵はexecute拒否（計33条件、unittest2件PASS）**。実DB・Drive・ConoHaアクセスを使うテストは未実施。**次ONE taskはGitHub側で新公開鍵ファイルとスクリプトの`AGE_RECIPIENT`指定/安全ガードをread-only確認し、ConoHaでのDB別転送実施前の接続・費用承認ゲートを整理**。現行Railway4DB実バックアップ/独立復元0/4、V4本番・VPS無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
