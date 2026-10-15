@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：スマホ画面で検証済みのrclone v1.75.2 ZIPに本体と説明ファイルが含まれることを確認。次は`python3 -m zipfile -e /tmp/rclone.zip /tmp/rclone-stage`で一時展開のみ行い、結果を確認。既存rcloneの更新はまだしない。Google接続は未設定、DBバックアップ/復元は0/4。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人画像で`python3 -m zipfile -e /tmp/rclone.zip /tmp/rclone-stage`がエラーなく終了しrootプロンプトに復帰。v1.75.2 ZIPの一時展開が完了。ZIPは事前に公式のGPG署名・SHA256を照合済み。**次ONE taskはUbuntu rootコンソールで`ls -lh /tmp/rclone-stage/*/rclone`をread-only実行して展開した実行ファイルのサイズと実行権限を確認。** Python zipfileは展開ファイルの実行権限を保持しない場合があるため、確認前に実行/インストールしない。旧rclone apt版1.60.1-DEV無変更、remote0件/Google A・B OAuth未設定、VPS再起動・OS更新なし。Railway4DB実バックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
