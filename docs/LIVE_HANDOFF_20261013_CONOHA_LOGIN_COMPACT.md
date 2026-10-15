@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人がGoogle Drive Aへ暗号化済みage予備鍵をアップロード完了と報告。接続済みGoogle Driveの読取結果で、フォルダ`boat-ai-v2-key-recovery`内に`boat-ai-age-identity-backup.age`が1件、サイズ**371 bytes**、`shared=false` / `not_shared`を確認。フォルダIDは`1ljDHC43-h0t_AmMon2vEehibk14KgQVz`、ファイルIDは`1PlkJR1jS6HdrEKpdMV4DeycSN0eVQzt8`。**次は本人がGoogle Drive Aから該当暗号化ファイルをWindows「ダウンロード」にダウンロードし、完了のみ報告する**。元のD:ファイルは置換しない。続けてPC上でハッシュ照合・必要ならダウンロード物の復号検証。元age秘密鍵はBitLocker保護USB I:・ACL限定済、D:予備暗号化ファイル371 bytes・対話復号エラーなし確認済。BitLocker回復資料PDFの未暗号化ドライブ上の整理は未完。Railway4DB実バックアップ/独立復元0/4、V4本番/ConoHa VPSは変更なし。
+**次ONE task（2026-10-15）**：Google Drive A内の暗号化済み予備鍵（371 bytes、非共有、フォルダ`boat-ai-v2-key-recovery`）をユーザーがWindowsにダウンロード完了と報告。**次はWindows PowerShellでD:の予備鍵とDownloadsの回収ファイルのSHA256をread-only比較**：`Get-FileHash "D:\boat-ai-age-identity-backup.age"; Get-ChildItem "$env:USERPROFILE\Downloads\boat-ai-age-identity-backup*.age" | Get-FileHash`。結果写真待ち。クラウドからの回収ファイル一致は未確認。USB元鍵はBitLocker保護済I:、D:の暗号化予備鍵は対話復号エラーなし。回復情報PDFの一時ローカル保存の処置は未完。Railway4DB実バックアップ/独立復元0/4、本番・ConoHa VPSは変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
