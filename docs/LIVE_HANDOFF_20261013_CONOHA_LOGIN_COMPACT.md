@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ConoHa SSHがWindows PowerShellから成功、Ubuntuのroot操作可能。本人はPC利用残り約1時間、以後iPhoneからのConoHa作業を希望。**最優先次ONE taskはiPhoneをWindows PCと同じ自宅Wi-Fiに接続し、無料基本SSHがあるTermiusアプリをApp Storeからインストール・起動する（まだVPS認証情報は入力しない）**。ConoHa SSHは接続元IPv4/32制限済のため、携帯回線では接続不可の可能性。スマホの新規SSHホスト鍵を確認してからrootログイン、パスワード・鍵情報は共有しない。rclone公式v1.75.2の配布ZIP HTTP200/公式SHA256SUMS/PGP署名存在/公式署名者指紋は確認済み。**GPG署名検証・ZIP本体取得/実SHA照合・rclone更新・A/B OAuthはいずれも未実施**。VPS再起動・OS更新は別承認。Railway4DB実バックアップ/独立復元0/4、V4本番無変更。
+**次ONE task（2026-10-15）**：本人はConoHaブラウザコンソールの復旧を希望。Edge InPrivateでもコンソールは動かなかったと報告。WindowsからConoHa Ubuntu VPSへのSSH/rootログインは成功済みのため、VPS全体の停止ではない。ConoHa公式Webコンソールはサーバー詳細の「コンソール」から別ウインドウ表示。**次ONE task：本人が管理画面でコンソールを開き、真っ黒/読み込み/操作無反応/エラーのどの状態か判別できるスクリーンショットを送る（秘密情報は伏せる）。** 原因特定前のVPS再起動・OS更新・初期化・Firewall変更は禁止。スマホSSH(Termius)は代替手段として選択可能だが導入未確認。rclone公式ZIPの署名真正性検証・本体取得・更新・OAuthは未実施、root rclone remote0件。Railway4DBバックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
