@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windows11 ProでSony USBメモリI:（NTFS約7.47GB）のBitLocker To Goパスワード設定後、ユーザーは回復キーを**Microsoft Print to PDF経由でD/E/Fいずれかの内蔵ドライブにPDF保存済**と報告。物理プリンターはなく後日紙に印刷予定。**PDF中身や48桁回復キーはChatGPT/GitHub/ConoHaには一切提供していない**。C:はBitLocker 0%で未暗号化、TPM未認識。D/E/Fの暗号化状態は未確認なのでPDFの機密保護・独立復元経路は**未成立**。**次ONE taskはWindowsローカルPowerShellでread-only `Get-BitLockerVolume -MountPoint D:,E:,F: | Select-Object MountPoint,VolumeStatus,ProtectionStatus`を実行して、各内蔵ドライブのBitLocker保護状態を確認。PDFそのものや回復キー番号は表示・共有しない**。安全な独立保管と復元経路を確認するまでUSBの暗号化開始とage秘密鍵生成は保留。Windows age-keygen1.3.2、ConoHa age1.1.1・pg_dump/pg_restore18.6、disk空き89G/RAM available1.5Gi。Railway4DB実暗号化バックアップ/独立復元0/4、DB接続/転送/削除、VPS再起動/OS更新、V4/main/cron変更・BUY禁止。
+**次ONE task（2026-10-15）**：Windows BitLocker To GoのSony USB（I:、約8GB）で「ドライブを暗号化する範囲の選択」まで到達。次は「ドライブ全体を暗号化する」を選択し「次へ」、次画面で停止して確認（まだ暗号化は開始しない）。回復手段は本人が別途準備・照合済み。D/E/F内の一時保存文書は未保護のため後で保管・削除方針を確認。Railway4DBや本番、ConoHa VPSは未操作。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
