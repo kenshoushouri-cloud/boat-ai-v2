@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人がConoHaブラウザVNCコンソールで小文字`pwd`を再入力し、正常結果`/root`を得た。SSHだけでなくブラウザコンソールからUbuntu root操作可能と確認。ただし先頭入力抜け・記号変換の問題が以前発生。**次ONE taskはブラウザコンソール上で入力をフォーカス後、`echo test/123`を実行し英字・スラッシュが正しく入力できるか確認する（無変更）**。rclone v1.60.1-DEV/remote0、公式v1.75.2のGPG署名真正性検証・ZIP導入・OAuthは未実施。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番・VPS再起動/設定変更なし。
+**次ONE task（2026-10-15）**：本人がConoHaブラウザVNCコンソールで`echo test/123`を実行し、`test/123`の出力を確認したと報告。英小文字・数字・`/`入力は正常、コンソール復旧調査を完了。スマホからの操作手段は別途用意可能。**次はUbuntu rootコンソールでrclone v1.75.2公式`SHA256SUMS`に含まれるPGP署名の署名者鍵IDを`gpg --list-packets`で読み取り確認（公開鍵インポート・ソフト更新なし）**。署名の存在・公式KEYS指紋候補の参照済、GPG真正性検証・ZIP本体DL/SHA照合・rclone導入・Google A/B OAuthは未実施。VPS再起動・OS更新禁止、Railway4DB実暗号化バックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
