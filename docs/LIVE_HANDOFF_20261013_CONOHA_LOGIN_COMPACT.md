@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ConoHaブラウザVNCコンソールの誤入力が、本人のCtrl+U/Enter操作後に消え、正常なUbuntu rootプロンプト`root@...:~#`が再表示された画像を確認。コンソールの操作は復旧見込みだがキーボード配列/大文字小文字の問題は未検証。**次ONE taskはブラウザコンソールで小文字`pwd`のみ実行し、`/root`が表示されるか確認する**。認証情報表示、VPS再起動、OS更新、DBアクセスは行わない。Windows SSHによる代替経路は動作確認済み。rclone v1.60.1-DEV/remote0、公式更新用SHA/署名情報のみ取得、GPG署名真正性未検証・rclone更新未実施。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番無変更。
+**次ONE task（2026-10-15）**：本人ConoHaブラウザVNC写真で`pwd`を入力したもののUbuntu応答が`Command 'wd' not found`となり、先頭の`p`が入力時に落ちた可能性。rootシェルは入力を処理し再びrootプロンプトを表示するため完全なコンソール停止ではない。**次ONE task：黒い入力領域をクリックし約1秒待ち、小文字`pwd`をゆっくり入力、Enter前に画面上の3文字を確認してからEnter、`/root`が出るか検証**。再失敗時は無理に繰り返さずWindowsからのSSH接続で続行。パッケージ追加・VPS再起動・OS更新は禁止。rclone旧1.60.1-DEV/remote未設定、公式v1.75.2のGPG署名の真正性検証/ZIP取得・導入・Google OAuth未実施。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
