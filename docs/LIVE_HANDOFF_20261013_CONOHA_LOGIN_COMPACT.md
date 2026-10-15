@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windowsの画像で、BitLocker暗号化USB I:内のage秘密鍵のACLを再確認。旧Everyone権限は表示されず、現在ユーザー・Administrators・SYSTEMだけにFull Controlがあることを確認。秘密鍵は保護されたUSBに保存済み、BitLocker 100%・保護ON、解除テスト成功。**次はWindowsローカルPowerShellで読取のみ `age --version` を確認**。その後、USB故障に備えて別ドライブへパスフレーズ暗号化した鍵の予備コピーを作成・復元検証する計画。秘密鍵/パスフレーズ本文は表示しない。D/E/FはBitLocker OFFで、回復用PDFの安全な整理も残る。Railway4DBの実バックアップ/復元0/4、本番/VPSは未変更。
+**次ONE task（2026-10-15）**：Windows本人画像でage CLI v1.3.2の稼働を確認。BitLocker100%・保護ON・抜き差し解除テスト済みUSB I: 上のage秘密鍵はACLを本人・SYSTEM・Administratorsのみに制限済。**次はWindowsローカルPowerShellで `age -p -o "D:\boat-ai-age-identity-backup.age" "I:\boat-ai-age-identity.txt"` を実行、ユーザー自身が強固な独立パスフレーズを入力し、D:にパスフレーズ暗号化済みの予備鍵コピーを作成。実行結果待ち。** パスフレーズや秘密鍵を画面・チャット・GitHubへ表示しない。D:はBitLockerなし、暗号化ファイルのみ保存、続けて予備鍵の復号・元鍵一致テストを実施予定。独立クラウド保存は未完で、同一PC内コピーだけではPC全損対策にならない。回復用PDFは未暗号化D/E/Fのいずれかに一時保存中で別途整理が必要。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番・VPS変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
