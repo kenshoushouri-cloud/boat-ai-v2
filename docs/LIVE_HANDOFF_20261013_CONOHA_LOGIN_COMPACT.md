@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ConoHa Ubuntu root SSH画面でrclone v1.75.2の`SHA256SUMS`にPGPクリア署名ヘッダー（`BEGIN PGP SIGNED MESSAGE`、`Hash: SHA1`、`BEGIN PGP SIGNATURE`）があることを本人画像で確認。**署名の真正性はまだ未検証**。rclone公式署名手順の想定形だが署名ダイジェストSHA1は古いため注意。公式署名鍵の指紋は`FBF737ECE9F8AB18604BD2AC93935E02FF3B54FA`。**次ONE taskはConoHa Ubuntuで公式GitHubの`docs/content/KEYS`をcurlでread-only参照し、公開鍵指紋だけ表示・照合する**。公開鍵インポート・GPG署名検証・ZIP本体のDL/SHA一致/導入は別作業。rclone現行Ubuntu版v1.60.1-DEV、remote0件。Railway4DB実バックアップ/独立復元0/4、V4本番/ConoHa設定変更・再起動なし。
+**次ONE task（2026-10-15、本人PC残り利用約1時間）**：ConoHa SSHでrclone公式GitHubのKEYSから署名鍵fingerprintをread-only取得し、公式署名手順に明記のfingerprint `FBF737ECE9F8AB18604BD2AC93935E02FF3B54FA` と一致確認。別の過去鍵のfingerprintも一覧に表示（異常ではない）。公式v1.75.2配布ZIPのHTTP200・SHA256行・PGPクリア署名存在を確認済みだが、**GPGによる署名の真正性検証とZIP実ファイルSHA照合は未実施**。ユーザーは残りPC利用時間が約1時間で、4DBの実バックアップ/独立復元まで完遂は非現実的。**次ONE taskは限られた時間でGPG署名を短く検証し、作業を無理せず停止できる区切りを作る**。rclone旧APT版1.60.1-DEV、rclone Google A/B remote未登録。ソフト更新は本人の別承認後。VPS再起動・OS更新・OAuth/DB通信/バックアップ/転送なし。4DB実バックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
