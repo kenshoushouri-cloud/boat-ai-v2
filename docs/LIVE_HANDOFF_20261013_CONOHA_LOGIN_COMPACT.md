@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人の実画面で`readlink -f /usr/bin/rclone /bin/rclone`の両方が`/usr/bin/rclone`を返すことを確認。旧APT版rclone v1.60.1-DEVは同一実体、未変更。公式署名・SHA256照合済みの新v1.75.2は`/tmp/rclone-stage`で単独起動確認済。**次ONE task：ConoHa Ubuntu rootシェルで`ls -l /usr/local/bin/rclone`をread-only実行し、新版の別配置予定先に既存ファイルがあるか確認する。No such fileは空き先を示す正常な結果。** 本設置・PATH切替はまだ許可せず、既存版を保持する独立配置/ロールバック方針を継続。Google Drive A/B remotes未登録、OAuth未実施。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番へのアクセス・VPS再起動/OS更新なし。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人の画像で`ls -l /usr/local/bin/rclone`に`No such file or directory`が表示され、新版rclone設置候補先に既存ファイルが無いことを確認。既存APT版は`/usr/bin/rclone`（/binと同じ実体）v1.60.1-DEV、新版v1.75.2は公式GPG署名/SHA256照合し/tmpステージで単独動作確認済み。**次ONE taskはConoHa rootコンソールで`echo "$PATH"`を読み取り実行し、`/usr/local/bin`のPATH優先順位を確認する。** /usr/local/binにインストールすると旧APT版は保持されてもデフォルトのrcloneが新版へ切り替わる場合があるため事前に明示し承認を得る。まだ設置/切替・Google Drive A/B OAuth・VPS再起動/OS更新・Railway DB接続/転送なし。4DB実暗号化バックアップ/独立復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
