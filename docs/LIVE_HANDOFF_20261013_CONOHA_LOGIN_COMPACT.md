@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人はConoHaブラウザコンソールの復旧を希望。Edge InPrivateでもコンソールは動かなかったと報告。WindowsからConoHa Ubuntu VPSへのSSH/rootログインは成功済みのため、VPS全体の停止ではない。ConoHa公式Webコンソールはサーバー詳細の「コンソール」から別ウインドウ表示。**次ONE task：本人が管理画面でコンソールを開き、真っ黒/読み込み/操作無反応/エラーのどの状態か判別できるスクリーンショットを送る（秘密情報は伏せる）。** 原因特定前のVPS再起動・OS更新・初期化・Firewall変更は禁止。スマホSSH(Termius)は代替手段として選択可能だが導入未確認。rclone公式ZIPの署名真正性検証・本体取得・更新・OAuthは未実施、root rclone remote0件。Railway4DBバックアップ/独立復元0/4、V4本番無変更。
+**次ONE task（2026-10-15）**：ConoHaブラウザコンソール写真を確認。Ubuntu rootプロンプトで入力が反映され、コマンドエラー応答もあり、コンソールは完全停止していない。大文字`CAT`やパス区切りが`?`等に化けるため日本語キーボード配列/Caps Lockの不一致疑い。**次ONE task：コンソールでCtrl+Cを押して入力途中のコマンドを破棄し、新しいrootプロンプトが表示されることだけ確認**。まだファイル編集/再起動・OS更新は行わない。Windows SSHからのConoHaログインは成功確認済で代替経路あり。rclone v1.60.1-DEV/remote0、公式v1.75.2のZIP HTTP200・SHA256SUMS PGP署名ヘッダー・署名者fingerprint取得済、実GPG署名検証/ZIP導入は未実施。Railway4DB実バックアップ/復元0/4、V4本番無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
