@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人Windows PowerShell画像でSony製USB I: `manage-bde -status I:` を確認。**BitLocker 2.0、100.0%完全暗号化、AES 128、保護オン、自動ロック解除無効、パスワードと数字パスワードの保護機能あり、現在ロック解除中。** 次にエクスプローラーからSONY I:を安全に取り出し、抜き挿ししてパスワードによる再解除が成功するかを本人が確認（秘密情報の送信不要）。回復用紙控えは照合済と本人申告。D/E/Fはいずれも未暗号化で回復用PDFが一時保管されており、解除テスト後に安全な整理を行う。age秘密鍵は未作成。Railway4DBの実バックアップと独立復元0/4、Railway・V4本番・ConoHa VPSへの操作なし。
+**次ONE task（2026-10-15）**：ユーザーがSony USB I: のBitLockerパスワードによる抜き挿し後のロック解除成功を報告。BitLocker暗号化率100%、保護オン、解除再テスト済。次はWindowsローカルPowerShellで`age-keygen -o I:\boat-ai-age-identity.txt`を1度だけ実行し、暗号化USB上にage秘密鍵を作成する。画面の`Public key:`表示の有無のみ報告、秘密鍵の内容は非公開。USBの故障に備える独立した秘密鍵の控えを用意するまでRailway実DBのバックアップ暗号化は開始しない。D/E/Fの未暗号化ドライブにBitLocker回復用PDFが一時保存中で後日印刷予定、保管対策は未完。Railway4DB/V4本番/ConoHa VPSの変更はなし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
