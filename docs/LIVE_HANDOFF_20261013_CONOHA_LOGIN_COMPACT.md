@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windows PowerShellの画像で、BitLocker保護済みSony USB I: 上に `age-keygen -o I:\boat-ai-age-identity.txt` を実行、公開鍵生成表示・正常終了を確認。**作成時にファイル権限の警告あり**。次は `icacls I:\boat-ai-age-identity.txt` をWindowsローカルPowerShellで読取実行し、ACLを確認。鍵ファイルの中身は表示しない。USB故障への独立した復旧手段は未整備。D/E/FのBitLockerはOFFで、以前の復旧資料の保管対応が残る。Railway4DB実バックアップ・独立復元は0/4、V4・ConoHa等は未変更。
+**次ONE task（2026-10-15）**：BitLocker 100%・保護ONのSony USB I:でage鍵ファイルへのWindowsアクセス権限更新コマンドを本人が実行し「処理したファイル1・失敗0」と表示。権限の最終確認は未実施。**次はWindowsローカルで `icacls "I:\boat-ai-age-identity.txt"` をread-only実行し、不要な全員アクセスが消えているか確認**。秘密鍵本文の公開は禁止。独立鍵バックアップと回復資料の整理は未実施。Railway4DB実バックアップ/独立復元は0/4、本番/VPS変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
