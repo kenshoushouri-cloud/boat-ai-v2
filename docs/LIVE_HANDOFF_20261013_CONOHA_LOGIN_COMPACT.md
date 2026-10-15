@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ユーザーはSony製USB I:（NTFS約7.47GB、BitLocker無効0%）について、**消えて困るファイルは入っていない**と確認。Windows11 ProでTPM Present/Ready=false、C:もBitLocker無効。次はエクスプローラーからI:を右クリックして**「BitLockerを有効にする」設定画面を開くだけ**、画面共有まで暗号化開始・既存データの削除/初期化なし。BitLocker To Goのパスワード/48桁回復キーはユーザー本人だけが扱い、チャット/GitHub/ConoHaへ載せない。回復キーはUSB自身・暗号化されていないC:だけに置かず、独立した安全な紙/保管先を準備してから暗号化開始する。Windows age-keygen1.3.2、ConoHa age1.1.1・pg_dump/pg_restore18.6、ディスク空き89GB・RAM available1.5GiB。Railway4DB実暗号化バックアップ/独立復元0/4、Drive OAuth未完、DB接続・転送・削除、V4/main/cron変更、VPS再起動/OS更新、BUY禁止。
+**次ONE task（2026-10-15）**：Windows11 ProでSony USBメモリDisk4 / I:（NTFS約7.47GB）の**BitLocker To Go起動成功**（本人画像で「このドライブのロック解除方法を選択する」画面、パスワード/スマートカード選択）。ユーザーはUSBに消えて困るファイルなしと確認済。次は「パスワードを使用してドライブのロックを解除する」を選び、**本人のみが強固な使い回しのないパスワードを2度入力、別途安全に控える。次の回復キー保存画面で停止**。パスワード/48桁回復キーはChatGPT・GitHub・ConoHaに絶対共有しない。回復キーをUSB自身ではなく独立した紙等へ保存し、鍵回復経路が確保されるまで暗号化開始禁止。age秘密鍵は未生成。Windows C: BitLocker無効0%、TPM未認識、age-keygen v1.3.2、ConoHa age1.1.1、pg_dump/pg_restore18.6、disk空き89G/RAM available1.5Gi。Railway4DB実暗号化バックアップ/独立復元0/4、DB接続/転送/削除、V4/main/cron・VPS再起動/OS更新・BUYは禁止。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
