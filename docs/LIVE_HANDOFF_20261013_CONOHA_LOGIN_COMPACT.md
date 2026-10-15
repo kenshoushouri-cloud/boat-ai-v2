@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：GitHub作業branch `ops/backup/railway_pg_to_drive_stream.sh`、`ops/backup/backup_target_binding.py`、`ops/backup/keys/`、安全実行手順をread-onlyで監査。4ターゲット`v3/archive/v4/v5`のDB名/Google A・B割当とsource service IDの固定があり、**4件とも現Railway production service IDに一致**。ただしage受領者の固定SHAは**V3だけ登録済み（旧SSH鍵）**。`archive/v4/v5`は`recipient_sha256=None`で実行時拒否。keysディレクトリにもV3公開鍵だけ。2026-10-15 Windows BitLocker USB I:で新規作成したage鍵の公開受領者はスクリプトに未登録・未照合で、旧V3鍵と同じと見なせない。**次ONE taskは本人Windows PowerShellで `age-keygen -y "I:\boat-ai-age-identity.txt"` を読取実行し新鍵の公開受領者だけを表示・確認。秘密鍵本文は絶対に開かない。** 公開鍵照合・必要な固定登録は別作業で個別承認後。4DB実暗号化バックアップ/独立復元は0/4。Railway DB通信・バックアップ転送・V4本番・ConoHa VPSの変更なし。
+**次ONE task（2026-10-15）**：Windows本人画像でBitLocker保護USB I:の`age-keygen -y "I:\boat-ai-age-identity.txt"`が成功。新Ed25519 age公開受領者が元鍵生成時の公開鍵表示と一致。**GitHub現V3の登録済み受領者は`ssh-ed25519`形式で、今回のage1受領者とは別物**。archive/v4/v5のrecipient_sha256ピンは未登録で実バックアップは拒否される。次ONE taskはWindows PowerShellで新age公開受領者の**末尾改行無しUTF-8 SHA256**を読取専用算出し、画面のハッシュだけ確認。新公開鍵のrepo固定登録やV3キーの切替は本人確認・実ダミー往復検証の後に別作業で判断する。元秘密鍵/パスフレーズの公開禁止。Drive A暗号化予備鍵371B・取得SHA一致、BitLocker保護/ACL確認済。Railway4DB実バックアップ/独立復元0/4。Railway本番DB接続/転送/削除なし、V4・VPS変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
