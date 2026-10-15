@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15 iPhone ConoHa VNC）**：ユーザーがrclone v1.75.2 ZIP取得と署名済SHA256照合の長い複合コマンドをスマホWebコンソールに入力したところ、途中で切れたコマンドの引用符/括弧が未閉鎖になり、シェルの継続プロンプト`>`が2行表示。ZIP取得・SHA照合とも成功未確認。**次ONE task：iPhone ConoHa Webコンソールで「特殊キー」からCtrl+Cを送信し未完成コマンドを中止、`root@...:~#`へ戻ることを確認。続きは短い単独コマンドに分割する。** 既にrclone SHA256SUMSのGPG署名は隔離鍵領域でGood signature/公式鍵指紋照合済（SHA1署名方式には注意）。ZIPのインストール/ソフト更新/Google OAuth/DB接続なし。Railway4DB実バックアップ/独立復元0/4、V4本番・ConoHa再起動/設定変更なし。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：スマホブラウザコンソールで長い複合curl/SHA照合コマンドがシェル継続`>`になったが、本人がCtrl+Cで停止完了と報告。次は短い単独コマンド`curl -fLsS --max-time 180 -o /tmp/rclone.zip https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.zip`で公式rclone v1.75.2 ZIP約31.6MBをConoHaの/tmpへダウンロードし、終了時のrootプロンプト/エラーを確認。**まだZIPのSHA256未照合、更新・インストール禁止**。公式SHA256SUMS 4795BのPGP署名はGood signature、公式指紋一致済（DSA/SHA1注意）。PC停止、BitLocker USB鍵は取り外して安全保管。rclone稼働版1.60.1-DEV/Google remotes0、OAuth未設定。Railway4DB実暗号化バックアップ/独立復元0/4、本番V4/VPS再起動・OS更新は未変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
