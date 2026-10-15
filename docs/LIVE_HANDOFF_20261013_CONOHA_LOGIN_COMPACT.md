@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ユーザーのWindows PowerShell画面でConoHa VPSへのSSHコマンドを実行し、rootパスワード入力待ちまで到達。SSHのTCP接続自体は成立、**認証・Ubuntuログイン成功は未確認**。ブラウザVPSコンソールは引き続き利用できないと本人報告。**次は本人がConoHaのrootパスワードをローカル端末に入力してEnter、Ubuntuのrootプロンプト表示を確認して結果のみ報告**。パスワードはチャット/GitHubに記録しない。ログイン確認後、Ubuntuで`rclone listremotes`の読取確認を別作業で行う。Railway DB/V4本番・ConoHa設定・OAuth/転送は未変更、4DB実バックアップ/復元0/4。
+**次ONE task（2026-10-15）**：本人Windows PowerShellのSSHでConoHa VPSのrootパスワード入力後、`Connection closed by [VPS] port 22`が表示されてPowerShellへ戻った。TCP22/SSH認証プロンプト到達は確認できるが**rootのUbuntuログイン成功なし**。パスワード誤りかSSH/PAM/サーバー設定原因か未特定。ConoHaのブラウザコンソールも利用不可と本人報告。**次ONE taskはWindows PowerShellで `ssh -v -o ConnectTimeout=10 -o NumberOfPasswordPrompts=1 root@[VPS_PUBLIC_IP]` を一度だけ実行し、最後の診断ログで認証成功前後のどちらで切断されているか確認する。反復試行・ホスト鍵警告の承認は禁止**。パスワード・秘密鍵はチャットへ送らない。ConoHa再起動・設定変更なし、Railway4DB実バックアップ/独立復元0/4、本番DB・cron/BUYは無変更。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
