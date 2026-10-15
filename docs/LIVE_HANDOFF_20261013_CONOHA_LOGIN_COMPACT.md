@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Google Drive Aの使用容量は本人確認で**294.9MB**。**総容量はまだ未確認**のため、次ONE taskは本人にストレージの総容量（例:15GB等）を確認してもらい、空き容量を算定する。クラウド鍵予備は非共有・371B、再ダウンロードとSHA256一致確認済。USB I:はBitLocker100%保護ONで鍵のACL制限・解除試験済。BitLocker回復用紙控え照合済、D:の一時PDF削除済（物理抹消は未保証）。Railway4DB実バックアップ/独立復元0/4、本番・VPSの変更なし。
+**次ONE task（2026-10-15）**：Google Drive Aの本人確認ストレージ総容量**15GB**、使用量**294.9MB**、概算空き**約14.7GB**。暗号化age復旧用予備鍵はDrive Aに非共有で371B、再取得SHA256一致。BitLocker USB I:上の元鍵の保護・解除確認済。D:のBitLocker回復用一時PDFは本人が削除完了と報告（復元不能までの保証なし）、紙控え照合済。**次ONE taskはGoogle Drive Bのストレージ画面で総容量と使用量を本人が確認・報告**。A/B両方の空き容量と4DBの実容量を比較して退避計画を確定する。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番・VPS変更なし、無承認のDB接続/転送/削除なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
