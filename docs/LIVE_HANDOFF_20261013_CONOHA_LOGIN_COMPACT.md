@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人Windows PowerShell画像で `age -p -o "D:\boat-ai-age-identity-backup.age" "I:\boat-ai-age-identity.txt"` が実行され、`Enter passphrase (leave empty to autogenerate a secure one):` の入力待ち。まだ予備コピー完成ではない。本人に独自の長いパスフレーズを安全に管理しながら入力・Enter、確認入力を求められる段階で一旦停止するよう案内済み。パスフレーズ/秘密鍵は共有せず、暗号化済みD:予備コピーの完成・復号照合は後続作業。Sony USB I: はBitLocker 100%保護ON、age秘密鍵ACL制限済み。Railway DB/V4/ConoHa VPSは無変更。
+**次ONE task（2026-10-15）**：Windowsでageのローカル予備コピー作成がパスフレーズの確認入力 `Confirm passphrase:` に進んだことを本人画像で確認。次は本人が最初と同一のパスフレーズを再入力してEnter、Windows PowerShellのプロンプトに復帰するか結果確認。まだ予備コピーの成功・復元一致は未確認。元の秘密鍵はBitLocker保護ONのUSB I:にあり、暗号化済み予備コピーの出力先はD:を予定。保管用の秘密情報のチャットへの投稿は禁止。Railway、ConoHa、V4本番には変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
