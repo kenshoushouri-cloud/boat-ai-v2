@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ユーザーは既存USBメモリを所持。追加購入不要。Windowsに接続後、ローカルPowerShellで `Get-Disk | Select-Object Number,FriendlyName,BusType,Size` を読み取り専用実行し、USBメモリの認識・対象ディスク番号を確認する。**ディスク初期化/フォーマット/既存データ削除禁止、秘密鍵はまだ生成しない。** 後続でUSBの暗号化方式、回復手段、独立コピーの保管を確定する。Windows 11 Pro、TPM検出False、C: BitLocker無効0%、`age-keygen`1.3.2と専用保管フォルダ確認済。ConoHa `age`1.1.1、pg_dump/pg_restore18.6、空き89G、RAM available1.5Gi。Railway4DB実暗号化外部バックアップ・独立復元0/4、実DB接続/転送/削除、VPS再起動/OS更新、V4/main/cron変更、BUYは禁止。
+**次ONE task（2026-10-15）**：Windows PowerShell `Get-Disk`のユーザー画像で**Sony Storage Media、Disk Number 4、BusType USB、Size 8,019,509,248 bytes（約8GB）**を確認。以前のDisk 0/1/2/3はいずれもSATAで変更なし。**次はWindows上で読み取り専用 `Get-Partition -DiskNumber 4 | Get-Volume | Select-Object DriveLetter,FileSystem,SizeRemaining,Size` を実行し、USBのドライブ文字・ファイルシステム・容量を確認**する。USBの既存データ削除・フォーマット・初期化禁止。Windows CドライブのBitLocker無効、TPM未認識につき、暗号化されていない復号用秘密鍵をPCやUSBに作成・転送しない。age-keygen 1.3.2、ConoHa age 1.1.1、pg_dump/pg_restore 18.6。ConoHa空き89G、available RAM 1.5Gi。Railway4DBの実暗号化外部バックアップ/独立復元0/4、DB接続/データ転送/削除、V4/main/cron変更、OS再起動/更新、BUYは禁止。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
