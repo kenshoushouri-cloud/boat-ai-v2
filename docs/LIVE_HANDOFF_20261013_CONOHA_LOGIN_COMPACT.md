@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windowsで新age公開受領者のSHA256を算出し、独立計算と完全一致を確認。既存V3 SSH公開受領者とは異なる。archive/v4/v5の固定登録は未実施。次は本人Windows PowerShellでダミーテキストのage暗号化・復号の内容一致テストを行い、結果を確認する。Railway DB・V4本番・VPSは変更なし。
+**次ONE task（2026-10-15）**：Windowsでageのダミー暗号化・復号一致を実画面確認済。新しいage公開受領者のSHA256は独立照合済。公開受領者を作業branchの`ops/backup/keys/boat_ai_owner_age_recipient_20261015.pub`に登録（commit `2f1375ee625b50f51c2f20edc872479cbe8a65b4`）。旧V3の専用受領者は無変更。archive/v4/v5の受領者SHA256固定は未完で本番バックアップ不可。**次は静的な対象別SHA固定設定とオフライン検証。** Railway実バックアップ/復元0/4。本番DB・VPSは未操作。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
