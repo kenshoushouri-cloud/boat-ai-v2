@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15、iPhone ConoHa VNC）**：本人の画像で通常コマンド`rclone version`が旧APT版`v1.60.1-DEV`を返すことを確認。別名設置の新版`/usr/local/bin/rclone-v1.75.2 version`は直前にv1.75.2で正常起動。新旧並存、旧版上書き/デフォルト切替なし、rclone導入作業は完了。**次ONE taskはスマホConoHa rootコンソールで`/usr/local/bin/rclone-v1.75.2 listremotes`を実行し、新版の登録済remoteをread-onlyで確認する。** Google Drive A/BのOAuthは未実施で今後段階的に設定、認証トークン/秘密情報はユーザー画像・チャット・GitHubに含めない。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番への変更なし。VPS再起動/OS更新/本番DBアクセス・転送なし。PC停止、BitLocker USB内のage秘密鍵と暗号化予備鍵は別保管済み。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人スクリーンショットで`/usr/local/bin/rclone-v1.75.2 listremotes`は登録remoteを表示せず、`/root/.config/rclone/rclone.conf`が存在しない旨のNOTICEのみで終了。Google Drive A/Bリモートは**0件**、OAuth未実施。新v1.75.2別名常設成功・通常rcloneは旧v1.60.1-DEVを維持。**次ONE task：ConoHa rootコンソールで`install -d -m 700 /root/.config/rclone`を実行し、これから認証情報を保管する設定ディレクトリをroot専用権限で準備。結果はrootプロンプト復帰のみ確認。** OAuthトークン等をチャット/GitHub/スクリーンショットへ含めない。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番・ConoHa再起動/OS更新/DB接続・転送なし。PC停止、BitLocker USB秘密鍵保管済。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
