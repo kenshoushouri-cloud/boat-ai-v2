@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：GitHub作業branchの`ops/backup/railway_pg_to_drive_stream.sh`をread-onlyで点検。`plan`は無通信、`validate`はローカル静的検査、`preflight`のDB読取/Drive疎通には接続・費用の明示承認、`execute`は別途実行・復号確認・対象個別承認が必要。`ops/backup/backup_target_binding.py`で4DBのservice/remote/folderSHA256/recipientSHA256が固定済み、旧V3 SSH受領者不変。接続済みGoogle Driveをread-onlyで検索し、AにV3・履歴・V4、BにV5の指定フォルダが現存、4フォルダIDのSHA256と固定値が**4/4一致**。Google DriveのOAuth/rclone連携はConoHa側で未検証。**次ONE task：ユーザーにConoHa SSHのUbuntuシェル（`root@...#`）で`rclone listremotes`だけを実行してもらい、remote名のみ確認する（設定変更/DBアクセスなし）**。Windows PowerShell（`PS C:\...>`）と混同しない。現行Railway4DB実暗号化バックアップ/独立復元は0/4。Railway/ConoHa本番設定変更・課金作業・DB接続/転送・BUYなし。
+**次ONE task（2026-10-15）**：Google Drive A/Bの指定4フォルダとSHA256固定値をread-only照合済。ConoHaの**ブラウザVPSコンソールがまだ動作しない**と本人報告。過去にWindowsローカルPowerShellのSSHからConoHa Ubuntuへの接続成功実績あり。**次ONE taskは本人Windows PowerShellで`ssh -o ConnectTimeout=10 root@160.251.182.94`を実行しSSH接続状態を再確認するだけ**。SSH接続が成功したら次回の別作業でUbuntu側`rclone listremotes`を確認。ホスト鍵の不一致警告では停止し、鍵やパスワードをチャットに投稿しない。IP許可規則変更・VPS再起動/OS更新は禁止。Railway4DB実暗号化バックアップ/独立復元0/4、DBアクセス・Google認証操作・V4本番/ConoHa設定変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
