@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：暗号化済みage予備鍵のGoogle Drive A保管・再ダウンロードのSHA256一致まで確認済み。本人はDドライブのBitLocker回復キーPDF削除を希望。回復キーは紙の控えがあり照合済みと本人が報告。**次はD:のBitLocker回復キーPDFだけをWindowsエクスプローラーで選びShift+Delete（ごみ箱を経由せず削除）。本人完了報告待ち。** 暗号化済みage予備鍵`D:\boat-ai-age-identity-backup.age`（371 bytes）は絶対に削除しない。Shift+Deleteは完全な物理消去を保証しない。Sony USB I:はBitLocker100%保護ON、ロック解除確認・秘密鍵ACL制限済み。Railway4DB実バックアップ/独立復元0/4、V4本番・ConoHa VPS未変更。
+**次ONE task（2026-10-15）**：ユーザーがDドライブに一時保存していたBitLocker回復キーPDFの削除完了を報告。回復キーは紙に控え照合済（本人報告）。Sony USB I: はBitLocker暗号化100%/保護ON/抜き差し後のパスワード解除成功、USB上のage元鍵はアクセス権限定済。D:のage予備鍵`.age`371Bはパスフレーズ復号エラーなし。Google Drive Aの`boat-ai-v2-key-recovery`に371Bの暗号化予備鍵が非共有で保管され、再ダウンロードSHA256一致まで確認。**次ONE task：本人がGoogle Drive Aのウェブ画面でストレージの使用量・空き容量を確認して数字または秘密のない画面を報告**。4DBの外部バックアップを置く容量判断のためで、Driveファイルの変更はしない。削除済みPDFの物理的復元不能は未保証。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番/Railway/ConoHa VPSの変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
