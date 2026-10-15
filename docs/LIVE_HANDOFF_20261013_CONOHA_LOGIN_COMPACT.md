@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windows PowerShellの`ssh -v`診断画面にて、VPS SSHホスト鍵はローカル既知鍵と一致し、SSHサービス交渉が正常、認証方法`publickey,password`からパスワード認証プロンプトへ到達。以前はパスワード入力後に接続切断されており、認証成功はまだ未確認。**次ONE taskは本人がrootパスワードを一度だけ入力し、成功時のUbuntuプロンプトまたは切断エラーの最終行を確認・報告する。失敗時に繰り返さない。** ホスト鍵変更を承認しない、パスワードや認証情報は記録しない。ConoHaブラウザコンソール不調継続、VPS再起動・設定変更なし。Railway4DB実バックアップ/独立復元0/4、DBアクセス/転送/本番変更なし。
+**次ONE task（2026-10-15）**：Windows PowerShell経由のSSHでConoHa Ubuntu VPSのrootプロンプトへログイン成功したことを本人画像で確認。ConoHaブラウザコンソールは動作しないが、SSHから操作可能。Ubuntuログインメッセージに`SYSTEM RESTART REQUIRED`が表示されるが、**再起動/OS更新は本人の別承認まで実施禁止**。**次ONE taskは現在のUbuntu rootシェル（`root@...#`）で`rclone listremotes`を1回実行し、Google Drive用remote名だけを確認する**。rclone設定・OAuth・Drive転送やDB接続はまだしない。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番・VPS設定の変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
