@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人画像で一時展開したrclone v1.75.2実行ファイルを`ls -lh /tmp/rclone-stage/*/rclone`で確認。パス`/tmp/rclone-stage/rclone-v1.75.2-linux-amd64/rclone`、約82MiB、所有者root、権限`-rw-------`（実行権限なし）。ZIPは公式SHA256SUMSと照合一致、GPG Good signature/公式指紋一致（古いDSA/SHA1署名方式には注意）。**次ONE taskはiPhoneのConoHa rootコンソールで`chmod u+x /tmp/rclone-stage/*/rclone`を実行し、一時展開ファイルだけに所有者実行権限を追加する**。次回別作業でステージバイナリの`version`確認。既存rclone v1.60.1-DEVの置換/インストール、Google A/B OAuth・VPS再起動/OS更新は未実施。Railway4DB実暗号化バックアップ/独立復元0/4、V4本番への変更なし。PC停止・BitLockerUSB秘密鍵取り外し保管済。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人画面でステージ済みrclone実行ファイルに対する`chmod u+x /tmp/rclone-stage/*/rclone`がエラーなしで終わりUbuntu rootプロンプトへ復帰。元ファイルは`-rw-------`だったため所有者実行権限が追加された見込み。**次ONE taskはConoHaスマホコンソールで`/tmp/rclone-stage/*/rclone version`を実行しステージ版v1.75.2が正常起動するか確認する**。既存APT rclone v1.60.1-DEVは変更なし、Google A/B remote未設定、インストール・切替・OAuth/DB通信・OS更新・VPS再起動なし。ステージ版ZIPは公式GPG署名とSHA256照合済、/tmpへ展開済。Railway4DB実バックアップ/独立復元0/4、V4本番無変更。PC停止、BitLocker USB鍵保管済。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
