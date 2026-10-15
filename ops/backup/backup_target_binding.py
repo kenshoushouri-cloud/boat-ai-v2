@@ -29,19 +29,19 @@ TARGETS = {
         "service": "f2586b91-9381-4269-b473-42b121782c4e",
         "remote": "boat-drive-archive",
         "folder_sha256": "ab97ffb1cf234d72d8f9a2b651a901dfbe3485332f28517a1afbc856fe6b41cb",
-        "recipient_sha256": None,
+        "recipient_sha256": "7c92ab52ed14f95552540e9aa0b57c98f909be9626d27c0a334441017768591b",
     },
     "v4": {
         "service": "29eb7f33-bfd0-4d45-8893-ffe40b4e1c52",
         "remote": "boat-drive-v4",
         "folder_sha256": "f6abf9ed8c46f69f539c31325d5eb7f051c61d84a09a846575b0178fac0bb716",
-        "recipient_sha256": None,
+        "recipient_sha256": "7c92ab52ed14f95552540e9aa0b57c98f909be9626d27c0a334441017768591b",
     },
     "v5": {
         "service": "79a434b5-b9de-40ef-aa23-d393b245f830",
         "remote": "boat-drive-v5",
         "folder_sha256": "31381f10c3958b87361ea8d3c024762a9891ca48eb327c2221a44b09fdbeb094",
-        "recipient_sha256": None,
+        "recipient_sha256": "7c92ab52ed14f95552540e9aa0b57c98f909be9626d27c0a334441017768591b",
     },
 }
 
@@ -60,15 +60,13 @@ def validate_binding(*, target: str, mode: str, service_id: str,
         raise BindingError("drive_remote_mismatch")
     if sha256(folder_id.encode("utf-8")).hexdigest() != expected["folder_sha256"]:
         raise BindingError("drive_folder_pin_mismatch")
-    # Setting the recipient AND its supplied hash to a different pair cannot
-    # override a committed recipient pin for the V3 source.
+    # Reject swapped recipient fingerprints for every pinned backup target.
     if expected["recipient_sha256"] is not None and recipient_hash != expected["recipient_sha256"]:
         raise BindingError("recovery_recipient_pin_mismatch")
     if mode == "execute":
         if target_approval != f"YES_SINGLE_{target.upper()}_ENCRYPTED_SNAPSHOT":
             raise BindingError("target_specific_approval_required")
-        # These recovery recipients do not yet have independently verified
-        # fixed pins. Refuse execution until the owner authorizes one per DB.
+        # Keep future unpinned targets in fail-closed state.
         if expected["recipient_sha256"] is None:
             raise BindingError("recovery_recipient_not_pinned_for_target")
 
