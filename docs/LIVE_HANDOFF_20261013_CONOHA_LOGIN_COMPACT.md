@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人Windows SSH経由のConoHa Ubuntu root画面で`rclone version`を確認。`rclone v1.60.1-DEV`、Ubuntu24.04 amd64、Go1.22.2。`rclone listremotes`はroot用configなし・remote0件。**次ONE taskはUbuntuの`apt-cache policy rclone`を読取実行し、インストール版とAPT候補版を確認**。Google A/B OAuth連携・rclone更新・再起動は禁止、結果確認後に別承認で検討。VPSログインメッセージのrestart requiredは継続中。Railway4DB実暗号化バックアップ/独立復元0/4、Railway本番DB・V4/ConoHa設定変更なし。
+**次ONE task（2026-10-15）**：本人ConoHa Ubuntu root画面で`apt-cache policy rclone`確認。現在・Candidateとも`1.60.1+dfsg-3ubuntu0.24.04.6`、Ubuntu APTに新rcloneなし。公式rcloneダウンロードサイトには2026-10-09安定版v1.75.2（セキュリティ修正）あり。**次ONE taskはUbuntu rootシェルで `for c in curl unzip sha256sum gpg; do command -v "$c" || echo "$c missing"; done` を読取実行し、公式配布版の取得・署名検証に必要なツールの有無だけを調べる。** rcloneの更新やOAuth設定、再起動は未許可で実施しない。Drive A/B remote未設定（`rclone.conf`なし）、ConoHa SSH利用可能。Railway4DB実バックアップ/独立復元0/4、Railway DB/本番・ConoHa構成変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
