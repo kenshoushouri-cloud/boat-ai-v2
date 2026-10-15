@@ -1,10 +1,8 @@
-# 新チャット開始文（2026-10-14）
+# 新しいチャットへの貼り付け文（2026-10-15）
 
 @GitHub
 @Railway
 
-新競艇AI開発プロジェクトNo.2の続き。repo `kenshoushouri-cloud/boat-ai-v2`、**feature branch `feature/v5-prior-day-counter-test-20261011`のみ**（main/V4本番保護）。
+新競艇AI開発プロジェクトNo.2の続きです。Repo `kenshoushouri-cloud/boat-ai-v2` の作業branch `feature/v5-prior-day-counter-test-20261011` にある `docs/HANDOFF_LATEST.md` →そこが示すcurrent compact handoffを**全文** →本ファイルだけ確認してください。古いhandoff/PROJECT_HISTORY/長いworkflow/過去チャットは大量参照しないでください。目的・V5方針・Railway4DB・鍵/バックアップ・ConoHa実績・費用・工程予定・HOLD・次ONE taskは最新compactを原本として読み込んでください。
 
-最初にfeature上の`docs/HANDOFF_LATEST.md`→指定されたcurrent compact handoffだけ全文確認。**目的・実績・未完・T0工程表・費用・HOLD・Next ONE taskはcompactを正とする**。古いhandoff/PROJECT_HISTORY/長いworkflow/過去チャットは大量参照禁止。参照が必要な個別詳細のみ開く。
-
-ConoHa購入済2GBに強化型V5の収集・DB・予想・バックテストを集約予定。サポート返信待ちならNext ONE taskの安全なオフライン作業を進める。**1回1作業/短い報告・所要時間/最小tool call**、iPhone Safari/iSH前提。Railway4DB/旧CMS鍵・V4本番は独立バックアップ/復元まで保護。無承認の実DB接続・cron/課金・削除・BUYは禁止。
+直近でiPhone SafariのConoHa Ubuntuコンソールから **rclone v1.75.2を別名で設置・動作確認、旧版維持、Google設定フォルダ`700 root:root`確認**まで完了。**Google A/BのVPS OAuthと4DBの実バックアップ/独立復元は未実施**。Next ONE taskから1作業ずつ進め、所要時間を示し、結果とtool callは短く。V4本番/main・DB原本・費用・BUYは保護し、秘密情報は共有しないでください。
