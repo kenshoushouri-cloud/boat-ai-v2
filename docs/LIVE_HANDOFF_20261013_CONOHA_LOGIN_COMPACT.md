@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windowsで暗号化予備鍵ファイル（D:に371 bytes）が作成され、age復号確認がエラーなく終了。ユーザーはGoogle Drive Aにブラウザからログイン可能と返答。**次はユーザー本人がブラウザのDrive AにD:の`.age`形式の予備ファイルのみアップロードする（作業完了報告待ち）**。公開共有設定は有効にしない。USB元鍵や回復キーPDFはアップロードしない。独立コピーの存在/取得/再検証は未確認。Railway4DB実バックアップ/復元0/4、V4本番・ConoHa VPSは変更しない。
+**次ONE task（2026-10-15）**：Google Drive Aへのブラウザログイン可能。ユーザーは暗号化済み予備鍵ファイルのアップロード前に保管フォルダ名を質問。**次はGoogle Drive Aのマイドライブ直下に `boat-ai-v2-key-recovery` フォルダを新規作成するだけ。ユーザー完了待ち**。その後、D:のパスフレーズ暗号化済み `.age` 予備鍵ファイルだけをアップロードし、共有設定は「制限付き」。DBバックアップは別フォルダ。USB上の元鍵とBitLocker回復資料はDriveにアップロードしない。暗号化済み予備鍵はD:で存在371 bytes・復号検証エラーなし。独立クラウド保存はまだ未完了。Railway4DBの実バックアップ/独立復元0/4、V4/ConoHa変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
