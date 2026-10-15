@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：WindowsローカルPowerShellで`age-keygen --version`の本人画面が**v1.3.2**、`where.exe age-keygen`はWinGet Links下exeを認識。公式WinGet `FiloSottile.age` 1.3.2インストール済。ConoHa VPS `age` 1.1.1、`pg_dump`/`pg_restore` 18.6、disk空き89G、RAM available1.5Gi。**次ONE taskはWindowsローカルPowerShell（`PS C:\Users\...>`）で `New-Item -ItemType Directory -Path "$env:USERPROFILE\.boat-ai-secrets" -ErrorAction Stop` を1回実行してローカルの秘密鍵専用フォルダを作るだけ。既存の場合はエラー画面を共有し上書きせず停止。ファイル暗号化・ACL制限/オフラインUSB等への独立コピーは後続作業で設計・検証、**まだ秘密鍵は作らない**。WindowsのOneDrive同期フォルダやGitHub/チャット/ConoHa VPSに秘密鍵を保存しない。Railway4DB実外部暗号化バックアップ/独立復元0/4、Drive A/B OAuth未完、Railway DB接続・転送・削除禁止。ConoHa SG本人IPv4/32限定TCP22、ホスト鍵初回TOFUで独立照合未了、OS再起動警告は保留。V4/main/cron/BUY保護、費用最小化、1作業ずつ。
+**次ONE task（2026-10-15）**：Windowsローカルのage-keygen v1.3.2動作済。保管用フォルダ作成済、ACLは本人・Administrators・SYSTEM、CドライブBitLocker解除0%、Windows 11 Pro、TPM Present/ReadyともFalse。`Get-Disk`実画像でディスク0=240GB、1=640GB、2=2TB、3=4TB、すべてBusType=SATA、USBドライブは今回認識されず。**次はユーザーに既存USBメモリ等の外部媒体を使用できるか確認。追加購入を前提にせず、独立保管方法決定まで鍵は作成しない。** ConoHa VPS age1.1.1、pg_dump/pg_restore18.6、空きdisk89G、利用可能RAM1.5Gi。Railway4DBの実バックアップと独立復元0/4、実DB接続・転送・削除、VPS再起動/OS更新、V4/main/cron変更、BUYは保留。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
