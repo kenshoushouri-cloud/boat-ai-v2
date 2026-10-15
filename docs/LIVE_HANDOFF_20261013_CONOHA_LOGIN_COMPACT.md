@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人の画像で`echo "$PATH"`が正常実行され、`/usr/local/bin`が`/usr/bin`より先にあることを確認。`/usr/local/bin/rclone`への通常配置は既存APT版を保持しても呼び出しのデフォルト版が切り替わる。**安全策として新版を別名`/usr/local/bin/rclone-v1.75.2`へ配置し、旧`rclone`を変えない設計を優先**。次ONE taskはスマホrootコンソールで`ls -l /usr/local/bin/rclone-v1.75.2`をread-only実行し、その別名配置先が未使用か確認。旧版APT rclone v1.60.1-DEV（/usr/bin/rclone）無変更、新版v1.75.2は公式署名・SHA256検証済で/tmpステージからversion起動成功。正式コピー・PATH切替、Google Drive OAuth、Railway実DB転送、VPS再起動/OS更新なし。Railway4DB独立バックアップ/復元0/4、V4本番無変更。
+**次ONE task（2026-10-15 iPhone ConoHa VNC）**：本人画像で`ls -l /usr/local/bin/rclone-v1.75.2`が`No such file or directory`と表示され、バージョン別配置先が未使用と確認。旧APT版は`/usr/bin/rclone` v1.60.1-DEV、新版v1.75.2は公式GPG署名/ZIP SHA256照合済み・`/tmp/rclone-stage`から起動確認済。`/usr/local/bin`は`/usr/bin`よりPATH優先だが、**新しい実行ファイルを`rclone-v1.75.2`という別名で配置するため通常の`rclone`コマンドは旧版のまま**。**次ONE taskは本人に別名設置の了承を得た上で、既存版を上書きせずにステージ済バイナリを`/usr/local/bin/rclone-v1.75.2`へコピー・権限指定し、完了を確認する。** 了承前は設置しない。Google Drive A/B remote未設定、OAuthなし、ConoHa再起動・OS更新、Railway4DB実バックアップ/独立復元0/4、V4本番変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
