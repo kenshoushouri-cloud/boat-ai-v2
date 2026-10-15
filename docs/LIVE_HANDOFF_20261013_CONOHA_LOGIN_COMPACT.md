@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：Windows本人画像でBitLocker保護USB I:の`age-keygen -y "I:\boat-ai-age-identity.txt"`が成功。新Ed25519 age公開受領者が元鍵生成時の公開鍵表示と一致。**GitHub現V3の登録済み受領者は`ssh-ed25519`形式で、今回のage1受領者とは別物**。archive/v4/v5のrecipient_sha256ピンは未登録で実バックアップは拒否される。次ONE taskはWindows PowerShellで新age公開受領者の**末尾改行無しUTF-8 SHA256**を読取専用算出し、画面のハッシュだけ確認。新公開鍵のrepo固定登録やV3キーの切替は本人確認・実ダミー往復検証の後に別作業で判断する。元秘密鍵/パスフレーズの公開禁止。Drive A暗号化予備鍵371B・取得SHA一致、BitLocker保護/ACL確認済。Railway4DB実バックアップ/独立復元0/4。Railway本番DB接続/転送/削除なし、V4・VPS変更なし。
+**次ONE task（2026-10-15）**：Windowsで新age公開受領者のSHA256を算出し、独立計算と完全一致を確認。既存V3 SSH公開受領者とは異なる。archive/v4/v5の固定登録は未実施。次は本人Windows PowerShellでダミーテキストのage暗号化・復号の内容一致テストを行い、結果を確認する。Railway DB・V4本番・VPSは変更なし。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
