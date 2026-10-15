@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：本人Windows SSH/rootでConoHa VPS `boat-ai-v5-main`にて`pg_dump --version`および`pg_restore --version`が両方とも**PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg24.04+2)** と表示され動作確認完了（本人画像）。PG18クライアント系3件導入済、PostgreSQLサーバー本体は未導入。次は**read-only `df -h /`をSSHで一度実行して、暗号化バックアップ用の一時保存領域の容量を確認**する。空き容量が確認できても実バックアップ/接続/移行は許可しない。Railway4DBの外部暗号化バックアップと独立復元はいずれも0/4。独立した復号鍵の安全保管・転送先/容量・取得元検証の後、実作業は別途承認。ConoHa SSH接続はSG`default`＋`boat-ai-admin-ssh`（Windows元IPv4/32・TCP22のみ）、初回ホスト鍵はTOFUで受諾（独立照合未済）。PGDG公式aptソース・署名鍵指紋照合済。`SYSTEM RESTART REQUIRED`だが再起動・OS更新・Railway4DB wake/接続/データ転送・Drive OAuth・BUYは禁止。V4/main/cron保護、追加課金抑制。
+**次ONE task（2026-10-15）**：Windows→ConoHa VPS `boat-ai-v5-main` のroot SSHで`df -h /`を実行し本人画像で確認。`/dev/vda2`の表示は **Size 99G / Used 5.3G / Avail 89G / Use% 6%**。バックアップ一時領域には余裕があるがRailway4DB実ダンプ合計は未計測。**次はread-only `free -h` でRAM/Swapのavailable値を確認する**。`pg_dump`/`pg_restore` 18.6実行確認済、PGDG公式apt source・署名鍵検証済、PG18クライアント3パッケージのみ導入済（サーバー未導入）。ConoHa SSH専用SGは本人PC IPv4/32からTCP22のみを許可し`default`維持、初回ホスト鍵TOFU受諾（独立照合未了）。`SYSTEM RESTART REQUIRED`だが再起動/OS更新は禁止。Railway4DBの実暗号化外部バックアップ・独立復元0/4。鍵管理・外部保存先設定・復元確認なしにDB接続/転送/削除をしない。V4/main/cron・BUY保護、追加費用抑制。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
