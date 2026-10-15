@@ -37,7 +37,7 @@ Google A/Bのrclone OAuthは未完（iSH Safari localhost callback失敗）。**
 ChatGPT＋Railwayは理想月5,000円以下、目安上限6,000円；Railwayは可能なら月$10〜12、$15警戒、$20超回避。**ConoHa/外部保存/二重稼働も総額で評価**。CPU/RAM/Network/WAL/CIを節約、Railway Agent/AI禁止。無承認のmainマージ・V4本番変更・本番cron変更・DB wake/接続/転送・課金・4DB原本/旧CMS鍵削除・BUY禁止。
 
 ## Next ONE task
-**次ONE task（2026-10-15）**：ConoHa VPSへWindows SSH/rootログイン成功。PostgreSQL公式aptリポジトリ設定・PGDG署名鍵指紋照合済。`postgresql-client-18`の実インストール完了（画像で`libpq5`、`postgresql-client-common`、`postgresql-client-18`の設定完了、rootプロンプト再表示を確認）。PGサーバー本体の導入なし。**次はSSH上でread-only `pg_dump --version` を実行してバックアップ用クライアントのバージョンを確認し、結果の写真を共有**。`needrestart`は現行カーネルが新カーネルより古く、システム再起動を要求しているが、**今は再起動せず更新は計画的に実施**。Railway4DBへの接続/転送は未実施、外部暗号化バックアップと独立復元0/4。4DB/V4本番/main/cron保護、課金増・自動購入は禁止。
+**次ONE task（2026-10-15）**：ConoHa VPS `boat-ai-v5-main`のWindows SSH/rootで`pg_dump --version`をユーザー画像確認：**`pg_dump (PostgreSQL) 18.6 (Ubuntu 18.6-1.pgdg24.04+2)`**。PG18クライアント関連3パッケージのみ実導入済（サーバー未導入）。次はread-only **`pg_restore --version`** を1回実行し、復元ツールの動作・バージョンを確認。ConoHa SGは`default`＋接続元Windows IP/32限定の`boat-ai-admin-ssh`、SSH rootログイン可能（初回ホスト鍵はTOFU受諾、独立照合なし）。PGDG `noble-pgdg` ソースと公式鍵fingerprint照合済。`SYSTEM RESTART REQUIRED`、新カーネル反映待ちだが**再起動・OS upgrade・apt更新はHOLD**。実バックアップ/独立復元はRailway4DBいずれも0/4、暗号化保管・Drive OAuth・鍵管理等は未解決。Railway DB接続/転送/削除・V4/main/cron変更・BUYは禁止。バックアップは鍵・接続先・復元検証と明示承認後のみ実行。
 
 ## 詳細資料（必要時だけ）
 `docs/V5_CONOHA_WRITER_CRON_STATIC_AUDIT_20261014.md`、`docs/V5_CONOHA_SERIAL_DAG_CONTRACT_20261014.md`、`docs/V5_CONOHA_2GB_RAILWAY_MOVE_PREFLIGHT_20261013.md`、`ops/backup/BACKUP_SAFE_MODES_20261014.md`、`ops/backup/RESTORE_VERIFICATION_RUNBOOK_20261013.md`、`ops/backup/ISH_AGE_OFFLINE_OWNER_TEST_20261014.md`。
