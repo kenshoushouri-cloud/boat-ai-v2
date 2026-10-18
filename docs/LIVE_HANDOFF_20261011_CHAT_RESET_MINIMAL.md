@@ -1,9 +1,9 @@
-# 新競艇AI No.2 — 2026-10-11 新チャット用・最小引き継ぎ
+# 新競艇AI No.2 — 最新コンパクト引き継ぎ（2026-10-18 方針更新）
 
 **唯一の最新引き継ぎ。** 古い`LIVE_HANDOFF_*`、`PROJECT_HISTORY`、長いworkflow、過去チャットは履歴扱い。必要な個別判断以外は読まない。常に **1ターン1作業・最小tool call・短い結果報告・実行時間目安**。古いSHA・件数・使用量・runを現在値とみなさず、次の1作業に必要なものだけliveで取得。タイムアウト時は重複実行せず実行済みか確認。CI/Railwayの大量ログや全履歴検索禁止。ChatGPT内で行った模擬テストを本番結果と混同しない。
 
 ## 目的、予算、安全条件（必須）
-- GitHub `kenshoushouri-cloud/boat-ai-v2` / branch `main`。**V5が主力開発対象、本番はV4のまま保護**。V4の収益は不振だったため、V4対V5収益比較は**必須ではない**。研究の`research/`ファイル名は互換用。V5本体完成→V5単独3連単過去収支と締切前Forward確認→十分安全なら本番切替→V4安全停止→過去データ外部保管・復元検証→不要データ/サービス整理。**自動購入は最後で別途明示承認**。本番/LINE/購入額/DB/ボリュームを無断変更しない。LINE仮候補通知は不要。
+- GitHub `kenshoushouri-cloud/boat-ai-v2` / branch `main`。**V5が唯一の主力開発対象でV4ランタイムとは独立構築。既存のV4本番・Railway DBは移行・依存確認と別途承認が済むまで保護し、V5完成を待たず不要分を撤退する方針**。V4の収益は不振だったため、V4対V5収益比較は**必須ではない**。研究の`research/`ファイル名は互換用。Railway全データ・依存関係の保全検証→不要DB/Volume/処理の安全撤去・Hobby解約→ConoHaの必要性能に増強→V5単独3連単過去収支と締切前Forward確認→安全合格後のみV5本番化。V4との本番切替を前提にしない。**自動購入は最後で別途明示承認**。本番/LINE/購入額/DB/ボリュームを無断変更しない。LINE仮候補通知は不要。
 - V5目標 **月間純利益＋50,000円（未検証、利益保証・ROI実証なし）**、質を重視して**1〜3レース/日、条件不足なら0**。V5の購入点数・単価・閾値は未決定。V4旧ルールの2点×100円を流用しない。負け、VOID、返還、F/L、当時入手可能だった情報を含む同一母集団で検証、欠損はPENDINGにして水増ししない。
 - **ChatGPT＋Railway合計月6,000円以内、理想5,000円以内**（税・為替・契約確認が必要）。Railway **月$10以下理想、$10–12実務目標、$15警戒、次回請求$20上限目標**。Railway Agent/AI禁止、CPU/RAM/Network/DB/WALの無用な負担を避ける。前回計測値ではV4系DB約**4.823/5GB**と容量逼迫、4 Postgres等の実費推計には**$20超のリスク**も記載（`20261010`の履歴値、現請求額ではない）。重い全期間スキャン、サービス追加、移行、削除、設定変更・再デプロイ禁止（安全審査と別承認が必要）。
 - Railway接続機能では**任意SQLを直接実行不可**。ユーザーは安全なread-only SQLの実行を承認しているが、既存のRailway Queryタブを本人が実行して結果を送付した。認証情報を要求・露出しない。作業中に費用増を起こさない。
@@ -22,6 +22,12 @@
 - **2026-10-11追加：** `v5/offline_prior_day_counter_update.py` と `tests/test_v5_offline_prior_day_counter_update.py`。全対象日の券（NO BUY含む）を`freeze_day_predictions`で固定し、全件結果照合後の`roll_forward_day`のみが翌日Counter更新。元研究の`lw/lcs/lcw/rks/rkw/ps/pw/vc/vn`と`cs/ct/rcs/rct`増分に沿う。VOID/PENDING/F/L/返還・不明は`all_results`に保持、学習採否と決済母集団を分離。入力非変更・基準状態指紋・再適用拒否。**GitHub追加済み／単体テスト9件作成済みだが実行PASSは未検証**（本環境にリポジトリ実行ランタイムなし）。本番・DB・Railway未変更。
 - 既存確認ファイル：`docs/V5_PREDECISION_FEATURE_LINEAGE_TO_REAL_ROI_20261011.md`。長い旧handoffは**履歴として残す**が次チャットで全読みしない。
 
-## Next ONE task — 新規Counter更新テストの隔離実行
-`tests/test_v5_offline_prior_day_counter_update.py`を**Railway・有料GitHub Actionsを使わないオフラインPython環境**で実行し、成功確認後のみPASS記載。失敗があれば新規モジュールを最小修正。未実行のまま本番投入禁止。次段階は元研究`b/vr`との実数値一致検証で、DBの重いscanはしない。引き続き1回1作業・短い報告・目安表示・費用保護。
+## 2026-10-18 運用方針・移行現況（短縮更新）
+- **長期構成**：ConoHa VPSにV5予測・学習/バックテスト・PostgreSQL・定時実行・Gitコード管理を集約。過去データ（2025-07以降の全履歴と原本）はV5本番DBと**別DB/保管領域**、V5は必要な履歴だけread-only参照またはコピー。後日GitHub Actions相当やGitHubコード管理をGit/Forgejo等でConoHaへ段階的移行。まずGitHub無料利用を残してもよく、**ChatGPTからの管理接続は別途実証**。単一VPS内のバックアップだけでは障害対策不足：外部に独立複製し復元を検証。データ元（公式サイト）・LINE等の外部通信は残る。詳細：`docs/V5_CONOHA_HISTORY_SEPARATION_20261018.md`。
+- **順序/費用**：最優先はRailway完全撤退（Hobby解約）・請求を将来ゼロにすること。**2026-11-03の次期開始前**の解約を目指すが、解約は稼働デプロイを止め得るため保護完了後のみ。10/18のRailway画面では累積使用約$12.33・次回予測約$18.24（**変動する参考値**）。撤退後ConoHa 2GB→**4GBを優先検討**し負荷実測後8GB判断。不要な二重常時稼働・有料Actions・Railway Agent/AIは禁止。
+- **ConoHa確認済**：TOTO 12表、V3 39表は復元と元件数一致（V3 Railwayサービス/Volume削除済）。V4はConoHa独立dump復元成功、**39表・13,640,730行**がConoHa内の元復旧DBと完全件数一致、検証用一時DB削除、空き容量約69GB（いずれも確認時）。ただし**Railway V4原本はOffline/約4.99GBで最終一致未確認**。RailwayメインDB・履歴アーカイブはConoHa保存物あり、原本との差分/網羅性・V5接続依存・外部複製の確認が未了。削除したと見なさない。10/18時点RailwayにDB+Volume各3組、合計36サービス。無断削除・リサイズ・解約不可。
+- V5前日Counter更新モジュールは10/18に`_fingerprint`構文修正をGitHub反映。テスト結果は当時の実行条件を別途確認すること。**元研究b/vrとの実数値一致・実データ因果・真の3連単ROIは未証明**。BUYは独立承認が必要。
+
+## Next ONE task — ConoHa履歴DB棚卸し（ユーザー帰宅後）
+Termiusで**read-only**のPostgreSQL DB一覧・履歴DBの表/容量を確認し、過去データ保存の実体とV5用分離候補を特定する。既存の移行済データを重複コピー・削除しない。完了後、Railwayメイン/履歴/V4原本に対する保全・差分照合と外部バックアップのチェックリストを1つずつ進める。実行目安と短い結果のみ報告。
 `ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
