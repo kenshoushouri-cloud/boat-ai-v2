@@ -45,6 +45,12 @@
 - **公式返還証拠**: 2026-10-05の事故候補14件をHTML/取得UTC/SHA256/艇番でファイル保存・14/14照合OK。全期間返還可能性候補1,888件、うち7件既確認、pending初期1,881件。追加20件を1worker・5秒間隔で保存、ログの成功20/20、全保存34件（新20件SHA一括照合未了）。オッズ・払戻確定処理/全期間ROIはまだ未検証。通信エラーはPENDING、重複取得・過度アクセス禁止。
 - **Railway**: 10/20 live read-only inventoryでproduction 25サービス、Postgres-EKp2 と postgres-history-archive のDB2件、各5GB Volume2件、cron6件は2028-02-29向けの休止設定。staged変更なし。ConoHaへのデータ移行の完全性・復元試験・依存解消・初回収集を確認し、**研究終了を待たずにRailway撤退**。DB/Volume/サービスの削除は対象と復旧可否を明示しユーザー承認後に限る。
 
+## 2026-10-20 Railwayデータ固定方針・GitHub予定停止
+- ユーザー明確方針：ConoHa移行済みDBとRailwayのデータ相違を増やさないため、**Railway向けの全自動書き込みを先に停止**する。Railway DB2台は最終照合・復元のため読み取り可能に維持し、DB/Volumeの削除は別途明示対象承認後。
+- GitHub mainで**予約実行 `on.schedule` を削除した5ワークフロー**：`.github/workflows/exhibition-st-forward-scheduled-collector.yml`、`racer-course-top3-forward-scheduled-collector.yml`、`motor-guard05-forward-shadow.yml`、`candidate-discovery-v4-prospective-freeze.yml`、`bao-forward-shadow-auto-capture.yml`。元のcollectorコード・PR手動検証は保護。5ファイルを再fetchして`hasSchedule=false`確認。GitHub手動実行、issue_comment、PRによる手動/条件付き起動は一部残存、稼働中runやほかのデータ書き込み経路を排除した証明ではない。
+- Railway cron6件は長期休止状態、DB2件オンライン。既存25サービスとDB参照環境変数あり。サービス停止/削除、DB停止、Volume削除は**まだ実施していない**。10/20 07:00 ConoHa初回timer実収集を確認し、DB差分を固定してから安全なRailway撤退を急ぐ。
+- Railway Usage UI 10/20 06:45 JST: Current Usage $12.81, Estimated Bill $18.99 (10/03–11/03)。研究終了を解約条件にしない。
+
 ## Next ONE task — ConoHa初回日次収集とRailway撤退ゲート確認
 10/20朝7時後、ConoHa morning timer/serviceのログと当日DB新規増分をread-onlyで検証（今夜23時nightも後追い確認）。その後、Railway履歴DB3表の最終件数/更新日とConoHa包含、メインDBの必要表データ・依存サービス・復元可能性を最小限で確認し、**安全に削除できる個々のRailwayリソースを提示して別途承認を取る**。暗号化DB2件と鍵のGoogle Drive保存/照合は完了済みなので再実行不要。BUY、LINE、本番変更・DB/Volume削除は未承認。
 ONE_TASK_ONLY / SHORT_OUTPUT / LAST_CHAT_ON_DEMAND / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST
