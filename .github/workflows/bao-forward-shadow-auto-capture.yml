@@ -9,12 +9,6 @@ on:
       - '.github/scripts/bao_paired_forward_audit.py'
       - '.github/scripts/bao_next_capture_plan.py'
   workflow_dispatch:
-  schedule:
-    # Temporary trigger source for 2026-08-24..25 JST.
-    # GitHub scheduled events can be delayed; scheduled jobs therefore keep a
-    # 2-minute capture loop alive long enough to overlap the observed scheduler
-    # gaps and hand off through the concurrency queue.
-    - cron: '2-57/5 22,23,0-14 23-25 8 *'
 
 permissions:
   contents: read
@@ -44,7 +38,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p=Path('.github/workflows/bao-forward-shadow-auto-capture.yml').read_text(encoding='utf-8')
-          assert "2-57/5 22,23,0-14 23-25 8 *" in p
+          assert "2-57/5 22,23,0-14 23-25 8 *" not in p
           assert "2026-08-24" in p and "2026-08-25" in p
           assert 'bao_exhibition_mid_shadow.py' in p
           assert 'bao_early_late_market_shadow.py' in p
