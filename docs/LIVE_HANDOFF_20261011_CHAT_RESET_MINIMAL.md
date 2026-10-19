@@ -39,6 +39,12 @@
 
 - **Railway実稼働・依存（10/19 16:45頃 read-only）**：production DB2+各5GB Volume2。メインPostgres-EKp2と履歴postgres-history-archiveは各online/running 1レプリカ。非cron旧サービスのDB接続設定あり8件（v2-motor2-shadow-audit、storage-index-drop-once、tmp-date-sync-plan-20261006-EnSX、pg-snapshot-inspect、test-beforeinfo-extra、storage-maintenance-once、production-audit-readonly-2026-09-29、snapshot-audit-inspector）は最新SUCCESS/UI onlineでも**running replicas=0/1**。常時実行を示さない。DB2件のnetwork-flowログを前24時間照会して取得0件（書込なしの証明ではない）。変数名のみ取得可、接続値は不明。test-beforeinfo-extraは10/08最終deployでstartCommandがV4 wake+historical_recent_form_backfill、restartPolicy NEVER。DB/Volume/サービスは変更していない。
 
-## Next ONE task — Railway履歴DBの現況・最終差分確認
-ConoHaとV5専用Driveへの10/19暗号化メインDB・履歴DB・復旧鍵3点の外部保存/照合は完了済み、再実行不要。Railway履歴DB側の3表の最新件数・更新日等をread-only SQLで確認し、ConoHaの履歴DBと照合する。さらにRailwayメインのレコード包含・V4原本差分・復元可能性を段階検証。DB/Volume削除・Hobby解約はユーザーの別途明示承認後。購入、LINE、本番、DB変更禁止。
+## 2026-10-20 方針決定とConoHa進捗（直近会話で確認）
+- ユーザー承認：**現行V5の固定重み・過去採否を保護したまま、2025-07以降の取得済み全情報について、単独有効性・重み・条件間相互作用をAI/機械学習で再検証**。有望な組合せを計算量制限付きで探索し、訓練時期と未学習時期を厳密分離。締切後取得情報・当日結果のリーク禁止、6艇・事故除外は学習採否に適用し、収支母集団と区別。OOS比較で改善確認後のみ研究候補採用。本番モデル・購入設定は勝手に変更しない。AI研究完了はRailway解約の必要条件ではない。
+- **ConoHa**: 10/20 07:00 JST morning、23:00 JST night の systemd timer 有効化、PRE_FLIGHT_OK・systemd構文正常。低負荷の`/opt/boat-ai-collector/daily_v5_safe.sh`で1 worker・排他・90分timeout・ODDS=0、朝は出走表/レース、夜は結果を収集する予定。**初回の実収集・DB反映・展示/オッズ収集は未確認**。初回ログ検証を優先。
+- **公式返還証拠**: 2026-10-05の事故候補14件をHTML/取得UTC/SHA256/艇番でファイル保存・14/14照合OK。全期間返還可能性候補1,888件、うち7件既確認、pending初期1,881件。追加20件を1worker・5秒間隔で保存、ログの成功20/20、全保存34件（新20件SHA一括照合未了）。オッズ・払戻確定処理/全期間ROIはまだ未検証。通信エラーはPENDING、重複取得・過度アクセス禁止。
+- **Railway**: 10/20 live read-only inventoryでproduction 25サービス、Postgres-EKp2 と postgres-history-archive のDB2件、各5GB Volume2件、cron6件は2028-02-29向けの休止設定。staged変更なし。ConoHaへのデータ移行の完全性・復元試験・依存解消・初回収集を確認し、**研究終了を待たずにRailway撤退**。DB/Volume/サービスの削除は対象と復旧可否を明示しユーザー承認後に限る。
+
+## Next ONE task — ConoHa初回日次収集とRailway撤退ゲート確認
+10/20朝7時後、ConoHa morning timer/serviceのログと当日DB新規増分をread-onlyで検証（今夜23時nightも後追い確認）。その後、Railway履歴DB3表の最終件数/更新日とConoHa包含、メインDBの必要表データ・依存サービス・復元可能性を最小限で確認し、**安全に削除できる個々のRailwayリソースを提示して別途承認を取る**。暗号化DB2件と鍵のGoogle Drive保存/照合は完了済みなので再実行不要。BUY、LINE、本番変更・DB/Volume削除は未承認。
 ONE_TASK_ONLY / SHORT_OUTPUT / LAST_CHAT_ON_DEMAND / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST
