@@ -9,9 +9,6 @@ on:
       - '.github/workflows/motor-guard05-forward-shadow.yml'
   issue_comment:
     types: [created]
-  schedule:
-    # 07:20 JST every day. Early enough to freeze before normal race starts.
-    - cron: '20 22 * * *'
 
 permissions:
   contents: read
