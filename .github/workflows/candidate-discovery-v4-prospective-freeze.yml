@@ -25,8 +25,6 @@ on:
       - 'docs/V4_PRE_FREEZE_AVAILABILITY_SHADOW_ACTIVATION_20260922.md'
       - 'docs/V4_AVAILABILITY_GUARD_PRODUCTION_ACTIVATION_20260923.md'
       - '.github/workflows/candidate-discovery-v4-prospective-freeze.yml'
-  schedule:
-    - cron: '16 23 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -90,7 +88,7 @@ jobs:
           assert 'delete from' not in capture
           for forbidden in ('v2_results', 'v2_odds', 'payout_yen', 'return_yen', 'finish_order'):
               assert forbidden not in capture
-          assert "cron: '16 23 * * *'" in workflow
+          assert "cron: '16 23 * * *'" not in workflow
           assert "PYTHONPATH: ." in workflow
           assert "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'" in workflow
           assert 'TZ=Asia/Tokyo date +%F' in workflow
