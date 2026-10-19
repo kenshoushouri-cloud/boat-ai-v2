@@ -4,11 +4,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/racer-course-top3-forward-scheduled-collector.yml'
-  schedule:
-    # Start before the Railway 07:15 JST racer-course collector. GitHub schedule
-    # delay is absorbed by the 2-minute loop below; newly complete six-lane source
-    # snapshots are frozen as soon as they become available.
-    - cron: '45 21 * * *'
 
 permissions:
   contents: read
@@ -37,7 +32,7 @@ jobs:
           assert 'fixed_coef = 0.50' in c
           assert 'source_cutoff = time(8, 15)' in c
           assert 'on conflict (race_id) do nothing' in c
-          assert "cron: '45 21 * * *'" in w
+          assert "cron: '45 21 * * *'" not in w
           assert "racer_course_autocap_loop_seconds: '7200'" in w
           assert "racer_course_autocap_loop_sleep: '120'" in w
           assert 'timeout-minutes: 130' in w
