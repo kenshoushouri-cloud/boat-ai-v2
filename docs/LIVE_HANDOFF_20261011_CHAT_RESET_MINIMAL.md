@@ -45,6 +45,11 @@
 - **公式返還証拠**: 2026-10-05の事故候補14件をHTML/取得UTC/SHA256/艇番でファイル保存・14/14照合OK。全期間返還可能性候補1,888件、うち7件既確認、pending初期1,881件。追加20件を1worker・5秒間隔で保存、ログの成功20/20、全保存34件（新20件SHA一括照合未了）。オッズ・払戻確定処理/全期間ROIはまだ未検証。通信エラーはPENDING、重複取得・過度アクセス禁止。
 - **Railway**: 10/20 live read-only inventoryでproduction 25サービス、Postgres-EKp2 と postgres-history-archive のDB2件、各5GB Volume2件、cron6件は2028-02-29向けの休止設定。staged変更なし。ConoHaへのデータ移行の完全性・復元試験・依存解消・初回収集を確認し、**研究終了を待たずにRailway撤退**。DB/Volume/サービスの削除は対象と復旧可否を明示しユーザー承認後に限る。
 
+## 2026-10-20 V5のミッドナイト配慮・夜間学習・4GB検討（提案、未適用）
+- User accepts recommended general schedule, **explicitly requires midnight boat race support**. Official BOATRACE states last race finish around 21:40–22:50 JST, 2026-10-20 下関12R closes ~22:45. Fixed 23:00 result job may start too early; evening collection must ensure final result/payout/refund publication, retry incomplete instead of falsely marking complete.
+- Proposed schedule (JST, NOT CONFIGURED): 07:00 pre-race collector; daytime through ~22:50 deadline-aware exhibitions/odds/forecast; 23:15–01:00 full results collection; 01:00–01:30 completeness retry; 01:30–05:00 batch learning/backtests only after results collection exits/completeness gate; 05:00–07:00 evaluation/preparation. Keep V5 approved model unchanged until OOS and forward validation, never compete with morning/night collector.
+- ConoHa VPS official specs: 2GB=3vCPU / 4GB=4vCPU, memory doubles and aggregate CPU nominal +33%, **NOT guaranteed runtime speedup**. Current collector REPAIR_WORKERS=1, CPUQuota=70% and MemoryMax=900M, so must benchmark/tune after paid upgrade separately approved. No ConoHa plan changes made. Prioritize Railway retirement, budget, then measure whether 4GB justified.
+
 ## 2026-10-20 07:20 JST 最新優先 — ConoHa正本・不足分は公式から取得
 - **ユーザー提案に同意・優先方針**: ConoHa上の既存DBを運用/研究の正本とし、不足した過去レース・結果の事実データは原則公式サイトから低負荷・重複回避で再取得。Railwayと再々照合し続ける方針は廃止し、Railway撤退を急ぐ。Railwayは復元不能な旧スナップショット証拠や最終復旧の例外的確認に限定（未だDB/Volume削除承認なし）。証拠とバックアップ、必要サービス依存を検査してから別途承認で削除。
 - **時間証拠の注意**: 締切前の展示・オッズ等は事後再取得では当時取得できた事実を証明しない。取得日時、出所、再取得フラグを区別し、before-decisionに使うには当時スナップショットが必要。失われた証拠はPENDING/学習対象外として将来Forward収集で補う。事後結果/返還・払い戻しなど確定事実は公式で再取得可。
