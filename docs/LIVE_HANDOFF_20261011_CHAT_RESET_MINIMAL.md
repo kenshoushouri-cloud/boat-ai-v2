@@ -1,6 +1,6 @@
-# 新競艇AI No.2 — 最新コンパクト引き継ぎ（2026-10-18 方針更新）
+# 新競艇AI No.2 — 最新コンパクト引き継ぎ（2026-10-19 状況更新）
 
-**唯一の最新引き継ぎ。** 古い`LIVE_HANDOFF_*`、`PROJECT_HISTORY`、長いworkflow、過去チャットは履歴扱い。必要な個別判断以外は読まない。常に **1ターン1作業・最小tool call・短い結果報告・実行時間目安**。古いSHA・件数・使用量・runを現在値とみなさず、次の1作業に必要なものだけliveで取得。タイムアウト時は重複実行せず実行済みか確認。CI/Railwayの大量ログや全履歴検索禁止。ChatGPT内で行った模擬テストを本番結果と混同しない。
+**唯一の最新引き継ぎ。** 古い引き継ぎ・長いworkflow・それ以前の過去チャットは履歴扱い。直前1チャットは参照可能な範囲で必要箇所のみ補助参照可。正式記録は本ファイルであり、全文大量読み込みは禁止。常に **1ターン1作業・最小tool call・短い結果報告・実行時間目安**。古いSHA・件数・使用量・runを現在値とみなさず、次の1作業に必要なものだけliveで取得。タイムアウト時は重複実行せず実行済みか確認。CI/Railwayの大量ログや全履歴検索禁止。ChatGPT内で行った模擬テストを本番結果と混同しない。
 
 ## 目的、予算、安全条件（必須）
 - GitHub `kenshoushouri-cloud/boat-ai-v2` / branch `main`。**V5が唯一の主力開発対象でV4ランタイムとは独立構築。既存のV4本番・Railway DBは移行・依存確認と別途承認が済むまで保護し、V5完成を待たず不要分を撤退する方針**。V4の収益は不振だったため、V4対V5収益比較は**必須ではない**。研究の`research/`ファイル名は互換用。Railway全データ・依存関係の保全検証→不要DB/Volume/処理の安全撤去・Hobby解約→ConoHaの必要性能に増強→V5単独3連単過去収支と締切前Forward確認→安全合格後のみV5本番化。V4との本番切替を前提にしない。**自動購入は最後で別途明示承認**。本番/LINE/購入額/DB/ボリュームを無断変更しない。LINE仮候補通知は不要。
@@ -23,11 +23,21 @@
 - 既存確認ファイル：`docs/V5_PREDECISION_FEATURE_LINEAGE_TO_REAL_ROI_20261011.md`。長い旧handoffは**履歴として残す**が次チャットで全読みしない。
 
 ## 2026-10-18 運用方針・移行現況（短縮更新）
-- **長期構成**：ConoHa VPSにV5予測・学習/バックテスト・PostgreSQL・定時実行・Gitコード管理を集約。過去データ（2025-07以降の全履歴と原本）はV5本番DBと**別DB/保管領域**、V5は必要な履歴だけread-only参照またはコピー。後日GitHub Actions相当やGitHubコード管理をGit/Forgejo等でConoHaへ段階的移行。まずGitHub無料利用を残してもよく、**ChatGPTからの管理接続は別途実証**。単一VPS内のバックアップだけでは障害対策不足：外部に独立複製し復元を検証。データ元（公式サイト）・LINE等の外部通信は残る。詳細：`docs/V5_CONOHA_HISTORY_SEPARATION_20261018.md`。
+- **長期構成**：ConoHa VPSでデータ収集・PostgreSQL・V5予測/学習・定時実行を役割分離して集約。2025-07以降の履歴/原本をV5本体と分離管理し、無駄な二重保存なし、read-only参照を優先。後日GitHub Actions相当やGitHubコード管理をGit/Forgejo等でConoHaへ段階的移行。まずGitHub無料利用を残してもよく、**ChatGPTからの管理接続は別途実証**。単一VPS内のバックアップだけでは障害対策不足：外部に独立複製し復元を検証。データ元（公式サイト）・LINE等の外部通信は残る。詳細：`docs/V5_CONOHA_HISTORY_SEPARATION_20261018.md`。
 - **順序/費用**：最優先はRailway完全撤退（Hobby解約）・請求を将来ゼロにすること。**2026-11-03の次期開始前**の解約を目指すが、解約は稼働デプロイを止め得るため保護完了後のみ。10/18のRailway画面では累積使用約$12.33・次回予測約$18.24（**変動する参考値**）。撤退後ConoHa 2GB→**4GBを優先検討**し負荷実測後8GB判断。不要な二重常時稼働・有料Actions・Railway Agent/AIは禁止。
-- **ConoHa確認済**：TOTO 12表、V3 39表は復元と元件数一致（V3 Railwayサービス/Volume削除済）。V4はConoHa独立dump復元成功、**39表・13,640,730行**がConoHa内の元復旧DBと完全件数一致、検証用一時DB削除、空き容量約69GB（いずれも確認時）。ただし**Railway V4原本はOffline/約4.99GBで最終一致未確認**。RailwayメインDB・履歴アーカイブはConoHa保存物あり、原本との差分/網羅性・V5接続依存・外部複製の確認が未了。削除したと見なさない。10/18時点RailwayにDB+Volume各3組、合計36サービス。無断削除・リサイズ・解約不可。
+- **ConoHa確認済**：TOTO 12表、V3 39表は復元と元件数一致（V3 Railwayサービス/Volume削除済）。V4はConoHa独立dump復元成功、**39表・13,640,730行**がConoHa内の元復旧DBと完全件数一致、検証用一時DB削除、空き容量約69GB（いずれも確認時）。ただし**Railway V4原本はOffline/約4.99GBで最終一致未確認**。RailwayメインDB・履歴アーカイブはConoHa保存物あり、原本との差分/網羅性・V5接続依存・外部複製の確認が未了。削除したと見なさない。10/18の旧スナップショットではDB+Volume各3組、合計36サービス（現値ではない）。無断削除・リサイズ・解約不可。
 - V5前日Counter更新モジュールは10/18に`_fingerprint`構文修正をGitHub反映。テスト結果は当時の実行条件を別途確認すること。**元研究b/vrとの実数値一致・実データ因果・真の3連単ROIは未証明**。BUYは独立承認が必要。
 
-## Next ONE task — ConoHa履歴DB棚卸し（ユーザー帰宅後）
-Termiusで**read-only**のPostgreSQL DB一覧・履歴DBの表/容量を確認し、過去データ保存の実体とV5用分離候補を特定する。既存の移行済データを重複コピー・削除しない。完了後、Railwayメイン/履歴/V4原本に対する保全・差分照合と外部バックアップのチェックリストを1つずつ進める。実行目安と短い結果のみ報告。
-`ONE_TASK_ONLY / SHORT_OUTPUT / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST`
+
+## 2026-10-19 最新状況（古い件数より優先）
+- **接続**：Termiusのboat-ai-v5-vpnからConoHaへTailscale SSH接続成功。Wi-Fi/4G/5Gで利用可能。公開IP経路・認証設定を無断変更しない。
+- **移行**：ConoHa PostgreSQLメインDB railway、別履歴DB boat_history_archive、V3/V4復旧資産は保存済み。10/17独立収集の単回補完8レース/48出走/8結果をDBまで検証済み、既知会場の同日残118（未登録会場を含まない）。朝昼夜の独立定期収集は未完成。
+- **10/19 Railway vs ConoHa read-only SQL照合**：Railway v2_races=71,406件（最終10/08）、v2_results=71,094件（最終10/07）。ConoHa v2_races=72,552件、v2_results=72,262件（共に最終10/17）。Railwayの最終日以前に絞ったConoHa件数は71,412件と71,268件（Railwayより+6/+174）。**件数増はレコード包含/全表完全一致の証拠ではない**。他の既存照合記録・最終差分・履歴アーカイブ/残存依存を確認する。削除は別途明示承認必須。
+- **Railway live環境（10/19）**：production 25サービス、Postgres DB2と各5GB Volume計2件。cron6件はすべて2028年2月29日向け便宜的長期休止設定（0 0 29 2 *）。DBとVolumeは未削除。他の非cronサービスの依存先は未完全確認。Railway環境変数は名前のみ照会可能で接続値は不明。次期請求前の安全撤退を優先。
+- **バックアップ検証**：10/18付近の暗号化ダンプ main_current_20261018.dump.age / archive_20261016.dump.age / v3_20261016.dump.age / v4_full_20261018.dump.age がConoHaとGoogle Drive上に存在。Driveリモートはgdrive_a_backup:。存在は確認したが今回の復元試験・SHA256完全照合は未実施。ConoHaでpg_dump/age/rclone/sha256sumが利用可能、空き約68GB。秘密鍵・認証情報は表示禁止。
+- **新規メインDBバックアップ（10/19 12:45）**：/root/boatbackup/main_current_20261019.dump（約284MB）をpg_dump -Fcで作成しpg_restore -l目録検査成功。現時点では**未暗号化・Drive未送信・復元試験未実施**。既存ファイルは削除しない。
+- **外部保全方針**：当面Google Drive無料15GBを一時保存場所とし、Google One 100GB有料化はV5開発が落ち着くまで延期（未契約）。毎月1回PCから余裕のある自宅HDDに手動コピーする。照合後のみDrive旧世代整理、容量監視と転送失敗検知を設計する。ConoHaからの毎日自動バックアップは**未設定**。無断の契約、課金、消去は禁止。
+
+## Next ONE task — 10/19メインDBバックアップの暗号化準備
+既存age暗号化の公開recipient/手順のみ安全に確認し、秘密鍵やパスワードは表示しない。次の順で1操作ずつ行う：main_current_20261019.dumpの暗号化 → Google Driveへの暗号化ファイル転送・存在/サイズ照合 → 履歴DBの鮮度確認と安全な新規バックアップ → Railway最終差分・依存確認 → 削除は別途承認後。**暗号化前のダンプをDriveに転送しない。**
+ONE_TASK_ONLY / SHORT_OUTPUT / LAST_CHAT_ON_DEMAND / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST
