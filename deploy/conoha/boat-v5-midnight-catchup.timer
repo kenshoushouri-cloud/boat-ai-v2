@@ -1,0 +1,16 @@
+[Unit]
+Description=V5 official result catch-up after midnight races (JST)
+
+[Timer]
+# Previous-day results are queried only after the midnight racing day closes.
+# The night collector starts at 23:00 JST and has a 90-minute timeout.
+OnCalendar=*-*-* 01:20:00 Asia/Tokyo
+OnCalendar=*-*-* 02:20:00 Asia/Tokyo
+OnCalendar=*-*-* 03:20:00 Asia/Tokyo
+Unit=boat-v5-midnight-catchup.service
+Persistent=false
+AccuracySec=1min
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
