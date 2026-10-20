@@ -93,3 +93,8 @@
 - ユーザー希望により**V5専用データ管理への再編成を最優先**とする。旧データを一括コピー・移動・削除するのではなく、ConoHa PostgreSQL内の独立した`v5_data`参照層/必要時だけ`v5_research`予測研究層を用意し、旧`public.v2_*`を引き続き正本として監査しながら安全移行する。
 - 設計正本: `docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。DBにまだ新schemaを作成していない。追加課金/再起動/大量コピーなし。既存ConoHa `railway` DBと`boat_history_archive`、過去の暗号化Driveバックアップ・固定V5モデル/朝夜・Forward収集は保護。
 - **Next ONE task:** ConoHaでread-onlyのschemaと主要テーブルの保存容量を棚卸しして、最小のVIEWベースのV5アクセス層DDLを決定する。DBのCREATE/ALTER/書込/削除は別の具体的承認後。
+
+## 2026-10-21 V5データ専用参照層の実適用（スクリーンショット確認済）
+- ConoHaローカル`railway` DB に`deploy/conoha/v5_data_views_v1.sql`→`v5_data`6非更新VIEW、`v5_data_views_v2.sql`→`v5_data`追加4 VIEWと`v5_research`1 VIEWがCOMMIT済み。`is_updatable=NO`全11。大量データCOPY/旧データ移動・削除なし。全DB 3414MB（作成時点）。
+- 263MBの`v2_v24_motor2_forward_shadow`は`v5_research.motor2_legacy_shadow`で隔離。本番V5の`motor_stats`として採用しない。気象等4元表は`v5_data`参照別名のみ、締切前取得証明/モデル採用は未検証。
+- 具体的設計: `docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。**Next ONE task:** 選手級別/履歴・モーター正本の元列と日時をConoHaでread-only確認、取得済み過去結果の空白（10/07以降K）を補完する方式を決める。既存モデル固定・タイマー/バックアップ/Railway保護。
