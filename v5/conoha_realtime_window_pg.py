@@ -43,15 +43,20 @@ def load_candidates(now: datetime) -> list[dict]:
             cur.execute(
                 """SELECT r.race_id,
                           r.deadline_at::timestamptz AS deadline_at,
-                          (SELECT COUNT(DISTINCT e.lane)
-                           FROM public.v2_realtime_exhibition_snapshots e
-                           WHERE e.race_id = r.race_id AND e.exhibition_time IS NOT NULL
-                             AND e.snapshot_at < r.deadline_at::timestamptz)
+                          (SELECT COALESCE(MAX(s.n),0)
+                           FROM (SELECT COUNT(DISTINCT e.lane) AS n
+                                 FROM public.v2_realtime_exhibition_snapshots e
+                                 WHERE e.race_id = r.race_id
+                                   AND e.exhibition_time IS NOT NULL
+                                   AND e.snapshot_at < r.deadline_at::timestamptz
+                                 GROUP BY e.snapshot_label) s)
                             AS exh_lanes,
-                          (SELECT COUNT(DISTINCT o.ticket)
-                           FROM public.v2_realtime_odds_snapshots o
-                           WHERE o.race_id = r.race_id AND o.odds > 0
-                             AND o.snapshot_at < r.deadline_at::timestamptz)
+                          (SELECT COALESCE(MAX(s.n),0)
+                           FROM (SELECT COUNT(DISTINCT o.ticket) AS n
+                                 FROM public.v2_realtime_odds_snapshots o
+                                 WHERE o.race_id = r.race_id AND o.odds > 0
+                                   AND o.snapshot_at < r.deadline_at::timestamptz
+                                 GROUP BY o.snapshot_label) s)
                             AS odds_tickets
                    FROM public.v2_races r
                    WHERE r.race_date = %s
