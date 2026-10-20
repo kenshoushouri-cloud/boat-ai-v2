@@ -88,3 +88,8 @@
 - GitHubコード確認：日次オンライン収集`repair_month_all_pg.py`は`v2_results`へ保存。公式Kファイル由来の全6艇着順を`v2_result_entries`へ保存するのは**別経路**`save_k_day_results_pg.py`（対象1日・全6艇パース監査・明示書込ゲート）。現行ConoHa日次`daily_v5_safe.sh`は前者のみを呼ぶ。**実装と運用経路の未接続が原因候補**。バージョン差/引き継ぎ漏れだけが原因と断定しない。
 - `research/historical_recent_form_backfill_pg.py`は公式Kの予測対象日より前の日付の記録のみで直近5走を再構成できるが、デフォルトread-only・書込は明示許可制。3連単上位3艇から4〜6着は捏造禁止。過去原本の後日取得を当時の締切前証拠に転用禁止。
 - 次の1作業：ConoHaで10/07以降のKファイル**既存原本の有無をread-only確認**し、日別の公式K監査→不足日だけ安全な低負荷追加取得を検討。勝手なDB書込/大量取得/旧V5重み変更/実BUYは禁止。
+
+## 2026-10-21 最新合意 — V5データ再編成を構築より先行
+- ユーザー希望により**V5専用データ管理への再編成を最優先**とする。旧データを一括コピー・移動・削除するのではなく、ConoHa PostgreSQL内の独立した`v5_data`参照層/必要時だけ`v5_research`予測研究層を用意し、旧`public.v2_*`を引き続き正本として監査しながら安全移行する。
+- 設計正本: `docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。DBにまだ新schemaを作成していない。追加課金/再起動/大量コピーなし。既存ConoHa `railway` DBと`boat_history_archive`、過去の暗号化Driveバックアップ・固定V5モデル/朝夜・Forward収集は保護。
+- **Next ONE task:** ConoHaでread-onlyのschemaと主要テーブルの保存容量を棚卸しして、最小のVIEWベースのV5アクセス層DDLを決定する。DBのCREATE/ALTER/書込/削除は別の具体的承認後。
