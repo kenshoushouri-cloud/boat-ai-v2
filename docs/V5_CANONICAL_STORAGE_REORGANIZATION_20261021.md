@@ -1,6 +1,6 @@
 # V5 専用データ保存・参照先の再編成計画 — 2026-10-21
 
-Status: **DESIGN ONLY / CONOHA未適用 / 原本移動・削除なし**  
+Status: **STAGE 1・2 ConoHa適用済み / VIEWのみ11件 / 原本移動・削除なし**  
 User direction: V5本体・バックテスト・Forward稼働を進める前に、保存先の体系を整理する。費用・容量・既存データ保全を優先。
 
 ## 目的・重要な分離
@@ -30,7 +30,7 @@ User direction: V5本体・バックテスト・Forward稼働を進める前に�
 | `v5_research.predictions` | 新設候補 | V5 version、判断時刻、入力証拠ハッシュ、3連単120通り/選択、BUY不可がデフォルト |
 | `v5_research.settlements` | 新設候補 | 成績/返還の公式証拠、PENDING/VOID/返還、試算と実購入を別集計 |
 
-`v5_data`/ `v5_research` は構想上の schema 名。既存同名schema確認後に作成する。 **初回はVIEW/読み取り用のアクセス層を基本**とし、旧テーブルから大量にCOPYしない。既存のV5 Pythonモジュール名とは別管理。
+`v5_data` と `v5_research` はConoHaのローカルPostgreSQLに構築済み。 **VIEW/読み取り用アクセス層で、旧テーブルから大量COPYしない。** 既存V5 Pythonモジュール名とは別管理。
 
 ## 移行の5段階（各段階で独立承認・検証）
 1. **棚卸し（READ ONLY）**：DB/schema/table/行数推定/実容量/索引/参照先/更新プログラム/日時・source項目/過去原本の有無、欠落日を記録。行数の完全性を`pg_class.reltuples`推定値で主張しない。
@@ -45,4 +45,10 @@ User direction: V5本体・バックテスト・Forward稼働を進める前に�
 - 移行成功は「**欠落と出所が分かり、V5が日時条件付きで参照でき、旧系を残したまま同じ結果を再現できる**」状態。ファイル名の統一だけで成功とはみなさない。
 
 ## Next ONE task
-ConoHa Termiusで **DB内既存schemaの有無と主要テーブルの容量見積りをread-onlyで確認**。結果を見て、次回はV5アクセス層を重複データなしで実装する具体DDLを作る。リソース上限/他timerとの共存を優先する。
+ConoHa Termiusで **選手の直近5走・選手級別の適用日・モーター数値の元データ列**をread-onlyで棚卸しし、過去K結果とスナップショットの利用時点判定を設計する。旧VIEWはそのまま維持。DB移動/本番入力切替はしない。
+
+## 2026-10-21 実装済み（ユーザースクリーンショットで確認）
+- `deploy/conoha/v5_data_views_v1.sql`：6つの`v5_data`非更新VIEWを作成、全`is_updatable=NO`。同時点ConoHa `railway` DB全体容量約3,414MB、主な6表計約1,161MB（インデックス含む）。
+- `deploy/conoha/v5_data_views_v2.sql`：`v5_data.weather_snapshots` / `race_condition_snapshots` / `racer_condition_snapshots` / `racer_course_stats_snapshots` の4非更新VIEW、`v5_research.motor2_legacy_shadow` 1非更新VIEWを作成。合計 **v5_data=10, v5_research=1、11 VIEW**。実データCOPYなし、既存`public.v2_*`を更新・削除していない。
+- モーター研究元 `public.v2_v24_motor2_forward_shadow` 263MB はV24シャドー履歴であり、V5本番予測入力として承認されていない。気象186MB、選手コース統計83MB、選手直前状態64MB、レース条件56MBもスナップショットと取得時点の監査前にはV5採用を保証しない。
+- 次は上記`Next ONE task`をread-onlyで実行後、正規の選手直近5走生成と、V5用モーター元データを設計。過去K（10/07〜20の全6艇着順欠落）の修復を優先する。
