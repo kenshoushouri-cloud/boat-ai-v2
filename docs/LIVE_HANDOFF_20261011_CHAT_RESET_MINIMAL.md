@@ -45,6 +45,13 @@
 - **公式返還証拠**: 2026-10-05の事故候補14件をHTML/取得UTC/SHA256/艇番でファイル保存・14/14照合OK。全期間返還可能性候補1,888件、うち7件既確認、pending初期1,881件。追加20件を1worker・5秒間隔で保存、ログの成功20/20、全保存34件（新20件SHA一括照合未了）。オッズ・払戻確定処理/全期間ROIはまだ未検証。通信エラーはPENDING、重複取得・過度アクセス禁止。
 - **Railway**: 10/20 live read-only inventoryでproduction 25サービス、Postgres-EKp2 と postgres-history-archive のDB2件、各5GB Volume2件、cron6件は2028-02-29向けの休止設定。staged変更なし。ConoHaへのデータ移行の完全性・復元試験・依存解消・初回収集を確認し、**研究終了を待たずにRailway撤退**。DB/Volume/サービスの削除は対象と復旧可否を明示しユーザー承認後に限る。
 
+## 2026-10-20 10:01 JST Railwayプロジェクト削除予約の実行証拠
+- User explicitly approved irreversible deletion of Railway `boat-v2-postgres` project (25 services incl 2 PostgreSQL + 2 volumes). User personally typed exact project name and tapped Delete in Railway Danger. Screenshot after redirects to Projects shows no projects in current workspace.
+- Railway deletion modal: permanent purge after **48-hour grace** (unless force deletion). No force deletion requested or performed.
+- Post-action live Railway read-only verification: `describe_environment` for original project now returns **Project not found**; `environment_status` enumerates 25 original services with **offline** states, 0 failures. `list_projects` still contains the project ID/name, likely soft-delete grace/listing lag; do not call it fully erased or confirmed final invoice yet.
+- ConoHa `boat-v5-daily@morning.service` on 10/20 08:56 JST ended `Result=success`, `ExecMainStatus=0`, `ActiveState=inactive`, with earlier progress 125 `v2_races`, 750 race entries. Full day coverage pending. 2GB ConoHa stays; user explicitly declined upgrade for now.
+- **Next ONE task**: instruct user to view Railway Usage forecast after deletion; confirm project deletion mode/billing and whether Hobby plan should remain due other projects. Do not assert Railway subscription canceled. Then prioritize verifying ConoHa 23:00 midnight results and coverage.
+
 ## 2026-10-20 V5のミッドナイト配慮・夜間学習・4GB検討（提案、未適用）
 - User accepts recommended general schedule, **explicitly requires midnight boat race support**. Official BOATRACE states last race finish around 21:40–22:50 JST, 2026-10-20 下関12R closes ~22:45. Fixed 23:00 result job may start too early; evening collection must ensure final result/payout/refund publication, retry incomplete instead of falsely marking complete.
 - Proposed schedule (JST, NOT CONFIGURED): 07:00 pre-race collector; daytime through ~22:50 deadline-aware exhibitions/odds/forecast; 23:15–01:00 full results collection; 01:00–01:30 completeness retry; 01:30–05:00 batch learning/backtests only after results collection exits/completeness gate; 05:00–07:00 evaluation/preparation. Keep V5 approved model unchanged until OOS and forward validation, never compete with morning/night collector.
