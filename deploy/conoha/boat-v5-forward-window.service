@@ -1,0 +1,18 @@
+[Unit]
+Description=V5 predeadline forward beforeinfo/odds capture (fail-closed and bounded)
+After=network-online.target postgresql.service
+Wants=network-online.target
+ConditionPathExists=/opt/boat-ai-v5/v5/conoha_realtime_window_pg.py
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/boat-ai-v5
+# Single lock shared with morning/night collectors and midnight catch-up.
+# No separate Railway/network credentials; DATABASE_URL is LOCAL ConoHa.
+ExecStart=/usr/bin/flock -n /run/lock/boat-v5-collector.lock /usr/bin/timeout --signal=TERM --kill-after=10s 240s /usr/bin/sudo -u postgres /usr/bin/env DATABASE_URL=postgresql:///railway V5_ENABLE_LIVE_COLLECTOR=YES /opt/boat-ai-v5-venv/bin/python -m v5.conoha_realtime_window_pg --apply --max-races 2
+TimeoutStartSec=260
+CPUQuota=50%
+MemoryMax=750M
+MemorySwapMax=180M
+Nice=10
