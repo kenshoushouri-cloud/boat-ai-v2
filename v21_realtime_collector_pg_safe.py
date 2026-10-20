@@ -127,7 +127,7 @@ def main() -> None:
     print(f"V5_STRICT_PREDEADLINE={V5_STRICT_PREDEADLINE} "
           f"V5_DEADLINE_GUARD_SEC={V5_DEADLINE_GUARD_SEC}", flush=True)
     print(
-        f"FINAL_DEADLINE_FILTER={legacy.FINAL_DEADLINE_FILTER} 
+        f"FINAL_DEADLINE_FILTER={legacy.FINAL_DEADLINE_FILTER} "
         f"FINAL_WINDOW_BEFORE_MIN={legacy.FINAL_WINDOW_BEFORE_MIN} "
         f"FINAL_WINDOW_AFTER_MIN={legacy.FINAL_WINDOW_AFTER_MIN} "
         f"NOW_JST={now.isoformat()}",
