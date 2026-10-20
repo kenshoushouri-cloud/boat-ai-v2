@@ -68,10 +68,9 @@
 - Railway cron6件は長期休止状態、DB2件オンライン。既存25サービスとDB参照環境変数あり。サービス停止/削除、DB停止、Volume削除は**まだ実施していない**。10/20 07:00 ConoHa初回timer実収集を確認し、DB差分を固定してから安全なRailway撤退を急ぐ。
 - Railway Usage UI 10/20 06:45 JST: Current Usage $12.81, Estimated Bill $18.99 (10/03–11/03)。研究終了を解約条件にしない。
 
-## 2026-10-20 V5実装再開 — ミッドナイト結果の安全補完
-- ユーザーはConoHa **2GB維持**・V5構築継続を指示。Railway `boat-v2-postgres` はユーザー操作で削除予約、全25サービスoffline、完全削除は48h猶予。Usage 10:12 JST $12.83 / Estimated $18.91。ConoHaの朝収集は`Result=success/ExecMainStatus=0/ActiveState=inactive`、当日125レース・750出走表の途中確認済み。全場網羅/夜の結果・展示オッズ・ROIは未確認。
-- GitHub mainに`v5/conoha_midnight_results_pg.py` (commit 5566fee9...) と `tests/test_v5_conoha_midnight_results_pg.py` (commit 50e32b22...) を追加。前日JSTの`v2_races`から`v2_results`未確定だけを調べる**デフォルトread-only**な補完CLI。`--apply`を明示した場合のみ公式結果を低速順次取得し、確定済み公式3連単/中止/不成立のみupsert、未公開/parse errorはPENDINGのまま・既存結果を破壊しない。最大48R/回デフォルト、公式エビデンス取得後も締切前取得とみなさない。コード/テストは**GitHub追加のみ**、ConoHa未配備、テスト未実行、自動timer未設定。既存23:00 nightジョブは未変更。結果補完と研究モデルの自動採用は区別。
-- **次の1作業**: Termiusで`cd /opt/boat-ai-v5 && git rev-parse --is-inside-work-tree && git branch --show-current && git status --short -uno`のread-only結果を確認。ConoHaローカル変更を保護し、安全なpull/反映手順を決める。パスワード/認証情報/接続先を表示しない。所要5秒。自動BUY禁止。
+## 2026-10-20 14:16 JST V5実装最新（過去進捗より優先）
+- ConoHa 2GB維持、Railway競艇プロジェクトは削除予約・全25サービスoffline。10/20朝の出走表収集144R/864艇（11:09時点）、Result=success。10/19独立低負荷backfill 132R/792艇/132結果、10/18 156R/936艇/156結果、両日288候補を処理しゼロfailed。10/18・19の安全補完CLI read-onlyでknown 156/132, PENDING=0/0。**処理成功≠全日/全期間の正本正確性保証**。
+- `v5/conoha_midnight_results_pg.py`をGitHub→ConoHaへfast-forward配備済み、stdlib `unittest` 6/6 PASS。コードはデフォルトpreview、`--apply`で確定結果だけ低速追完、未公開/解析不能を保存しない。夜23:00 night collectorの初回成功はまだ未検証。
+- GitHub `deploy/conoha/boat-v5-midnight-catchup.service` と `.timer` を新規作成。01:20/02:20/03:20 JST翌日繰り返し、1回64件まで/2秒間隔、night/morningと共通 flock、最大30分、CPU50%/RAM750MB、PENDING明示。**ConoHaへのunit配備・verify・timer有効化はまだ行っていない**。今後のAI学習スケジュールはこの処理と重ならないよう再設計する。
+- 次のONE task：ConoHa TermiusでgitのFast-forward fetch/merge後、`systemd-analyze verify`を`deploy/conoha/`内の2つの新規unitで実施、稼働timerはまだ変更しない。結果を見て次にsystemd install＋enableを段階的に案内。ConoHa既存モデル、DB、購入、LINEは変更禁止。
 
-## Next ONE task — ConoHa checkoutをread-only確認
-上記の`git rev-parse`/`git branch`/`git status`を1回だけ確認してからConoHaへ新規V5モジュールを安全に導入。古いRails照合、バックアップの無意味な再実施はしない。
