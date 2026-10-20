@@ -68,9 +68,9 @@
 - Railway cron6件は長期休止状態、DB2件オンライン。既存25サービスとDB参照環境変数あり。サービス停止/削除、DB停止、Volume削除は**まだ実施していない**。10/20 07:00 ConoHa初回timer実収集を確認し、DB差分を固定してから安全なRailway撤退を急ぐ。
 - Railway Usage UI 10/20 06:45 JST: Current Usage $12.81, Estimated Bill $18.99 (10/03–11/03)。研究終了を解約条件にしない。
 
-## 2026-10-20 14:16 JST V5実装最新（過去進捗より優先）
-- ConoHa 2GB維持、Railway競艇プロジェクトは削除予約・全25サービスoffline。10/20朝の出走表収集144R/864艇（11:09時点）、Result=success。10/19独立低負荷backfill 132R/792艇/132結果、10/18 156R/936艇/156結果、両日288候補を処理しゼロfailed。10/18・19の安全補完CLI read-onlyでknown 156/132, PENDING=0/0。**処理成功≠全日/全期間の正本正確性保証**。
-- `v5/conoha_midnight_results_pg.py`をGitHub→ConoHaへfast-forward配備済み、stdlib `unittest` 6/6 PASS。コードはデフォルトpreview、`--apply`で確定結果だけ低速追完、未公開/解析不能を保存しない。夜23:00 night collectorの初回成功はまだ未検証。
-- GitHub `deploy/conoha/boat-v5-midnight-catchup.service` と `.timer` を新規作成。01:20/02:20/03:20 JST翌日繰り返し、1回64件まで/2秒間隔、night/morningと共通 flock、最大30分、CPU50%/RAM750MB、PENDING明示。**ConoHaへのunit配備・verify・timer有効化はまだ行っていない**。今後のAI学習スケジュールはこの処理と重ならないよう再設計する。
-- 次のONE task：ConoHa TermiusでgitのFast-forward fetch/merge後、`systemd-analyze verify`を`deploy/conoha/`内の2つの新規unitで実施、稼働timerはまだ変更しない。結果を見て次にsystemd install＋enableを段階的に案内。ConoHa既存モデル、DB、購入、LINEは変更禁止。
-
+## 2026-10-20 15:42 JST V5前日結果＋直前データ収集、最新の作業指示（優先）
+- ConoHa 2GB継続、Railway競艇プロジェクト削除予約（稼働25サービスoffline）。10/18=156R/936艇/156結果、10/19=132R/792艇/132結果、いずれも補完正常終了。前日結果のpendingは各0。
+- 深夜の確定結果補完systemd`boat-v5-midnight-catchup.timer`をユーザーが有効化、`enabled`/`active`確認済み。01:20/02:20/03:20 JST。初回実稼働は10/21待ち。朝07:00/夜23:00日次timer稼働。
+- 10/20 15:15 JST、展示/気象/オッズのrealtime table は全部0。尼崎11R 15:23 初回手動1Rで天候1,出走6,オッズ120,展示0(公式欠落)。15:35再取得は公式HTTP read timeout 8sec×2で0。curl -4の両URLは各8.1~8.25秒でHTTP200、通信遅延。15:41 桐生2R `20261020_01_02` をHTTP_TIMEOUT=20で厳格限定1R再取得したところ**展示6, オッズ120,天候1,選手6,レース条件1**を公式から締切前に取得保存成功。自動購入・モデル変更なし。ユーザーは別途17:35桐生6R最終判断リマインダ通知予定。
+- GitHubに新規`v5/conoha_realtime_window_pg.py` / `tests/test_v5_conoha_realtime_window_pg.py` / `deploy/conoha/boat-v5-forward-window.{service,timer}` を作成。既存`v21_realtime_collector_pg_safe.py`を**V5_STRICT_PREDEADLINE=1時のみ**通信前後の厳格deadline（3minガード）とofficial odds以外のfallback禁止に拡張。read-only previewがデフォルト、applyは`V5_ENABLE_LIVE_COLLECTOR=YES`必要、2件/回・締切9〜24分前、5分毎の07〜23 JST timer案、同一lock/CPU50%/RAM750MBの設定、snapshot_label別時間証拠を上書きせず保存。**GitHub追加のみ、ConoHa未配備・テスト未実行、timer未設置/未有効化。** 実行前にunittestとsystemd verifyを必ず実施。既存DB、V5モデル、購入/LINE、2GB契約は保護。
+- **Next ONE task**: Termiusで`git diff --quiet && git diff --cached --quiet && git fetch origin main && git merge --ff-only FETCH_HEAD`後、`/opt/boat-ai-v5-venv/bin/python -m unittest discover -s tests -p test_v5_conoha_realtime_window_pg.py -v` と `systemd-analyze verify deploy/conoha/boat-v5-forward-window.service deploy/conoha/boat-v5-forward-window.timer` を行い結果を確認。timer即時有効化はしない。失敗やschema差は診断して修正、繰返し大量DB参照はしない。
