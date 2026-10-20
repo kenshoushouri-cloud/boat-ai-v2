@@ -81,3 +81,10 @@
 - GitHub `v5/telegram_trial_transport.py` を追加：1通ずつのTelegram Bot API、DRY_RUNデフォルト、明示`--send`と`V5_TELEGRAM_SEND=YES`が揃わない限り絶対送信しない、429 retry_after制限、秘密値はログ非表示。`v5/telegram_trial_performance.py` を追加：V5専用の予想時点証拠と公式結果・払戻証拠があるJSONLだけを日次/月次に集計。未確定は母数から除外し表示、的中率/回収率/収支、仮想と実購入は別集計。元データ未連携では「算出不可」、偽の0%なし。`tests/test_v5_telegram_trial_reports.py` に隔離した9本のunittest追加。**GitHub作成のみ、テスト実行・ConoHa反映・Bot開設・実配信・レポート定期実行は未実施。** Ledger作成/配信条件実装は今後。想定配信：前日対象＋当月累計を毎朝約05時(JST)・前月確定分は毎月1日朝、未確定は暫定を明記。
 - 10/20桐生6RはConoHa側で締切前17:30台の展示6/odds120を保存済み。ChatGPTへ未連携だった問題を解消すべく、配信をConoHa内で完結させる。
 - **Next ONE task:** TermiusでConoHa `/opt/boat-ai-v5`のGitHub `main`を安全にfast-forwardし、`/opt/boat-ai-v5-venv/bin/python -m unittest discover -s tests -p test_v5_telegram_trial_reports.py -v` を読み取り専用で実施。修正が必要ならGitHubで直す。Bot開設はユーザー操作、実送信や秘密情報投入はテスト後の別作業。
+
+
+## 2026-10-21 直近結果保存先の分離（確認済）
+- ConoHa `railway` DBで10/07〜10/20の`v2_races`=1,860件、`v2_results`に結果1,570件、1,570/1,570件が`v2_race_entries`の6艇にjoin可能。一方、同期間の選手別`v2_result_entries`は**0行**。`official_k_file`の選手別結果は10/06まで422,544行・1,649選手。10/20の`v2_race_entries.recent_form`は864/864空。
+- GitHubコード確認：日次オンライン収集`repair_month_all_pg.py`は`v2_results`へ保存。公式Kファイル由来の全6艇着順を`v2_result_entries`へ保存するのは**別経路**`save_k_day_results_pg.py`（対象1日・全6艇パース監査・明示書込ゲート）。現行ConoHa日次`daily_v5_safe.sh`は前者のみを呼ぶ。**実装と運用経路の未接続が原因候補**。バージョン差/引き継ぎ漏れだけが原因と断定しない。
+- `research/historical_recent_form_backfill_pg.py`は公式Kの予測対象日より前の日付の記録のみで直近5走を再構成できるが、デフォルトread-only・書込は明示許可制。3連単上位3艇から4〜6着は捏造禁止。過去原本の後日取得を当時の締切前証拠に転用禁止。
+- 次の1作業：ConoHaで10/07以降のKファイル**既存原本の有無をread-only確認**し、日別の公式K監査→不足日だけ安全な低負荷追加取得を検討。勝手なDB書込/大量取得/旧V5重み変更/実BUYは禁止。
