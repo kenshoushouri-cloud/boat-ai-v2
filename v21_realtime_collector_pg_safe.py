@@ -325,7 +325,10 @@ def main() -> None:
         if V5_STRICT_PREDEADLINE and not _may_save_before_cutoff(race):
             print(f"SAFE_HOLD_NO_PREDEADLINE race_id={rid} stage=after_odds", flush=True)
             continue
-        odds, source = _choose_odds(odds_html, base_odds.get(rid))
+        # Forward capture may NEVER substitute historical/base odds for a
+        # failed official realtime fetch (that would fabricate a current quote).
+        candidate_base_odds = {} if V5_STRICT_PREDEADLINE else base_odds.get(rid)
+        odds, source = _choose_odds(odds_html, candidate_base_odds)
         if odds:
             so += _save_complete_odds(race, odds, source)
         else:
