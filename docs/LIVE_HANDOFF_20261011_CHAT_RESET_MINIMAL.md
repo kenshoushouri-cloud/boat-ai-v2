@@ -68,6 +68,10 @@
 - Railway cron6件は長期休止状態、DB2件オンライン。既存25サービスとDB参照環境変数あり。サービス停止/削除、DB停止、Volume削除は**まだ実施していない**。10/20 07:00 ConoHa初回timer実収集を確認し、DB差分を固定してから安全なRailway撤退を急ぐ。
 - Railway Usage UI 10/20 06:45 JST: Current Usage $12.81, Estimated Bill $18.99 (10/03–11/03)。研究終了を解約条件にしない。
 
-## Next ONE task — ConoHa初回日次収集とRailway撤退ゲート確認
-10/20朝7時後、ConoHa morning timer/serviceのログと当日DB新規増分をread-onlyで検証（今夜23時nightも後追い確認）。その後、Railway履歴DB3表の最終件数/更新日とConoHa包含、メインDBの必要表データ・依存サービス・復元可能性を最小限で確認し、**安全に削除できる個々のRailwayリソースを提示して別途承認を取る**。暗号化DB2件と鍵のGoogle Drive保存/照合は完了済みなので再実行不要。BUY、LINE、本番変更・DB/Volume削除は未承認。
-ONE_TASK_ONLY / SHORT_OUTPUT / LAST_CHAT_ON_DEMAND / NO_BULK_HISTORY / NO_RAILWAY_AGENT_AI / BUY_LAST
+## 2026-10-20 V5実装再開 — ミッドナイト結果の安全補完
+- ユーザーはConoHa **2GB維持**・V5構築継続を指示。Railway `boat-v2-postgres` はユーザー操作で削除予約、全25サービスoffline、完全削除は48h猶予。Usage 10:12 JST $12.83 / Estimated $18.91。ConoHaの朝収集は`Result=success/ExecMainStatus=0/ActiveState=inactive`、当日125レース・750出走表の途中確認済み。全場網羅/夜の結果・展示オッズ・ROIは未確認。
+- GitHub mainに`v5/conoha_midnight_results_pg.py` (commit 5566fee9...) と `tests/test_v5_conoha_midnight_results_pg.py` (commit 50e32b22...) を追加。前日JSTの`v2_races`から`v2_results`未確定だけを調べる**デフォルトread-only**な補完CLI。`--apply`を明示した場合のみ公式結果を低速順次取得し、確定済み公式3連単/中止/不成立のみupsert、未公開/parse errorはPENDINGのまま・既存結果を破壊しない。最大48R/回デフォルト、公式エビデンス取得後も締切前取得とみなさない。コード/テストは**GitHub追加のみ**、ConoHa未配備、テスト未実行、自動timer未設定。既存23:00 nightジョブは未変更。結果補完と研究モデルの自動採用は区別。
+- **次の1作業**: Termiusで`cd /opt/boat-ai-v5 && git rev-parse --is-inside-work-tree && git branch --show-current && git status --short -uno`のread-only結果を確認。ConoHaローカル変更を保護し、安全なpull/反映手順を決める。パスワード/認証情報/接続先を表示しない。所要5秒。自動BUY禁止。
+
+## Next ONE task — ConoHa checkoutをread-only確認
+上記の`git rev-parse`/`git branch`/`git status`を1回だけ確認してからConoHaへ新規V5モジュールを安全に導入。古いRails照合、バックアップの無意味な再実施はしない。
