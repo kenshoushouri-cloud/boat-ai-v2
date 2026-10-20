@@ -1,0 +1,19 @@
+[Unit]
+Description=V5 prior-day official results catch-up (midnight safe, bounded)
+After=network-online.target postgresql.service
+Wants=network-online.target
+ConditionPathExists=/opt/boat-ai-v5/v5/conoha_midnight_results_pg.py
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/boat-ai-v5
+# Shares one lock with existing morning/night collectors; never overlap.
+ExecStart=/usr/bin/flock -n /run/lock/boat-v5-collector.lock /usr/bin/timeout --signal=TERM --kill-after=30s 1800s /usr/bin/sudo -u postgres /usr/bin/env DATABASE_URL=postgresql:///railway REPAIR_SOURCE=conoha_v5_postrace_catchup HTTP_TIMEOUT=12 HTTP_MAX_RETRIES=1 /opt/boat-ai-v5-venv/bin/python -m v5.conoha_midnight_results_pg --apply --max-races 64 --sleep-sec 2
+# 3=still PENDING, not a fatal process failure. Always inspect log GATE.
+SuccessExitStatus=3
+TimeoutStartSec=1900
+CPUQuota=50%
+MemoryMax=750M
+MemorySwapMax=180M
+Nice=10
