@@ -9,13 +9,30 @@ realtime odds snapshots.
 """
 from __future__ import annotations
 
+import os
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import official_odds3t_parser as odds_parser
 import v21_realtime_collector_pg as legacy
 
-VERSION = "2026-09-10 official-table-parser-fail-closed-v3"
+VERSION = "2026-10-20 official-table-parser-strict-forward-guard-v4"
+
+# Opt-in for ConoHa scheduled forward capture ONLY; keep legacy historical
+# and research replay behavior untouched. The single-race legacy path
+# deliberately skips FINAL_DEADLINE_FILTER, so enforce it again here.
+V5_STRICT_PREDEADLINE = os.getenv("V5_STRICT_PREDEADLINE", "0") == "1"
+V5_DEADLINE_GUARD_SEC = max(120, int(os.getenv("V5_DEADLINE_GUARD_SEC", "180")))
+
+
+def _may_save_before_cutoff(race) -> bool:
+    deadline = legacy._parse_deadline_at(race)
+    if deadline is None:
+        return False
+    return legacy._now() + timedelta(seconds=V5_DEADLINE_GUARD_SEC) < deadline
+
+
 
 
 def _choose_odds(html: str | None, base_values):
@@ -107,8 +124,10 @@ def main() -> None:
         "ODDS_SELECTION=exact_dynamic_120_60_24_fail_closed",
         flush=True,
     )
+    print(f"V5_STRICT_PREDEADLINE={V5_STRICT_PREDEADLINE} "
+          f"V5_DEADLINE_GUARD_SEC={V5_DEADLINE_GUARD_SEC}", flush=True)
     print(
-        f"FINAL_DEADLINE_FILTER={legacy.FINAL_DEADLINE_FILTER} "
+        f"FINAL_DEADLINE_FILTER={legacy.FINAL_DEADLINE_FILTER} 
         f"FINAL_WINDOW_BEFORE_MIN={legacy.FINAL_WINDOW_BEFORE_MIN} "
         f"FINAL_WINDOW_AFTER_MIN={legacy.FINAL_WINDOW_AFTER_MIN} "
         f"NOW_JST={now.isoformat()}",
@@ -231,17 +250,26 @@ def main() -> None:
             race.get("venue_id") or race.get("venue_code") or ""
         ).zfill(2)
         race_no = legacy._safe_int(race.get("race_no"))
+        if V5_STRICT_PREDEADLINE and not _may_save_before_cutoff(race):
+            print(f"SAFE_HOLD_NO_PREDEADLINE race_id={rid} stage=before_fetch", flush=True)
+            continue
         before_html = legacy._fetch(
             legacy._official_url("beforeinfo", legacy.TARGET_DATE, venue, race_no)
         )
+        if V5_STRICT_PREDEADLINE and not _may_save_before_cutoff(race):
+            print(f"SAFE_HOLD_NO_PREDEADLINE race_id={rid} stage=after_beforeinfo", flush=True)
+            continue
         exhibition = []
         if legacy._looks_no_data(before_html):
             nb += 1
-            c1, c2 = legacy.save_exhibition_and_entries(
-                race, entries_by.get(rid, []), []
-            )
-            sx += c1
-            se += c2
+            if not V5_STRICT_PREDEADLINE:
+                c1, c2 = legacy.save_exhibition_and_entries(
+                    race, entries_by.get(rid, []), []
+                )
+                sx += c1
+                se += c2
+            else:
+                print(f"V5_FORWARD_BEFOREINFO_PENDING race_id={rid}", flush=True)
         else:
             weather = legacy.parse_weather(before_html or "")
             sw += legacy.save_weather(race, weather)
@@ -288,9 +316,15 @@ def main() -> None:
             src_cond += c3
             splayer_cond += c4
 
+        if V5_STRICT_PREDEADLINE and not _may_save_before_cutoff(race):
+            print(f"SAFE_HOLD_NO_PREDEADLINE race_id={rid} stage=before_odds", flush=True)
+            continue
         odds_html = legacy._fetch(
             legacy._official_url("odds3t", legacy.TARGET_DATE, venue, race_no)
         )
+        if V5_STRICT_PREDEADLINE and not _may_save_before_cutoff(race):
+            print(f"SAFE_HOLD_NO_PREDEADLINE race_id={rid} stage=after_odds", flush=True)
+            continue
         odds, source = _choose_odds(odds_html, base_odds.get(rid))
         if odds:
             so += _save_complete_odds(race, odds, source)
