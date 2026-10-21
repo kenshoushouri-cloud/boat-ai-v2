@@ -12,7 +12,7 @@ except Exception:
     BeautifulSoup=None
 from db_pg import execute,fetch_all,upsert_rows
 from psycopg import sql
-from v5_core_read_routes import core_relation
+from v5_core_read_routes import core_relation, legacy_entry_alters
 from v5_legacy_ddl_guard import require_legacy_realtime_ddl_allowed
 from v5_realtime_table_routes import physical_enabled, resolve_realtime_table, verify_physical_targets
 
@@ -99,6 +99,8 @@ def _deadline_match(r,now):
     return True,"in_window"
 
 def _ensure_realtime_tables():
+    # Resolve core route before any DDL; reject invalid/unconfirmed profile.
+    entry_alters = legacy_entry_alters()
     # Opt-in physical mode is read-only validated. Do not create legacy tables.
     if physical_enabled():
         verify_physical_targets(fetch_all)
@@ -117,10 +119,10 @@ def _ensure_realtime_tables():
     }
     for t,cols in alters.items():
         for c,typ in cols:execute(f"alter table {t} add column if not exists {c} {typ};")
+    # Never ALTER/recreate public.v2_race_entries if physical core was chosen.
+    for entry_ddl in entry_alters:
+        execute(entry_ddl)
     for sql in [
-      "alter table v2_race_entries add column if not exists tilt numeric;",
-      "alter table v2_race_entries add column if not exists motor_no integer;",
-      "alter table v2_race_entries add column if not exists boat_no integer;",
       "create unique index if not exists uq_v2_rt_weather_race_label on v2_realtime_weather_snapshots (race_id,snapshot_label);",
       "create unique index if not exists uq_v2_rt_exh_race_label_lane on v2_realtime_exhibition_snapshots (race_id,snapshot_label,lane);",
       "create unique index if not exists uq_v2_rt_entry_race_label_lane on v2_realtime_entry_snapshots (race_id,snapshot_label,lane);",
