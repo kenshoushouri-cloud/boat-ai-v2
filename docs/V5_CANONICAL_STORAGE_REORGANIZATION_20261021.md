@@ -93,3 +93,7 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - 既存VIEW `v5_data.weather_snapshots` 等との名前衝突回避のため、physical stageの候補名は `v5_data.raw_weather_snapshots`, `raw_exhibition_snapshots`, `raw_entry_snapshots`, `raw_odds_snapshots`, `raw_race_condition_snapshots`, `raw_racer_condition_snapshots`。この名称は移管実施前の準備であり、テーブルは**まだ存在させていない**。
 - `V5_REALTIME_PHYSICAL_PROFILE=physical` + `CONFIRM_V5_REALTIME_PHYSICAL_ROUTE=YES`は本番で設定しない。両方を明示した場合のみ新物理実表の存在・種類r/pをread-onlyで検査し、`CREATE/ALTER`を飛ばし、リアルタイム6表のupsertと直前前回オッズreadの参照先を変える。片方だけ・誤字・表欠落・VIEWを実表と誤認した場合はfail-closed。
 - **未解消：** 日次3連単原本/一般結果/レース/艇情報のreaderと別writerの切替、旧DDL対策の他収集処理、DB権限、時点整合性、外部バックアップ復元テストと明示承認。現段階は**コードのみ**でDB未変更。
+
+## 2026-10-22 07:09 直前スケジューラー読取経路（code-only）
+- ConoHaオフライン11+5テスト合格。 `v5/conoha_realtime_window_pg.py`の直前展示/オッズSELECT元表を、writerと同じ固定マップ`v5_realtime_table_routes.py`から安全に導出。既定`legacy`時に旧`public.v2_realtime_*`相当を参照、物理フラグ両方が明示されたときだけ`v5_data.raw_*`へ。ユーザー権限で自由なSQLテーブル名を指定できない。`tests/test_v5_forward_snapshot_reader_routes.py`5ケースは次にオフライン実行予定。
+- 注意：同スケジューラーの`public.v2_races`は未切替、別の結果収集、日次/研究SQL、VIEW依存とFK/所有者/索引/権限及びバックアップ復元試験が未解消。**運用中のV5 physical flagは設定しない**。
