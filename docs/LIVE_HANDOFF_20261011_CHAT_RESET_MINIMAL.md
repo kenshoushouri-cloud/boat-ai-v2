@@ -135,8 +135,9 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 18:54 JST 10/17最終15R復旧準備（最新）
-- ConoHa2GB・DB railway。Termiusで`129 apply2 && 141 apply2`が両方PASS、最大24Rを4バッチ×6Rで正常復旧。最終`BEFORE=(141,846,0,140)`→`AFTER=(147,882,0,146)`→`AFTER=(153,918,0,152)`、各DELTA=(6,36,0,6)、`BOUNDED_BATCH_PASS`2回、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。先行12Rも成功しないと後段は実行されない構成。公式168Rに対しrace=153・entries=918・bad6=0・results=152、**未登録15R**。
-- 10/16は公式156Rと936艇のレース登録完了（結果135Rで既存21R結果不足）。初期10/16・17未登録252R中**237R復旧、残15R**。既存登録済結果の初期290件不足（10/08=144, 10/15=124, 10/16=21, 10/17=1）と選手別詳細結果`v2_result_entries`は別工程。後日取得情報を当時の締切前snapshotとして使用禁止。
-- GitHubの短縮script`deploy/conoha/k17_recover_short_20261021.sh`に`finish`モードを追加（commit`fa19ae9`、**ConoHaは未反映・未実行**）。許可状態は10/17 DB`153:918:0:152`のみ。既存runnerで2バッチ×6Rをatomic INSERT＋照合→中間`165:990:0:164`を検証→最後1バッチで残3Rのみ→`168:1008:0:167`を照合して`OCT17_RACES_COMPLETE`。異常なら中断/再実行禁止。既存`apply`=6R、`apply2`=12Rは維持。4表バックアップ57MB/SHA256/TOC PASS（復元演習未済）、ConoHa低負荷と既存収集・バックアップ・V5固定モデル・Railway保護。
-- **Next ONE task:** Termiusで`git -C /opt/boat-ai-v5 pull --ff-only && bash -n /opt/boat-ai-v5/deploy/conoha/k17_recover_short_20261021.sh && echo FINAL_15_READY`の短縮1行で**反映と構文検査のみ**。成功確認後に別途`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 153 finish`を1回実行。接続断/エラー時は再実行前にDB・プロセス確認。
+## 2026-10-21 19:10 JST 10/16・17 K未登録252R全件復旧完了（最新）
+- ConoHa VPS2GBのDB railway。Termiusで短縮`k17_recover_short_20261021.sh 153 finish`正常終了。`FINISH_STAGE1=165:990:0:164`→`FINISH_STAGE2=168:1008:0:167`、6R+6R+3RすべてDAY_RACE_PASS、`BOUNDED_BATCH_PASS`×3、`BOUNDED_RUN_DONE`、`OCT17_RACES_COMPLETE`。最後3Rは予定通り`PARTIAL_BATCH_STOP`。既存行保護・6艇不整合=0。
+- **当初10/16・17の未登録252Rは252/252全件復旧**。10/16公式156Rに対してDB`races=156,entries=936,results=135`。10/17公式168Rに対して`races=168,entries=1008,results=167`。レースと6艇出走情報は両日とも完全登録、レース結果はそれぞれ21R/1R欠損。
+- 他の既存レースの結果欠損10/08=144R、10/15=124Rを合わせて従来の**結果欠損290R**（144+124+21+1）は後続工程。艇別公式K詳細結果`v2_result_entries`未補完も別工程、直近5走recent_form未補完。後日取得結果を締切前snapshotや学習当時の事前証拠に使用しない。
+- 実績ありの短縮script`deploy/conoha/k17_recover_short_20261021.sh`とbounded runnerはConoHa反映済み。レース復旧作業はここで終了し、再実行禁止。事前4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、SHA256/TOC PASS（復元試験未実施）。ConoHa2GB低負荷、既存自動収集/バックアップ・V5固定重み・Railwayの不用意な停止/再起動/削除・課金増を避ける。
+- **Next ONE task:** 2026-10-08/15/16/17の`v2_races`と`v2_results`を日別read-onlyでJOINし、公式既知件数と未保存結果件数を照合。対象レースが揃っていることを確認してから、既存値保護とバックアップを条件に結果欠損290Rの復旧策を設計。まずread-onlyのみ、書込なし。
