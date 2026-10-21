@@ -159,3 +159,8 @@
 - Termius画面でConoHa `railway` の`v2_races`/`v2_race_entries`/`v2_results`/`v2_result_entries`を同一`pg_dump -Fc -Z 1`で `/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump` (57MB)に保存、4 TABLE DATA目録・SHA256検査OK。空き約67GB。完全復元試験/外部複製は未実施。前回2表23MBも保護。
 - `repair_month_all_pg.py` GitHub現行コード監査：`REPAIR_RACE_IDS`で1レース指定可能だが`main()`冒頭の`ensure_venues()`で全24場をupsert、`process_race()`は既存`v2_races`/`v2_race_entries`/`v2_results`を無条件upsertし、テーブル横断の原子性・既存行保護の保証がない。**当該scriptをそのまま本番復旧で実行しない**。
 - **Next ONE task:** `20261016_02_05`（既存親レースあり・出走0艇・結果0件）について、ConoHa read-onlyで公式racelist HTMLから6艇/選手番号とDB状態を1レースpreview。正常なら既存行上書きなし・明示許可・日別停止可能な安全補完コードを設計。取得時刻は後日資料として扱い、当時の締切前スナップショットと混同しない。
+
+## 2026-10-21 12:38 JST 戸田5R出走6艇補完PASS
+- ConoHa `railway` において10/16 戸田5R `20261016_02_05` の公式racelistを後日取得し、6艇（登録番号5332,4033,5395,3432,5229,4096）を新規INSERTのみで保存。ユーザーTermius結果`PREWRITE_STATE=(1,0,0)`, `POSTWRITE_ROWS=6`, `ROSTER_REPAIR_PASS`, `HISTORICAL_RETRIEVAL_NOT_PREDECISION`。既存レース・結果は更新なし。後日取得を締切前snapshotと扱わない。再実行禁止。
+- 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`(57MB,TOC/SHA256 OK)は補完前取得、復元試験と外部複製は未済。公式K9日1,344R/8,064艇は保存・全日PASS済み。
+- **Next ONE task:** 公式Kで未登録確認済みの`20261016_02_06`（戸田6R）を対象に、ConoHa read-onlyでDB事前状態と公式HTMLの6艇出走表・結果の取得/解析可能性だけをpreview。DB書込なし。次に既存行upsert禁止の専用小分け新規INSERT復旧経路を設計。最終的に10/16–17未登録252Rと4日間の結果欠損を保全・追加する。V5固定モデル・タイマー・既存バックアップ保護。
