@@ -52,6 +52,7 @@ _PHYSICAL_V5_ROUTE_TABLES = {
     "v5_data.raw_races": ("v5_data", "raw_races"),
     "v5_data.raw_entries": ("v5_data", "raw_entries"),
     "v5_data.raw_results": ("v5_data", "raw_results"),
+    "v5_data.raw_racer_results": ("v5_data", "raw_racer_results"),
     "v5_data.trifecta_odds": ("v5_data", "trifecta_odds"),
     "v5_data.raw_weather_snapshots": ("v5_data", "raw_weather_snapshots"),
     "v5_data.raw_exhibition_snapshots": ("v5_data", "raw_exhibition_snapshots"),
