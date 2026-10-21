@@ -23,6 +23,7 @@ ROUTES = {
         "v2_races": "v5_data.raw_races",
         "v2_race_entries": "v5_data.raw_entries",
         "v2_results": "v5_data.raw_results",
+        "v2_result_entries": "v5_data.raw_racer_results",
         "v2_odds_trifecta": "v5_data.trifecta_odds",
     },
 }
