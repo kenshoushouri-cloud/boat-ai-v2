@@ -87,3 +87,9 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 ## 2026-10-22 06:48 オフライン7テスト全合格・旧DDLガードをコードのみ追加
 - ConoHa画面`Ran 7 tests ... OK`を確認：`v5_daily_table_routes.py`の既定`legacy`/明示切替2重ガードがオフラインで合格。移管本番の安全保証ではない。GitHubのみ追加された`v5_legacy_ddl_guard.py`と`v21_realtime_collector_pg._ensure_realtime_tables()`先頭チェックは`V5_BLOCK_LEGACY_REALTIME_DDL=YES`が設定された場合だけCREATE/ALTERを拒否。現行実行環境には設定しない（直前情報欠落リスク）。5件オフラインテストを`tests/test_v5_legacy_ddl_guard.py`へ追加済み。
 - このガードは**旧DDL抑止のみ**でありwriter・readの`public.v2_*`ルーティングが自動移行するわけではない。常時稼働を維持した移管を保証しない。完全writer整理、バックアップと復元実証、収集の停止窓/ロールバック設計と明示承認が終わるまで現行物理表は移動しない。
+
+## 2026-10-22 07:03 直前6表のオプトイン物理テーブル経路（code-only）
+- 5/5の旧DDLガードの既存テストがTermiusで成功。GitHub上では`v5_realtime_table_routes.py`新規、`v21_realtime_collector_pg.py`修正、`db_pg.py`限定6識別子追加、既存`tests/test_v5_legacy_ddl_guard.py`更新、`tests/test_v5_realtime_table_routes.py`11件を追加した。
+- 既存VIEW `v5_data.weather_snapshots` 等との名前衝突回避のため、physical stageの候補名は `v5_data.raw_weather_snapshots`, `raw_exhibition_snapshots`, `raw_entry_snapshots`, `raw_odds_snapshots`, `raw_race_condition_snapshots`, `raw_racer_condition_snapshots`。この名称は移管実施前の準備であり、テーブルは**まだ存在させていない**。
+- `V5_REALTIME_PHYSICAL_PROFILE=physical` + `CONFIRM_V5_REALTIME_PHYSICAL_ROUTE=YES`は本番で設定しない。両方を明示した場合のみ新物理実表の存在・種類r/pをread-onlyで検査し、`CREATE/ALTER`を飛ばし、リアルタイム6表のupsertと直前前回オッズreadの参照先を変える。片方だけ・誤字・表欠落・VIEWを実表と誤認した場合はfail-closed。
+- **未解消：** 日次3連単原本/一般結果/レース/艇情報のreaderと別writerの切替、旧DDL対策の他収集処理、DB権限、時点整合性、外部バックアップ復元テストと明示承認。現段階は**コードのみ**でDB未変更。
