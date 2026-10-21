@@ -55,6 +55,7 @@ def build_candidates_query():
     race cutover has its own unresolved reader/writer dependency gates.
     """
     from psycopg import sql
+    from v5_core_read_routes import core_relation
 
     return sql.SQL("""SELECT r.race_id,
                           r.deadline_at::timestamptz AS deadline_at,
@@ -73,7 +74,7 @@ def build_candidates_query():
                                    AND o.snapshot_at < r.deadline_at::timestamptz
                                  GROUP BY o.snapshot_label) s)
                             AS odds_tickets
-                   FROM public.v2_races r
+                   FROM {} r
                    WHERE r.race_date = %s
                      AND r.deadline_at IS NOT NULL
                      AND r.deadline_at::timestamptz BETWEEN %s AND %s
@@ -81,6 +82,7 @@ def build_candidates_query():
                    LIMIT 100""").format(
         _snapshot_relation("v2_realtime_exhibition_snapshots"),
         _snapshot_relation("v2_realtime_odds_snapshots"),
+        core_relation("v2_races"),
     )
 
 
