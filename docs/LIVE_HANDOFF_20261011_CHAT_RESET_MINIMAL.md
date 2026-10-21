@@ -164,3 +164,7 @@
 - ConoHa `railway` において10/16 戸田5R `20261016_02_05` の公式racelistを後日取得し、6艇（登録番号5332,4033,5395,3432,5229,4096）を新規INSERTのみで保存。ユーザーTermius結果`PREWRITE_STATE=(1,0,0)`, `POSTWRITE_ROWS=6`, `ROSTER_REPAIR_PASS`, `HISTORICAL_RETRIEVAL_NOT_PREDECISION`。既存レース・結果は更新なし。後日取得を締切前snapshotと扱わない。再実行禁止。
 - 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`(57MB,TOC/SHA256 OK)は補完前取得、復元試験と外部複製は未済。公式K9日1,344R/8,064艇は保存・全日PASS済み。
 - **Next ONE task:** 公式Kで未登録確認済みの`20261016_02_06`（戸田6R）を対象に、ConoHa read-onlyでDB事前状態と公式HTMLの6艇出走表・結果の取得/解析可能性だけをpreview。DB書込なし。次に既存行upsert禁止の専用小分け新規INSERT復旧経路を設計。最終的に10/16–17未登録252Rと4日間の結果欠損を保全・追加する。V5固定モデル・タイマー・既存バックアップ保護。
+
+## 2026-10-21 12:41 JST 戸田6R 公式HTML read-only preview PASS
+- 10/16 戸田6R `20261016_02_06` のConoHa read-only preview成功（Termius `RACE_PREVIEW_PASS_NO_DB_WRITES`）。DB `v2_races`/`v2_race_entries`/`v2_results`/`v2_result_entries`すべて0。公式racelist 6艇（艇番1..6、選手番号3442/5236/5299/4002/4111/5206）、公式raceresult `result_status=official`、3連単1-4-3、払戻2,410円。書込なし。出走表は後日取得のため当時の締切前証拠としない。
+- **Next ONE task:** 3表`v2_races`/`v2_race_entries`/`v2_results`の実DB列・NOT NULL・既定値をread-onlyで狭く確認し、既存コードの無条件upsertを避けた専用1R新規INSERT/1トランザクション+検査の実行案を確定する。復旧前4表バックアップ57MB/SHA256 OK、V5固定重み/日次タイマー保護。未登録252Rに無差別書込禁止。
