@@ -98,3 +98,9 @@
 - ConoHaローカル`railway` DB に`deploy/conoha/v5_data_views_v1.sql`→`v5_data`6非更新VIEW、`v5_data_views_v2.sql`→`v5_data`追加4 VIEWと`v5_research`1 VIEWがCOMMIT済み。`is_updatable=NO`全11。大量データCOPY/旧データ移動・削除なし。全DB 3414MB（作成時点）。
 - 263MBの`v2_v24_motor2_forward_shadow`は`v5_research.motor2_legacy_shadow`で隔離。本番V5の`motor_stats`として採用しない。気象等4元表は`v5_data`参照別名のみ、締切前取得証明/モデル採用は未検証。
 - 具体的設計: `docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。**Next ONE task:** 選手級別/履歴・モーター正本の元列と日時をConoHaでread-only確認、取得済み過去結果の空白（10/07以降K）を補完する方式を決める。既存モデル固定・タイマー/バックアップ/Railway保護。
+
+
+## 2026-10-21 公式K結果の欠落13日・バッチ事前監査
+- ConoHa `railway`: 10/20 K取り込み1日144R/864艇、通常着順850+事故14を`save_k_day_results_pg.py`で`v2_result_entries`へ保存・`v2_results`144件補完、SQLで144Rすべて6艇完備を確認。書込前`v2_results`単表ダンプ`/root/v2_results_pre_k_20261021.dump` 3.3MB、目録読める、完全復元試験ではない。
+- 10/07〜19（13日間）の直近SQL：登録済レース全件に結果があるのは**9日**（10/07,09,10,11,12,13,14,18,19）、計**1344レース**。詳細選手結果はその13日間で0。結果不足は10/08=144、10/15=124、10/16=21、10/17=1、計**290**件。10/17レース数51、10/16は21で登録自体の完全性は未検証。
+- GitHubに`deploy/conoha/k_results_batch_preflight_20261021.py`を追加（コード作成のみ）。対象の9日を1日ずつ公式K取得・全レース6艇/重複なし/パースエラーなし・`v2_races`と`v2_results`で公式ID完全一致・既存詳細0件を照合し、DBはread-only強制・無書込。**ユーザーConoHa実行はまだ未検証。** Next ONE task：TermiusでGitHub fast-forward後にこのスクリプトを実行しPASS/BLOCKの日付を報告。結果欠損の4日は自動DB登録禁止、別の収集保護タスク。成功9日への書込は再度別許可・バックアップ後に小分け実施。
