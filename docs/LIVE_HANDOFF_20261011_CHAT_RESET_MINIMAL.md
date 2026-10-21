@@ -135,9 +135,9 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 19:10 JST 10/16・17 K未登録252R全件復旧完了（最新）
-- ConoHa VPS2GBのDB railway。Termiusで短縮`k17_recover_short_20261021.sh 153 finish`正常終了。`FINISH_STAGE1=165:990:0:164`→`FINISH_STAGE2=168:1008:0:167`、6R+6R+3RすべてDAY_RACE_PASS、`BOUNDED_BATCH_PASS`×3、`BOUNDED_RUN_DONE`、`OCT17_RACES_COMPLETE`。最後3Rは予定通り`PARTIAL_BATCH_STOP`。既存行保護・6艇不整合=0。
-- **当初10/16・17の未登録252Rは252/252全件復旧**。10/16公式156Rに対してDB`races=156,entries=936,results=135`。10/17公式168Rに対して`races=168,entries=1008,results=167`。レースと6艇出走情報は両日とも完全登録、レース結果はそれぞれ21R/1R欠損。
-- 他の既存レースの結果欠損10/08=144R、10/15=124Rを合わせて従来の**結果欠損290R**（144+124+21+1）は後続工程。艇別公式K詳細結果`v2_result_entries`未補完も別工程、直近5走recent_form未補完。後日取得結果を締切前snapshotや学習当時の事前証拠に使用しない。
-- 実績ありの短縮script`deploy/conoha/k17_recover_short_20261021.sh`とbounded runnerはConoHa反映済み。レース復旧作業はここで終了し、再実行禁止。事前4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、SHA256/TOC PASS（復元試験未実施）。ConoHa2GB低負荷、既存自動収集/バックアップ・V5固定重み・Railwayの不用意な停止/再起動/削除・課金増を避ける。
-- **Next ONE task:** 2026-10-08/15/16/17の`v2_races`と`v2_results`を日別read-onlyでJOINし、公式既知件数と未保存結果件数を照合。対象レースが揃っていることを確認してから、既存値保護とバックアップを条件に結果欠損290Rの復旧策を設計。まずread-onlyのみ、書込なし。
+## 2026-10-21 19:13 JST 公式Kレース結果欠損290件の次工程（最新）
+- Termius read-onlyのv2_races LEFT JOIN v2_results監査が想定通り。10/08 races=144/results=0/missing=144、10/15 156/32/124、10/16 156/135/21、10/17 168/167/1、計624レース中結果334件・欠損290件。
+- 10/16・17の元未登録252レースと6艇出走情報は全件復旧・整合性PASS。既存結果を上書きする`save_k_day_results_pg.py`や旧upsertは**結果新規INSERTに流用禁止**。公式Kに加えDB race ID/6艇選手番号/既存結果との衝突を検査し、別途安全なINSERT-only手順を設計。歴史データを締切前snapshotとして使用禁止。
+- GitHub追加`deploy/conoha/k_missing_results_preflight_20261021.py`（commit`54102aa`、K lane順修正`a4ee8e6`）。**ConoHa未反映/未実行**。4日分公式K vs DBの日別レース件数・ID一致・艇/選手番号一致・現在結果・欠損数・K払戻の標準性・既存結果矛盾を調べるread-onlyスクリプト。DB transaction_read_only強制、root実行禁止。結果書込/削除・DDL・モデル/cron操作なし。
+- 保護: ConoHa2GB、4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB/SHA256+TOC PASS（復元試験未済）、自動収集・バックアップ・V5固定ウェイト/Railwayを無断変更/再起動/削除禁止。
+- **Next ONE task:** Termius 1行`git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && runuser -u postgres -- env HTTP_TIMEOUT=20 /opt/boat-ai-v5-venv/bin/python deploy/conoha/k_missing_results_preflight_20261021.py`を一度だけ。期待`TOTAL_MISSING=290`、`READ_ONLY_RESULTS_PREFLIGHT_PASS_NO_DB_WRITES`（不一致・非標準は表示して書込停止）。ユーザーからスクリーンショット確認後、既存結果保護の新規INSERT-only pilotを設計する。
