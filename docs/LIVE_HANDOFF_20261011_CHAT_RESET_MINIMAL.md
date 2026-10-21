@@ -173,3 +173,8 @@
 - ConoHa Termius画面で`20261016_02_06`（戸田6R）の専用1R原子INSERT成功。`PREWRITE=[0,0,0,0]`→`RACE_RECOVERY_PASS`、レース本体1R・6艇出走情報・公式レース結果1R（3連単1-4-3、払戻2,410円）。出走選手番号3442/5236/5299/4002/4111/5206。書込処理内で6艇と結果の照合済み。`v2_result_entries`詳細6艇は未登録、別工程。後日取得であり締切前証拠ではない。失敗していないので再実行禁止。
 - 10/16 戸田5R `20261016_02_05` の出走6艇別補完もPASS。バックアップは4表`k_recovery_4tables_20261021_123041.dump`57MB、SHA256+TOC OK・復元試験未済。
 - **Next ONE task:** 10/16戸田6RのDB保存状態を範囲限定read-only SQLで検証し、初回INSERT後の実データを確認。続いて公式K/既存DB差分だけを対象とする安全な小分け補完設計。旧`repair_month_all_pg.py`は既存行上書きがあるためそのまま実行しない。その他対象レースへの大量書込なし、既存自動収集・V5固定重み保護。
+
+## 2026-10-21 12:51 JST 戸田6R 復旧後 read-only 検証
+- ConoHa `railway` の単一レース`20261016_02_06`をTermiusで再照合。`v2_races`=1、`v2_race_entries`=6（lane1..6・racer 3442/5236/5299/4002/4111/5206）、`v2_results`=1（`result_status=official`, `trifecta_ticket=1-4-3`, `trifecta_payout_yen=2410`, `source=official_historical_recovery`）、`v2_result_entries`=0。`COMMIT`成功。既存更新なし・後日取得は当時の締切前証拠にしない。再実行不要。
+- 10/16,17公式KとDB比較で確認した未登録レース252件から1件回復、残251件（10/16残134、10/17残117）。登録済みレースに対する結果欠損290件も別に残る（10/16の新規1レース分の結果は回復）。K選手別詳細は別途補完必要。
+- **Next ONE task:** 既存行を上書きしない少数件数/日別トランザクション・明示書込許可・安全な公式ID照合・1worker・異常時停止を備えた専用差分補完スクリプトをGitHubで作り、まずConoHa read-only preview/テスト。旧`repair_month_all_pg.py`全件upsertは使わない。ConoHa2GB、既存timer/バックアップ/V5固定モデル保護。
