@@ -83,3 +83,7 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - Termiusで`V5_VENUES_ODDS_CUTOVER_GATES_READONLY_COMPLETE_NO_DB_WRITES`。 `v2_odds_trifecta`1,443MBと`v2_venues`80KBは実TABLE、`v5_data.trifecta_odds`/`venues`は未作成。双方でFK/ユーザートリガ/依存VIEW=0。オッズPK `id`＋UNIQUE(`race_id`,`ticket`)、venues PK `venue_code`＋UNIQUE(`venue_id`)、競合処理用の列と一意索引あり。現状は`PENDING_OTHER_GATES`で、完全な移管可否判定ではない。
 - GitHubのみ変更、ConoHa DB/収集タイマー/原表は無変更。`v5_daily_table_routes.py`：既定`legacy`無変更、`V5_DAILY_WRITE_ROUTE_PROFILE` を venues/odds/venues_odds ＋`CONFIRM_V5_PHYSICAL_WRITER_ROUTE=YES`の両方を明示した場合のみV5候補へのwriter routing。`repair_month_all_pg.py` daily upsertにのみ適用。`db_pg.py`に明示的な`v5_data.venues`/`v5_data.trifecta_odds`の引用識別子サポート追加。その他のDML/DDL/読取経路はまだ未統一であり、環境変数を設定しての本番有効化・実移動は**禁止**。
 - オフライン試験`tests/test_v5_daily_table_routes.py`を追加。旧writer/直前収集のCREATE/ALTERの修正、他の読み書き/バックアップ復元と当日データの確認、切替手順と戻し方・明示承認が終わるまで物理移管なし。
+
+## 2026-10-22 06:48 オフライン7テスト全合格・旧DDLガードをコードのみ追加
+- ConoHa画面`Ran 7 tests ... OK`を確認：`v5_daily_table_routes.py`の既定`legacy`/明示切替2重ガードがオフラインで合格。移管本番の安全保証ではない。GitHubのみ追加された`v5_legacy_ddl_guard.py`と`v21_realtime_collector_pg._ensure_realtime_tables()`先頭チェックは`V5_BLOCK_LEGACY_REALTIME_DDL=YES`が設定された場合だけCREATE/ALTERを拒否。現行実行環境には設定しない（直前情報欠落リスク）。5件オフラインテストを`tests/test_v5_legacy_ddl_guard.py`へ追加済み。
+- このガードは**旧DDL抑止のみ**でありwriter・readの`public.v2_*`ルーティングが自動移行するわけではない。常時稼働を維持した移管を保証しない。完全writer整理、バックアップと復元実証、収集の停止窓/ロールバック設計と明示承認が終わるまで現行物理表は移動しない。
