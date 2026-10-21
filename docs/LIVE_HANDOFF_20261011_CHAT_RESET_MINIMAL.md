@@ -135,9 +135,8 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 18:10 JST 10/17 6R成功・12R短縮モード追加
-- 10/17 Termius短縮`k17_recover_short_20261021.sh 75 apply`実行成功。`BEFORE=75:450:0:74`→`AFTER=81:486:0:80`、`DELTA=(6,36,0,6)`、`DAY_RACE_PASS`×6、`BATCH_PASS wrote=6`、`BOUNDED_BATCH_PASS`、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。今回`20261017_09_08..12,10_02`（津8〜12R＋三国2R）、既存行更新なし/6艇不整合0。
-- 10/16全156R/936艇のレース本体登録完了（結果135/156、21R元欠損）。10/17は公式168Rに対しrace=81、entries=486、results=80、未登録87R。初期未登録252Rのうち165R復旧済み、残87R（10/17のみ）。元登録済結果欠損290Rと選手別詳細`v2_result_entries`は後続工程。過去取得を締切前予想証拠として混入させない。
-- GitHub `deploy/conoha/k17_recover_short_20261021.sh` に`apply2`を追加（commit `ee282bb`、**ConoHaには未反映/未実行**）。従来`apply`=6R×1、`apply2`=6R×2、default=read-only。apply2は残12R以上のときだけ許可。既存read-only DB事前件数/6艇/結果検査、runner内各6Rのatomic INSERT＋バッチ差分照合、排他、公式K/HTML確認、2重書込ゲート、終了時の件数突合を継続。
-- 保護: ConoHa2GB、4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB/SHA/TOC OK（復元試験未済）。現行自動収集/バックアップ/V5固定重み/Railwayは停止・削除・再起動しない。公式サイトへ直列アクセス。
-- **Next ONE task:** Termius短い1行で`git -C /opt/boat-ai-v5 pull --ff-only && bash -n /opt/boat-ai-v5/deploy/conoha/k17_recover_short_20261021.sh`。安全なfast-forward＋bash構文検査だけ（DB書込なし）。成功後に別の1作業で`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 81 apply2`を1回実行し`93:558:0:92`目標。アプリ落ち時再実行せず現DB/プロセス確認。
+## 2026-10-21 18:20 JST 10/17 K復旧 最新
+- Termiusで短縮コマンド `81 apply2` がPASS。DB事前 (81,486,0,80)、バッチ1後 (87,522,0,86)、バッチ2後 (93,558,0,92)、各差分(+6,+36,0,+6)。全12R DAY_RACE_PASS、BOUNDED_BATCH_PASS×2、BOUNDED_RUN_DONE、SHORT_BATCH_VERIFIED確認。10/17未登録75R（公式168R、登録93R）。
+- 10/16未登録135R全件回復。元未登録252R中177R回復、残75R。結果既存欠損290Rと艇別詳細未補完は別作業。推論用締切前データに後日取得証拠を混ぜない。
+- 実行器はConoHaに反映済。apply2=6R×2の安全ゲート、6艇・件数・公式K/HTML照合、1R原子的INSERT、排他と失敗停止。バックアップ4表のSHA検証済。ConoHa2GBと自動収集・V5固定ウェイト・Railwayを保護。
+- Next ONE task: Termiusで `cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 93 apply2` を1回実行。事前一致93:558:0:92、成功時105:630:0:104となる。接続断・途中失敗は再実行せずDB確認。
