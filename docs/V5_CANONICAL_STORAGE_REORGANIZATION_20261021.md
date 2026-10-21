@@ -78,3 +78,8 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - 3連単の`v2_odds_trifecta`とタイムスタンプ付き`v2_realtime_odds_snapshots`は別系列。物理的なスキーマ移動だけではDB総サイズ削減にはならないが、全行COPYによる二重増加は回避可能。
 - V5構成候補にマスターと3連単オッズ原本を追加しても、writerの`INSERT ON CONFLICT`、VIEW同名衝突、旧collectorのCREATE/ALTER自動再作成、schema指定文字列処理の解消前に移管禁止。
 - GitHub`deploy/conoha/v5_venues_odds_cutover_gates_readonly_20261022.sql` (commit `840c1ce5`)を作成。2表の既存名の衝突、PK/一意INDEX、FK、トリガ、依存VIEW、書込キーの存在をcatalogのみread-only確認。差分書き込み・コピーなし。
+
+## 2026-10-22 06:41 V5物理切替ゲートPASS・コードのみ段階準備
+- Termiusで`V5_VENUES_ODDS_CUTOVER_GATES_READONLY_COMPLETE_NO_DB_WRITES`。 `v2_odds_trifecta`1,443MBと`v2_venues`80KBは実TABLE、`v5_data.trifecta_odds`/`venues`は未作成。双方でFK/ユーザートリガ/依存VIEW=0。オッズPK `id`＋UNIQUE(`race_id`,`ticket`)、venues PK `venue_code`＋UNIQUE(`venue_id`)、競合処理用の列と一意索引あり。現状は`PENDING_OTHER_GATES`で、完全な移管可否判定ではない。
+- GitHubのみ変更、ConoHa DB/収集タイマー/原表は無変更。`v5_daily_table_routes.py`：既定`legacy`無変更、`V5_DAILY_WRITE_ROUTE_PROFILE` を venues/odds/venues_odds ＋`CONFIRM_V5_PHYSICAL_WRITER_ROUTE=YES`の両方を明示した場合のみV5候補へのwriter routing。`repair_month_all_pg.py` daily upsertにのみ適用。`db_pg.py`に明示的な`v5_data.venues`/`v5_data.trifecta_odds`の引用識別子サポート追加。その他のDML/DDL/読取経路はまだ未統一であり、環境変数を設定しての本番有効化・実移動は**禁止**。
+- オフライン試験`tests/test_v5_daily_table_routes.py`を追加。旧writer/直前収集のCREATE/ALTERの修正、他の読み書き/バックアップ復元と当日データの確認、切替手順と戻し方・明示承認が終わるまで物理移管なし。
