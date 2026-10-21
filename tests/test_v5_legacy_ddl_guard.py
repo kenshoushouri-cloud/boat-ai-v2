@@ -46,11 +46,17 @@ class V5LegacyDdlGuardTests(unittest.TestCase):
             and node.name == "_ensure_realtime_tables"
         ]
         self.assertEqual(len(methods), 1)
-        first = methods[0].body[0]
-        self.assertIsInstance(first, ast.Expr)
-        self.assertIsInstance(first.value, ast.Call)
-        self.assertIsInstance(first.value.func, ast.Name)
-        self.assertEqual(first.value.func.id, "require_legacy_realtime_ddl_allowed")
+        statements = methods[0].body
+        # Physical mode does a catalog check and returns without DDL.
+        self.assertIsInstance(statements[0], ast.If)
+        self.assertIsInstance(statements[0].test, ast.Call)
+        self.assertEqual(statements[0].test.func.id, "physical_enabled")
+        self.assertIsInstance(statements[0].body[0], ast.Expr)
+        self.assertEqual(statements[0].body[0].value.func.id, "verify_physical_targets")
+        self.assertIsInstance(statements[0].body[1], ast.Return)
+        # Legacy path still checks the guard before the CREATE/ALTER loops.
+        self.assertIsInstance(statements[1], ast.Expr)
+        self.assertEqual(statements[1].value.func.id, "require_legacy_realtime_ddl_allowed")
 
 
 if __name__ == "__main__":
