@@ -47,7 +47,7 @@ class ForwardSnapshotReaderRoutesTest(unittest.TestCase):
     def test_core_race_reader_still_requires_separate_cutover(self):
         with self.configured("physical", "YES"):
             statement = build_candidates_query().as_string()
-        self.assertIn("FROM public.v2_races r", statement)
+        self.assertIn('FROM "public"."v2_races" r', statement)
         self.assertIn("LIMIT 100", statement)
         self.assertEqual(statement.count("%s"), 3)
 
