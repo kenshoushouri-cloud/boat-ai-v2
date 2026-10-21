@@ -135,9 +135,8 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 19:28 JST 結果欠損1R read-only pilot PASS / 新バックアップ待ち（最新）
-- ConoHa2GB、DB railway。10/16・17の未登録252R復旧完了。結果欠損監査は4日計290R、通常289R＋特殊1R（`20261008_14_05`）。公式K/DBレースID・6艇番号・既存334結果すべて一致（各種CONFLICT=0）。
-- 10/08のread-only pilot `deploy/conoha/k_missing_results_pilot_preview_20261021.py`をConoHa反映・実行済み。`RESULT_PILOT_READ_ONLY_PASS_NO_DB_WRITES`、桐生1R `20261008_01_01`の公式K/HTML/DB選手6艇一致、3連単`3-6-5`・払戻`27820`一致。結果表の必須カラム`race_id`、他カラム構成確認済。DB書込なし。
-- 次は結果行のみINSERT-only方式（既存結果・レース・出走・詳細にはUPDATE/DELETE禁止）、対象最初の1Rで実保存検証後、289通常分を低負荷バッチ補完。特殊1Rは別途個別解析、締切前snapshotに後日取得データ混入禁止。
-- 2026-10-21 12:30の4表バックアップ57MBはレース復旧前状態なので、**新規書込前に最新バックアップが必須**。GitHub `deploy/conoha/backup_k_results_before_insert_20261021.sh` 追加(commit `851e9c4`、**ConoHa未反映/未実行**)。4表のlocal pg_dump -Fc を低優先度実行、ディスク空き1GiB以上検査、TOCの4×TABLE DATA検査、SHA256検査、rootのみ参照。復元試験は未済、外部バックアップではない。既存自動収集/バックアップ・V5固定ウェイト/Railway・ConoHaを無断変更/再起動/削除しない。
-- **Next ONE task:** Termius1行 `git -C /opt/boat-ai-v5 pull --ff-only && bash /opt/boat-ai-v5/deploy/conoha/backup_k_results_before_insert_20261021.sh`。成功期待`FOUR_TABLE_FRESH_BACKUP_OK=...`と`LOCAL_BACKUP_ONLY_NO_DB_WRITES`。結果確認前にINSERT禁止、切断時はバックアップファイル/shaを確認してから次へ。
+## 2026-10-21 19:32 JST 新バックアップOK / 1R結果INSERT-only pilot準備（最新）
+- ConoHa 2GB、DB railway。10/16・17欠損レース本体252/252復旧済。4日分結果欠損290件（10/08=144、10/15=124、10/16=21、10/17=1）、標準289件＋特殊1件(`20261008_14_05`)。公式K/DB出走6艇・既存334件の結果矛盾0。10/08桐生1R`20261008_01_01`はread-only公式K/HTML/DB PASS、3連単`3-6-5`払戻`27820`、DB書込なし。
+- **最新4表バックアップ作成成功**: `/root/boat-v5-backups/k_results_preinsert_20261021_193138.dump`、43MB、v2_races/v2_race_entries/v2_results/v2_result_entriesのpg_dump -Fc TABLE DATA×4 TOC検査PASS、SHA256 OK、空き約67GB。既存の古い57MBバックアップも保管。ローカルのみ、復元試験は未実施。
+- GitHubに`deploy/conoha/k_missing_results_one_insert_20261021.py`追加(commit `c253b84`)・backup gate wrapper`deploy/conoha/k_results_one_pilot_20261021.sh`追加(commit`d31df70`)。**ConoHa未反映、書込未実施**。targetは10/08桐生1Rのみ。実行前バックアップSHA/TOC検査＋2重書込ゲート、公式K/HTML/DB照合、既存race/result数・6艇番号検証、v2_resultsのみINSERT、1トランザクション・バッチ結果＋postcommit検査、既存行UPDATE/DELETE禁止。現行自動収集/バックアップ・V5固定モデル/Railwayは停止・削除・再起動せず、ConoHa負荷小。後日取得情報は事前予想の証拠に使わない。
+- **Next ONE task:** Termius1行`git -C /opt/boat-ai-v5 pull --ff-only && bash /opt/boat-ai-v5/deploy/conoha/k_results_one_pilot_20261021.sh`でpilot1件実行。想定`RESULT_ONE_INSERT_VERIFIED_NO_EXISTING_UPDATES`、`RESULTS_SINGLE_PILOT_WRAPPER_DONE`。失敗/Termius落ちでは再実行せず実DB状態をread-only確認。成功なら10/08結果1件、全体欠損289件（標準残288＋特殊1）、次は安全バッチ設計。
