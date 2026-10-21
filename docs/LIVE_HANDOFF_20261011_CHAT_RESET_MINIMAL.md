@@ -104,3 +104,7 @@
 - ConoHa `railway`: 10/20 K取り込み1日144R/864艇、通常着順850+事故14を`save_k_day_results_pg.py`で`v2_result_entries`へ保存・`v2_results`144件補完、SQLで144Rすべて6艇完備を確認。書込前`v2_results`単表ダンプ`/root/v2_results_pre_k_20261021.dump` 3.3MB、目録読める、完全復元試験ではない。
 - 10/07〜19（13日間）の直近SQL：登録済レース全件に結果があるのは**9日**（10/07,09,10,11,12,13,14,18,19）、計**1344レース**。詳細選手結果はその13日間で0。結果不足は10/08=144、10/15=124、10/16=21、10/17=1、計**290**件。10/17レース数51、10/16は21で登録自体の完全性は未検証。
 - GitHubに`deploy/conoha/k_results_batch_preflight_20261021.py`を追加（コード作成のみ）。対象の9日を1日ずつ公式K取得・全レース6艇/重複なし/パースエラーなし・`v2_races`と`v2_results`で公式ID完全一致・既存詳細0件を照合し、DBはread-only強制・無書込。**ユーザーConoHa実行はまだ未検証。** Next ONE task：TermiusでGitHub fast-forward後にこのスクリプトを実行しPASS/BLOCKの日付を報告。結果欠損の4日は自動DB登録禁止、別の収集保護タスク。成功9日への書込は再度別許可・バックアップ後に小分け実施。
+
+## 2026-10-21 K一括事前監査9日 全PASS
+- ConoHaで`deploy/conoha/k_results_batch_preflight_20261021.py`をユーザーが実行。`PREFLIGHT_DONE ready=9 blocked=0`：10/07,09,10,11,12,13,14,18,19の公式Kファイル9日1,344R（予定8,064艇）で全日公式レースIDと保存済み`v2_races`/`v2_results`一致・6艇完備・既存`v2_result_entries`=0、DB_WRITES=0。権限修正は対象py1ファイルだけchmod644済み。
+- `save_k_day_results_pg.py`のGitHubコード確認: `CONFIRM_K_DB_WRITE=YES`必須、日別に既存v2_results全R確認、INSERTするのはv2_result_entries、v2_resultsは`coalesce`でNULL項目補完、transaction内POSTWRITE検査。**Next ONE task:** 9日一括書き込みに備えConoHaローカル`railway`の`v2_results`と`v2_result_entries`を新しい単一`pg_dump -Fc`としてバックアップ→pg_restore目録検査。直近の10/20用v2_results単表バックアップだけでは9日一括書込の保護として不足。バックアップ検証前はバッチ本番書込禁止。実書込9日は日別トランザクション/失敗時中断、データ転送によりライブ収集負荷を抑える。
