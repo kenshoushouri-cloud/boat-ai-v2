@@ -59,3 +59,9 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - 旧参照名の互換VIEW化だけでは、`INSERT ... ON CONFLICT`やテーブル依存のバッチが従来どおり動く保証はない。旧writerを新しい保存先へ対応させ、収集継続/過去バックテスト再現性/サイズ/重複/タイムスタンプ等を検証してから切替える。
 - **Stage 0（実施中）**：GitHub `deploy/conoha/v5_physical_migration_readonly_audit_20261022.sql` はスキーマ実態、DB容量、インデックス、FK、トリガ、シーケンス、VIEW依存を読み取り専用で一覧化。推定件数を完全件数として扱わず、実際の収集プロセスとコード依存も別途監査。既存データ・サービス・OS・Railwayを変更しない。研究用`motor2_legacy_shadow`は本番データに混ぜない。
 - 本番の物理移管・旧テーブル破棄・サービス切替は、事前検証と外部バックアップ/復元確認後の**別途明示承認**が必要。移管後も費用を増やさずデータ二重保存しない。
+
+## 2026-10-22 06:22 稼働収集経路検査と旧テーブル再生成リスク
+- ConoHa Termiusで`v5_active_writer_routes_readonly_20261022.py`が`V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES`。インストール済み3 services、active+enabled timers 4件（morning/night、forward-window、midnight-catchup）。2 oneshotの`inactive`はタイマー式なら正常。cron対象0。
+- 朝・夜`boat-v5-daily@.service`はテンプレートとして`target=UNRESOLVED`、**運用中の実呼び出し先は未認定**。forward-windowはPython側で`v21_realtime_collector_pg_safe.py`→`v21_realtime_collector_pg.py`を呼ぶ。旧collectorは`_ensure_realtime_tables`で旧`v2_realtime_*`表に`CREATE TABLE IF NOT EXISTS`や`ALTER TABLE`を実施する実装を持つ。移管後に旧public表が再生成されてデータ分離が再発する危険があり、**移管前にスキーマ作成処理の無害化・旧writerの参照先切替が必要**。
+- `db_pg.py`の`sql.Identifier(table)`は現在一部分のみ指定されたテーブル名（例`v2_results`）を使うため、安易に`v5_data.results`を文字列渡しすると引用識別子として誤解釈される。`ON CONFLICT`・`replace_rows_atomic`はVIEWに単純切替できない。これらも移行ガード対象。
+- GitHub`deploy/conoha/v5_active_writer_routes_readonly_20261022.py`改訂（commit `10b93eab`）：朝/夜のテンプレート具体化 + 旧collectorのDDL警告を表示する。読取専用、データ本体/DB/稼働サービス未変更。次の安全検査で朝夜`DAILY_INSTANCE`出力を確認する。
