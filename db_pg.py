@@ -47,6 +47,25 @@ def execute(query: str, params: tuple | list | None = None) -> int:
     return count
 
 
+_PHYSICAL_V5_ROUTE_TABLES = {
+    "v5_data.venues": ("v5_data", "venues"),
+    "v5_data.trifecta_odds": ("v5_data", "trifecta_odds"),
+}
+
+
+def _table_identifier(table: str):
+    """Safely quote the two staged physical V5 relation names.
+
+    Legacy plain names preserve their original one-part quoting. Never
+    interpret arbitrary dotted user input as an SQL identifier path.
+    """
+    if table in _PHYSICAL_V5_ROUTE_TABLES:
+        return sql.Identifier(*_PHYSICAL_V5_ROUTE_TABLES[table])
+    if "." in table:
+        raise ValueError("Unsupported schema-qualified table")
+    return sql.Identifier(table)
+
+
 def _insert_one(
     cur,
     table: str,
@@ -63,7 +82,7 @@ def _insert_one(
     insert_sql = sql.SQL(
         "insert into {table} ({cols}) values ({values})"
     ).format(
-        table=sql.Identifier(table),
+        table=_table_identifier(table),
         cols=sql.SQL(", ").join(sql.Identifier(c) for c in cols),
         values=sql.SQL(", ").join(sql.Placeholder() for _ in cols),
     )
@@ -165,7 +184,7 @@ def replace_rows_atomic(
     delete_sql = sql.SQL(
         "delete from {table} where {conditions}"
     ).format(
-        table=sql.Identifier(table),
+        table=_table_identifier(table),
         conditions=sql.SQL(" and ").join(
             sql.SQL("{} = {}").format(
                 sql.Identifier(column),
