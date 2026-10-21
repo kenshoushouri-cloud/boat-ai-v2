@@ -52,3 +52,10 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - `deploy/conoha/v5_data_views_v2.sql`：`v5_data.weather_snapshots` / `race_condition_snapshots` / `racer_condition_snapshots` / `racer_course_stats_snapshots` の4非更新VIEW、`v5_research.motor2_legacy_shadow` 1非更新VIEWを作成。合計 **v5_data=10, v5_research=1、11 VIEW**。実データCOPYなし、既存`public.v2_*`を更新・削除していない。
 - モーター研究元 `public.v2_v24_motor2_forward_shadow` 263MB はV24シャドー履歴であり、V5本番予測入力として承認されていない。気象186MB、選手コース統計83MB、選手直前状態64MB、レース条件56MBもスナップショットと取得時点の監査前にはV5採用を保証しない。
 - 次は上記`Next ONE task`をread-onlyで実行後、正規の選手直近5走生成と、V5用モーター元データを設計。過去K（10/07〜20の全6艇着順欠落）の修復を優先する。
+
+## 2026-10-22 方針更新：コピーではなくV5物理管理へ段階的移管
+- ユーザーの再確認：データを全件複製するのでなく、V5専用の保存先へ「移す」形で今後の運用を単純化する。上記の**論理VIEWのみを最終状態とする計画を見直す**。既存原本の全面COPYはしない。
+- PostgreSQLでは同一DB内でテーブルを`ALTER TABLE ... SET SCHEMA`によりデータ再複製せず移管できる余地があるが、**このコマンドはまだ実行しない**。既設`v5_data`の同名VIEW、`public.v2_*`への書込/集計プログラム、テーブル参照依存、FK・索引・シーケンス・権限、バックアップ/復元手順を事前に整合させる必要がある。
+- 旧参照名の互換VIEW化だけでは、`INSERT ... ON CONFLICT`やテーブル依存のバッチが従来どおり動く保証はない。旧writerを新しい保存先へ対応させ、収集継続/過去バックテスト再現性/サイズ/重複/タイムスタンプ等を検証してから切替える。
+- **Stage 0（実施中）**：GitHub `deploy/conoha/v5_physical_migration_readonly_audit_20261022.sql` はスキーマ実態、DB容量、インデックス、FK、トリガ、シーケンス、VIEW依存を読み取り専用で一覧化。推定件数を完全件数として扱わず、実際の収集プロセスとコード依存も別途監査。既存データ・サービス・OS・Railwayを変更しない。研究用`motor2_legacy_shadow`は本番データに混ぜない。
+- 本番の物理移管・旧テーブル破棄・サービス切替は、事前検証と外部バックアップ/復元確認後の**別途明示承認**が必要。移管後も費用を増やさずデータ二重保存しない。
