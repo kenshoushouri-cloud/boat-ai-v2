@@ -135,8 +135,8 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 18:28 JST 10/17 K復旧（最新）
-- Termius短縮`k17_recover_short_20261021.sh 93 apply2`成功。DB開始`(93,558,0,92)`→第1バッチ`(99,594,0,98)`→第2`(105,630,0,104)`、各DELTA`(6,36,0,6)`。12Rすべて`DAY_RACE_PASS`、`BOUNDED_BATCH_PASS`2回、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。今回のIDは10/17`13_04..13_12,14_02..14_04`。新規のみ、bad6=0。
-- 10/16公式156R/936艇はレース登録済み、結果135R（既存21R結果不足）。10/17公式168Rのうち現在`race=105, entries=630, results=104`、完全未登録残**63R**。元の10/16・17未登録252Rのうち**189R補完、残63R**。当初の既存レース結果欠損290Rと艇別詳細`v2_result_entries`は別工程。過去再取得情報を締切前特徴量として扱わない。
-- 短縮`deploy/conoha/k17_recover_short_20261021.sh`（ConoHa反映済）: default read-only、`apply`1バッチ6R、`apply2`2バッチ12R。前後DBレース/出走艇/6艇異常/結果照合、workerの公式K/HTML照合、1R毎原子的INSERT、既存4表保護、排他・二重実行ゲート・異常時停止。ConoHa2GBで低負荷・公式アクセス直列。4表バックアップ57MB/SHA256/TOC検証PASS（復元試験未実施）。既存自動収集/バックアップ/V5固定モデル/Railwayは無断停止・変更・再起動・削除禁止。
-- **Next ONE task:** Termiusで一行`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 105 apply2`を一度のみ。現在DB`105:630:0:104`が異なれば自動STOP。成功時`117:702:0:116`、未登録51R見込み。接続断なら無条件再実行せずDB/実行プロセス確認。
+## 2026-10-21 18:34 JST 10/17公式K差分復旧（最新）
+- ConoHa2GB/DB railway。Termius短縮`k17_recover_short_20261021.sh 105 apply2`成功。`BEFORE=(105,630,0,104)`→第1バッチ`AFTER=(111,666,0,110)`→第2`AFTER=(117,702,0,116)`。各DELTA=(6,36,0,6)、全12R`DAY_RACE_PASS`、`BOUNDED_BATCH_PASS`×2、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。対象10/17`14_05..14_12,16_02..16_05`。既存4表データ保護、6艇不整合0。
+- 10/16公式156Rのrace/出走936艇全件登録（結果135件、元から登録済21Rの結果欠損）。10/17公式168Rに対しDB現状117レース・702艇・結果116件、**未登録51R**。当初10/16・17未登録252Rのうち201Rを復旧（10/16=135,10/17=66）、残51R。既存レース結果の当初290R欠損と選手別詳細結果は後続別工程。後日取得データを当時の締切前情報として使用禁止。
+- ConoHa反映済1行スクリプト`deploy/conoha/k17_recover_short_20261021.sh`はdefault読取専用、`apply`=6R、`apply2`=6R×2。実行前後race/entries/bad6/results突合、下位runnerの公式K/HTML照合・既存データ保護・1R毎atomic INSERT・排他・二重ゲート・バッチ検査・異常停止を維持。4表バックアップ57MB/SHA256+TOC PASS（復元試験未済）。ConoHa2GB/公式直列アクセス、自動収集/バックアップ/V5固定モデル/Railwayの無断変更・再起動・削除禁止。
+- **Next ONE task:** Termius一行`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 117 apply2`を1回のみ。現DB`117:702:0:116`不一致なら自動STOP。成功なら`129:774:0:128`、未登録39R見込み。アプリ切断/異常は同コマンド再実行禁止、先にDBとプロセスをread-only確認。
