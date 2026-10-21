@@ -135,9 +135,8 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 17:58 JST 10/17短縮コマンド実書込6R PASS（最新）
-- 10/16公式K全156R/936艇は登録済み、結果135R、既存登録済21R結果欠損は別工程。
-- 10/17 Termiusで短縮`bash deploy/conoha/k17_recover_short_20261021.sh 63 apply`成功。`BEFORE=63:378:0:62`→`AFTER=69:414:0:68`、`DELTA=(6,36,0,6)`、`DAY_RACE_PASS`×6、`BATCH_PASS wrote=6`、`BOUNDED_BATCH_PASS`、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。対象`20261017_08_07..08_12`（常滑7〜12R）。既存行上書きなし・6艇不整合0、公式K/HTML照合PASS。
-- 初期未登録252Rのうち10/16新規135R、10/17新規18R、計153R復旧、残99R（10/17のみ）。10/17公式168Rに対し現在69R/414艇/68結果。登録済み結果欠損（初期290R）と選手別詳細`v2_result_entries`は別工程、締切後取得情報を当時の予想証拠に混ぜない。
-- 短縮スクリプト`deploy/conoha/k17_recover_short_20261021.sh`はConoHa適用済み。第1引数は現DBレース件数、第2引数`apply`で最大6R新規INSERT（デフォルトread-only）。DB前後のレース/艇/結果件数と6艇整合、K/HTML公式照合、排他・1R毎原子的INSERT・二重書込許可を維持。現行2GBの低負荷直列処理、既存収集/バックアップ/V5固定ウェイト/Railwayは無断変更・停止・再起動しない。4表バックアップ57MB/SHA256/TOC OK（復元試験未実施）。
-- **Next ONE task:** Termiusから1行`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 69 apply`を一度だけ実行。実行前に`69:414:0:68`一致が必須。正常なら`AFTER=75:450:0:74`と`SHORT_BATCH_VERIFIED`の見込み。切断・途中失敗では無条件に再実行せず現在DBを再照合。
+## 2026-10-21 18:05 JST 10/17短縮コマンド6R再成功・最新状態
+- ConoHa2GBのDB railway: 10/16は公式K156R全てrace/entries6艇登録済み（結果135R、既存登録済21Rは結果欠損）。10/17の短縮`bash deploy/conoha/k17_recover_short_20261021.sh 69 apply`をTermiusで1回実行、`BEFORE=69:414:0:68`→`AFTER=75:450:0:74`、`DELTA=(6,36,0,6)`、6R全て`DAY_RACE_PASS`、`BATCH_PASS wrote=6`、`BOUNDED_BATCH_PASS`、`BOUNDED_RUN_DONE`、`SHORT_BATCH_VERIFIED`。対象`20261017_09_02..09_07`（津2〜7R）。新規3表INSERTのみ、既存データ上書きなし、6艇不整合0。
+- 元10/16・17未登録252Rのうち**159R復旧**（10/16=135、10/17=24）、残**93R**（10/17のみ）。10/17公式K168Rに対して現在race75、entries450、results74（初期登録済み1R結果欠損）。元登録済結果欠損計290Rと選手別詳細`v2_result_entries`は別工程。過去取得結果を締切前の特徴量として利用禁止。
+- 1行実行器`deploy/conoha/k17_recover_short_20261021.sh`はConoHaへ反映済み。事前の期待race件数/6艇/結果突合、下位runnerの公式K/HTML検証・1R単位atomic・排他・2重ゲート・事後検査を維持。最大6Rずつ、手動チェックポイント。4表バックアップ57MB/SHA256/TOC OK（復元試験は未実施）。2GB低負荷、既存収集/バックアップ/モデル/Railway変更・再起動・削除禁止。
+- **Next ONE task:** 10/17現DB`75:450:0:74`のガード付きで一行`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 75 apply`を1回のみ。正常なら`AFTER=81:486:0:80`かつ`SHORT_BATCH_VERIFIED`の見込み。接続断時は再実行せずプロセス/DB read-only確認。
