@@ -11,6 +11,7 @@ try:
 except Exception:
     BeautifulSoup=None
 from db_pg import execute,fetch_all,upsert_rows
+from v5_legacy_ddl_guard import require_legacy_realtime_ddl_allowed
 
 JST=timezone(timedelta(hours=9))
 TARGET_DATE=os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
@@ -95,6 +96,8 @@ def _deadline_match(r,now):
     return True,"in_window"
 
 def _ensure_realtime_tables():
+    # Explicit V5 cutover guard: fail before first legacy CREATE/ALTER.
+    require_legacy_realtime_ddl_allowed()
     tables=["v2_realtime_weather_snapshots","v2_realtime_exhibition_snapshots","v2_realtime_entry_snapshots","v2_realtime_odds_snapshots","v2_realtime_race_condition_snapshots","v2_realtime_racer_condition_snapshots"]
     for t in tables:execute(f"create table if not exists {t} (id bigserial primary key);")
     alters={
