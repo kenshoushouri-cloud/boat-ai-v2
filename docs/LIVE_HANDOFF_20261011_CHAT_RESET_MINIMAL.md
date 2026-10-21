@@ -154,3 +154,8 @@
 ## 2026-10-21 12:29 JST 欠損出走表のレースID特定
 - ConoHa `railway` の4対象日read-only 6艇検査で、登録済みレースの不足は**`20261016_02_05`（戸田5R）1件、v2_race_entries=0艇**のみ。その他登録済み対象レースは6艇・艇番重複なし。10/16・17の公式K比で未登録レース252件（135+117）、既存レースに対する結果欠損290件は別途確認済み。未登録252レースの結果も未保存であり、両者を混同しない。4日間の詳細結果は0。
 - **Next ONE task:** 書込前にConoHaローカル`railway`の`public.v2_races`・`public.v2_race_entries`・`public.v2_results`・`public.v2_result_entries`を1つの整合スナップショット`pg_dump -Fc`でバックアップし目録+SHA256検証。前回の2表バックアップは残す。バックアップ後に既存repairコードの1レース限定安全性を確認し、小分け復旧設計へ。既存モデル、日次収集、Railway、旧バックアップは無変更。
+
+## 2026-10-21 12:31 JST 復旧前4表バックアップ検証
+- Termius画面でConoHa `railway` の`v2_races`/`v2_race_entries`/`v2_results`/`v2_result_entries`を同一`pg_dump -Fc -Z 1`で `/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump` (57MB)に保存、4 TABLE DATA目録・SHA256検査OK。空き約67GB。完全復元試験/外部複製は未実施。前回2表23MBも保護。
+- `repair_month_all_pg.py` GitHub現行コード監査：`REPAIR_RACE_IDS`で1レース指定可能だが`main()`冒頭の`ensure_venues()`で全24場をupsert、`process_race()`は既存`v2_races`/`v2_race_entries`/`v2_results`を無条件upsertし、テーブル横断の原子性・既存行保護の保証がない。**当該scriptをそのまま本番復旧で実行しない**。
+- **Next ONE task:** `20261016_02_05`（既存親レースあり・出走0艇・結果0件）について、ConoHa read-onlyで公式racelist HTMLから6艇/選手番号とDB状態を1レースpreview。正常なら既存行上書きなし・明示許可・日別停止可能な安全補完コードを設計。取得時刻は後日資料として扱い、当時の締切前スナップショットと混同しない。
