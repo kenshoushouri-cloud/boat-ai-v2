@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from v5_k_result_routes import (
     k_targets, result_columns_location, validate_physical_targets,
+    forbid_legacy_after_physical_exists,
 )
 
 MODE = "V5_DAILY_WRITE_ROUTE_PROFILE"
@@ -88,7 +89,9 @@ class KResultRouteTests(unittest.TestCase):
         self.assertIn("result_ident, entry_ident, physical = k_targets()", source)
         self.assertIn("if physical:", source)
         self.assertIn("validate_physical_targets(cur)", source)
-        self.assertIn("else:\n                    cur.execute(DDL)", source)
+        self.assertIn("forbid_legacy_after_physical_exists(cur)", source)
+        self.assertLess(source.index("forbid_legacy_after_physical_exists(cur)"),
+                        source.index("cur.execute(DDL)"))
         self.assertIn("format(entry_ident)", source)
         self.assertIn("format(result_ident)", source)
         self.assertIn("result_columns_location()", source)
@@ -99,6 +102,51 @@ class KResultRouteTests(unittest.TestCase):
         self.assertNotIn("insert into v2_result_entries(", source.lower())
         self.assertNotIn('cur.execute("update v2_results set "', source)
         self.assertNotIn("from v2_result_entries\n", source.lower())
+
+    def test_legacy_allowed_only_when_both_physical_targets_absent(self):
+        class Cursor:
+            def __init__(self):
+                self.names = []
+            def execute(self, q, args):
+                self.names.append(args[0])
+            def fetchone(self):
+                return (None,)
+        cur = Cursor()
+        forbid_legacy_after_physical_exists(cur)
+        self.assertEqual(cur.names,
+                         ["v5_data.raw_results", "v5_data.raw_racer_results"])
+
+    def test_legacy_stops_if_first_physical_target_exists(self):
+        class Cursor:
+            def execute(self, q, args):
+                pass
+            def fetchone(self):
+                return ("v5_data.raw_results",)
+        with self.assertRaisesRegex(RuntimeError, "refusing legacy"):
+            forbid_legacy_after_physical_exists(Cursor())
+
+    def test_legacy_stops_if_second_physical_target_exists(self):
+        class Cursor:
+            def __init__(self):
+                self.pos = 0
+            def execute(self, q, args):
+                self.pos += 1
+            def fetchone(self):
+                return (None,) if self.pos == 1 else ("v5_data.raw_racer_results",)
+        cur = Cursor()
+        with self.assertRaisesRegex(RuntimeError, "refusing legacy"):
+            forbid_legacy_after_physical_exists(cur)
+        self.assertEqual(cur.pos, 2)
+
+    def test_legacy_stops_on_incomplete_catalog_answer(self):
+        class Cursor:
+            def execute(self, q, args):
+                pass
+            def fetchone(self):
+                return None
+        with self.assertRaisesRegex(RuntimeError, "cannot establish"):
+            forbid_legacy_after_physical_exists(Cursor())
+
 
 
 if __name__ == "__main__":
