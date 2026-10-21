@@ -33,3 +33,24 @@ def core_relation(name: str):
         raise RuntimeError("STOP: unexpected core table route")
     namespace, relation = routed.split(".", 1)
     return sql.Identifier(namespace, relation)
+
+
+LEGACY_ENTRY_DDL = (
+    "alter table v2_race_entries add column if not exists tilt numeric;",
+    "alter table v2_race_entries add column if not exists motor_no integer;",
+    "alter table v2_race_entries add column if not exists boat_no integer;",
+)
+
+
+def legacy_entry_alters():
+    """Only retain old entry-table DDL when that source is still public.
+
+    This is a disabled-by-default migration staging gate: no DDL occurs
+    here. The caller must validate a moved V5 target separately.
+    """
+    routed = resolve_table("v2_race_entries")
+    if routed == "v2_race_entries":
+        return LEGACY_ENTRY_DDL
+    if routed == PHYSICAL["v2_race_entries"]:
+        return ()
+    raise RuntimeError("STOP: unexpected core entries DDL route")
