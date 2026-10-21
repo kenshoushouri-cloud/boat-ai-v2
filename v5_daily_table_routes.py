@@ -15,6 +15,16 @@ ROUTES = {
         "v2_venues": "v5_data.venues",
         "v2_odds_trifecta": "v5_data.trifecta_odds",
     },
+    # Proposed physical names avoid collisions with current v5_data.* VIEWs.
+    # Staged only: all core writers, readers and restore gates must pass
+    # before the existing double gate may ever be enabled in production.
+    "core": {
+        "v2_venues": "v5_data.venues",
+        "v2_races": "v5_data.raw_races",
+        "v2_race_entries": "v5_data.raw_entries",
+        "v2_results": "v5_data.raw_results",
+        "v2_odds_trifecta": "v5_data.trifecta_odds",
+    },
 }
 MODE_KEY = "V5_DAILY_WRITE_ROUTE_PROFILE"
 GATE_KEY = "CONFIRM_V5_PHYSICAL_WRITER_ROUTE"
