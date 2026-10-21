@@ -187,7 +187,9 @@
 - ConoHa TermiusでGitHub main `ba3fe44`へfast-forwardし`deploy/conoha/k_missing_races_insert_only_20261021.py`の`py_compile`正常、10/16 `--limit 3`（`--apply`なし）で`MODE=READ_ONLY`・公式K HTTP200、`OFFICIAL=156 ABSENT_ALL_FOUR=134 ELIGIBLE_STANDARD=134`、選択候補`20261016_02_07/08/09`、`DRY_RUN_DONE_NO_DB_WRITES`。当該dry-runではHTML個別GET/DB書込なし。既存戸田6R1件復旧後の残134Rと一致。
 - **Next ONE task:** 新専用スクリプトの初回apply pilotは `--day 2026-10-16 --limit 1 --apply`（環境変数`CONFIRM_V5_K_RACE_REPAIR=YES`明示）、1Rのみ・日別K/公式HTML/6艇/3連単照合・DB4表未存在を確認後、3表同一transaction INSERT。成功時には対象`20261016_02_07`のread-only DB実測を確認。途中失敗・一部成功時は再実行前に現DBを点検。バックアップ/自動収集/固定V5モデルを保護。
 
-## 2026-10-21 13:04 JST 差分補完スクリプト初回APPLY成功
-- ConoHa Termiusで`k_missing_races_insert_only_20261021.py --day 2026-10-16 --limit 1 --apply`を明示書込ゲート付きで初実行。4表バックアップ`k_recovery_4tables_20261021_123041.dump`のSHA256再照合OK。公式K=156R、当時欠レース134R、選択`20261016_02_07`。公式HTML 6艇/K結果照合後`DAY_RACE_PASS`（3連単4-6-5、払戻65,220円）、`BATCH_PASS wrote=1`、読取SQL`races=1 entries=6 results=1 details=0`、`PILOT_VERIFICATION_DONE`。日別独立transaction、既存行upsertなし。詳細着順は未補完。再実行不要。
-- 公式K基準の未登録レースは10/16残133R、10/17残117Rで計250R。後日取得を当時の締切前データに流用禁止。既存V5固定重み・タイマー・バックアップ保護。
-- **Next ONE task:** 同スクリプトの10/16 `--limit 3 --apply`で最大3Rの小分け保存（次候補02_08,02_09,02_10）、日別結果とDB件数のread-only監査。異常時は再実行せず保存済みIDを確認。小規模PASSが続けば速度/負荷を踏まえてバッチ上限変更を別途検討。
+## 2026-10-21 13:10 JST K未登録レース安全補完4件PASS
+- 10/16戸田7R `20261016_02_07`: 専用差分スクリプト初回`--limit 1 --apply`実行、公式K+HTML照合、`BATCH_PASS wrote=1`。DB readback: race1/entries6/results1/details0、3連単4-6-5払戻65,220円。
+- 続く同日戸田8〜10R (`20261016_02_08/09/10`) を`--limit 3 --apply`で一括処理、`DAY_RACE_PASS`各3、`BATCH_PASS wrote=3`、3Rともrace1/entries6/results1をreadbackで確認。的中券/払戻: 3-1-4/1,020円、1-5-4/6,560円、2-6-5/3,640円。再保存禁止。
+- K基準の元未登録252Rから10/16戸田6Rも含め計5R復旧、**残247R（10/16=130、10/17=117）**。4表事前バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB・SHA256 OK。選手別詳細Kは別工程で未補完。歴史的再取得は当時締切前証拠ではない。
+- 専用`deploy/conoha/k_missing_races_insert_only_20261021.py` の`--limit`上限を3→6に引き上げ（GitHub commit `f1bf5f8`、コードのみ・ConoHa未反映）。明示許可`CONFIRM_V5_K_RACE_REPAIR=YES`+ `--apply`、日毎K照合、既存4表ID除外、HTML両面検証、1件毎atomic INSERT/検査、2秒待機は維持。モデル/タイマー/既存DBは無変更。
+- **Next ONE task:** ConoHa `/opt/boat-ai-v5` のgit ff-only後、構文検査・10/16 `--limit 6` **read-only dry-run**。成功後は別作業で最大6件の小規模apply+DB結果点検。SSH通信切れ時は再実行前にDBを確認し二重実行禁止。
