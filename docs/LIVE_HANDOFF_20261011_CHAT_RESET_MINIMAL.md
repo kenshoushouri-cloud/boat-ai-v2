@@ -182,3 +182,7 @@
 ## 2026-10-21 12:51 JST 既存行非更新・差分修復ツールのGitHub追加
 - GitHub mainに`deploy/conoha/k_missing_races_insert_only_20261021.py`追加（commit`8dc74c0`）。10/16・17のみ対象、公式KでID/6艇/parse検査、DB4表の既存IDを避け、正常な3連単と払戻のある**完全未登録レースのみ**選択。`--limit`は最大3、デフォルトread-only表示、`--apply`かつ`CONFIRM_V5_K_RACE_REPAIR=YES`の二重許可がなければ書込禁止。applyは1RごとにHTML 6艇・K照合→3表単一tx INSERTのみ→結果/6艇POSTWRITE確認、途中エラー停止。`v2_result_entries`未補完。**コード作成のみ、ConoHa未反映・構文/実DBテスト未検証・DB追加書込なし。**
 - **Next ONE task:** Termiusでgit cleanを確認後mainをff、当該ファイル構文検査と`--day 2026-10-16 --limit 3`を**--apply無しread-only**で実行して結果確認。実書込は別判断。手動済み戸田6Rの再実行禁止。V5モデル/既存タイマー/バックアップ保護。
+
+## 2026-10-21 12:57 JST 10/16 差分復旧dry-run PASS
+- ConoHa TermiusでGitHub main `ba3fe44`へfast-forwardし`deploy/conoha/k_missing_races_insert_only_20261021.py`の`py_compile`正常、10/16 `--limit 3`（`--apply`なし）で`MODE=READ_ONLY`・公式K HTTP200、`OFFICIAL=156 ABSENT_ALL_FOUR=134 ELIGIBLE_STANDARD=134`、選択候補`20261016_02_07/08/09`、`DRY_RUN_DONE_NO_DB_WRITES`。当該dry-runではHTML個別GET/DB書込なし。既存戸田6R1件復旧後の残134Rと一致。
+- **Next ONE task:** 新専用スクリプトの初回apply pilotは `--day 2026-10-16 --limit 1 --apply`（環境変数`CONFIRM_V5_K_RACE_REPAIR=YES`明示）、1Rのみ・日別K/公式HTML/6艇/3連単照合・DB4表未存在を確認後、3表同一transaction INSERT。成功時には対象`20261016_02_07`のread-only DB実測を確認。途中失敗・一部成功時は再実行前に現DBを点検。バックアップ/自動収集/固定V5モデルを保護。
