@@ -25,7 +25,10 @@ from db_pg import fetch_all
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from v5_k_result_routes import k_targets, result_columns_location, validate_physical_targets
+from v5_k_result_routes import (
+    k_targets, result_columns_location, validate_physical_targets,
+    forbid_legacy_after_physical_exists,
+)
 
 # 監査済みparserをそのまま利用
 import audit_k_day_all_pg as ka
@@ -131,6 +134,9 @@ def main():
                 if physical:
                     validate_physical_targets(cur)
                 else:
+                    # Check before DDL: a stale legacy job must never re-create
+                    # old tables after even partial physical migration.
+                    forbid_legacy_after_physical_exists(cur)
                     cur.execute(DDL)
 
                 for race in races:
