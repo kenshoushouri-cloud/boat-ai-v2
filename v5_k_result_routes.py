@@ -44,3 +44,21 @@ def validate_physical_targets(cursor):
         row = cursor.fetchone()
         if not row or row[0] not in ("r", "p"):
             raise RuntimeError("STOP: missing/non-table physical K result target")
+
+
+def forbid_legacy_after_physical_exists(cursor):
+    """Before legacy CREATE/UPSERT, fail closed if any V5 target exists.
+
+    This keeps default legacy operation unchanged until physical migration,
+    but prevents a stale old-profile K job re-creating public result entries
+    once either V5 physical result table has appeared. Does not write.
+    """
+    for target in PHYSICAL:
+        cursor.execute("SELECT to_regclass(%s)", (target,))
+        row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("STOP: cannot establish K physical target absence")
+        if row[0] is not None:
+            raise RuntimeError(
+                "STOP: V5 physical K target exists; refusing legacy K DDL/DML"
+            )
