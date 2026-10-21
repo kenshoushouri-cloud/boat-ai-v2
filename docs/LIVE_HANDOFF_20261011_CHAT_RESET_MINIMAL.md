@@ -193,3 +193,7 @@
 - K基準の元未登録252Rから10/16戸田6Rも含め計5R復旧、**残247R（10/16=130、10/17=117）**。4表事前バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB・SHA256 OK。選手別詳細Kは別工程で未補完。歴史的再取得は当時締切前証拠ではない。
 - 専用`deploy/conoha/k_missing_races_insert_only_20261021.py` の`--limit`上限を3→6に引き上げ（GitHub commit `f1bf5f8`、コードのみ・ConoHa未反映）。明示許可`CONFIRM_V5_K_RACE_REPAIR=YES`+ `--apply`、日毎K照合、既存4表ID除外、HTML両面検証、1件毎atomic INSERT/検査、2秒待機は維持。モデル/タイマー/既存DBは無変更。
 - **Next ONE task:** ConoHa `/opt/boat-ai-v5` のgit ff-only後、構文検査・10/16 `--limit 6` **read-only dry-run**。成功後は別作業で最大6件の小規模apply+DB結果点検。SSH通信切れ時は再実行前にDBを確認し二重実行禁止。
+
+## 2026-10-21 13:28 JST 10/16 6レースdry-run PASS
+- ConoHa `/opt/boat-ai-v5` をmain `a3d465e`へfast-forward、`k_missing_races_insert_only_20261021.py` py_compile PASS。`--day 2026-10-16 --limit 6`（applyなし）で公式K200、`OFFICIAL=156 ABSENT_ALL_FOUR=130 ELIGIBLE_STANDARD=130`、`MODE=READ_ONLY`/`DRY_RUN_DONE_NO_DB_WRITES`/`SIX_RACE_PREVIEW_DONE`。候補`20261016_02_11`, `_02_12`, `_03_01`, `_03_02`, `_03_03`, `_03_04`。既存4件の差分補完は成功済み、10/16未登録残130R。
+- **Next ONE task:** 同コードの`--limit 6 --apply`を明示ゲート付きで1回実行、成功後に選択6Rのrace=1/entries=6/results=1/details=0をread-only確認。途中失敗時は再実行せず現DB状態を検査。2GB/公式低負荷/既存自動収集・バックアップ・V5固定モデルを保護。
