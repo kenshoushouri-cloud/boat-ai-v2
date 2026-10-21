@@ -186,3 +186,8 @@
 ## 2026-10-21 12:57 JST 10/16 差分復旧dry-run PASS
 - ConoHa TermiusでGitHub main `ba3fe44`へfast-forwardし`deploy/conoha/k_missing_races_insert_only_20261021.py`の`py_compile`正常、10/16 `--limit 3`（`--apply`なし）で`MODE=READ_ONLY`・公式K HTTP200、`OFFICIAL=156 ABSENT_ALL_FOUR=134 ELIGIBLE_STANDARD=134`、選択候補`20261016_02_07/08/09`、`DRY_RUN_DONE_NO_DB_WRITES`。当該dry-runではHTML個別GET/DB書込なし。既存戸田6R1件復旧後の残134Rと一致。
 - **Next ONE task:** 新専用スクリプトの初回apply pilotは `--day 2026-10-16 --limit 1 --apply`（環境変数`CONFIRM_V5_K_RACE_REPAIR=YES`明示）、1Rのみ・日別K/公式HTML/6艇/3連単照合・DB4表未存在を確認後、3表同一transaction INSERT。成功時には対象`20261016_02_07`のread-only DB実測を確認。途中失敗・一部成功時は再実行前に現DBを点検。バックアップ/自動収集/固定V5モデルを保護。
+
+## 2026-10-21 13:04 JST 差分補完スクリプト初回APPLY成功
+- ConoHa Termiusで`k_missing_races_insert_only_20261021.py --day 2026-10-16 --limit 1 --apply`を明示書込ゲート付きで初実行。4表バックアップ`k_recovery_4tables_20261021_123041.dump`のSHA256再照合OK。公式K=156R、当時欠レース134R、選択`20261016_02_07`。公式HTML 6艇/K結果照合後`DAY_RACE_PASS`（3連単4-6-5、払戻65,220円）、`BATCH_PASS wrote=1`、読取SQL`races=1 entries=6 results=1 details=0`、`PILOT_VERIFICATION_DONE`。日別独立transaction、既存行upsertなし。詳細着順は未補完。再実行不要。
+- 公式K基準の未登録レースは10/16残133R、10/17残117Rで計250R。後日取得を当時の締切前データに流用禁止。既存V5固定重み・タイマー・バックアップ保護。
+- **Next ONE task:** 同スクリプトの10/16 `--limit 3 --apply`で最大3Rの小分け保存（次候補02_08,02_09,02_10）、日別結果とDB件数のread-only監査。異常時は再実行せず保存済みIDを確認。小規模PASSが続けば速度/負荷を踏まえてバッチ上限変更を別途検討。
