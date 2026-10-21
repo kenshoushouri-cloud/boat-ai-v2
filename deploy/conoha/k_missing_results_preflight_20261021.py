@@ -54,7 +54,7 @@ def read_k(day):
     for r in rows:
         rid = r["race_id"]
         lanes = [e["lane"] for e in r["entries"]]
-        if rid in official or lanes != [1, 2, 3, 4, 5, 6] or r["parse_failed_candidate_lines"]:
+        if rid in official or sorted(lanes) != [1, 2, 3, 4, 5, 6] or r["parse_failed_candidate_lines"]:
             raise RuntimeError("STOP: K race duplicate, bad lane, or parse issue: " + rid)
         official[rid] = r
     return official
