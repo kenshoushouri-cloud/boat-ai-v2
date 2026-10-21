@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 2026-10-17 K race recovery: short, guarded Termius entry point.
-# Usage: bash deploy/conoha/k17_recover_short_20261021.sh 81 [apply|apply2]
+# Usage: bash deploy/conoha/k17_recover_short_20261021.sh 153 finish
 # Without "apply", strict read-only preview only.
 set -euo pipefail
 cd /opt/boat-ai-v5
@@ -9,8 +9,8 @@ MODE="${2:-preview}"
 if [[ ! "$EXPECTED" =~ ^[0-9]{1,3}$ ]] || (( 10#$EXPECTED < 51 || 10#$EXPECTED >= 168 )); then
   echo "STOP: expected race count must be 51..167"; exit 1
 fi
-if [[ "$MODE" != "preview" && "$MODE" != "apply" && "$MODE" != "apply2" ]]; then
-  echo "STOP: mode must be preview, apply or apply2"; exit 1
+if [[ "$MODE" != "preview" && "$MODE" != "apply" && "$MODE" != "apply2" && "$MODE" != "finish" ]]; then
+  echo "STOP: mode must be preview, apply, apply2 or finish"; exit 1
 fi
 if [[ ! -f deploy/conoha/k_missing_races_bounded_runner_20261021.py ]]; then
   echo "STOP: bounded runner not installed"; exit 1
@@ -56,11 +56,34 @@ if [[ "$MODE" == "apply2" ]]; then
     echo "STOP: fewer than 12 races remain; use apply"; exit 1
   fi
 fi
-nice -n 10 runuser -u postgres -- env \
-  CONFIRM_V5_K_RACE_REPAIR=YES HTTP_TIMEOUT=30 HTTP_MAX_RETRIES=0 \
-  /opt/boat-ai-v5-venv/bin/python \
-  deploy/conoha/k_missing_races_bounded_runner_20261021.py \
-  --day 2026-10-17 --batches "$BATCHES" --apply
+APPLY_BATCHES() {
+  nice -n 10 runuser -u postgres -- env \
+    CONFIRM_V5_K_RACE_REPAIR=YES HTTP_TIMEOUT=30 HTTP_MAX_RETRIES=0 \
+    /opt/boat-ai-v5-venv/bin/python \
+    deploy/conoha/k_missing_races_bounded_runner_20261021.py \
+    --day 2026-10-17 --batches "$1" --apply
+}
+if [[ "$MODE" == "finish" ]]; then
+  # Only the audited final checkpoint may use this one-command 12+3 sequence.
+  if (( EXPECTED != 153 )); then
+    echo "STOP: finish only allowed from 153 completed races"; exit 1
+  fi
+  APPLY_BATCHES 2
+  MID="$(DB_STATS)"
+  echo "FINISH_STAGE1=$MID EXPECTED=165:990:0:164"
+  [[ "$MID" == "165:990:0:164" ]] || {
+    echo "STOP: first 12-race stage mismatch; do not rerun"; exit 1
+  }
+  APPLY_BATCHES 1
+  AFTER="$(DB_STATS)"
+  echo "FINISH_STAGE2=$AFTER EXPECTED=168:1008:0:167"
+  [[ "$AFTER" == "168:1008:0:167" ]] || {
+    echo "STOP: final stage mismatch; do not rerun"; exit 1
+  }
+  echo "OCT17_RACES_COMPLETE"
+  exit 0
+fi
+APPLY_BATCHES "$BATCHES"
 AFTER="$(DB_STATS)"
 TARGET="$((EXPECTED+ADD)):$(((EXPECTED+ADD)*6)):0:$((EXPECTED+ADD-1))"
 echo "AFTER=$AFTER EXPECTED=$TARGET"
