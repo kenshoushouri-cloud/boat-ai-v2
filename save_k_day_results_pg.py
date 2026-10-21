@@ -5,7 +5,7 @@ save_k_day_results_pg.py
 監査済み BOAT RACE公式Kファイル parser を使い、1日分だけDB保存する。
 安全方針:
 - TARGET_DATE 1日限定
-- v2_result_entries は必要なら自動作成
+- legacyモードだけ v2_result_entries は必要なら自動作成（core物理移管後は旧DDL禁止）
 - v2_results は既存行のみ UPDATE（INSERTしない）
 - 既存 trifecta_ticket / payout は上書きしない
 - finish_order / winning_method / raw のみ補完
@@ -23,7 +23,9 @@ from typing import Any, Dict, List
 
 from db_pg import fetch_all
 import psycopg
+from psycopg import sql
 from psycopg.types.json import Jsonb
+from v5_k_result_routes import k_targets, result_columns_location, validate_physical_targets
 
 # 監査済みparserをそのまま利用
 import audit_k_day_all_pg as ka
@@ -61,11 +63,14 @@ on v2_result_entries(racer_number);
 """
 
 def cols(table:str)->set[str]:
+    if table != "v2_results":
+        raise ValueError("STOP: unsupported K columns target")
+    target_schema, target_table = result_columns_location()
     rows=fetch_all("""
       select column_name
       from information_schema.columns
-      where table_schema='public' and table_name=%s
-    """,(table,))
+      where table_schema=%s and table_name=%s
+    """,(target_schema, target_table))
     return {str(x["column_name"]) for x in rows}
 
 def build():
@@ -95,6 +100,7 @@ def main():
     if CONFIRM != "YES":
         raise RuntimeError("安全装置: CONFIRM_K_DB_WRITE=YES を設定してください")
 
+    result_ident, entry_ident, physical = k_targets()
     races=build()
 
     result_cols=cols("v2_results")
@@ -103,7 +109,7 @@ def main():
 
     # 対象日の既存resultを確認。Kから新規結果行は作らない。
     wanted=[x["race_id"] for x in races]
-    existing=fetch_all("select race_id from v2_results where race_id = any(%s)",(wanted,))
+    existing=fetch_all(sql.SQL("select race_id from {} where race_id = any(%s)").format(result_ident),(wanted,))
     existing_ids={str(x["race_id"]) for x in existing}
     missing=[rid for rid in wanted if rid not in existing_ids]
     print(f"existing_v2_results={len(existing_ids)}/{len(wanted)} missing={len(missing)}",flush=True)
@@ -122,14 +128,17 @@ def main():
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.transaction():
             with conn.cursor() as cur:
-                cur.execute(DDL)
+                if physical:
+                    validate_physical_targets(cur)
+                else:
+                    cur.execute(DDL)
 
                 for race in races:
                     rid=race["race_id"]
                     for e in race["entries"]:
                         raw=dict(e)
-                        cur.execute("""
-                          insert into v2_result_entries(
+                        cur.execute(sql.SQL("""
+                          insert into {}(
                             race_id,lane,racer_number,racer_name,
                             finish_position,finish_status,motor_no,boat_no,
                             exhibition_time,start_course,start_timing,start_status,
@@ -156,7 +165,7 @@ def main():
                             raw=excluded.raw,
                             fetched_at=now(),
                             updated_at=now()
-                        """,(
+                        """).format(entry_ident),(
                             rid,e["lane"],e["racer_number"],e["racer_name"],
                             e["finish_position"],e["finish_status"],e["motor_no"],e["boat_no"],
                             e["exhibition_time"],e["start_course"],e["start_timing"],e["start_status"],
@@ -186,18 +195,18 @@ def main():
                             "winning_method":race["winning_method"],
                         }))
                     vals.append(rid)
-                    cur.execute("update v2_results set "+", ".join(sets)+" where race_id=%s",vals)
+                    cur.execute(sql.SQL("update {} set ").format(result_ident) + sql.SQL(", ".join(sets)) + sql.SQL(" where race_id=%s"),vals)
                     result_count += cur.rowcount
 
             # COMMIT前のDB内監査
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(sql.SQL("""
                   select count(*) total,
                          count(*) filter(where finish_position is not null) normal_finish,
                          count(*) filter(where finish_position is null) accident
-                  from v2_result_entries
+                  from {}
                   where race_id = any(%s)
-                """,(wanted,))
+                """).format(entry_ident),(wanted,))
                 audit=cur.fetchone()
                 if not audit or int(audit[0]) != len(races)*6:
                     raise RuntimeError(f"POSTWRITE AUDIT failed: {audit}")
