@@ -140,3 +140,8 @@
 - 登録した1Rは`result_status=trifecta_invalid`,`race_status=official`,ticket=NULL,payout=0,rawに公式K部分着順/F・S等の6艇異常と通常ROI集計除外フラグ。一般の不的中ではない。**結果は事後歴史取得で締切前証拠に使用禁止**。
 - GitHub code-only下流監査記録`docs/V5_SPECIAL_TRIFECTA_INVALID_DOWNSTREAM_AUDIT_20261022.md` (commit `464ebcc`)。`v5/conoha_midnight_results_pg.py`は無効結果を終端として認識、`backtest_candidate_filter_rules_pg.py`/ `backtest_n02_walkforward_pg.py`は通常3連単結果として除外。**ただし `research/forward_economics.py` は `invalid_result`の投資額を0にする**。本当の購入があった場合には事前購入記録を母集団から除外せず、券別の公式返還を確認・反映、不明ならPENDING。 `v5/offline_trifecta_cash_ledger.py` はMockTicketReturn/refund_yen対応だが公式返還原本・実注文証拠の結合は未検証。V5実ROI・+5万円/月は引き続き未実証。
 - **Next ONE task**: GitHubで現行V5収支報告の呼出し経路と券別返還原本の使用箇所を最小限のread-onlyで確認し、必要なら不成立を誤集計しないオフラインテストを設計。ConoHa/DBへの追加書込・購入・再起動・削除・V5重み変更禁止。運用費用最小、チャットの1回1作業維持。
+
+## 2026-10-22 V5物理保存先への段階的移管を優先（最新）
+- ユーザー方針：「全部コピーでなく既存データをV5専用保存先に**移して**整理」。旧VIEWのみの最終構成から、実データ所有先の移管可否調査へ方針更新。**無確認のALTER TABLE/VIEW DROP/DB書込・切替はしない**。
+- 旧`public.v2_*`を直接読む・書くConoHa収集コード、GitHubバックテスト、既存`v5_data` VIEWがある。コピー不要の`ALTER TABLE ... SET SCHEMA`は候補だが、旧writerや同名VIEW、制約等の依存解消が先。V5モデル重み/自動購入/既存サービス/バックアップ保護、費用最小、全履歴を締切前証拠として扱わない。
+- **Next ONE task** GitHub追加済`deploy/conoha/v5_physical_migration_readonly_audit_20261022.sql`(commit `73a1b521`)をTermiusでread-only実行し、11ソース実表のサイズ・種別・FK/索引/trigger/所有sequenceと`v5_data/v5_research`VIEW存在/依存を確認。`git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -qAt -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_physical_migration_readonly_audit_20261022.sql`。成功表示`V5_PHYSICAL_MIGRATION_READONLY_AUDIT_COMPLETE_NO_DB_WRITES`。結果後に実writer依存一覧と切替順序を設計。旧結果624/624復旧済、改めて結果取得バッチ再実行禁止。
