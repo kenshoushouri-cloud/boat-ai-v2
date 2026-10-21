@@ -117,7 +117,7 @@ def db_gate(k_roster):
             fields = {
                 "race_id": "text", "race_date": "date",
                 "venue_code": "text", "race_no": "int4",
-                "trifecta_ticket": "text", "trifecta_payout_yen": "int8",
+                "trifecta_ticket": "text", "trifecta_payout_yen": "int4",
                 "result_status": "text", "race_status": "text",
                 "official": "bool", "source": "text", "raw": "jsonb",
             }
