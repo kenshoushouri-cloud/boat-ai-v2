@@ -35,6 +35,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from db_pg import upsert_rows as pg_upsert_rows
+from v5_daily_table_routes import resolve_table as resolve_v5_daily_table
 
 
 # ============================================================
@@ -292,13 +293,15 @@ def upsert_rows(
     if not rows:
         return 0
 
+    # Legacy by default; physical V5 routes need an explicit double gate.
+    target_table = resolve_v5_daily_table(table)
     total = 0
     conflict_cols = [c.strip() for c in on_conflict.split(",") if c.strip()]
 
     for i in range(0, len(rows), chunk_size):
         chunk = rows[i : i + chunk_size]
         total += pg_upsert_rows(
-            table=table,
+            table=target_table,
             rows=chunk,
             conflict_cols=conflict_cols,
         )
