@@ -50,6 +50,12 @@ def execute(query: str, params: tuple | list | None = None) -> int:
 _PHYSICAL_V5_ROUTE_TABLES = {
     "v5_data.venues": ("v5_data", "venues"),
     "v5_data.trifecta_odds": ("v5_data", "trifecta_odds"),
+    "v5_data.raw_weather_snapshots": ("v5_data", "raw_weather_snapshots"),
+    "v5_data.raw_exhibition_snapshots": ("v5_data", "raw_exhibition_snapshots"),
+    "v5_data.raw_entry_snapshots": ("v5_data", "raw_entry_snapshots"),
+    "v5_data.raw_odds_snapshots": ("v5_data", "raw_odds_snapshots"),
+    "v5_data.raw_race_condition_snapshots": ("v5_data", "raw_race_condition_snapshots"),
+    "v5_data.raw_racer_condition_snapshots": ("v5_data", "raw_racer_condition_snapshots"),
 }
 
 
