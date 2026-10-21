@@ -133,4 +133,9 @@
 
 ## 2026-10-21 17:18 JST 10/17公式K read-only preview PASS
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
-- **Next ONE task:** 10/17 1バッチ最大6Rのみapply、実行直前DB`51:306:50`を突合、runner内部でbad6検査、終了後に`57:342:56`と照合。再実行・タイマー変更は禁止。途中停止時はDB状態を確認する。
+- **Next ONE task:** 17:22の最新状態を優先する。
+
+## 2026-10-21 17:22 JST 10/17初回6R安全補完PASS
+- Termiusで10/17の最初の1バッチ×6R新規INSERTが正常終了。 `BEFORE=(51,306,0,50)`→`AFTER=(57,342,0,56)`, `DELTA=(6,36,0,6)`, 6件すべて`DAY_RACE_PASS`、`BATCH_PASS wrote=6`、`BOUNDED_BATCH_PASS number=1 added=6`、`BOUNDED_RUN_DONE`、`OCT17_PILOT_VERIFIED`。対象`20261017_03_12,04_07..11`、既存レース更新なし、6艇不整合0。
+- 10/16公式156R・936艇のレース登録済み。初期未登録252Rのうち10/16復旧135R + 10/17復旧6R = 141R、残111R（10/17のみ、公式168Rに対してDB57R）。既存登録済結果欠損（元290Rのうち10/16=21、10/17=1等）と選手別詳細結果は別工程。後日取得を締切前証拠としない。
+- **Next ONE task:** 10/17の現DB`57:342:56`を読み取り専用で確認し、bounded runner `--day 2026-10-17 --batches 2 --apply` を明示ゲート付きで1回のみ実行。runner内で6艇不整合とバッチ差分確認。正常12件補完なら`69:414:68`・未登録99Rの見込み。エラー/SSH切断時は再実行せずDBとプロセス状態を確認する。現行2GB VPS・自動収集・V5固定重み・バックアップ保護。
