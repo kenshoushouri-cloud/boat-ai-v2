@@ -71,7 +71,7 @@ def snapshot(day):
                         "FROM public.v2_results WHERE race_id >= %s AND race_id < %s",
                         (lo, hi))
             results = {r[0]: (r[1], r[2], r[3]) for r in cur.fetchall()}
-    return races, dict(rosters), results
+    return races, {rid: sorted(rows) for rid, rows in rosters.items()}, results
 
 
 def verify_state(day, k, state, expected):
