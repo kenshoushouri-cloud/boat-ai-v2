@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 2026-10-17 K race recovery: short, guarded Termius entry point.
-# Usage: bash deploy/conoha/k17_recover_short_20261021.sh 63 [apply]
+# Usage: bash deploy/conoha/k17_recover_short_20261021.sh 81 [apply|apply2]
 # Without "apply", strict read-only preview only.
 set -euo pipefail
 cd /opt/boat-ai-v5
@@ -9,8 +9,8 @@ MODE="${2:-preview}"
 if [[ ! "$EXPECTED" =~ ^[0-9]{1,3}$ ]] || (( 10#$EXPECTED < 51 || 10#$EXPECTED >= 168 )); then
   echo "STOP: expected race count must be 51..167"; exit 1
 fi
-if [[ "$MODE" != "preview" && "$MODE" != "apply" ]]; then
-  echo "STOP: mode must be preview or apply"; exit 1
+if [[ "$MODE" != "preview" && "$MODE" != "apply" && "$MODE" != "apply2" ]]; then
+  echo "STOP: mode must be preview, apply or apply2"; exit 1
 fi
 if [[ ! -f deploy/conoha/k_missing_races_bounded_runner_20261021.py ]]; then
   echo "STOP: bounded runner not installed"; exit 1
@@ -46,14 +46,23 @@ if [[ "$MODE" == "preview" ]]; then
   echo "SHORT_PREVIEW_OK_NO_DB_WRITES"
   exit 0
 fi
-# One six-race batch only; worker still requires both independent apply gates.
+# apply=one batch (6 races), apply2=two separate verified batches (12 races).
+BATCHES=1
+ADD=6
+if [[ "$MODE" == "apply2" ]]; then
+  BATCHES=2
+  ADD=12
+  if (( EXPECTED > 156 )); then
+    echo "STOP: fewer than 12 races remain; use apply"; exit 1
+  fi
+fi
 nice -n 10 runuser -u postgres -- env \
   CONFIRM_V5_K_RACE_REPAIR=YES HTTP_TIMEOUT=30 HTTP_MAX_RETRIES=0 \
   /opt/boat-ai-v5-venv/bin/python \
   deploy/conoha/k_missing_races_bounded_runner_20261021.py \
-  --day 2026-10-17 --batches 1 --apply
+  --day 2026-10-17 --batches "$BATCHES" --apply
 AFTER="$(DB_STATS)"
-TARGET="$((EXPECTED+6)):$(((EXPECTED+6)*6)):0:$((EXPECTED+5))"
+TARGET="$((EXPECTED+ADD)):$(((EXPECTED+ADD)*6)):0:$((EXPECTED+ADD-1))"
 echo "AFTER=$AFTER EXPECTED=$TARGET"
 [[ "$AFTER" == "$TARGET" ]] || { echo "STOP: postcheck mismatch; do not rerun"; exit 1; }
 echo "SHORT_BATCH_VERIFIED"
