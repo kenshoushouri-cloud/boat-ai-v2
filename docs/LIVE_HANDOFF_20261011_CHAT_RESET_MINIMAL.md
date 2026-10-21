@@ -127,3 +127,8 @@
 ## 2026-10-21 13:59 JST bounded runner read-only試験PASS
 - ConoHa `/opt/boat-ai-v5` をmain `1401407`までff-only更新、`deploy/conoha/k_missing_races_bounded_runner_20261021.py` py_compile PASS。`--day 2026-10-16`デフォルトread-only: START=(races38,entries228,bad6=0,results17)、公式K HTTP200、`OFFICIAL=156 ABSENT_ALL_FOUR=118 ELIGIBLE_STANDARD=118`、次候補`20261016_03_11,03_12,04_01,04_02,04_03,04_04`、`DRY_RUN_DONE_NO_DB_WRITES`→`BOUNDED_DRY_RUN_OK_NO_DB_WRITES`→`RUNNER_PREVIEW_FINISHED`。DB書込なし・既存タイマー/V5固定重み保護。
 - **Next ONE task:** bounded runnerで1バッチ6Rだけ明示許可してapplyし、before/after自動整合性と実DB readbackを確認。失敗/通信断で同じコマンドを盲目的に再実行しない。10/16公式未登録残118R、10/17残117R。結果欠損290件（登録済みベース）と詳細結果は別途。
+
+## 2026-10-21 15:01 JST 10/16 bounded 2バッチ・計12R PASS
+- ConoHa Termius: 2026-10-16の6R×2バッチapply。各`DAY_RACE_PASS`6件、`BATCH_PASS wrote=6`2回、runner `BEFORE=(44,264,0,23)`→`AFTER=(50,300,0,29)`→`AFTER=(56,336,0,35)`、各DELTA=(6,36,0,6)、`BOUNDED_BATCH_PASS`1/2・2/2、`BOUNDED_RUN_DONE`、最終read-only`v2_races=56`、`TWO_BATCHES_FINISHED`。対象04_05..04_12および08_01..08_04。既存行非更新・1R毎atomic・全バッチ6艇不整合0。詳細結果`v2_result_entries`は未補完。再実行禁止。
+- 元の未登録252レースのうち35レース復旧済み（10/16分）、残217レース（10/16=100、10/17=117）。初期登録済み結果欠損290レース、選手別詳細着順は別工程。4表バックアップ57MB/SHA256 OKを保護。
+- **Next ONE task:** 同bounded runnerで2026-10-16を1回最大2バッチ（6R×2）、新実行の直前にread-onlyで現DBがrace=56/entries=336/bad6=0/results=35と一致するか確認し、失敗時即中断。接続断時は重複実行せずDB確認。無断の大量処理やタイマー変更禁止。ConoHa 2GB低負荷・公式アクセス直列。
