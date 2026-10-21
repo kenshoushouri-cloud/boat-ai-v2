@@ -26,6 +26,8 @@ IMPORTANT = (
     "save_k_day_results_pg.py",
     "collect_exhibition_st_forward_shadow_pg.py",
     "collect_v24_motor2_forward_shadow_pg.py",
+    "v21_realtime_collector_pg_safe.py",
+    "v21_realtime_collector_pg.py",
 )
 MATCH_TABLE = re.compile(r"\b(" + "|".join(map(re.escape, TABLES)) + r")\b", re.I)
 DIRECT_WRITE = re.compile(
@@ -33,8 +35,8 @@ DIRECT_WRITE = re.compile(
     r"(?:public\.)?(v2_[a-z_0-9]+)", re.I,
 )
 UPSERT_CALL = re.compile(r"\bupsert_rows\s*\(\s*['\"](v2_[a-z_0-9]+)['\"]", re.I)
-MODULE = re.compile(r"(?:^|\s)-m\s+(v5\.[a-zA-Z0-9_.]+)")
-LOCAL_PY = re.compile(r"/opt/boat-ai-v5/(?:[a-zA-Z0-9_.-]+/)*[a-zA-Z0-9_.-]+\.py\b")
+MODULE = re.compile(r"(?:^|\s)-m\s+([a-zA-Z_][a-zA-Z0-9_.]*)")
+LOCAL_PY = re.compile(r"/opt/boat-ai-v5/(?:[a-zA-Z0-9_.-]+/)*[a-zA-Z0-9_.-]+\.(?:py|sh)\b")
 
 def command(*args: str) -> str:
     try:
@@ -85,6 +87,11 @@ def print_units():
     for name in timers[:18]:
         state, enabled, _ = unit(name)
         print(f"TIMER|{name}|state={state}|unitfile={enabled}",flush=True)
+    # Resolve template service instances, showing only safe module/script identifiers.
+    for instance in ("morning", "night"):
+        name = f"boat-v5-daily@{instance}.service"
+        state, enabled, target = unit(name)
+        print(f"DAILY_INSTANCE|{name}|state={state}|unitfile={enabled}|target={target}",flush=True)
     if len(svc)>26 or len(timers)>18:
         print("SERVICE_OR_TIMER_OUTPUT_TRUNCATED",flush=True)
 
@@ -117,16 +124,20 @@ def print_source_routes():
         refs = sorted(set(x.lower() for x in MATCH_TABLE.findall(data)))
         direct = sorted(set(x.lower() for x in DIRECT_WRITE.findall(data)))
         indirect = sorted(set(x.lower() for x in UPSERT_CALL.findall(data)))
-        # Not all write paths are syntactically recognized by this static scan.
+        # Legacy collector may create old tables again after a move.
+        ddl_hint = "yes" if ("create table if not exists" in data.lower()
+                          or "alter table" in data.lower()) else "no"
         print("SOURCE|"+relative+"|refs="+(",".join(refs) or "-")
               +"|direct_write_hint="+(",".join(direct) or "-")
-              +"|helper_upsert_hint="+(",".join(indirect) or "-"),flush=True)
+              +"|helper_upsert_hint="+(",".join(indirect) or "-")
+              +"|ddl_text_hint="+ddl_hint,flush=True)
 
 def main():
     print("MODE=READ_ONLY_ACTIVE_WRITER_ROUTES",flush=True)
     print_units()
     print_cron_identifiers()
     print_source_routes()
+    print("FORWARD_CHILD=v5.conoha_realtime_window_pg -> v21_realtime_collector_pg_safe.py -> v21_realtime_collector_pg.py",flush=True)
     print("NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET",flush=True)
     print("V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES",flush=True)
 
