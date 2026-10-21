@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from v5_core_read_routes import core_relation
+from v5_core_read_routes import core_relation, legacy_entry_alters
 from v5_daily_table_routes import resolve_table
 from v5.conoha_realtime_window_pg import build_candidates_query
 
@@ -100,6 +100,33 @@ class CoreReadRouteTests(unittest.TestCase):
         self.assertIn('upsert_rows("v2_results",', src)
         daily = (root / "repair_month_all_pg.py").read_text(encoding="utf-8")
         self.assertIn("resolve_v5_daily_table(table)", daily)
+
+
+    def test_legacy_entry_ddl_preserves_three_columns(self):
+        with self.configured():
+            cmds = legacy_entry_alters()
+        self.assertEqual(len(cmds), 3)
+        self.assertTrue(all("alter table v2_race_entries" in cmd for cmd in cmds))
+
+    def test_core_physical_suppresses_old_entry_alter(self):
+        with self.configured("core", "YES"):
+            self.assertEqual(legacy_entry_alters(), ())
+
+    def test_odds_only_does_not_suppress_legacy_entry_ddl(self):
+        with self.configured("odds", "YES"):
+            self.assertEqual(len(legacy_entry_alters()), 3)
+
+    def test_missing_confirmation_stops_before_ddl(self):
+        with self.configured("core"):
+            with self.assertRaises(RuntimeError):
+                legacy_entry_alters()
+
+    def test_legacy_entry_alter_routed_not_inlined(self):
+        root = Path(__file__).resolve().parents[1]
+        src = (root / "v21_realtime_collector_pg.py").read_text(encoding="utf-8")
+        self.assertIn("entry_alters = legacy_entry_alters()", src)
+        self.assertIn("for entry_ddl in entry_alters:", src)
+        self.assertNotIn("alter table v2_race_entries add column", src)
 
 
 if __name__ == "__main__":
