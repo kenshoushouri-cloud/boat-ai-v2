@@ -108,3 +108,9 @@
 ## 2026-10-21 K一括事前監査9日 全PASS
 - ConoHaで`deploy/conoha/k_results_batch_preflight_20261021.py`をユーザーが実行。`PREFLIGHT_DONE ready=9 blocked=0`：10/07,09,10,11,12,13,14,18,19の公式Kファイル9日1,344R（予定8,064艇）で全日公式レースIDと保存済み`v2_races`/`v2_results`一致・6艇完備・既存`v2_result_entries`=0、DB_WRITES=0。権限修正は対象py1ファイルだけchmod644済み。
 - `save_k_day_results_pg.py`のGitHubコード確認: `CONFIRM_K_DB_WRITE=YES`必須、日別に既存v2_results全R確認、INSERTするのはv2_result_entries、v2_resultsは`coalesce`でNULL項目補完、transaction内POSTWRITE検査。**Next ONE task:** 9日一括書き込みに備えConoHaローカル`railway`の`v2_results`と`v2_result_entries`を新しい単一`pg_dump -Fc`としてバックアップ→pg_restore目録検査。直近の10/20用v2_results単表バックアップだけでは9日一括書込の保護として不足。バックアップ検証前はバッチ本番書込禁止。実書込9日は日別トランザクション/失敗時中断、データ転送によりライブ収集負荷を抑える。
+
+
+## 2026-10-21 10:35 JST 公式K一括事前検査9日PASS
+- ConoHa Termiusで `deploy/conoha/k_results_batch_preflight_20261021.py` をread-only実行。`PREFLIGHT_DONE ready=9 blocked=0` を2026-10-21 10:35 JSTにユーザー画面で確認。各日公式Kステータス200、レースIDが既存`v2_races`/`v2_results`と完全一致、6艇完備、parse不良/重複/既存`v2_result_entries`なし。対象9日（10/07,09,10,11,12,13,14,18,19）計1,344レース×6艇=8,064選手別詳細結果を補完可能と判定。**DB書込は未実施。**
+- 初回は`postgres`から検査プログラムが`-rw------- root root`で読めずpermission denied、該当ファイルのみ`chmod 644`して解消。GitHub再アップロード不要。現行OSが再起動要求中だが再起動は未指示、勝手に実施しない。
+- Next ONE task: **一括書込前にConoHaローカル`railway` DBの`public.v2_results`と`public.v2_result_entries`の一貫性ある安全なバックアップを確認/作成**（前回`/root/v2_results_pre_k_20261021.dump`は10/20補完前の単表3.3MBの目録検査だけ）。その後、対象日を1日ずつ`save_k_day_results_pg.py`で保存→各日6艇/既存結果/払い戻しの監査。保護条件を満たしてから9日を順次継続。結果自体が不足する10/08(144件)、10/15(124)、10/16(21)、10/17(1)は別工程・安全装置を解除しない。直近5走の`recent_form`はこのK保存だけでは埋まらず別途as-of検証が必要。
