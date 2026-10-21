@@ -161,8 +161,8 @@ def main():
     p.add_argument("--limit", type=int, default=3)
     p.add_argument("--apply", action="store_true")
     args = p.parse_args()
-    if not 1 <= args.limit <= 3:
-        raise SystemExit("STOP: --limit must be 1..3")
+    if not 1 <= args.limit <= 6:
+        raise SystemExit("STOP: --limit must be 1..6")
     if args.apply and os.environ.get("CONFIRM_V5_K_RACE_REPAIR") != "YES":
         raise SystemExit("STOP: explicit write gate missing")
 
