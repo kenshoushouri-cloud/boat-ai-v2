@@ -52,16 +52,21 @@ def target_date(raw: str | None, today: date | None = None) -> date:
 
 def pending_rows(day: date) -> tuple[int, list[str]]:
     from db_pg import get_conn
+    from psycopg import sql
+    from v5_core_read_routes import core_relation
 
+    query = sql.SQL("""SELECT r.race_id, x.result_status, x.trifecta_ticket,
+                          x.trifecta_payout_yen
+                   FROM {} r
+                   LEFT JOIN {} x ON x.race_id = r.race_id
+                   WHERE r.race_date = %s
+                   ORDER BY r.race_id""").format(
+        core_relation("v2_races"), core_relation("v2_results"),
+    )
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT r.race_id, x.result_status, x.trifecta_ticket,
-                          x.trifecta_payout_yen
-                   FROM public.v2_races r
-                   LEFT JOIN public.v2_results x ON x.race_id = r.race_id
-                   WHERE r.race_date = %s
-                   ORDER BY r.race_id""",
+                query,
                 (day.isoformat(),),
             )
             rows = cur.fetchall()
