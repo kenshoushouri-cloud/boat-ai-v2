@@ -47,12 +47,16 @@ def read_db(day):
 
 
 def read_k(day):
+    # Parser creates race_id using its module-global TARGET_DATE.
+    ka.TARGET_DATE = day
     text = ka.get_k_text(day)
     sections = ka.split_venue_sections(text.splitlines())
     rows = [r for section in sections for r in ka.parse_section(section)]
     official = {}
     for r in rows:
         rid = r["race_id"]
+        if not rid.startswith(day.replace("-", "") + "_"):
+            raise RuntimeError("STOP: parser race date differs from K file: " + rid)
         lanes = [e["lane"] for e in r["entries"]]
         if rid in official or sorted(lanes) != [1, 2, 3, 4, 5, 6] or r["parse_failed_candidate_lines"]:
             raise RuntimeError("STOP: K race duplicate, bad lane, or parse issue: " + rid)
