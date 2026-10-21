@@ -135,9 +135,9 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 19:13 JST 公式Kレース結果欠損290件の次工程（最新）
-- Termius read-onlyのv2_races LEFT JOIN v2_results監査が想定通り。10/08 races=144/results=0/missing=144、10/15 156/32/124、10/16 156/135/21、10/17 168/167/1、計624レース中結果334件・欠損290件。
-- 10/16・17の元未登録252レースと6艇出走情報は全件復旧・整合性PASS。既存結果を上書きする`save_k_day_results_pg.py`や旧upsertは**結果新規INSERTに流用禁止**。公式Kに加えDB race ID/6艇選手番号/既存結果との衝突を検査し、別途安全なINSERT-only手順を設計。歴史データを締切前snapshotとして使用禁止。
-- GitHub追加`deploy/conoha/k_missing_results_preflight_20261021.py`（commit`54102aa`、K lane順修正`a4ee8e6`）。**ConoHa未反映/未実行**。4日分公式K vs DBの日別レース件数・ID一致・艇/選手番号一致・現在結果・欠損数・K払戻の標準性・既存結果矛盾を調べるread-onlyスクリプト。DB transaction_read_only強制、root実行禁止。結果書込/削除・DDL・モデル/cron操作なし。
-- 保護: ConoHa2GB、4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB/SHA256+TOC PASS（復元試験未済）、自動収集・バックアップ・V5固定ウェイト/Railwayを無断変更/再起動/削除禁止。
-- **Next ONE task:** Termius 1行`git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && runuser -u postgres -- env HTTP_TIMEOUT=20 /opt/boat-ai-v5-venv/bin/python deploy/conoha/k_missing_results_preflight_20261021.py`を一度だけ。期待`TOTAL_MISSING=290`、`READ_ONLY_RESULTS_PREFLIGHT_PASS_NO_DB_WRITES`（不一致・非標準は表示して書込停止）。ユーザーからスクリーンショット確認後、既存結果保護の新規INSERT-only pilotを設計する。
+## 2026-10-21 19:18 JST 290結果欠損のread-only検査・誤日付修正（最新）
+- 10/16,17未登録252Rと出走6艇情報は全件復旧済。日別v2_races LEFT JOIN v2_results read-only: 10/08=144/0/144、10/15=156/32/124、10/16=156/135/21、10/17=168/167/1（race/result/missing）、計結果欠損290R。
+- 公式K vs DBの新read-only preflight初回は10/08で安全停止。`K=144 RACES=144 RESULTS=0 MISSING=144 K_ID_DIFF=288 BAD_ROSTERS=144`。ログのK側IDに`20260816_01_01`などがあり、元の`audit_k_day_all_pg.py`がグローバル`TARGET_DATE`(default 2026-08-16)でrace_idを生成するのに新preflightが日別に更新していなかったのが原因。**DB破損の証拠ではなく、初回はDB書込みなし**。
+- `deploy/conoha/k_missing_results_preflight_20261021.py`を修正済（GitHub commit `0cb995e`）：K parse前に`ka.TARGET_DATE = day`、生成race_idが当日日付接頭辞であることを強制チェック。既存6艇/選手番号・DB結果衝突・非標準払戻検査、DB read-onlyを維持。**ConoHaには未反映・修正後は未実行**。旧`save_k_day_results_pg.py`は結果行の新規INSERTに使わない。
+- ConoHa2GB・4表バックアップ57MB/SHA256+TOC PASS（復元試験未実施）、既存収集/バックアップ/V5固定ウェイト/Railwayの無断変更・停止・再起動・削除なし。後日取得を事前予想証拠へ混入させない。
+- **Next ONE task:** Termiusで短い1行`git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && runuser -u postgres -- env HTTP_TIMEOUT=20 /opt/boat-ai-v5-venv/bin/python deploy/conoha/k_missing_results_preflight_20261021.py`を一度だけ実行。期待K_ID_DIFF=0、TOTAL_MISSING=290。その他の不一致が残ればDBに書かずログを確認する。
