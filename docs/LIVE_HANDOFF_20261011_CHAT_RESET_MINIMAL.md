@@ -123,3 +123,7 @@
 - GitHub `deploy/conoha/k_missing_races_insert_only_20261021.py`: 公式K ID/6艇/3連単金額と当日公式HTML比較、既存4表に1件でもあれば対象外、新規のみ3表atomic INSERT、最大6R、明示`--apply`+`CONFIRM_V5_K_RACE_REPAIR=YES`、デフォルトread-only、1worker/2秒間隔。既存`repair_month_all_pg.py`は既存行upsertするため本用途に直接使わない。
 - GitHubに`deploy/conoha/k_missing_races_bounded_runner_20261021.py`を**新規作成（commit c8c1d98）**。1〜2バッチ×6R、read-onlyデフォルト、明示書込二重ゲート、実行ロック、各バッチ前後のDB6艇/結果差分検査と異常停止。**ConoHaにはまだ反映せず、構文/ドライラン未検証、追加DB書込なし**。
 - **Next ONE task:** Termiusで`/opt/boat-ai-v5` clean/git ff-only → bounded runner `py_compile` → `--day 2026-10-16`（`--apply`なし）のread-only動作検証。初回applyは結果確認後に別指示。ConoHa2GB、既存タイマー・バックアップ・固定V5重み・Railway無変更。費用抑制、公式取得は1worker。
+
+## 2026-10-21 13:59 JST bounded runner read-only試験PASS
+- ConoHa `/opt/boat-ai-v5` をmain `1401407`までff-only更新、`deploy/conoha/k_missing_races_bounded_runner_20261021.py` py_compile PASS。`--day 2026-10-16`デフォルトread-only: START=(races38,entries228,bad6=0,results17)、公式K HTTP200、`OFFICIAL=156 ABSENT_ALL_FOUR=118 ELIGIBLE_STANDARD=118`、次候補`20261016_03_11,03_12,04_01,04_02,04_03,04_04`、`DRY_RUN_DONE_NO_DB_WRITES`→`BOUNDED_DRY_RUN_OK_NO_DB_WRITES`→`RUNNER_PREVIEW_FINISHED`。DB書込なし・既存タイマー/V5固定重み保護。
+- **Next ONE task:** bounded runnerで1バッチ6Rだけ明示許可してapplyし、before/after自動整合性と実DB readbackを確認。失敗/通信断で同じコマンドを盲目的に再実行しない。10/16公式未登録残118R、10/17残117R。結果欠損290件（登録済みベース）と詳細結果は別途。
