@@ -11,6 +11,8 @@ try:
 except Exception:
     BeautifulSoup=None
 from db_pg import execute,fetch_all,upsert_rows
+from psycopg import sql
+from v5_core_read_routes import core_relation
 from v5_legacy_ddl_guard import require_legacy_realtime_ddl_allowed
 from v5_realtime_table_routes import physical_enabled, resolve_realtime_table, verify_physical_targets
 
@@ -263,12 +265,12 @@ def save_beforeinfo_extra(race,entries,race_condition,racer_conditions):
     return _upsert("v2_realtime_race_condition_snapshots",[rr],"race_id,snapshot_label"),_upsert("v2_realtime_racer_condition_snapshots",rows,"race_id,snapshot_label,lane")
 def fetch_day_base(ds):
     p=_rid_prefix(ds);q=_rid_prefix(_next_day(ds))
-    races=fetch_all("select * from v2_races where race_date=%s order by venue_id,race_no;",(ds,))
+    races=fetch_all(sql.SQL("select * from {} where race_date=%s order by venue_id,race_no;").format(core_relation("v2_races")),(ds,))
     races=[r for r in races if str(r.get("venue_id") or r.get("venue_code") or "").zfill(2) in TARGET_VENUES]
     if TARGET_RACE_ID:races=[r for r in races if str(r.get("race_id"))==TARGET_RACE_ID]
-    er=fetch_all("select * from v2_race_entries where race_id >= %s and race_id < %s order by race_id,lane;",(p,q));eb=defaultdict(list)
+    er=fetch_all(sql.SQL("select * from {} where race_id >= %s and race_id < %s order by race_id,lane;").format(core_relation("v2_race_entries")),(p,q));eb=defaultdict(list)
     for e in er:eb[str(e.get("race_id"))].append(e)
-    oo=fetch_all("select race_id,ticket,odds from v2_odds_trifecta where race_id >= %s and race_id < %s order by race_id,ticket;",(p,q));ob=defaultdict(dict)
+    oo=fetch_all(sql.SQL("select race_id,ticket,odds from {} where race_id >= %s and race_id < %s order by race_id,ticket;").format(core_relation("v2_odds_trifecta")),(p,q));ob=defaultdict(dict)
     for o in oo:
         t=_norm_ticket(o.get("ticket"));v=_safe_float(o.get("odds"))
         if t and v>0:ob[str(o.get("race_id"))][t]=v
@@ -281,7 +283,7 @@ def _fetch_previous_odds(rid):
     return out
 def _infer_venue_style(v):return "bad5" if v in BAD5_VENUES else "rough" if v in ROUGH_VENUES else "in_strong" if v in IN_STRONG_VENUES else "standard"
 def _event_day_by_venue(ds):
-    rows=fetch_all("select race_date,venue_id,venue_code from v2_races where race_date >= %s and race_date <= %s order by race_date,venue_id;",(_shift_day(ds,-10),ds));dates=defaultdict(list)
+    rows=fetch_all(sql.SQL("select race_date,venue_id,venue_code from {} where race_date >= %s and race_date <= %s order by race_date,venue_id;").format(core_relation("v2_races")),(_shift_day(ds,-10),ds));dates=defaultdict(list)
     for r in rows:
         d=str(r.get("race_date"));v=str(r.get("venue_id") or r.get("venue_code") or "").zfill(2)
         if d not in dates[v]:dates[v].append(d)
