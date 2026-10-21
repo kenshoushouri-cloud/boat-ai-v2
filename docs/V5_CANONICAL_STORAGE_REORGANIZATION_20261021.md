@@ -71,3 +71,10 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - GitHub `repair_month_all_pg.py`の書込を点検：`v2_venues`,`v2_races`,`v2_race_entries`,`v2_results`,`v2_odds_trifecta`を`db_pg.py`の`upsert_rows`へ渡す。別プログラム`save_k_day_results_pg.py`は`v2_result_entries`に選手別全6艇結果を保持。朝夜wrapper経路と別であり「結果完備」≠「全6艇結果完備」。
 - 既決の`v5_data` VIEW構成に`v2_venues`と`v2_odds_trifecta`の専用参照がない。この2つを見落として移管を進めると収集先が分散。**現行11VIEWを即破棄しない**。候補名`v5_data.venues`,`v5_data.trifecta_odds`は検討用で未本番作成。
 - Stage 1 SQL `deploy/conoha/v5_daily_missing_sources_readonly_20261022.sql` で必要6ソースの元実テーブル・既存V5 VIEW/表の有無と容量を読取専用で確認。次工程は表示を確認し、テーブル名衝突、旧writer/upsert/DDLのスキーマ参照更新と既存データ原本移管のアトミックな手順を設計。DB物理移動、service停止・改造、Railway削除等は未実施。
+
+## 2026-10-22 06:37 実測：朝夜収集に必要な6表と欠損V5管理先
+- Termius`V5_DAILY_MISSING_SOURCES_READONLY_COMPLETE_NO_DB_WRITES`成功。DB=railway, transaction_read_only=on。
+- 既存6表（索引込み、実測時点）: `v2_odds_trifecta`=1443MB、`v2_result_entries`=247MB、`v2_race_entries`=120MB、`v2_results`=30MB、`v2_races`=17MB、`v2_venues`=80KB。既存V5 4表はVIEW、候補`v5_data.trifecta_odds`と`v5_data.venues`はMISSING。行数はcatalog推定で完全件数ではない。
+- 3連単の`v2_odds_trifecta`とタイムスタンプ付き`v2_realtime_odds_snapshots`は別系列。物理的なスキーマ移動だけではDB総サイズ削減にはならないが、全行COPYによる二重増加は回避可能。
+- V5構成候補にマスターと3連単オッズ原本を追加しても、writerの`INSERT ON CONFLICT`、VIEW同名衝突、旧collectorのCREATE/ALTER自動再作成、schema指定文字列処理の解消前に移管禁止。
+- GitHub`deploy/conoha/v5_venues_odds_cutover_gates_readonly_20261022.sql` (commit `840c1ce5`)を作成。2表の既存名の衝突、PK/一意INDEX、FK、トリガ、依存VIEW、書込キーの存在をcatalogのみread-only確認。差分書き込み・コピーなし。
