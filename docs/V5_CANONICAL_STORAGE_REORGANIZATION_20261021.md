@@ -97,3 +97,8 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 ## 2026-10-22 07:09 直前スケジューラー読取経路（code-only）
 - ConoHaオフライン11+5テスト合格。 `v5/conoha_realtime_window_pg.py`の直前展示/オッズSELECT元表を、writerと同じ固定マップ`v5_realtime_table_routes.py`から安全に導出。既定`legacy`時に旧`public.v2_realtime_*`相当を参照、物理フラグ両方が明示されたときだけ`v5_data.raw_*`へ。ユーザー権限で自由なSQLテーブル名を指定できない。`tests/test_v5_forward_snapshot_reader_routes.py`5ケースは次にオフライン実行予定。
 - 注意：同スケジューラーの`public.v2_races`は未切替、別の結果収集、日次/研究SQL、VIEW依存とFK/所有者/索引/権限及びバックアップ復元試験が未解消。**運用中のV5 physical flagは設定しない**。
+
+## 2026-10-22 07:15 物理テーブル候補coreの読取・日次writer統一ステージ
+- オフライン直前スケジューラー5/5 PASS。次段階として`V5_DAILY_WRITE_ROUTE_PROFILE=core`（+既存二重確認）をdisabled-by-defaultで追加した。候補：`v5_data.venues`,`raw_races`,`raw_entries`,`raw_results`,`trifecta_odds`。物理移動は未実施で、論理`v5_data.races/entries/results`VIEWと新物理テーブル名を区別すること。
+- 新しい共有`v5_core_read_routes.core_relation()`を用い、`v21_realtime_collector_pg.fetch_day_base/_event_day_by_venue`、`v5/conoha_realtime_window_pg.load_candidates`、`v5/conoha_midnight_results_pg.pending_rows`が日次writerと同じmapを参照。既定legacyは全て`public.v2_*`。テスト`test_v5_core_reader_routes.py`10件と既存forward-snapshot5件の再テストはTermius未検証。
+- 未解決リスク: `v21_realtime_collector_pg._ensure_realtime_tables`内`ALTER TABLE v2_race_entries`、追加legacy writer/readerと統計・研究SQL、現行VIEW依存、データ整合・DBの既存制約、バックアップの実復元。物理テーブル切替をこの段階で設定すると運用停止/分裂を招くため禁止。旧テーブルを移動/COPY/削除した事実はない。
