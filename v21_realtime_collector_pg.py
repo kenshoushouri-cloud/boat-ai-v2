@@ -12,6 +12,7 @@ except Exception:
     BeautifulSoup=None
 from db_pg import execute,fetch_all,upsert_rows
 from v5_legacy_ddl_guard import require_legacy_realtime_ddl_allowed
+from v5_realtime_table_routes import physical_enabled, resolve_realtime_table, verify_physical_targets
 
 JST=timezone(timedelta(hours=9))
 TARGET_DATE=os.getenv("TARGET_DATE") or datetime.now(JST).strftime("%Y-%m-%d")
@@ -96,7 +97,11 @@ def _deadline_match(r,now):
     return True,"in_window"
 
 def _ensure_realtime_tables():
-    # Explicit V5 cutover guard: fail before first legacy CREATE/ALTER.
+    # Opt-in physical mode is read-only validated. Do not create legacy tables.
+    if physical_enabled():
+        verify_physical_targets(fetch_all)
+        return
+    # Legacy default preserved; fail closed if a migration guard is set.
     require_legacy_realtime_ddl_allowed()
     tables=["v2_realtime_weather_snapshots","v2_realtime_exhibition_snapshots","v2_realtime_entry_snapshots","v2_realtime_odds_snapshots","v2_realtime_race_condition_snapshots","v2_realtime_racer_condition_snapshots"]
     for t in tables:execute(f"create table if not exists {t} (id bigserial primary key);")
@@ -124,7 +129,7 @@ def _ensure_realtime_tables():
 def _upsert(t,rows,conflict,chunk_size=500):
     if not rows:return 0
     cols=[x.strip() for x in conflict.split(",")];total=0
-    for i in range(0,len(rows),chunk_size):total+=upsert_rows(t,rows[i:i+chunk_size],cols)
+    for i in range(0,len(rows),chunk_size):total+=upsert_rows(resolve_realtime_table(t),rows[i:i+chunk_size],cols)
     return total
 def _soup_text(html):
     if BeautifulSoup is not None:return _norm_text(BeautifulSoup(html,"html.parser").get_text(" ",strip=True))
@@ -269,7 +274,7 @@ def fetch_day_base(ds):
         if t and v>0:ob[str(o.get("race_id"))][t]=v
     return races,eb,ob
 def _fetch_previous_odds(rid):
-    rows=fetch_all("select ticket,odds,market_rank,snapshot_at from v2_realtime_odds_snapshots where race_id=%s order by snapshot_at desc nulls last limit 240;",(rid,));out={}
+    rows=fetch_all("select ticket,odds,market_rank,snapshot_at from "+resolve_realtime_table("v2_realtime_odds_snapshots")+" where race_id=%s order by snapshot_at desc nulls last limit 240;",(rid,));out={}
     for r in rows:
         t=_norm_ticket(r.get("ticket"))
         if t and t not in out:out[t]=r
