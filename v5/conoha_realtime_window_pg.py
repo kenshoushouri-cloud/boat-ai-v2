@@ -35,17 +35,32 @@ def eligible(row: dict, now: datetime, *, min_minutes: int = 9,
     return int(row.get("exh_lanes") or 0) < 6 or int(row.get("odds_tickets") or 0) < 120
 
 
-def load_candidates(now: datetime) -> list[dict]:
-    from db_pg import get_conn
+def _snapshot_relation(name: str):
+    """Return a safely quoted known snapshot table, not arbitrary SQL input."""
+    from psycopg import sql
+    from v5_realtime_table_routes import resolve_realtime_table
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT r.race_id,
+    resolved = resolve_realtime_table(name)
+    if "." in resolved:
+        schema, relation = resolved.split(".", 1)
+    else:
+        schema, relation = "public", resolved
+    return sql.Identifier(schema, relation)
+
+
+def build_candidates_query():
+    """Use the same snapshot sources as the guarded realtime writer.
+
+    Core race metadata still references public.v2_races; physical core
+    race cutover has its own unresolved reader/writer dependency gates.
+    """
+    from psycopg import sql
+
+    return sql.SQL("""SELECT r.race_id,
                           r.deadline_at::timestamptz AS deadline_at,
                           (SELECT COALESCE(MAX(s.n),0)
                            FROM (SELECT COUNT(DISTINCT e.lane) AS n
-                                 FROM public.v2_realtime_exhibition_snapshots e
+                                 FROM {} e
                                  WHERE e.race_id = r.race_id
                                    AND e.exhibition_time IS NOT NULL
                                    AND e.snapshot_at < r.deadline_at::timestamptz
@@ -53,7 +68,7 @@ def load_candidates(now: datetime) -> list[dict]:
                             AS exh_lanes,
                           (SELECT COALESCE(MAX(s.n),0)
                            FROM (SELECT COUNT(DISTINCT o.ticket) AS n
-                                 FROM public.v2_realtime_odds_snapshots o
+                                 FROM {} o
                                  WHERE o.race_id = r.race_id AND o.odds > 0
                                    AND o.snapshot_at < r.deadline_at::timestamptz
                                  GROUP BY o.snapshot_label) s)
@@ -63,7 +78,21 @@ def load_candidates(now: datetime) -> list[dict]:
                      AND r.deadline_at IS NOT NULL
                      AND r.deadline_at::timestamptz BETWEEN %s AND %s
                    ORDER BY r.deadline_at::timestamptz, r.race_id
-                   LIMIT 100""",
+                   LIMIT 100""").format(
+        _snapshot_relation("v2_realtime_exhibition_snapshots"),
+        _snapshot_relation("v2_realtime_odds_snapshots"),
+    )
+
+
+def load_candidates(now: datetime) -> list[dict]:
+    from db_pg import get_conn
+
+    # Resolve both route switches BEFORE opening the database connection.
+    query = build_candidates_query()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
                 (now.astimezone(JST).date(), now + timedelta(minutes=9),
                  now + timedelta(minutes=24)),
             )
