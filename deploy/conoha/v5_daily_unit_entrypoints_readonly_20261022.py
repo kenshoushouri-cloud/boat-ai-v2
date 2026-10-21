@@ -81,10 +81,38 @@ def show_service(unit: str) -> None:
     elif not scripts_from(program) and not modules_from(program):
         print("ENTRY_DIAGNOSTIC|" + unit + "|SHELL_OR_WRAPPER_NEEDS_MANUAL_REVIEW", flush=True)
 
+def show_daily_wrapper() -> None:
+    # Local entrypoint discovered from the 2026-10-20 ConoHa handoff.
+    # Do not run the script, print its raw lines, or import it.
+    p = Path("/opt/boat-ai-collector/daily_v5_safe.sh")
+    if not p.is_file():
+        print("DAILY_WRAPPER|NOT_FOUND_AT_EXPECTED_PATH", flush=True)
+        return
+    try:
+        if p.stat().st_size > 250000:
+            print("DAILY_WRAPPER|SKIP_OVERSIZED", flush=True)
+            return
+        body = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        print("DAILY_WRAPPER|READ_FAILED", flush=True)
+        return
+    names = sorted(set(safe_name(x) for x in scripts_from(body)))
+    mods = modules_from(body)
+    print("DAILY_WRAPPER|daily_v5_safe.sh|read_only=true", flush=True)
+    print("WRAPPER_REFERENCED_FILES=" + (",".join(names[:20]) or "-"), flush=True)
+    print("WRAPPER_PYTHON_MODULES=" + (",".join(mods[:12]) or "-"), flush=True)
+    for marker in ("repair_month_all_pg.py", "save_k_day_results_pg.py",
+                   "v21_realtime_collector_pg.py", "v21_realtime_collector_pg_safe.py",
+                   "run_window_pipeline_pg.py", "run_window_refresh_pg.py"):
+        print("WRAPPER_REFERENCE|" + marker + "|" +
+              ("TEXT_MATCH" if marker in body else "NOT_FOUND_STATICALLY"), flush=True)
+    print("WRAPPER_CLASSIFICATION_IS_STATIC_NOT_RUNTIME_CERTIFICATION", flush=True)
+
 def main() -> None:
     print("MODE=V5_DAILY_ENTRYPOINTS_READ_ONLY", flush=True)
     for unit in UNITS:
         show_service(unit)
+    show_daily_wrapper()
     print("NO_SERVICES_STARTED_NO_DB_ACCESSED_NO_SECRETS_PRINTED", flush=True)
     print("V5_DAILY_ENTRYPOINTS_READONLY_COMPLETE", flush=True)
 
