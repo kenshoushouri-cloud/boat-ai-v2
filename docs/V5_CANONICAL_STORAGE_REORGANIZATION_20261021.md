@@ -102,3 +102,7 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - オフライン直前スケジューラー5/5 PASS。次段階として`V5_DAILY_WRITE_ROUTE_PROFILE=core`（+既存二重確認）をdisabled-by-defaultで追加した。候補：`v5_data.venues`,`raw_races`,`raw_entries`,`raw_results`,`trifecta_odds`。物理移動は未実施で、論理`v5_data.races/entries/results`VIEWと新物理テーブル名を区別すること。
 - 新しい共有`v5_core_read_routes.core_relation()`を用い、`v21_realtime_collector_pg.fetch_day_base/_event_day_by_venue`、`v5/conoha_realtime_window_pg.load_candidates`、`v5/conoha_midnight_results_pg.pending_rows`が日次writerと同じmapを参照。既定legacyは全て`public.v2_*`。テスト`test_v5_core_reader_routes.py`10件と既存forward-snapshot5件の再テストはTermius未検証。
 - 未解決リスク: `v21_realtime_collector_pg._ensure_realtime_tables`内`ALTER TABLE v2_race_entries`、追加legacy writer/readerと統計・研究SQL、現行VIEW依存、データ整合・DBの既存制約、バックアップの実復元。物理テーブル切替をこの段階で設定すると運用停止/分裂を招くため禁止。旧テーブルを移動/COPY/削除した事実はない。
+
+## 2026-10-22 07:42 既存出走表ALTERの移管後再実行を抑止（コードのみ）
+- 既存`v21_realtime_collector_pg._ensure_realtime_tables()`に残る`ALTER TABLE public.v2_race_entries`の3項目を、`v5_core_read_routes.legacy_entry_alters()`経由に変更。既定legacyは同じ3項目、明示`core`かつ二重確認のときは旧物理出走表のALTERを発行しない。flag不備は他DDLに入る前に拒否。snapshot物理分岐は従来通り。実行環境の設定変更なし。
+- 新規5ケースを`tests/test_v5_core_reader_routes.py`へ、既存5ケースのAST検査を`tests/test_v5_legacy_ddl_guard.py`へ反映。テストはTermius実施前。旧collector/DML/他プログラムの全切替、V5現物・バックアップ復元の確認が未了につき物理移管・flag本番設定はまだ禁止。
