@@ -114,3 +114,8 @@
 - ConoHa Termiusで `deploy/conoha/k_results_batch_preflight_20261021.py` をread-only実行。`PREFLIGHT_DONE ready=9 blocked=0` を2026-10-21 10:35 JSTにユーザー画面で確認。各日公式Kステータス200、レースIDが既存`v2_races`/`v2_results`と完全一致、6艇完備、parse不良/重複/既存`v2_result_entries`なし。対象9日（10/07,09,10,11,12,13,14,18,19）計1,344レース×6艇=8,064選手別詳細結果を補完可能と判定。**DB書込は未実施。**
 - 初回は`postgres`から検査プログラムが`-rw------- root root`で読めずpermission denied、該当ファイルのみ`chmod 644`して解消。GitHub再アップロード不要。現行OSが再起動要求中だが再起動は未指示、勝手に実施しない。
 - Next ONE task: **一括書込前にConoHaローカル`railway` DBの`public.v2_results`と`public.v2_result_entries`の一貫性ある安全なバックアップを確認/作成**（前回`/root/v2_results_pre_k_20261021.dump`は10/20補完前の単表3.3MBの目録検査だけ）。その後、対象日を1日ずつ`save_k_day_results_pg.py`で保存→各日6艇/既存結果/払い戻しの監査。保護条件を満たしてから9日を順次継続。結果自体が不足する10/08(144件)、10/15(124)、10/16(21)、10/17(1)は別工程・安全装置を解除しない。直近5走の`recent_form`はこのK保存だけでは埋まらず別途as-of検証が必要。
+
+## 2026-10-21 11:56 JST K結果バックアップと初日補完
+- ConoHa `railway` の `public.v2_results`+`public.v2_result_entries` を同一 `pg_dump -Fc` で `/root/boat-v5-backups/k_results_pre9_20261021_115208.dump` に保全（23MB）。2 TABLE DATA目録検査・SHA256検証OK。完全復元試験・外部複製は未実施。既存DB削除なし。
+- 公式K 2026-10-07 を1日限定で書込済み。PREWRITE 144R/864艇、parser不良・重複0、既存結果144/144。POSTWRITE 864艇（通常852、事故等12）、`v2_results`144件補完、`RESULT=PASS`、追加SQL 144R/864艇、`DAY1_COMPLETED`。画面で確認。
+- 9日中1日完了、残り8日/7,200艇（10/09,10,11,12,13,14,18,19）。**Next ONE task:** 10/09〜11の3日を1日ずつ事前詳細0を再確認して低負荷直列保存・日別6艇整合性検査、異常時中断。10/08,15,16,17の290結果欠損日は対象外。バックアップ/既存タイマー/V5固定重み保護。
