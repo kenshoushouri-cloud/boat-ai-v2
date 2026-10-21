@@ -43,6 +43,6 @@ def verify_physical_targets(fetch_all) -> None:
     if not physical_enabled():
         return
     for target in TARGETS.values():
-        rows = fetch_all("SELECT to_regclass(%s) AS target", (target,))
-        if not rows or rows[0].get("target") is None:
-            raise RuntimeError("STOP: missing physical V5 snapshot target")
+        rows = fetch_all("SELECT relkind FROM pg_class WHERE oid=to_regclass(%s)", (target,))
+        if not rows or rows[0].get("relkind") not in ("r", "p"):
+            raise RuntimeError("STOP: missing or non-table V5 snapshot target")
