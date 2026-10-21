@@ -47,16 +47,19 @@ class V5LegacyDdlGuardTests(unittest.TestCase):
         ]
         self.assertEqual(len(methods), 1)
         statements = methods[0].body
-        # Physical mode does a catalog check and returns without DDL.
-        self.assertIsInstance(statements[0], ast.If)
-        self.assertIsInstance(statements[0].test, ast.Call)
-        self.assertEqual(statements[0].test.func.id, "physical_enabled")
-        self.assertIsInstance(statements[0].body[0], ast.Expr)
-        self.assertEqual(statements[0].body[0].value.func.id, "verify_physical_targets")
-        self.assertIsInstance(statements[0].body[1], ast.Return)
-        # Legacy path still checks the guard before the CREATE/ALTER loops.
-        self.assertIsInstance(statements[1], ast.Expr)
-        self.assertEqual(statements[1].value.func.id, "require_legacy_realtime_ddl_allowed")
+        # Validate the core entries route before ANY realtime CREATE/ALTER.
+        self.assertIsInstance(statements[0], ast.Assign)
+        self.assertEqual(statements[0].value.func.id, "legacy_entry_alters")
+        # Physical snapshot mode checks table existence and returns, no DDL.
+        self.assertIsInstance(statements[1], ast.If)
+        self.assertIsInstance(statements[1].test, ast.Call)
+        self.assertEqual(statements[1].test.func.id, "physical_enabled")
+        self.assertIsInstance(statements[1].body[0], ast.Expr)
+        self.assertEqual(statements[1].body[0].value.func.id, "verify_physical_targets")
+        self.assertIsInstance(statements[1].body[1], ast.Return)
+        # Legacy realtime mode still checks its guard before CREATE/ALTER.
+        self.assertIsInstance(statements[2], ast.Expr)
+        self.assertEqual(statements[2].value.func.id, "require_legacy_realtime_ddl_allowed")
 
 
 if __name__ == "__main__":
