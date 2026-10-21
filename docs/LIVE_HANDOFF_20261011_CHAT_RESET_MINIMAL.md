@@ -135,7 +135,9 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 17:22 JST 10/17初回6R安全補完PASS
-- Termiusで10/17の最初の1バッチ×6R新規INSERTが正常終了。 `BEFORE=(51,306,0,50)`→`AFTER=(57,342,0,56)`, `DELTA=(6,36,0,6)`, 6件すべて`DAY_RACE_PASS`、`BATCH_PASS wrote=6`、`BOUNDED_BATCH_PASS number=1 added=6`、`BOUNDED_RUN_DONE`、`OCT17_PILOT_VERIFIED`。対象`20261017_03_12,04_07..11`、既存レース更新なし、6艇不整合0。
-- 10/16公式156R・936艇のレース登録済み。初期未登録252Rのうち10/16復旧135R + 10/17復旧6R = 141R、残111R（10/17のみ、公式168Rに対してDB57R）。既存登録済結果欠損（元290Rのうち10/16=21、10/17=1等）と選手別詳細結果は別工程。後日取得を締切前証拠としない。
-- **Next ONE task:** 10/17の現DB`57:342:56`を読み取り専用で確認し、bounded runner `--day 2026-10-17 --batches 2 --apply` を明示ゲート付きで1回のみ実行。runner内で6艇不整合とバッチ差分確認。正常12件補完なら`69:414:68`・未登録99Rの見込み。エラー/SSH切断時は再実行せずDBとプロセス状態を確認する。現行2GB VPS・自動収集・V5固定重み・バックアップ保護。
+## 2026-10-21 17:45 JST 10/17部分補完とTermius落ち対策（最新）
+- 10/16公式K156Rはレース本体/出走6艇全件登録（結果135R、元登録済結果欠損21Rは別工程）。
+- 10/17は最初の6R安全pilot `BEFORE=(51,306,0,50)`→`AFTER=(57,342,0,56)`、`OCT17_PILOT_VERIFIED`。その後の2バッチapply中Termiusが終了。17:42に`pgrep -af '[k]_missing_races'`空、17:45にDB read-only `v2_races=63, v2_race_entries=378, v2_results=62`を確認：**6R分はコミット、2バッチ目は未完了の可能性**。**bad6はこの再接続時点で未再測定**。元未登録252Rのうち10/16=135R+10/17=12R=147R復旧推定、残105R(10/17)。
+- GitHubに一行操作用 `deploy/conoha/k17_recover_short_20261021.sh`追加（commit `357f334`、**ConoHa未反映、未実行**）。使用例: `bash deploy/conoha/k17_recover_short_20261021.sh 63` はデフォルトread-only（現DB `63:378:0:62`を確認しK差分dry-run）。後日明示承認で同末尾に`apply`を付けた場合のみ最大6Rを挿入、前後の件数/6艇不整合照合が通ったらPASS。想定外のDB状態ならSTOPし重複実行防止。既存bounded runnerの公式K/HTML照合・1R毎atomic・排他・二重書込許可は維持。
+- 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、TOC/SHA256 OK・復元試験未済。公式K9日詳細1,344R/8,064艇PASS。元登録済レースの結果欠損290Rと選手別詳細結果は別工程。V5固定ウェイト/収集/ConoHa2GB/Railwayは無断変更しない。後日取得を締切前snapshotと扱わない。OS再起動要求の表示あるが未再起動。
+- **Next ONE task:** Termiusで`git -C /opt/boat-ai-v5 pull --ff-only`が正常終了したら`cd /opt/boat-ai-v5`、`bash deploy/conoha/k17_recover_short_20261021.sh 63`で**read-only previewだけ**を試す。成功時`SHORT_PREVIEW_OK_NO_DB_WRITES`。applyは検査結果を受けて次ターン。Termiusアプリ落ち再発時は無条件再実行禁止。
