@@ -124,9 +124,9 @@
 - GitHubに`deploy/conoha/k_missing_races_bounded_runner_20261021.py`を**新規作成（commit c8c1d98）**。1〜2バッチ×6R、read-onlyデフォルト、明示書込二重ゲート、実行ロック、各バッチ前後のDB6艇/結果差分検査と異常停止。**ConoHaにはまだ反映せず、構文/ドライラン未検証、追加DB書込なし**。
 - **Next ONE task:** Termiusで`/opt/boat-ai-v5` clean/git ff-only → bounded runner `py_compile` → `--day 2026-10-16`（`--apply`なし）のread-only動作検証。初回applyは結果確認後に別指示。ConoHa2GB、既存タイマー・バックアップ・固定V5重み・Railway無変更。費用抑制、公式取得は1worker。
 
-## 2026-10-21 16:20 JST 10/16公式K未登録レース復旧・最新状態
-- ConoHa2GB/DB railway。2026-10-16公式K156Rに対し現DB `v2_races=116 / v2_race_entries=696 / 6艇不整合=0 / v2_results=95`。直近安全runner6R×2バッチ: `BEFORE=(104,624,0,83)`→`AFTER=(110,660,0,89)`→`AFTER=(116,696,0,95)`、各`DELTA=(6,36,0,6)`。全12件`DAY_RACE_PASS`・`BOUNDED_BATCH_PASS`×2・`BOUNDED_RUN_DONE`・`TWO_BATCHES_FINISHED`。今回対象10/16 `14_05..14_12,19_01..19_04`。1レース毎の安全新規INSERT、既存行upsertなし。
-- 当初10/16・17未登録252Rのうち95R補完、残157R（10/16=40、10/17=117）。登録済みレースの初期結果欠損290Rおよび選手別詳細結果`v2_result_entries`の欠損は別工程。10/16戸田5R出走6艇は補完済み。後日取得データは締切前情報として使用禁止。
-- 専用差分ツール`deploy/conoha/k_missing_races_insert_only_20261021.py`+ `deploy/conoha/k_missing_races_bounded_runner_20261021.py`はConoHaで検証済み。最大6R×2バッチ、DB各6艇・結果照合/排他・例外停止・明示二重書込ゲート。旧無条件upsert`repair_month_all_pg.py`使用禁止。低負荷直列アクセス継続。
-- 保護: 4表事前バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、TOC/SHA256 OK（復元試験未済）。公式K詳細9日1,344R/8,064艇整合性PASS。既存自動収集/バックアップ/V5固定重み/Railwayは変更しない。
-- **Next ONE task:** 10/16の現DB `116:696:0:95` をread-only再確認した上でbounded runner `--day 2026-10-16 --batches 2 --apply` 1回実行。失敗/通信断の場合は再実行せずDB状況確認。正常12R追加なら128R/768艇/107結果、残28Rの見込み。
+## 2026-10-21 16:53 JST 10/16公式K未登録レース復旧・最新状態
+- ConoHa2GB/DB railway。10/16公式K156Rのうち`v2_races=140, v2_race_entries=840, bad6=0, v2_results=119`。Termiusで最終検査`RECOVERY_VERIFIED_PASS`。直近は安全runner2バッチ×6R: `BEFORE=(128,768,0,107)` → `AFTER=(134,804,0,113)` → `AFTER=(140,840,0,119)`、各`DELTA=(6,36,0,6)`、`BOUNDED_BATCH_PASS`2回、`BOUNDED_RUN_DONE`。既存データ上書きなし。アプリ切断後に別途read-onlyで128R/107結果を確認していたため、処理済分の重複実行はしていない。
+- 当初10/16・17に未登録252R、うち**119R補完済み、残133R**（10/16=16、10/17=117）。登録済みレースの初期結果欠損290Rと選手別詳細`v2_result_entries`未補完は別工程。後日データは締切前snapshot扱い禁止。
+- 復旧コードは`deploy/conoha/k_missing_races_insert_only_20261021.py` + `deploy/conoha/k_missing_races_bounded_runner_20261021.py`。1R毎atomic INSERT、6R×最大2バッチ、公式KとHTML検証、既存ID排除、6艇検査、読取専用デフォルトと明示二重ゲート。旧無条件upsertを使わない。
+- 保護: 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、SHA256/TOC OK（復元試験未実施）。公式K9日詳細1,344R/8,064艇は整合性PASS。ConoHa2GB・既存自動収集/バックアップ/V5固定重み/Railway変更禁止。OS更新の再起動要求あり、再起動は未実施。
+- **Next ONE task:** ConoHa read-onlyで`140:840:0:119`を再確認後、同bounded runner `--day 2026-10-16 --batches 2 --apply`を1回だけ実行。正常なら152R/912艇/131結果、残4R。その後小分けで10/16完了、10/17へ移る。切断時は無条件再実行せずDB状態を再検査。
