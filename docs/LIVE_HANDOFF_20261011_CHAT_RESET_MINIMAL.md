@@ -129,4 +129,8 @@
 - 当初の10/16,17未登録レース252Rのうち**135R補完済み**（10/16全件）、**残117R（10/17のみ）**。初期登録済みレースの結果欠損合計290R（10/08=144、10/15=124、10/16=21、10/17=1）はまだ別工程。取得した歴史データを当時の締切前データと混同しない。
 - 差分復旧は `deploy/conoha/k_missing_races_insert_only_20261021.py` と `deploy/conoha/k_missing_races_bounded_runner_20261021.py` のみ。K/HTML照合、既存4表ID保護、1R毎原子INSERT、最大6R×2バッチ、デフォルト読み取り専用、`--apply`+`CONFIRM_V5_K_RACE_REPAIR=YES`の二重書込ゲート、排他/6艇件数検査。既存の無条件upsertは禁止。
 - 保護: 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB+TOC/SHA256 PASS（復元試験未実施）。公式K詳細9日1,344R/8,064艇も検査済み。ConoHa2GB低負荷、既存自動収集/バックアップ/V5固定モデル/Railwayは変更しない。OS再起動要求が出ているが再起動は未実施。
-- **Next ONE task:** 10/17の`v2_races=51 / v2_race_entries=306 / bad6=0 / v2_results=50`を新たにread-only確認したうえで専用bounded runner `--day 2026-10-17`（applyなし）dry-run。差分公式K168R、未登録117Rの一致を確認。成功後にのみ10/17の初回少数実INSERT。切断時は現DB確認なしの再実行禁止。Termiusでは長い貼付を避け短いコマンド優先。
+- **Next ONE task:** 下記17:18 JST最新状態を参照。
+
+## 2026-10-21 17:18 JST 10/17公式K read-only preview PASS
+- Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
+- **Next ONE task:** 10/17 1バッチ最大6Rのみapply、実行直前DB`51:306:50`を突合、runner内部でbad6検査、終了後に`57:342:56`と照合。再実行・タイマー変更は禁止。途中停止時はDB状態を確認する。
