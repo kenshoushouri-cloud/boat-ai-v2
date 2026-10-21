@@ -135,9 +135,9 @@
 - Termiusで10/17の安全事前検査成功。DB `v2_races=51,v2_race_entries=306,bad6=0,v2_results=50`、公式K HTTP200・168R、`ABSENT_ALL_FOUR=117 ELIGIBLE_STANDARD=117`、dry-run候補 `20261017_03_12,04_07,04_08,04_09,04_10,04_11`。 `DRY_RUN_DONE_NO_DB_WRITES`, `BOUNDED_DRY_RUN_OK_NO_DB_WRITES`, `OCT17_PREVIEW_PASS`、DB変更なし。
 - **Next ONE task:** 17:22の最新状態を優先する。
 
-## 2026-10-21 17:45 JST 10/17部分補完とTermius落ち対策（最新）
-- 10/16公式K156Rはレース本体/出走6艇全件登録（結果135R、元登録済結果欠損21Rは別工程）。
-- 10/17は最初の6R安全pilot `BEFORE=(51,306,0,50)`→`AFTER=(57,342,0,56)`、`OCT17_PILOT_VERIFIED`。その後の2バッチapply中Termiusが終了。17:42に`pgrep -af '[k]_missing_races'`空、17:45にDB read-only `v2_races=63, v2_race_entries=378, v2_results=62`を確認：**6R分はコミット、2バッチ目は未完了の可能性**。**bad6はこの再接続時点で未再測定**。元未登録252Rのうち10/16=135R+10/17=12R=147R復旧推定、残105R(10/17)。
-- GitHubに一行操作用 `deploy/conoha/k17_recover_short_20261021.sh`追加（commit `357f334`、**ConoHa未反映、未実行**）。使用例: `bash deploy/conoha/k17_recover_short_20261021.sh 63` はデフォルトread-only（現DB `63:378:0:62`を確認しK差分dry-run）。後日明示承認で同末尾に`apply`を付けた場合のみ最大6Rを挿入、前後の件数/6艇不整合照合が通ったらPASS。想定外のDB状態ならSTOPし重複実行防止。既存bounded runnerの公式K/HTML照合・1R毎atomic・排他・二重書込許可は維持。
-- 4表バックアップ`/root/boat-v5-backups/k_recovery_4tables_20261021_123041.dump`57MB、TOC/SHA256 OK・復元試験未済。公式K9日詳細1,344R/8,064艇PASS。元登録済レースの結果欠損290Rと選手別詳細結果は別工程。V5固定ウェイト/収集/ConoHa2GB/Railwayは無断変更しない。後日取得を締切前snapshotと扱わない。OS再起動要求の表示あるが未再起動。
-- **Next ONE task:** Termiusで`git -C /opt/boat-ai-v5 pull --ff-only`が正常終了したら`cd /opt/boat-ai-v5`、`bash deploy/conoha/k17_recover_short_20261021.sh 63`で**read-only previewだけ**を試す。成功時`SHORT_PREVIEW_OK_NO_DB_WRITES`。applyは検査結果を受けて次ターン。Termiusアプリ落ち再発時は無条件再実行禁止。
+## 2026-10-21 17:52 JST 10/17短縮コマンドread-only PASS（最新）
+- 10/16公式K156Rに対しレース・出走936艇全件保存済、結果135件、元登録済み21Rの結果欠損は別工程。
+- 10/17は初期DB51R/306艇/50結果から、最初の6R pilotで57/342/56へ、続くTermius終了時にもう6Rのコミットが判明。17:45 read-only実測63R/378艇/62結果。17:52専用短縮スクリプトのdry-runで`BEFORE=63:378:0:62 EXPECTED=63:378:0:62`（6艇不整合0）、公式K HTTP200、`OFFICIAL=168 ABSENT_ALL_FOUR=105 ELIGIBLE_STANDARD=105`、候補`20261017_08_07..08_12`（08=常滑）、`DRY_RUN_DONE_NO_DB_WRITES`、`BOUNDED_DRY_RUN_OK_NO_DB_WRITES`、`SHORT_PREVIEW_OK_NO_DB_WRITES`。DB変更なし。
+- 元未登録252Rのうち10/16=135R＋10/17=12Rの計147R復旧、残105Rは10/17のみ。既存登録済レースの初期結果欠損290R、選手別詳細`v2_result_entries`は別工程。過去再取得を予想締切前証拠に流用禁止。
+- 短縮スクリプト`deploy/conoha/k17_recover_short_20261021.sh`はConoHaへ`git pull --ff-only`で反映済。実書込時は事前`expected race count`＋6艇整合/結果件数照合、下位runnerが6Rまでで自動停止、K/HTML検証/1R毎原子INSERT/排他/明示2重ゲート、終了後の件数照合。ConoHa2GB/既存収集/V5ウェイト/Railway保護。4表バックアップ57MB SHA256/TOC PASS（復元試験未実施）。OS再起動通知があるが再起動しない。
+- **Next ONE task:** Termius一行`cd /opt/boat-ai-v5 && bash deploy/conoha/k17_recover_short_20261021.sh 63 apply`を一度だけ実行。6R正常なら`AFTER=69:414:0:68`、`SHORT_BATCH_VERIFIED`。アプリ落ち時は再実行せずプロセスとDB確認。
