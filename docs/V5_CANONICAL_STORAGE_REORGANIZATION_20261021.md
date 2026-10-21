@@ -65,3 +65,9 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 - 朝・夜`boat-v5-daily@.service`はテンプレートとして`target=UNRESOLVED`、**運用中の実呼び出し先は未認定**。forward-windowはPython側で`v21_realtime_collector_pg_safe.py`→`v21_realtime_collector_pg.py`を呼ぶ。旧collectorは`_ensure_realtime_tables`で旧`v2_realtime_*`表に`CREATE TABLE IF NOT EXISTS`や`ALTER TABLE`を実施する実装を持つ。移管後に旧public表が再生成されてデータ分離が再発する危険があり、**移管前にスキーマ作成処理の無害化・旧writerの参照先切替が必要**。
 - `db_pg.py`の`sql.Identifier(table)`は現在一部分のみ指定されたテーブル名（例`v2_results`）を使うため、安易に`v5_data.results`を文字列渡しすると引用識別子として誤解釈される。`ON CONFLICT`・`replace_rows_atomic`はVIEWに単純切替できない。これらも移行ガード対象。
 - GitHub`deploy/conoha/v5_active_writer_routes_readonly_20261022.py`改訂（commit `10b93eab`）：朝/夜のテンプレート具体化 + 旧collectorのDDL警告を表示する。読取専用、データ本体/DB/稼働サービス未変更。次の安全検査で朝夜`DAILY_INSTANCE`出力を確認する。
+
+## 2026-10-22 06:34 朝夜収集の実経路・V5物理移管の不足ソース
+- Termius `V5_DAILY_ENTRYPOINTS_READONLY_COMPLETE`。morning/nightの両方はConoHaの`/opt/boat-ai-collector/daily_v5_safe.sh`へ解決。同wrapperの静的検査では`repair_month_all_pg.py`のみ直接参照、`save_k_day_results_pg.py`の直接参照なし（呼出しの静的な検査であり実稼働実績の証明ではない）。
+- GitHub `repair_month_all_pg.py`の書込を点検：`v2_venues`,`v2_races`,`v2_race_entries`,`v2_results`,`v2_odds_trifecta`を`db_pg.py`の`upsert_rows`へ渡す。別プログラム`save_k_day_results_pg.py`は`v2_result_entries`に選手別全6艇結果を保持。朝夜wrapper経路と別であり「結果完備」≠「全6艇結果完備」。
+- 既決の`v5_data` VIEW構成に`v2_venues`と`v2_odds_trifecta`の専用参照がない。この2つを見落として移管を進めると収集先が分散。**現行11VIEWを即破棄しない**。候補名`v5_data.venues`,`v5_data.trifecta_odds`は検討用で未本番作成。
+- Stage 1 SQL `deploy/conoha/v5_daily_missing_sources_readonly_20261022.sql` で必要6ソースの元実テーブル・既存V5 VIEW/表の有無と容量を読取専用で確認。次工程は表示を確認し、テーブル名衝突、旧writer/upsert/DDLのスキーマ参照更新と既存データ原本移管のアトミックな手順を設計。DB物理移動、service停止・改造、Railway削除等は未実施。
