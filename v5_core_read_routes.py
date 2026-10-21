@@ -10,7 +10,7 @@ from v5_daily_table_routes import resolve_table
 
 LEGACY = frozenset((
     "v2_venues", "v2_races", "v2_race_entries",
-    "v2_results", "v2_odds_trifecta",
+    "v2_results", "v2_result_entries", "v2_odds_trifecta",
 ))
 
 PHYSICAL = {
