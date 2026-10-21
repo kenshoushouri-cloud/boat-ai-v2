@@ -225,8 +225,10 @@ def main():
 
         # No writes until every candidate's official HTML/K/DB evidence agrees.
         checked = []
-        for rid in selected:
+        for n, rid in enumerate(selected, 1):
             checked.append((rid, fetch_triple(args.day, rid, k[rid], original[1][rid])))
+            if n % 6 == 0 or n == len(selected):
+                print(f"HTML_PRECHECK_VERIFIED={n}/{len(selected)} day={args.day}", flush=True)
         if snapshot(args.day) != original:
             raise RuntimeError("STOP: DB changed during official precheck; rerun only after audit")
         print("ALL_SELECTED_K_HTML_DB_VERIFIED=" + str(len(checked)), flush=True)
