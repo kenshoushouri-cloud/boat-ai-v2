@@ -197,3 +197,8 @@
 ## 2026-10-21 13:28 JST 10/16 6レースdry-run PASS
 - ConoHa `/opt/boat-ai-v5` をmain `a3d465e`へfast-forward、`k_missing_races_insert_only_20261021.py` py_compile PASS。`--day 2026-10-16 --limit 6`（applyなし）で公式K200、`OFFICIAL=156 ABSENT_ALL_FOUR=130 ELIGIBLE_STANDARD=130`、`MODE=READ_ONLY`/`DRY_RUN_DONE_NO_DB_WRITES`/`SIX_RACE_PREVIEW_DONE`。候補`20261016_02_11`, `_02_12`, `_03_01`, `_03_02`, `_03_03`, `_03_04`。既存4件の差分補完は成功済み、10/16未登録残130R。
 - **Next ONE task:** 同コードの`--limit 6 --apply`を明示ゲート付きで1回実行、成功後に選択6Rのrace=1/entries=6/results=1/details=0をread-only確認。途中失敗時は再実行せず現DB状態を検査。2GB/公式低負荷/既存自動収集・バックアップ・V5固定モデルを保護。
+
+## 2026-10-21 13:37 JST 6レース一括復旧とDB検証PASS
+- ConoHa `k_missing_races_insert_only_20261021.py --day 2026-10-16 --limit 6 --apply`実行成功。対象`20261016_02_11/12`, `20261016_03_01/02/03/04`、各`DAY_RACE_PASS`、`BATCH_PASS wrote=6`。DB read-onlyで6件全て`races=1,entries=6,distinct_lanes=6,results=1,details=0,status=PASS`、`SIX_RACE_CHECK_FINISHED`。払戻2,050/2,740/3,780/1,620/3,310/2,810円。再実行不要。
+- K公式基準の未登録252レースのうち11R復旧、残241R（10/16=124、10/17=117）。詳細6艇結果は別工程で未補完。4表バックアップ57MB/SHA OK、V5重み・タイマー変更なし。
+- **Next ONE task:** 10/16に対し残りから最大6Rを明示ゲート付き同スクリプトで順次INSERT、日別read-only整合性と処理結果を確認。規模拡大・長時間放置前に2GB負荷と公式サイトへのアクセス負担を観察。通信切断・途中失敗時は重複実行しない。
