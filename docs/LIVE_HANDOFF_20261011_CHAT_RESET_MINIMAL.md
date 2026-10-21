@@ -178,3 +178,7 @@
 - ConoHa `railway` の単一レース`20261016_02_06`をTermiusで再照合。`v2_races`=1、`v2_race_entries`=6（lane1..6・racer 3442/5236/5299/4002/4111/5206）、`v2_results`=1（`result_status=official`, `trifecta_ticket=1-4-3`, `trifecta_payout_yen=2410`, `source=official_historical_recovery`）、`v2_result_entries`=0。`COMMIT`成功。既存更新なし・後日取得は当時の締切前証拠にしない。再実行不要。
 - 10/16,17公式KとDB比較で確認した未登録レース252件から1件回復、残251件（10/16残134、10/17残117）。登録済みレースに対する結果欠損290件も別に残る（10/16の新規1レース分の結果は回復）。K選手別詳細は別途補完必要。
 - **Next ONE task:** 既存行を上書きしない少数件数/日別トランザクション・明示書込許可・安全な公式ID照合・1worker・異常時停止を備えた専用差分補完スクリプトをGitHubで作り、まずConoHa read-only preview/テスト。旧`repair_month_all_pg.py`全件upsertは使わない。ConoHa2GB、既存timer/バックアップ/V5固定モデル保護。
+
+## 2026-10-21 12:51 JST 既存行非更新・差分修復ツールのGitHub追加
+- GitHub mainに`deploy/conoha/k_missing_races_insert_only_20261021.py`追加（commit`8dc74c0`）。10/16・17のみ対象、公式KでID/6艇/parse検査、DB4表の既存IDを避け、正常な3連単と払戻のある**完全未登録レースのみ**選択。`--limit`は最大3、デフォルトread-only表示、`--apply`かつ`CONFIRM_V5_K_RACE_REPAIR=YES`の二重許可がなければ書込禁止。applyは1RごとにHTML 6艇・K照合→3表単一tx INSERTのみ→結果/6艇POSTWRITE確認、途中エラー停止。`v2_result_entries`未補完。**コード作成のみ、ConoHa未反映・構文/実DBテスト未検証・DB追加書込なし。**
+- **Next ONE task:** Termiusでgit cleanを確認後mainをff、当該ファイル構文検査と`--day 2026-10-16 --limit 3`を**--apply無しread-only**で実行して結果確認。実書込は別判断。手動済み戸田6Rの再実行禁止。V5モデル/既存タイマー/バックアップ保護。
