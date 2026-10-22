@@ -141,8 +141,10 @@
 - GitHub code-only下流監査記録`docs/V5_SPECIAL_TRIFECTA_INVALID_DOWNSTREAM_AUDIT_20261022.md` (commit `464ebcc`)。`v5/conoha_midnight_results_pg.py`は無効結果を終端として認識、`backtest_candidate_filter_rules_pg.py`/ `backtest_n02_walkforward_pg.py`は通常3連単結果として除外。**ただし `research/forward_economics.py` は `invalid_result`の投資額を0にする**。本当の購入があった場合には事前購入記録を母集団から除外せず、券別の公式返還を確認・反映、不明ならPENDING。 `v5/offline_trifecta_cash_ledger.py` はMockTicketReturn/refund_yen対応だが公式返還原本・実注文証拠の結合は未検証。V5実ROI・+5万円/月は引き続き未実証。
 - **Next ONE task**: GitHubで現行V5収支報告の呼出し経路と券別返還原本の使用箇所を最小限のread-onlyで確認し、必要なら不成立を誤集計しないオフラインテストを設計。ConoHa/DBへの追加書込・購入・再起動・削除・V5重み変更禁止。運用費用最小、チャットの1回1作業維持。
 
-## 2026-10-22 19:38 JST V5旧DDL安全ガード1件の型エラー修正（最新）
-- 19:34 opt-in `--late-retry`のread-only previewは1件候補（20場5R、19:56締切、19:34時点展示0/オッズ0）。`V5_FORWARD_NO_HTTP_NO_WRITES=1`を確認。現在本番の追加取得は未有効化。
-- V5物理移管向けオフライン検査 `tests/test_v5_realtime_stale_legacy_guard.py` 4件中3成功・1エラー。失敗は入力がdict型`{'target_0':None}`のとき、`v5_legacy_ddl_guard.py`38行目が`rows[0]`し`KeyError:0`となるもの。本番DB被害/DB書込なし。先頭テストが非0終了したので次の旧DDLテスト5件は走らず。
-- GitHub `v5_legacy_ddl_guard.py` commit `2f6fd94dfde86ece36c9e8fb135e774ed36aa305`を修正：to_regclassのcatalog応答は`list/tuple`かつ正確に1行dictを要求、不一致時は意図されたfail-closed`RuntimeError(STOP:... catalog gate unavailable)`。読取のみコード、ConoHa未適用。
-- **Next ONE task**: Termius `git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && PYTHONDONTWRITEBYTECODE=1 /opt/boat-ai-v5-venv/bin/python -m unittest discover -s tests -p 'test_v5_realtime_stale_legacy_guard.py' -v && PYTHONDONTWRITEBYTECODE=1 /opt/boat-ai-v5-venv/bin/python -m unittest discover -s tests -p 'test_v5_legacy_ddl_guard.py' -v`。想定4+5 PASS, CPU・費用微小、DB/service/Railway無変更。最終的な物理移管・本番ルート切替・削除はバックアップ復元/旧writer/VIEW依存/rollback等のゲート完了と別途承認まで禁止。過去欠損再取得は優先しない。
+## 2026-10-22 19:41 JST V5旧DDL安全ガード9/9 PASS、次は本番DBカタログのみ照合（最新）
+- Termius screenshot: `tests/test_v5_realtime_stale_legacy_guard.py` 4/4 OK（0.018s）、`tests/test_v5_legacy_ddl_guard.py` 5/5 OK（0.019s）。以前の`KeyError:0`が解消。コード内の旧テーブル再CREATE/ALTER防止がオフラインでは期待どおり。DB/サービス/構成変更なし。
+- V5正本移管の採用設計は`docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。既存11件の論理VIEWと物理原本を混同しない。旧writer、新旧識別子、FK/VIEW/権限、backup実復元、ロールバック検証・明示承認が揃うまでは`ALTER TABLE ... SET SCHEMA`禁止。現在コードのphysical関連環境flagを本番で有効化しない。
+- **Next ONE task**：稼働しているConoHaローカル`railway` DBに対して、`v5_legacy_ddl_guard.forbid_legacy_realtime_if_physical_exists(fetch_all)`を実際のDBで1回read-only検証。Termiusコマンド：
+`git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && runuser -u postgres -- env DATABASE_URL=postgresql:///railway /opt/boat-ai-v5-venv/bin/python -c 'from db_pg import fetch_all; from v5_legacy_ddl_guard import forbid_legacy_realtime_if_physical_exists; forbid_legacy_realtime_if_physical_exists(fetch_all); print("V5_REALTIME_LEGACY_CATALOG_GATE_OK_NO_DB_WRITES")'`
+成功時: 実DB辞書結果を解釈、予定されたV5 physical 6件がまだ存在しないことを確認。失敗時は**移管/サービス変更禁止**でエラーを確認する。DB SELECTのみ・HTTP再取得なし・CPU/費用ほぼなし。確認後は移管に必要な他writerの既存スキーマ依存とbackups復元gateの検査に進む。
+- ユーザー合意：古い欠損を高コストで追完しない。5分前オプトイン収集機能はプレビュー7件テストとSELECTプレビューのみ、実運用未有効化。実BUY・V5収益検証は未認証。チャット短文化、1回1作業。
