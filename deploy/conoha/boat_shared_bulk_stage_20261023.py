@@ -4,7 +4,7 @@ Runs only 02:00-06:15 JST, after the 01:20 result catchup and before 07:00
 daily/forward collection. Source writers/timers are never touched. Every
 table is copied atomically in one repeatable-read transaction. Each target
 is only a historical snapshot and MUST NOT be used by a live writer until
-catch-up, indexing, privilege, FK, triggers and route checks pass separately.
+catch-up, defaults/identity, privileges, FK, triggers and route checks pass.
 """
 from __future__ import annotations
 import argparse
@@ -84,14 +84,9 @@ def inventory(conn):
                     (old, new))
                 if n != 1:
                     raise RuntimeError("STOP: existing table lacks verified manifest: " + new)
-            n_generated = scalar(c, """SELECT count(*) FROM pg_attribute
-                WHERE attrelid=to_regclass(%s) AND attnum>0 AND NOT attisdropped
-                AND (attgenerated<>'' OR attidentity<>'')""", (old,))
-            n_serial = scalar(c, """SELECT count(*) FROM pg_attrdef
-                WHERE adrelid=to_regclass(%s)
-                  AND pg_get_expr(adbin,adrelid) LIKE 'nextval(%%'""", (old,))
-            if n_generated or n_serial:
-                raise RuntimeError("STOP: identity/serial needs dedicated copy: " + old)
+            # Source SERIAL/IDENTITY/GENERATED defaults are intentionally
+            # NOT copied to avoid sharing the live sequence with staging.
+            # Stored row values ARE copied, but writers may not use staging.
             size = scalar(c, "SELECT pg_total_relation_size(to_regclass(%s))", (old,))
             rows.append((source, dest, size, target is not None))
             log("SOURCE", old, "=>", new, "size_mb=" + str(size // 1048576),
@@ -129,7 +124,7 @@ def copy_table(conn, source, dest):
             c.execute("SELECT set_config('lock_timeout', '1500ms', true)")
             c.execute("SELECT set_config('statement_timeout', %s, true)",
                       (str(timeout * 1000),))
-            c.execute(sql.SQL("CREATE TABLE {} (LIKE {} INCLUDING ALL)").format(
+            c.execute(sql.SQL("CREATE TABLE {} (LIKE {} INCLUDING ALL EXCLUDING DEFAULTS EXCLUDING IDENTITY EXCLUDING GENERATED)").format(
                 rel("boat_data", dest), rel("public", source)))
             c.execute(sql.SQL("INSERT INTO {} SELECT * FROM {}").format(
                 rel("boat_data", dest), rel("public", source)))
