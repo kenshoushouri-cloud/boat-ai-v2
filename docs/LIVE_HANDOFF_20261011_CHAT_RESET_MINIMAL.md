@@ -152,3 +152,8 @@
 - 詳細`docs/V5_COPY_FIRST_CUTOVER_20261022.md`新規作成。`deploy/conoha/v5_copy_first_preflight_readonly_20261022.sql`（source12表→physical V5候補の実在、サイズ、FK/trigger、estimated rows）追加。現状12個のV5 VIEWはまだ旧`public.v2_*`に依存、実データ未コピー。
 - **Next ONE task**: Termius `git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_copy_first_preflight_readonly_20261022.sql`。期待`V5_COPY_FIRST_PREFLIGHT_READONLY_DONE_NO_DB_WRITES`。その後venuesなど小規模pilotの条件を設計。4本のsystemd timerを無断停止しない。10/19暗号化backupは過去時点用、10/19以降の締切前観測は必ず再現できる訳ではない。大規模バックアップ再作成は整理後だが、切替前の必要最小rollback確保必須。コスト最小化・購入禁止。
 
+## 2026-10-22 20:39 JST 最終レース後23時候補／結果翌日取得案（最新）
+- ユーザー: 最終レースの展示/オッズが23時には取得済みのはず、結果は翌日取得でよいのでは。基本賛成、ただし23時の時刻自体は取得成功の証拠ではない。締切前原本の保存を確認し、欠損は欠損として扱う。事後取得を締切前扱いしない。
+- **23時は候補で自動停止時刻ではない**。既存night daily timerは過去監査で23:00、midnight catchup 01:20、forward動的timer。翌日結果取得にするならcatchupも含む全実writer停止/新route確認、未取得結果のpending保持・翌日安全回収・勝券異常処理が条件。ユーザーの主希望はConoHa余裕で段階コピー+差分同期。V5 physical先は現在未作成、既存12表のcatalog preflight PASS・DB約3448MB。
+- GitHubに `deploy/conoha/v5_last_races_snapshot_gate_readonly_20261022.sql`を追加、直近12レースの締切時刻と締切前exhibition/odds件数、当日全レースの締切残件数をDB読み取りだけで表示。`docs/V5_COPY_FIRST_CUTOVER_20261022.md`に「結果PENDING=0は翌日へ明示保留可」に変更（ただし結果既存分を切替後失わず、サービス分裂なし条件）。
+- **Next ONE task**: 現行稼働を止めずTermiusで `git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_last_races_snapshot_gate_readonly_20261022.sql`。実行時刻が23時前ならfuture_cutoffsあり得るため停止判定ではない。出力を見て本日の23時切替が現実的か判断。まだコピー・サービス停止・環境フラグ・DB書込は実施禁止、実行前に手順/rollback・明示承認必要。コスト最小・トーク1回1作業。
