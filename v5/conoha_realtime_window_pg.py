@@ -86,7 +86,7 @@ def build_candidates_query():
     )
 
 
-def load_candidates(now: datetime) -> list[dict]:
+def load_candidates(now: datetime, *, min_minutes: int = 9) -> list[dict]:
     from db_pg import get_conn
 
     # Resolve both route switches BEFORE opening the database connection.
@@ -95,7 +95,7 @@ def load_candidates(now: datetime) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(
                 query,
-                (now.astimezone(JST).date(), now + timedelta(minutes=9),
+                (now.astimezone(JST).date(), now + timedelta(minutes=min_minutes),
                  now + timedelta(minutes=24)),
             )
             return list(cur.fetchall())
@@ -132,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="perform official HTTP and write snapshots")
     ap.add_argument("--max-races", type=int, default=2, help="per-run cap (1..3)")
+    ap.add_argument("--late-retry", action="store_true",
+                    help="opt in to bounded missing-data retries at 5..9 min; off by default")
     args = ap.parse_args(argv)
     if not 1 <= args.max_races <= 3:
         ap.error("--max-races must be 1..3")
@@ -141,11 +143,14 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("apply requires V5_ENABLE_LIVE_COLLECTOR=YES")
 
     now = datetime.now(JST)
-    candidates = [r for r in load_candidates(now) if eligible(r, now)]
+    min_minutes = 5 if args.late_retry else 9
+    candidates = [r for r in load_candidates(now, min_minutes=min_minutes)
+                  if eligible(r, now, min_minutes=min_minutes)]
     targets = candidates[:args.max_races]
     print(f"V5_FORWARD_WINDOW_MODE={'APPLY' if args.apply else 'PREVIEW'}", flush=True)
     print(f"V5_FORWARD_WINDOW_NOW={now.isoformat()}", flush=True)
     print(f"V5_FORWARD_WINDOW_CANDIDATES={len(candidates)}", flush=True)
+    print(f"V5_FORWARD_WINDOW_MIN_MINUTES={min_minutes}", flush=True)
     for row in targets:
         print(f"V5_FORWARD_TARGET={row['race_id']} cutoff={row['deadline_at']} "
               f"exh={row['exh_lanes']} odds={row['odds_tickets']}", flush=True)
@@ -157,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     for row in targets:
         # Revalidate the cutoff after every potentially slow HTTP collection.
         current = datetime.now(JST)
-        if not eligible(row, current):
+        if not eligible(row, current, min_minutes=min_minutes):
             print(f"V5_FORWARD_SKIP_STALE={row['race_id']}", flush=True)
             continue
         try:
