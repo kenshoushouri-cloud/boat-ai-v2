@@ -106,3 +106,9 @@ ConoHa Termiusで **選手の直近5走・選手級別の適用日・モータ�
 ## 2026-10-22 07:42 既存出走表ALTERの移管後再実行を抑止（コードのみ）
 - 既存`v21_realtime_collector_pg._ensure_realtime_tables()`に残る`ALTER TABLE public.v2_race_entries`の3項目を、`v5_core_read_routes.legacy_entry_alters()`経由に変更。既定legacyは同じ3項目、明示`core`かつ二重確認のときは旧物理出走表のALTERを発行しない。flag不備は他DDLに入る前に拒否。snapshot物理分岐は従来通り。実行環境の設定変更なし。
 - 新規5ケースを`tests/test_v5_core_reader_routes.py`へ、既存5ケースのAST検査を`tests/test_v5_legacy_ddl_guard.py`へ反映。テストはTermius実施前。旧collector/DML/他プログラムの全切替、V5現物・バックアップ復元の確認が未了につき物理移管・flag本番設定はまだ禁止。
+
+## 2026-10-22 20:26 方針案更新：停止短縮を狙う「段階コピー→差分同期→切替」優先検討
+- 最新ユーザー提案: ConoHaの空き67GB/DB3.4GBを活用、旧データ収集を継続しつつ、V5専用実表に必要な原本を整理コピーし、**当日の結果取得まで完了後**にtimer/service/子workerを限定停止して最終差分・書込先/読取先を切替える。安全性とロールバックを優先。旧`ALTER TABLE SET SCHEMA`優先方針を見直す。コピー実施の確約・本日中cutoverの確約ではない。
+- 参照正本 `docs/V5_COPY_FIRST_CUTOVER_20261022.md` に作業段階/判定基準。コピー後も旧テーブルは並行保全するため一時的ディスク二重使用・WAL/インデックス負荷が増える。データ保管対象と予測採用特徴量は別の判定で、未採用情報の原本は消さない。
+- まずread-only `deploy/conoha/v5_copy_first_preflight_readonly_20261022.sql` で旧ソース12表と新物理候補の実在/競合・サイズ/FK/triggerを確認。DB/タイマー書込なし。コピー生成や本番フラグON/停止/DROPは、確認結果と詳細設計・個別承認の後。
+
