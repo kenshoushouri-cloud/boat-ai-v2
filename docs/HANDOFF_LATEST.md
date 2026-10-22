@@ -11,3 +11,5 @@
 **2026-10-19現在**：ConoHaへメイン/履歴・V3/V4資産を保全、Termius/Tailscale接続済み。Railway撤退優先（DB2+Volume2は保護中、cron6件休止）、ConoHa独立収集・V5完成は継続。Google Drive無料15GBを暫定使用、100GB有料契約は開発が落ち着くまで延期。10/19メインDB新規ダンプ作成済み・暗号化/外部転送は未了。詳細と最新のNext ONE taskはcompactを参照。V5純利益目標**+50,000円/月は未検証**、1–3レース/日または0。不要なRailway費用を最小化。無断BUY・DB/Volume削除・有料契約・本番変更禁止、Railway Agent/AI禁止。
 
 **Next ONE task:** current handoff末尾を参照。実行時間目安を添え、1回1作業・最小tool call・短い報告。SHA/run/件数/容量はその場で必要時だけlive取得。タイムアウト後の重複実行禁止。
+
+**2026-10-23更新：** 共有VIEW13件の作成結果および次回の優先作業は `docs/V5_NEXT_SHIFT_PRIORITY_20261023.md` を参照。検査SQLは `deploy/conoha/v5_shared_views_cutover_readiness_readonly_20261023.sql`。実データ移動とV5予想本番切替は未完了。
