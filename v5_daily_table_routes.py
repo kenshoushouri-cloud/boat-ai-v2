@@ -9,6 +9,9 @@ from __future__ import annotations
 import os
 
 ROUTES = {
+    # New shared storage is disabled by default and requires a THIRD gate.
+    # The table currently does not exist: schema creation is NOT cutover.
+    "shared_venues_v1": {"v2_venues": "boat_data.venues"},
     "venues": {"v2_venues": "v5_data.venues"},
     "odds": {"v2_odds_trifecta": "v5_data.trifecta_odds"},
     "venues_odds": {
@@ -29,6 +32,8 @@ ROUTES = {
 }
 MODE_KEY = "V5_DAILY_WRITE_ROUTE_PROFILE"
 GATE_KEY = "CONFIRM_V5_PHYSICAL_WRITER_ROUTE"
+SHARED_VENUES_PROFILE = "shared_venues_v1"
+SHARED_VENUES_GATE = "CONFIRM_BOAT_SHARED_VENUES_ROUTE"
 
 
 def resolve_table(table: str) -> str:
@@ -44,4 +49,6 @@ def resolve_table(table: str) -> str:
         raise RuntimeError(f"Unsupported {MODE_KEY} value")
     if os.environ.get(GATE_KEY) != "YES":
         raise RuntimeError(f"V5 route blocked: {GATE_KEY} is not YES")
+    if profile == SHARED_VENUES_PROFILE and os.environ.get(SHARED_VENUES_GATE) != "YES":
+        raise RuntimeError(f"Shared route blocked: {SHARED_VENUES_GATE} is not YES")
     return ROUTES[profile].get(table, table)
