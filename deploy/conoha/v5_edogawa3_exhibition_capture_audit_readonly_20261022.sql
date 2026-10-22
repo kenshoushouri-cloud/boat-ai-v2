@@ -25,7 +25,7 @@ SELECT 'EDOGAWA3_CAPTURED_PAGE_TEXT' AS audit,
        length(page_text) AS saved_text_chars,
        position('展示' IN page_text)>0 AS has_exhibition_word,
        (SELECT count(*) FROM regexp_matches(page_text,
-           '(^|[^0-9])[67]\\.[0-9]{2}([^0-9]|$)', 'g')) AS time_shaped_tokens,
+           '(^|[^0-9])[67][.][0-9]{2}([^0-9]|$)', 'g')) AS time_shaped_tokens,
        CASE WHEN page_text='' THEN 'NO_TEXT_SAVED'
             ELSE 'TEXT_ONLY_NOT_RAW_HTML' END AS evidence_limit
 FROM snaps
