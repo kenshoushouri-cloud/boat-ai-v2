@@ -33,3 +33,9 @@
 
 ## 目下のONE task
 **read-only**で、`v5_data.venues`24行の旧原本との一致と、共通`boat_data`スキーマの有無・旧依存を確認する。SQL：`deploy/conoha/boat_shared_storage_preflight_readonly_20261022.sql`。現収集を止めない。次工程で共通スキーマDDL・route APIとテストを追加し、非予測中の小規模データだけを移管。今夜のレース収集やモデルを壊してまで一括切替しない。
+
+## 初期実装（GitHubコードのみ・本番経路未変更）
+- `boat_shared_storage_contract.py`: PostgreSQL `railway` の13個の主要ソースをバージョン中立な`boat_data.*`候補に一意対応、時刻根拠ルールを保持。旧 `v5_data.venues` はSTAGED_PILOTSと区別し、選手履歴用別DBとV24研究shadowを誤ってライブ入力に採用しないフェイルクローズ関数を追加。**V5日次や直前収集へまだ配線していない**。
+- `tests/test_boat_shared_storage_contract.py`: 7個のオフライン単体テスト（既存Collector/DBへの副作用なし）。
+- `deploy/conoha/boat_shared_storage_preflight_readonly_20261022.sql`: `public.v2_venues` とステージ `v5_data.venues` を現在時点で再照合し、`boat_data` スキーマ存在、現行VIEW依存を確認するread-only検査。**現行収集を停止・変更しない**。これが次のONE task。
+- 後工程で同一DB内の`boat_data`スキーマを作り、ステージ実表を安全な短時間ロックで`SET SCHEMA`するコードと、既存の`v5_core_read_routes.py`/`v5_daily_table_routes.py`/`v5_realtime_table_routes.py`/`v5_k_result_routes.py`/DB upsert/DDL互換を統一してから、物理共通テーブルを実運用にする。名称の置換だけでは未完成。
