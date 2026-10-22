@@ -1,4 +1,4 @@
-"""Guarded 12-table V5/V6 common-data STAGING, not production cutover.
+"""Guarded 13-table V5/V6 common-data STAGING, not production cutover.
 
 Runs only 02:00-06:15 JST, after the 01:20 result catchup and before 07:00
 daily/forward collection. Source writers/timers are never touched. Every
@@ -18,6 +18,7 @@ import psycopg
 from psycopg import sql
 
 SOURCES = (
+    ("v2_venues", "venues"),
     ("v2_races", "races"),
     ("v2_race_entries", "entries"),
     ("v2_results", "results"),
