@@ -1,17 +1,14 @@
-# 新チャット開始文（短縮・2026-10-19更新）
+# 新チャット開始文（2026-10-23 06:51 JST・短縮）
 
-新しいチャットで以下をそのまま送信：
+以下をそのまま新チャットに貼り付ける：
 
 @GitHub
-@Railway
 
 新競艇AI開発プロジェクトNo.2の続きです。
 Repository: kenshoushouri-cloud/boat-ai-v2
 
-最初に docs/HANDOFF_LATEST.md と、そこが指定する current compact handoff **だけ**を読んでください。**直前1チャットのみ、必要な判断や実行結果について参照可能な範囲で補助参照を許可します。** 古い会話・過去handoff・PROJECT_HISTORY・長いworkflowの全文大量読み込みは禁止。正式な進捗記録は最新compact handoffです。
+まず `docs/HANDOFF_LATEST.md` と、そこが示す **current compact handoffのみ** 読んでください。過去の長いhandoff・PROJECT_HISTORY・過去会話の大量参照は禁止。実行済み作業の再実行禁止。最新compactの **Next ONE task** から1回1作業、最小tool call・短い出力で進めてください。
 
-2026-10-19現在：TermiusのTailscale接続（Wi-Fi/4G/5G）成功。ConoHaにメイン/履歴DB・V3/V4保全済み。RailwayにはPostgres DB2+Volume2を保護して残し、cron6件を長期休止。RailwayとConoHaのread-only件数/最新日照合済みだが、全レコード包含・全表差分は未証明。10/19 12:45のConoHaメインDB新規dumpは作成・目録確認済みで、**暗号化とDrive転送は未了**。Google Drive無料15GBを当面利用し、100GB契約は開発落ち着くまで延期（未契約）。月1回自宅HDDへの手動退避を予定。
+2026-10-23 06:45：ConoHaの`boat_data`にある非更新VIEW13件が13/13 PASS。ただしデータの物理移動・V5本番予想切替は未了。06:51：実入力の限定read-only SQLは**0 rows・SQL正常終了**、朝7時の収集前なので収集失敗とは断定不可。まず07時morning/forward収集ログをread-only確認し、実データの時点根拠を調べてV5の**非購入予想試験**を優先。古い共有bulk stage実行・旧DB/backup削除・本番切替・自動購入・有料契約・LINE送信は禁止（独立した明示承認が必要）。ConoHaを優先、Railway Hobbyは解約済み、コスト最小。
 
-**直ちにcurrent compact末尾のNext ONE taskから、1回に1作業、所要時間目安を付けて進める。** 完了済み作業は繰り返さず、必要な情報だけlive確認。タイムアウト後の重複操作は禁止。DB/Volume削除、課金、本番変更、LINE送信、自動BUYは別途明示承認。Railway Agent/AI禁止。
-
-目標：Railway完全撤退→ConoHa独立収集・安全な外部バックアップ→V5主力開発/実3連単収益検証（純利益+5万円/月は未実証）。自動購入は最後に別承認。
+V5運用の目標は実3連単予想・2025年7月以降の時点厳守バックテスト・非購入試験、その後に自動購入可否を検討する。遅延しているため設計や調査を増やしすぎず、実稼働へ直接必要な作業を優先。
