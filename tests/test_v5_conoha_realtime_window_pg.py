@@ -2,9 +2,9 @@
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from v5.conoha_realtime_window_pg import collect_one, eligible
+from v5.conoha_realtime_window_pg import collect_one, eligible, load_candidates
 import v21_realtime_collector_pg_safe as safe
 
 JST = timezone(timedelta(hours=9))
@@ -38,6 +38,34 @@ class TestForwardSelector(unittest.TestCase):
         row["race_id"] = RID
         row["deadline_at"] = NOW.replace(tzinfo=None) + timedelta(minutes=15)
         self.assertFalse(eligible(row, NOW))
+
+    def test_late_retry_is_opt_in_only_for_missing_snapshots(self):
+        row = {"race_id": RID, "deadline_at": NOW + timedelta(minutes=8),
+               "exh_lanes": 0, "odds_tickets": 120}
+        # Existing production default unchanged.
+        self.assertFalse(eligible(row, NOW))
+        self.assertTrue(eligible(row, NOW, min_minutes=5))
+        row["deadline_at"] = NOW + timedelta(minutes=5)
+        self.assertTrue(eligible(row, NOW, min_minutes=5))
+        row["deadline_at"] = NOW + timedelta(minutes=4, seconds=59)
+        self.assertFalse(eligible(row, NOW, min_minutes=5))
+        row["deadline_at"] = NOW + timedelta(minutes=7)
+        row["exh_lanes"] = 6
+        self.assertFalse(eligible(row, NOW, min_minutes=5))
+
+    def test_opt_in_query_includes_5_minute_window(self):
+        conn = MagicMock()
+        cur = conn.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cur.fetchall.return_value = []
+        with patch("db_pg.get_conn", return_value=conn), patch(
+            "v5.conoha_realtime_window_pg.build_candidates_query",
+            return_value="SELECT candidate"
+        ):
+            self.assertEqual(load_candidates(NOW, min_minutes=5), [])
+        args = cur.execute.call_args.args[1]
+        self.assertEqual(args[0], NOW.date())
+        self.assertEqual(args[1], NOW + timedelta(minutes=5))
+        self.assertEqual(args[2], NOW + timedelta(minutes=24))
 
     def test_live_subprocess_env_is_strict_and_isolated(self):
         with patch("v5.conoha_realtime_window_pg.subprocess.run") as runner:
