@@ -39,3 +39,8 @@
 - `tests/test_boat_shared_storage_contract.py`: 7個のオフライン単体テスト（既存Collector/DBへの副作用なし）。
 - `deploy/conoha/boat_shared_storage_preflight_readonly_20261022.sql`: `public.v2_venues` とステージ `v5_data.venues` を現在時点で再照合し、`boat_data` スキーマ存在、現行VIEW依存を確認するread-only検査。**現行収集を停止・変更しない**。これが次のONE task。
 - 後工程で同一DB内の`boat_data`スキーマを作り、ステージ実表を安全な短時間ロックで`SET SCHEMA`するコードと、既存の`v5_core_read_routes.py`/`v5_daily_table_routes.py`/`v5_realtime_table_routes.py`/`v5_k_result_routes.py`/DB upsert/DDL互換を統一してから、物理共通テーブルを実運用にする。名称の置換だけでは未完成。
+
+## 2026-10-22 22:42 — 共通schema作成と読書きの静的互換
+- ConoHa `railway.boat_data` の空schemaはユーザーのSQL結果で作成成功。venue stage 24行は`v5_data.venues`のまま、`boat_data.venues`はまだ未作成。旧view/write/timerは変更なし。
+- 旧core/daily/read/writeが`v5_data.venues`というステージ名をopt-inで参照することが判明。安全に共有先へ移管するため、`v5_daily_table_routes.py`へ`shared_venues_v1` profile（既存確認+追加確認を共に要する3ゲート）、`db_pg.py`に引用識別子、`v5_core_read_routes.py`にvenues専用の読取許可を追加。新`tests/test_v5_shared_venues_route.py`は7つのオフラインテスト。**どのフラグもONにしておらず、現行稼働は旧データのまま**。
+- 次に夜間収集稼働や実環境のroute flagsを検査してから、ステージ表のメタデータ移動を別途承認する。`v5_data.venues`を消してしまうと未確認のopt-in経路が壊れ得るため、テスト前の即時`SET SCHEMA`は行わない。
