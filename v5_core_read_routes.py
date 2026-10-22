@@ -13,6 +13,8 @@ LEGACY = frozenset((
     "v2_results", "v2_result_entries", "v2_odds_trifecta",
 ))
 
+SHARED_VENUES_TARGET = "boat_data.venues"
+
 PHYSICAL = {
     "v2_venues": "v5_data.venues",
     "v2_races": "v5_data.raw_races",
@@ -30,7 +32,9 @@ def core_relation(name: str):
     routed = resolve_table(name)
     if routed == name:
         return sql.Identifier("public", name)
-    if PHYSICAL.get(name) != routed:
+    if PHYSICAL.get(name) != routed and not (
+        name == "v2_venues" and routed == SHARED_VENUES_TARGET
+    ):
         raise RuntimeError("STOP: unexpected core table route")
     namespace, relation = routed.split(".", 1)
     return sql.Identifier(namespace, relation)
