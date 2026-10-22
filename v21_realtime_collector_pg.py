@@ -13,7 +13,8 @@ except Exception:
 from db_pg import execute,fetch_all,upsert_rows
 from psycopg import sql
 from v5_core_read_routes import core_relation, legacy_entry_alters
-from v5_legacy_ddl_guard import require_legacy_realtime_ddl_allowed
+from v5_legacy_ddl_guard import (require_legacy_realtime_ddl_allowed,
+                                  forbid_legacy_realtime_if_physical_exists)
 from v5_realtime_table_routes import physical_enabled, resolve_realtime_table, verify_physical_targets
 
 JST=timezone(timedelta(hours=9))
@@ -107,6 +108,7 @@ def _ensure_realtime_tables():
         return
     # Legacy default preserved; fail closed if a migration guard is set.
     require_legacy_realtime_ddl_allowed()
+    forbid_legacy_realtime_if_physical_exists(fetch_all)
     tables=["v2_realtime_weather_snapshots","v2_realtime_exhibition_snapshots","v2_realtime_entry_snapshots","v2_realtime_odds_snapshots","v2_realtime_race_condition_snapshots","v2_realtime_racer_condition_snapshots"]
     for t in tables:execute(f"create table if not exists {t} (id bigserial primary key);")
     alters={
