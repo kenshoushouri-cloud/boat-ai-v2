@@ -24,15 +24,26 @@ LEFT JOIN pg_class c ON c.oid=to_regclass(names.fullname)
 ORDER BY names.fullname;
 -- This last check intentionally fails rather than falling back if pilot copy
 -- does not exist or if catalog relation changed (no automatic source delete).
-SELECT 'BOAT_VENUES_PARITY' AS audit,
-  (SELECT count(*) FROM public.v2_venues) AS source_rows,
-  (SELECT count(*) FROM v5_data.venues) AS staged_rows,
-  (SELECT count(*) FROM
-     (SELECT * FROM public.v2_venues
-      EXCEPT ALL SELECT * FROM v5_data.venues) missing) AS missing_rows,
-  (SELECT count(*) FROM
-     (SELECT * FROM v5_data.venues
-      EXCEPT ALL SELECT * FROM public.v2_venues) extra) AS extra_rows;
+-- Fail-closed: a successful verdict must not print when the staged copy
+-- differs from the 24-row source. Deliberately raise division_by_zero on
+-- mismatch, which aborts the read-only transaction under ON_ERROR_STOP.
+WITH parity AS (
+ SELECT
+   (SELECT count(*) FROM public.v2_venues) AS source_rows,
+   (SELECT count(*) FROM v5_data.venues) AS staged_rows,
+   (SELECT count(*) FROM
+      (SELECT * FROM public.v2_venues
+       EXCEPT ALL SELECT * FROM v5_data.venues) missing) AS missing_rows,
+   (SELECT count(*) FROM
+      (SELECT * FROM v5_data.venues
+       EXCEPT ALL SELECT * FROM public.v2_venues) extra) AS extra_rows
+)
+SELECT 'BOAT_VENUES_PARITY' AS audit, source_rows, staged_rows,
+       missing_rows, extra_rows,
+       1 / CASE WHEN source_rows=24 AND staged_rows=24
+                 AND missing_rows=0 AND extra_rows=0
+                THEN 1 ELSE 0 END AS verified_gate
+FROM parity;
 SELECT 'BOAT_EXISTING_V5_VIEW_DEPENDENCIES' AS audit,
        view_schema, count(*) AS legacy_public_table_references
 FROM information_schema.view_table_usage
