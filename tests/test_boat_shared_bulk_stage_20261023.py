@@ -8,13 +8,13 @@ from deploy.conoha import boat_shared_bulk_stage_20261023 as m
 
 class CopyGuardTests(unittest.TestCase):
     def test_source_count_unique(self):
-        self.assertEqual(len(m.SOURCES), 12)
-        self.assertEqual(len({x for x, _ in m.SOURCES}), 12)
-        self.assertEqual(len({x for _, x in m.SOURCES}), 12)
+        self.assertEqual(len(m.SOURCES), 13)
+        self.assertEqual(len({x for x, _ in m.SOURCES}), 13)
+        self.assertEqual(len({x for _, x in m.SOURCES}), 13)
 
     def test_no_results_in_mixed_database(self):
         self.assertTrue(all(not name.startswith("v5_") for _, name in m.SOURCES))
-        self.assertNotIn("v2_venues", {old for old, _ in m.SOURCES})
+        self.assertIn(("v2_venues", "venues"), m.SOURCES)
 
     def test_outside_overnight_hours_blocked(self):
         for hour in (0, 1, 7, 12, 19, 23):
