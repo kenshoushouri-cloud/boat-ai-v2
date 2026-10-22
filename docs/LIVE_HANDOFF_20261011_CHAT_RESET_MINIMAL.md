@@ -157,3 +157,9 @@
 - ConoHa空き67GB、DB3,448MB、copy-first前検査12表の候補先は不在。11 v5_data VIEW＋1 v5_research VIEWはまだpublic実表に依存。すでにGitHub `docs/V5_COPY_FIRST_CUTOVER_20261022.md` と `deploy/conoha/v5_copy_first_preflight_readonly_20261022.sql` 登録。**新規物理表/コピー/停止/切替は未実行**。全表重複コピーや繰返し全体バックアップは避ける。不要な古い欠損再取得しない。旧表は未削除。10/19以降の展示・オッズ当時観測は失うと再現困難。
 - 今回 `deploy/conoha/v5_venues_stage_pilot_20261022.py`（preview default、--apply二重ゲート）を追加。小型venuesの行数上限、source/dest existence、PK/indexes、FK/trigger/identity/serialブロック、単一transaction内のCOPY整合照合、失敗rollback。runbook `docs/V5_COPY_FIRST_CUTOVER_20261022.md`。適用はまだ禁止。
 - **Next ONE task**（Terminal read-only PREVIEW）:`git -C /opt/boat-ai-v5 pull --ff-only && cd /opt/boat-ai-v5 && runuser -u postgres -- env DATABASE_URL=postgresql:///railway /opt/boat-ai-v5-venv/bin/python deploy/conoha/v5_venues_stage_pilot_20261022.py`。期待`V5_VENUES_STAGE_PREVIEW_PASS_NO_DB_WRITES=1`。失敗時は強制しない。確認後に小規模venue実コピーの明示承認判断。それでもV5全体cutoverは独立したreader/writer/scheduler整合検査とrollback必須。費用・CPU制御、自動購入禁止、トーク1回1作業。
+
+## 2026-10-22 21:02 JST 予想データの移行対象を明確化（最新）
+- ユーザー確認：「当然予想に使用するデータも移行ですよね？」→Yes。V5移行は基本12表＋出走表の選手級別・直近5走・モーター/ボート・当地、別表の選手コース統計、気象・水面・風、展示/オッズ取得時刻、公式結果、過去検証用2025-07以降の履歴元とV5研究証拠を含む。現行予想で未採用の原本も保持し、採用判断は精度テストで別に行う。履歴外部アーカイブは無条件で全件重複コピーせず、V5から出所/利用時刻が分かる参照経路を構築。事後補完を事前予想の証拠とは扱わない。
+- User terminal PREVIEW `V5_VENUES_STAGE_PREVIEW_PASS_NO_DB_WRITES=1`: 24行、FK=0、trigger=0、generated/serial=0、6列、2索引。まだ実コピーなし。
+- 初期の12表プランだけでは選手コース統計や過去K履歴、研究専用motor shadow等の対象漏れリスク。新規read-only SQL `deploy/conoha/v5_prediction_input_coverage_readonly_20261022.sql`で追加候補と出走表の特徴量列を照合。
+- **Next ONE task**: `git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_prediction_input_coverage_readonly_20261022.sql`。読み取りのみ。小規模venuesコピー・23時本番停止・全保存先切替はまだ未実施。
