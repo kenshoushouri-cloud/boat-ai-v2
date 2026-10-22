@@ -35,3 +35,9 @@ runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/
 - 新SQL `deploy/conoha/v5_live_prediction_inputs_sample_readonly_20261023.sql`：当日JSTで締切前の最大6レースについて、実`boat_data.races/entries/exhibition_snapshots/odds_snapshots` から登録6艇、選手番号/級/モーター/ボート/直近成績の形、同一ラベルの締切前展示6艇、3連単120オッズを読む。**見かけの保存時刻だけでは当時の凍結証拠ではない**。結果/払戻/賭金は参照しない。HOLD原因の一覧表示だけで、予想処理やBUYは起動しない。
 - **Next ONE task (ConoHa termius, morning/forward collector起動が終了してから)**: `git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_live_prediction_inputs_sample_readonly_20261023.sql`。完了マーカー `V5_LIVE_INPUT_SAMPLE_READONLY_DONE_NO_FORECAST_NO_BUY`。当日開催データがなければ0 rowsでも正常終了、欠損があれば補完/開発の判断材料。最大6レース限定、read-only。実行結果は未確認。
 - 目標は次にモデル用「実データの因子ベクトル」のas-of evidenceと予想出力を整備することであり、6艇と120票の存在だけでは予想・収益率の保証にならない。V5本番切替、物理データ移動、旧表DROPはこのSQLで許可されない。
+
+## 2026-10-23 06:51 — V5実データ入力スモーク結果（引き継ぎ最優先）
+- ユーザーTermius 06:51画像：`deploy/conoha/v5_live_prediction_inputs_sample_readonly_20261023.sql`の結果 **0 rows**、`COMMIT`および`V5_LIVE_INPUT_SAMPLE_READONLY_DONE_NO_FORECAST_NO_BUY`。SQL自体正常終了・実予測と購入は実施なし。
+- この0件は**当日JSTかつ実行時点より先に締切が来る、最短6レースのみ**を抽出するSQLで起きた。朝6:51、morning/forward収集が7:00予定なので、0行をもって2025-07以降の全期間や今日のデータが欠損、収集失敗、モデル破損とは断定できない。7:00収集が実行成功したかは未確認。
+- 06:45画像の`v5_shared_views_cutover_readiness_readonly_20261023.sql`は **13/13 VIEW、source dependency 13/13、非更新13/13、COMMIT、PASS**。再実行不要。ユーザーはトーク上限につき新チャットへ移動。次の手動作業は夜23時以降の可能性があり、**今朝のupcomingのみを抽出するSQLを翌晩に再実行しても0件になる**。過去日/本日完了レースの締切前スナップショットを**予測再現と区別して**read-only監査するSQLを作成してから実行するのが次の1作業候補。結果や払戻を予想特徴量に混ぜない。timestamp/provenanceの原本検査が必要。
+- **Next ONE task（新チャット）**：本ドキュメントとcompact handoff末尾だけ確認し、10/23 07:00のmorning/forward実行結果を短いread-only systemd/journalで確認するか、翌晩開始なら10/23完了レースのas-of遡及入力検査を設計する。1作業ずつ。これまでの`boat_data`は非更新VIEW13件のみ・物理テーブル移動とV5実予想稼働は未了。旧writer/自動収集/結果追補を止めず、旧データ・archive・backups削除禁止、bulk stageを起動禁止、BUY禁止。コストConoHa最小。
