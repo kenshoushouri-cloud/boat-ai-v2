@@ -41,3 +41,7 @@ runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/
 - この0件は**当日JSTかつ実行時点より先に締切が来る、最短6レースのみ**を抽出するSQLで起きた。朝6:51、morning/forward収集が7:00予定なので、0行をもって2025-07以降の全期間や今日のデータが欠損、収集失敗、モデル破損とは断定できない。7:00収集が実行成功したかは未確認。
 - 06:45画像の`v5_shared_views_cutover_readiness_readonly_20261023.sql`は **13/13 VIEW、source dependency 13/13、非更新13/13、COMMIT、PASS**。再実行不要。ユーザーはトーク上限につき新チャットへ移動。次の手動作業は夜23時以降の可能性があり、**今朝のupcomingのみを抽出するSQLを翌晩に再実行しても0件になる**。過去日/本日完了レースの締切前スナップショットを**予測再現と区別して**read-only監査するSQLを作成してから実行するのが次の1作業候補。結果や払戻を予想特徴量に混ぜない。timestamp/provenanceの原本検査が必要。
 - **Next ONE task（新チャット）**：本ドキュメントとcompact handoff末尾だけ確認し、10/23 07:00のmorning/forward実行結果を短いread-only systemd/journalで確認するか、翌晩開始なら10/23完了レースのas-of遡及入力検査を設計する。1作業ずつ。これまでの`boat_data`は非更新VIEW13件のみ・物理テーブル移動とV5実予想稼働は未了。旧writer/自動収集/結果追補を止めず、旧データ・archive・backups削除禁止、bulk stageを起動禁止、BUY禁止。コストConoHa最小。
+
+## 2026-10-23 06:51 — 実入力サンプル検査結果（最新）
+- Termius画像で `v5_live_prediction_inputs_sample_readonly_20261023.sql` **正常終了、0 rows**、`V5_LIVE_INPUT_SAMPLE_READONLY_DONE_NO_FORECAST_NO_BUY`。06:51 JST時点で「当日・締切が未来」の候補が0件だったことのみ示す。**未収集・欠損の確定やV5稼働成功を意味しない**。この検査の再実行を最優先にしない。
+- **次の1作業**：07:00のmorning/forward収集が終了した時点以降で、当日レース一覧・取込件数・締切時刻を**read-onlyで限定確認**し、候補0件の原因（日付・前日準備不足・collector不達・締切時刻）の切り分けから進める。読書き経路とV5実予想の構築を優先し、13個の共通VIEWと旧収集・履歴の保護を継続。DROP・強制切替・BUY禁止。Railway有料プラン解約済。1作業/最小tool call/短報告。
