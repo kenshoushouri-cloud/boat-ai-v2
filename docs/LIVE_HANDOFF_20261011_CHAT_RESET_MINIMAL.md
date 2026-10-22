@@ -141,10 +141,9 @@
 - GitHub code-only下流監査記録`docs/V5_SPECIAL_TRIFECTA_INVALID_DOWNSTREAM_AUDIT_20261022.md` (commit `464ebcc`)。`v5/conoha_midnight_results_pg.py`は無効結果を終端として認識、`backtest_candidate_filter_rules_pg.py`/ `backtest_n02_walkforward_pg.py`は通常3連単結果として除外。**ただし `research/forward_economics.py` は `invalid_result`の投資額を0にする**。本当の購入があった場合には事前購入記録を母集団から除外せず、券別の公式返還を確認・反映、不明ならPENDING。 `v5/offline_trifecta_cash_ledger.py` はMockTicketReturn/refund_yen対応だが公式返還原本・実注文証拠の結合は未検証。V5実ROI・+5万円/月は引き続き未実証。
 - **Next ONE task**: GitHubで現行V5収支報告の呼出し経路と券別返還原本の使用箇所を最小限のread-onlyで確認し、必要なら不成立を誤集計しないオフラインテストを設計。ConoHa/DBへの追加書込・購入・再起動・削除・V5重み変更禁止。運用費用最小、チャットの1回1作業維持。
 
-## 2026-10-22 19:47 JST V5移管前backup実在/容量照合PASS（最新）
-- Termius画像 `/root/boat-v5-backups`に最新`k_results_preinsert_20261022_002007.dump` 44,649,078 bytes + SHA256 sidecar（10/22 00:20）、以前の結果4表dump複数および`k_recovery_4tables_20261021_123041.dump`等。これは**全DB backupと証明できず**、SHA/TOCが読めても復元検証完了ではない。
-- ConoHa local PostgreSQL `railway` DB容量3,447MB、root disk / 99GB中28GB使用、67GB空き（使用率30%）。現状余裕あり。ただし physical schema移動自体は全行COPYを行わず、これだけではDB使用量削減やサービス無停止を保証しない。
-- **Next ONE task**：最新dumpのSHAとTOC中の TABLE / TABLE DATA 対象テーブル名だけを読み取り検査。Termius:
-`cd /root/boat-v5-backups && sha256sum -c k_results_preinsert_20261022_002007.dump.sha256 && pg_restore -l k_results_preinsert_20261022_002007.dump | grep -E ' (TABLE|TABLE DATA) public ' | head -n 20`
-DB操作なし。まずdumpの範囲・破損の初歩的兆候を確認。フルDB/移管対象全表バックアップ、外部独立バックアップ、復元リハーサル、VIEW/FK/権限/旧writer停止窓とロールバックがない段階ではテーブル物理移動しない。
-- V5 stale legacy DDLテスト9/9 PASS・実DB catalog gate PASS。5分前再取得コードは opt-in PREVIEWのみ（本番未有効化）。過去の未取得分は今は高コスト追完しない。データ取得継続、費用最小化。
+## 2026-10-22 最新決定：データ整理・V5構築が最優先、外部再バックアップは整理後（最新）
+- **User方針変更（2026-10-22）**：バックアップの世代を増やす・Google Driveへの再転送・全DBの再ダンプを繰り返すより先に、V5専用保存先への整理と収集・予測・バックテスト構築を進める。整理完了後の正規バックアップ（メイン/履歴＋必要な鍵復旧を暗号化、外部保存・整合/復元検証）を新基準とする。古い欠損の一括追完も当面しない。現行バックアップやRailway/ConoHaのデータは無断で消さない。
+- **既存外部保全**：Google Driveの2接続の実リストで10/19版 `main_current_20261019.dump.age` ~297,756,932 bytes、`archive_current_20261019.dump.age` ~52,130,144 bytes、暗号化鍵復旧`boat_v5_key_recovery_20261019.age`371 bytes、V3/V4と旧世代を確認。10/19 handoffによるage復号・rclone一致確認済み、**実DBへのフルリストア演習は未検証**。現行10/22までの新規・リアルタイム取得・正確な当時観測時刻は10/19バックアップから完全復元できない。公開済レース結果再取得可能性≠直前証拠再現。
+- **ConoHaローカル現況**：railway DB 3,447MB、99GB中空き67GB。10/22 00:20の局所4表 `k_results_preinsert_20261022_002007.dump` 44,649,078 bytesはSHA256チェックOK、pg_restore TOCにpublic.v2_races/v2_race_entries/v2_results/v2_result_entriesのTABLE/TABLE DATA 4件確認。これ単独では全DB backupではない。データ移管直前の限定的rollback checkpointだけは要否判断し、実際の物理移動/既存テーブル削除の前に復元手順・依存と対象保護を短く確認（全面再バックアップをこの段階の義務とはしない）。
+- **V5保存先計画**：`docs/V5_CANONICAL_STORAGE_REORGANIZATION_20261021.md`。現行 v5_data=10＋v5_research=1はREAD-ONLY VIEW、旧テーブルはまだpublic内、物理移動なし。旧DDL safety offline 9/9 PASS と live catalog gate PASS。移管は全量COPYでなくmetadata-only schema移動を目標、ただしVIEW依存、FK、DB writer、現役timer、ACL、rollbackが残課題。BUY/モデル重み/本番flag変更、無断DROP/大量DB書込は禁止。
+- **Next ONE task**：新たな全体バックアップ実施をやめて、V5物理移管の阻害条件のうち**参照VIEW依存と旧writer書込先**を最小のread-onlyで確認する。確認結果を受け1表ずつ計画し、安全で可逆な工程だけを進める。実際のALTER TABLE/サービス切替/旧表削除は別途明示承認。トーク節約のため一回一作業、Railway/ConoHaコスト最小。
