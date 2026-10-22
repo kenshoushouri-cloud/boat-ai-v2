@@ -141,16 +141,10 @@
 - GitHub code-only下流監査記録`docs/V5_SPECIAL_TRIFECTA_INVALID_DOWNSTREAM_AUDIT_20261022.md` (commit `464ebcc`)。`v5/conoha_midnight_results_pg.py`は無効結果を終端として認識、`backtest_candidate_filter_rules_pg.py`/ `backtest_n02_walkforward_pg.py`は通常3連単結果として除外。**ただし `research/forward_economics.py` は `invalid_result`の投資額を0にする**。本当の購入があった場合には事前購入記録を母集団から除外せず、券別の公式返還を確認・反映、不明ならPENDING。 `v5/offline_trifecta_cash_ledger.py` はMockTicketReturn/refund_yen対応だが公式返還原本・実注文証拠の結合は未検証。V5実ROI・+5万円/月は引き続き未実証。
 - **Next ONE task**: GitHubで現行V5収支報告の呼出し経路と券別返還原本の使用箇所を最小限のread-onlyで確認し、必要なら不成立を誤集計しないオフラインテストを設計。ConoHa/DBへの追加書込・購入・再起動・削除・V5重み変更禁止。運用費用最小、チャットの1回1作業維持。
 
-## 2026-10-22 19:43 JST 旧DDLカタログゲート実DB PASS、バックアップ実在点検へ（最新）
-- ConoHa Terminal画像：実DB`railway` `forbid_legacy_realtime_if_physical_exists(fetch_all)` の結果 `V5_REALTIME_LEGACY_CATALOG_GATE_OK_NO_DB_WRITES`、例外なし。計画中の6件の`v5_data.raw_*snapshots`物理テーブルが存在しない状態で、旧DDL二重生成防止カタログ判定は正常。オフライン安全テスト4+5件ともOK済み。現在DB/サービス/物理移管/flag設定変更は一切なし。
-- 移管前の重大未確認gateは**バックアップの実体と復元可能性**（並びに旧writer/read/VIEW/FK/権限/停止窓/rollback）。旧43MBの4表局所backupのTOC/SHA PASSは全DB保護や復元成功を保証しない。物理`ALTER TABLE SET SCHEMA`や既存VIEW破棄・作業タイマー停止は明示承認まで禁止。
-- **Next ONE task**：ConoHa Termiusでrootがread-onlyにバックアップ一覧／DB全サイズ／ファイルシステム空き容量を1回照合。次のスニペットを利用し結果を画像で確認（DB/設定/ファイル書換なし）。
-```bash
-printf '=== BACKUP INVENTORY ===\\n'
-find /root/boat-v5-backups -maxdepth 1 -type f -printf '%TY-%Tm-%Td %TH:%TM %s bytes %f\\n' | sort -r | head -n 20
-printf '=== DB SIZE ===\\n'
-runuser -u postgres -- psql -XAt -d railway -c 'SELECT pg_size_pretty(pg_database_size(current_database()))'
-printf '=== DISK FREE ===\\n'
-df -h /
-```
-- 局所backupファイルがあっても復元実証にならない。上記inventory後に安価な限定リストアテストと外部独立backup検証手順を検討、手順は先に安全/容量/既存collectorの状況を確認。新規データ改善は前進するが`--late-retry`未有効化、過去欠損追完は優先しない。+5万円/月V5実ROIも未実証。
+## 2026-10-22 19:47 JST V5移管前backup実在/容量照合PASS（最新）
+- Termius画像 `/root/boat-v5-backups`に最新`k_results_preinsert_20261022_002007.dump` 44,649,078 bytes + SHA256 sidecar（10/22 00:20）、以前の結果4表dump複数および`k_recovery_4tables_20261021_123041.dump`等。これは**全DB backupと証明できず**、SHA/TOCが読めても復元検証完了ではない。
+- ConoHa local PostgreSQL `railway` DB容量3,447MB、root disk / 99GB中28GB使用、67GB空き（使用率30%）。現状余裕あり。ただし physical schema移動自体は全行COPYを行わず、これだけではDB使用量削減やサービス無停止を保証しない。
+- **Next ONE task**：最新dumpのSHAとTOC中の TABLE / TABLE DATA 対象テーブル名だけを読み取り検査。Termius:
+`cd /root/boat-v5-backups && sha256sum -c k_results_preinsert_20261022_002007.dump.sha256 && pg_restore -l k_results_preinsert_20261022_002007.dump | grep -E ' (TABLE|TABLE DATA) public ' | head -n 20`
+DB操作なし。まずdumpの範囲・破損の初歩的兆候を確認。フルDB/移管対象全表バックアップ、外部独立バックアップ、復元リハーサル、VIEW/FK/権限/旧writer停止窓とロールバックがない段階ではテーブル物理移動しない。
+- V5 stale legacy DDLテスト9/9 PASS・実DB catalog gate PASS。5分前再取得コードは opt-in PREVIEWのみ（本番未有効化）。過去の未取得分は今は高コスト追完しない。データ取得継続、費用最小化。
