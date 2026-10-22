@@ -44,3 +44,9 @@
 - ConoHa `railway.boat_data` の空schemaはユーザーのSQL結果で作成成功。venue stage 24行は`v5_data.venues`のまま、`boat_data.venues`はまだ未作成。旧view/write/timerは変更なし。
 - 旧core/daily/read/writeが`v5_data.venues`というステージ名をopt-inで参照することが判明。安全に共有先へ移管するため、`v5_daily_table_routes.py`へ`shared_venues_v1` profile（既存確認+追加確認を共に要する3ゲート）、`db_pg.py`に引用識別子、`v5_core_read_routes.py`にvenues専用の読取許可を追加。新`tests/test_v5_shared_venues_route.py`は7つのオフラインテスト。**どのフラグもONにしておらず、現行稼働は旧データのまま**。
 - 次に夜間収集稼働や実環境のroute flagsを検査してから、ステージ表のメタデータ移動を別途承認する。`v5_data.venues`を消してしまうと未確認のopt-in経路が壊れ得るため、テスト前の即時`SET SCHEMA`は行わない。
+
+## 2026-10-23 00:30 — 深夜短時間の共有データ参照層
+- 10/23深夜のユーザー要望：今夜の作業をまとめ、明日23:00以降まで手動作業できない。ConoHa直接のSSH操作は本チャット接続からできず、GitHub上でone-shot SQLを準備し、ユーザーがTermiusで適用する。
+- **短時間で安全な代替**：`deploy/conoha/boat_shared_core_views_once_20261023.sql`。既存物理データ13系列（レース/出走表/結果/K6艇/オッズ/展示/天候/コース統計/条件など）を`boat_data.*`に**非更新可能VIEW (OFFSET 0)**として一括公開。巨大な2重COPY/WALを避け、public.v2_*の元正本と全collector/1:20結果補完を維持。13ソースの実表存在/宛先空をtransactionで検査し、1つでも欠ければROLLBACK。成功は`BOAT_SHARED_THIRTEEN_LIVE_SOURCE_VIEWS_READY_NO_DATA_COPIED_NO_WRITERS_CHANGED`。この段階は**参照経路だけで、V5本番予想実行や書き込み先変更は未完了**。`v5_data.venues` staging 24行もそのまま。各VIEWは手動承認なしで削除禁止。将来の真の物理集約時はそれぞれのVIEWを置換し、writer/reader切替と正本の保全を行う。
+- **重要**：旧設計の`V5_DAILY_WRITE_ROUTE_PROFILE=shared_venues_v1`は`boat_data.venues`が物理実表である前提だった。この新設`boat_data.venues`は読み取り専用VIEWのため、**そのprofileを絶対に有効化しない**。現行flagはlegacy、変更禁止。将来の実表への入替後にだけ明示的承認とcatalog gateを要求。`boat_history_archive`別DB3表は変更なし（2025-07+と取得時刻/用途の監査は未了）。
+- 前方/朝/夜/深夜タイマー計4件はactive。10/23 01:20 catchupと07:00 beforeinfoを止めない。買付は常時不可。夜間のサーバー再起動も今はしない。真のV5 production inference は`offline_mainline_inference.py`がHARD HOLDであることも確認し、個別に必要なevidence、実モデル出力、非購入canary、安全評価が揃うまで「稼働完了」と報告しない。
