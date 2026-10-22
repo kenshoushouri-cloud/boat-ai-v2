@@ -29,3 +29,9 @@ runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/
 5. 費用増ゼロ優先、ConoHa集中、Railway Hobby解約済（11/03終了）、LINE送信やBUYの新規認可なし。
 
 この計画は期限や完成を保証しない。作業の真偽はTermiusの実ログで再確認する。
+
+## 2026-10-23 06:45 — 13/13 shared-view PASSとV5実入力スモークの準備
+- ユーザーTermius 06:45画面：`SHARED_VIEWS_VERIFIED=13 NON_UPDATABLE=13 SOURCE_DEPENDENCIES=13`、relation types v=13、COMMIT、`V5_SHARED_VIEWS_READONLY_GATE_PASS_NOT_PHYSICAL_NOT_ENGINE_CUTOVER`。このgateは**完了**、再実行不要。
+- 新SQL `deploy/conoha/v5_live_prediction_inputs_sample_readonly_20261023.sql`：当日JSTで締切前の最大6レースについて、実`boat_data.races/entries/exhibition_snapshots/odds_snapshots` から登録6艇、選手番号/級/モーター/ボート/直近成績の形、同一ラベルの締切前展示6艇、3連単120オッズを読む。**見かけの保存時刻だけでは当時の凍結証拠ではない**。結果/払戻/賭金は参照しない。HOLD原因の一覧表示だけで、予想処理やBUYは起動しない。
+- **Next ONE task (ConoHa termius, morning/forward collector起動が終了してから)**: `git -C /opt/boat-ai-v5 pull --ff-only && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d railway -f /opt/boat-ai-v5/deploy/conoha/v5_live_prediction_inputs_sample_readonly_20261023.sql`。完了マーカー `V5_LIVE_INPUT_SAMPLE_READONLY_DONE_NO_FORECAST_NO_BUY`。当日開催データがなければ0 rowsでも正常終了、欠損があれば補完/開発の判断材料。最大6レース限定、read-only。実行結果は未確認。
+- 目標は次にモデル用「実データの因子ベクトル」のas-of evidenceと予想出力を整備することであり、6艇と120票の存在だけでは予想・収益率の保証にならない。V5本番切替、物理データ移動、旧表DROPはこのSQLで許可されない。
