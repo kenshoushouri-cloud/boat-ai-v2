@@ -48,6 +48,8 @@ def execute(query: str, params: tuple | list | None = None) -> int:
 
 
 _PHYSICAL_V5_ROUTE_TABLES = {
+    # Shared V5/V6 source: selectable only via an explicitly gated route.
+    "boat_data.venues": ("boat_data", "venues"),
     "v5_data.venues": ("v5_data", "venues"),
     "v5_data.raw_races": ("v5_data", "raw_races"),
     "v5_data.raw_entries": ("v5_data", "raw_entries"),
@@ -64,7 +66,7 @@ _PHYSICAL_V5_ROUTE_TABLES = {
 
 
 def _table_identifier(table: str):
-    """Safely quote the two staged physical V5 relation names.
+    """Safely quote fixed staged V5 and V5/V6 shared physical relation names.
 
     Legacy plain names preserve their original one-part quoting. Never
     interpret arbitrary dotted user input as an SQL identifier path.
