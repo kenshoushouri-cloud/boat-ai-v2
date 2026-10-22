@@ -35,7 +35,7 @@ def forbid_legacy_realtime_if_physical_exists(fetch_all) -> None:
         f"to_regclass(%s) AS {label}" for label in labels
     )
     rows = fetch_all(query, physical)
-    if not rows or not isinstance(rows[0], dict):
+    if not isinstance(rows, (list, tuple)) or len(rows) != 1 or not isinstance(rows[0], dict):
         raise RuntimeError("STOP: realtime V5 physical catalog gate unavailable")
     record = rows[0]
     if any(label not in record for label in labels):
