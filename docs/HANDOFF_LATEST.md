@@ -1,15 +1,7 @@
-# 最新引き継ぎへの唯一の入口
+# 最新引き継ぎへの唯一の入口（2026-10-23 06:51 JST）
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261023_0651_COMPACT.md`
 
-新チャットの開始時に確認するのは次の2点だけ：
-1. 本ファイル `docs/HANDOFF_LATEST.md`
-2. 上記 current compact handoff を全文
+新チャットでは本ファイルと上記compactだけを読み、末尾の **Next ONE task** から開始。古い`LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`（約35KB）など過去handoff、PROJECT_HISTORY、長いworkflow、過去会話の一括読みは禁止。特定の根拠が必要な時だけ対象部分を参照。
 
-`docs/NEXT_CHAT_START_HERE.md` は**新チャットに貼る案内**であり、内容確認に必要な場合以外は毎回全文を読まない。過去の`LIVE_HANDOFF_*`（旧`20261010_CHAT_RESET_COMPACT.md`約38KBを含む）、PROJECT_HISTORY、長いworkflow、直前以外の過去会話は履歴扱い。**直前1チャットのみ必要な範囲で補助参照可。全文大量参照禁止。**
-
-**2026-10-19現在**：ConoHaへメイン/履歴・V3/V4資産を保全、Termius/Tailscale接続済み。Railway撤退優先（DB2+Volume2は保護中、cron6件休止）、ConoHa独立収集・V5完成は継続。Google Drive無料15GBを暫定使用、100GB有料契約は開発が落ち着くまで延期。10/19メインDB新規ダンプ作成済み・暗号化/外部転送は未了。詳細と最新のNext ONE taskはcompactを参照。V5純利益目標**+50,000円/月は未検証**、1–3レース/日または0。不要なRailway費用を最小化。無断BUY・DB/Volume削除・有料契約・本番変更禁止、Railway Agent/AI禁止。
-
-**Next ONE task:** current handoff末尾を参照。実行時間目安を添え、1回1作業・最小tool call・短い報告。SHA/run/件数/容量はその場で必要時だけlive取得。タイムアウト後の重複実行禁止。
-
-**2026-10-23更新：** 共有VIEW13件の作成結果および次回の優先作業は `docs/V5_NEXT_SHIFT_PRIORITY_20261023.md` を参照。検査SQLは `deploy/conoha/v5_shared_views_cutover_readiness_readonly_20261023.sql`。実データ移動とV5予想本番切替は未完了。
+直近：ConoHa `boat_data`の非更新VIEW13件は06:45に13/13検証成功（物理移動ではない）。06:51のV5実入力サンプルSQLは0行、SQL実行は成功、実予測・購入なし。朝7時の収集前だったため未取得と断定不可。**次の1作業は当日07:00収集結果のread-only確認**。データ物理移行、旧表削除、V5本番BUYは未許可。Railway有料プランは解約済み。ConoHa費用最小、1回1作業、重要なゲートを飛ばさない。
