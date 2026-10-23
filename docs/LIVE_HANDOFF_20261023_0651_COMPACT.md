@@ -108,8 +108,9 @@
 - `tests/test_v5_offline_unverified_counter_cell_preview.py`に**追加1件**：展示あり2レース・Kコース3レースの合成入力について、未認証セル占有数の13系統と、研究用`project_two_population_day`のCounterを正規化した(総件数,非ゼロカテゴリーキー数)を**全13系統で一致確認**。研究側の`OFFICIAL/incident_free_verified=True/refund_boats=()`は**テスト専用の明示的な模擬値**であり、実DB・正式学習への昇格はゼロ。
 - GitHub Actions Issue #581 comment `6359388199`で**22/22 PASS**（9 source+7 shape+6 cell）。ConoHaに接続せず、既存収集/DB/VIEW/BUY不変更。旧研究全期間のデータ一致・独立事故返還証拠・first-capture・ROIは未認証。
 
-## 10/23 連続3日ソース欠損監査の準備
-- `deploy/conoha/v5_three_day_source_gap_readonly_20261023.sql`をGitHub追加。**2026-10-18〜20の3日を固定**し、出走6/K正常6/同一ラベル展示6/両方、K事故・欠測・進入不備、展示なし・部分欠損を1回のREAD ONLYで日別比較する。20秒statement timeout、8MB work_mem、DB更新・全期間走査・BUYなし。**ConoHaで未実行、3日分の結果は未確定**。10/20は従来144/144/132/29/27との照合対象。時刻付き展示も初回原本証明ではない。
+## 10/23 16:08 連続3日のK×展示データ実測（Termius READ ONLY）
+- `deploy/conoha/v5_three_day_source_gap_readonly_20261023.sql`はCOMMIT/audit正常終了、`10/18: 全156/出走156/結果156/K正常144/展示6=0/共通0、10/19:132/132/132/K123/展示6=0/共通0、10/20:144/144/144/K132/展示6=29/共通27`。3日で432レース/K形状正常399/展示6 29/共通27。K不足の主因は特殊着順/事故/コース不明。10/18-19の展示0は**調べたVIEW内の同一ラベル6艇が0**であり、別物理表/別DB含め展示原本全体がないと断定不可。10/20の現存timestamp条件は初回観測証明ではない。
+- 同じ数日ずつの再検査を止めるため、`deploy/conoha/v5_historical_exhibition_sparse_dates_readonly_20261023.sql`を追加。**2025-07～2026-10の固定16代表日だけ**、展示同一ラベル6艇形状/保存ラベル別状況を軽量READ ONLYで比較し、別展示・beforeinfo表の**名前だけ**目録化する。まだConoHa未実行。代表日は全期間の保存率、正確な開始日・真の原本性を証明しない。別DB`boat_history_archive`は今回接続しない。
 
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
@@ -118,4 +119,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**Termiusで次の1回のみ**：最新GitHubの `deploy/conoha/v5_three_day_source_gap_readonly_20261023.sql`を`/tmp/v5_3day_sources.sql`に`git show origin/main:`で取り出し、`sudo -u postgres psql -d railway -X -v ON_ERROR_STOP=1 -f /tmp/v5_3day_sources.sql`を実行。対象は2026-10-18〜20の固定3日。日別RACES/ROSTER6/K6/EX6/JOINT6・K/展示欠測内訳を確認。**10/20の144/144/132/29/27との一致を確認**し、不一致時は再実行を急がずSQL定義差を調べる。事故・返還原本認証/予想/BUYはHOLD。ConoHaの収集・DB writer・共通13VIEW・物理移行・旧表は変更しない。
+ConoHa Termiusで`git fetch --no-tags origin main`後、`git show origin/main:deploy/conoha/v5_historical_exhibition_sparse_dates_readonly_20261023.sql`を一時ファイルへ取り出し、PostgreSQL`railway`で**1回READ ONLY**実行する。代表16日（2025-07,10 / 2026-01,04,07,09,10の一部）について展示同一ラベル6艇・historical/forwardラベル保存状況を日別点検。10/18-19=0,10/20=29が再現するか確認する。DB負荷・20s timeout、途中エラーなら原因診断まで再実行禁止。実データ移動・収集停止・writer変更・旧表削除・学習承認・BUYは禁止。過去展示の別DB原本は未確認なので0=全データなしとは断定しない。
