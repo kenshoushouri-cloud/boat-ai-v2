@@ -122,5 +122,9 @@
 - Termius`railway`、`BEGIN READ ONLY`/`ROLLBACK`正常終了。`pg_total_relation_size`（インデックス・TOAST込）でodds 653MB（`reltuples`推定2,467,404件）、weather 188MB（85,725件）、exhibition 135MB（485,387件）、racer_condition 66MB（161,169件）、race_condition 58MB（26,229件）、entry 33MB（124,631件）。**合計約1,133MB / 推定約3,350,545行**。正確な件数ではなく統計値、実COUNTではない。変化する稼働DBの一時点の推定値。
 - 段階的移行の候補は最小容量の`public.v2_realtime_entry_snapshots` (33MB) だが、**まだコピー承認なし、隔離stage未作成、実作業NO-GO**。653MB oddsを他5種とまとめて強制COPYせずCPU/RAM/WAL・旧writer稼働保護を優先。物理先`v5_data.raw_*`6名は全`absent`（21:46）でlegacy DDL guardに影響する可能性があるため未承認の作成禁止。既存`boat_data_stage.venues`24行は維持・再コピーしない。
 
+## 10/23 21:55 JST：entry snapshots metadata部分監査（ユーザーTermius画面）
+- `public.v2_realtime_entry_snapshots`について**21列**、PRIMARY KEY `id`、別UNIQUE index `(race_id,snapshot_label,lane)`、ユーザーtrigger 0件、`ROLLBACK`正常終了を確認。PKは自動採番ID、差分キー候補は3列UNIQUE。NULL制約や付随列・比較方式の証明はさらに必要。
+- 画面が途中から始まるため`public`原本/ `boat_data.entry_snapshots` VIEW / `boat_data_stage.entry_snapshots`の**存在とrelkind結果・所有権/権限は未確認**。実データCOPYや自動同期は未承認。venuesの作成済stage24件には触れない。
+
 ## Next ONE task（次の一作業）
-**ConoHaで最小規模の`public.v2_realtime_entry_snapshots`の列/PRIMARY KEY/UNIQUE index/trigger/権限と、`boat_data.entry_snapshots` VIEWおよび`boat_data_stage.entry_snapshots`未作成状態をメタデータのみread-onlyで監査**。全件COUNTや実COPYはまだしない。合致すれば別承認を得る前提で単一テーブル隔離stage準備を計画。既存collector・タイマー・旧原本・VIEW・旧backupを保護。独立バックアップ、writer全経路/rollback未実証につき本番切替0/13・NO-GO。
+**ConoHa `railway`でこの3関係の`pg_class.relkind`と所有者・ACLだけをREAD ONLYで一覧確認**。関係名：`public.v2_realtime_entry_snapshots`、`boat_data.entry_snapshots`、`boat_data_stage.entry_snapshots`。列や実件数は再スキャンしない。結果が揃ってからステージング方式を設計する。収集/タイマー無変更、他12表VIEW保護、既存stage再COPY禁止、移行/BUY切替NO-GO。
