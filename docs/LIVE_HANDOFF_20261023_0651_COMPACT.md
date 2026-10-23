@@ -118,5 +118,9 @@
 - 現行collectorはlegacy物理原本を使う設計。**既存DDL guardは`v5_data.raw_*`名を作るとlegacy収集を遮断し得るためその名前で無断CREATEしない**。別名の隔離stageは構造・容量・バックアップ・writer監査後に個別承認する。
 - 既存`boat_data_stage.venues`24件を再コピーしない。13種類本番物理正本切替0/13。差分同期/深夜自動切替/BUYは未実施。
 
+## 10/23 21:52 JST：旧リアルタイム原本6表の推定サイズをConoHa read-only確認
+- Termius`railway`、`BEGIN READ ONLY`/`ROLLBACK`正常終了。`pg_total_relation_size`（インデックス・TOAST込）でodds 653MB（`reltuples`推定2,467,404件）、weather 188MB（85,725件）、exhibition 135MB（485,387件）、racer_condition 66MB（161,169件）、race_condition 58MB（26,229件）、entry 33MB（124,631件）。**合計約1,133MB / 推定約3,350,545行**。正確な件数ではなく統計値、実COUNTではない。変化する稼働DBの一時点の推定値。
+- 段階的移行の候補は最小容量の`public.v2_realtime_entry_snapshots` (33MB) だが、**まだコピー承認なし、隔離stage未作成、実作業NO-GO**。653MB oddsを他5種とまとめて強制COPYせずCPU/RAM/WAL・旧writer稼働保護を優先。物理先`v5_data.raw_*`6名は全`absent`（21:46）でlegacy DDL guardに影響する可能性があるため未承認の作成禁止。既存`boat_data_stage.venues`24行は維持・再コピーしない。
+
 ## Next ONE task（次の一作業）
-**ConoHa旧リアルタイム原本6物理表のメタデータ容量・概算行数をread-onlyで確認**。実`COUNT(*)`を回さず、`pg_total_relation_size`＋`pg_class.reltuples`（推定値に過ぎない）を一度だけ取得。CPU/RAM/ディスク予算、隔離stage設計に使う。収集/タイマー無変更、stage CREATE/COPY、旧表削除、VIEW変更、実同期DML、BUYは別承認までNO-GO。独立保全・全writer監査も未完成。
+**ConoHaで最小規模の`public.v2_realtime_entry_snapshots`の列/PRIMARY KEY/UNIQUE index/trigger/権限と、`boat_data.entry_snapshots` VIEWおよび`boat_data_stage.entry_snapshots`未作成状態をメタデータのみread-onlyで監査**。全件COUNTや実COPYはまだしない。合致すれば別承認を得る前提で単一テーブル隔離stage準備を計画。既存collector・タイマー・旧原本・VIEW・旧backupを保護。独立バックアップ、writer全経路/rollback未実証につき本番切替0/13・NO-GO。
