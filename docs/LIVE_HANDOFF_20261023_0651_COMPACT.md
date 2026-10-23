@@ -170,5 +170,10 @@
 - ユーザーTermius画面：`rclone listremotes`に`drive:`、`gdrive_a_backup:`、`v5_gdrive:`の**3名**が表示。rcloneコマンド利用可能、シェルへ正常復帰。**V5専用バックアップ候補は名前上`v5_gdrive:`だが、Googleアカウント・ルート/保存先の独立性・リモート接続・バックアップの有無・外部独立復元は未確認**。
 - 転送/更新/Driveファイル削除・旧バックアップ上書きやDB/collector変更なし。先ほどのentry E01～E12合成12/12 PASSは維持、物理stage entry=absent、venues=24件保全、本番切替0/13。
 
+## 10/24 00:09 JST：V5 Google Drive API rate-limit（ユーザーTermius画面）
+- `rclone lsd v5_gdrive: --retries 1 --low-level-retries 1`を1回実行したところ、**Google Drive API 403 Quota exceeded / RATE_LIMIT_EXCEEDED / Requests per minute / defaultPerMinutePerProject**でroot folder IDの参照に失敗、シェルに復帰。フォルダ一覧は**取得できず**、接続先の健全性・フォルダ独立性・復元/バックアップ有無は未確認。
+- これは**Drive保存容量不足やroot ID破損の証明ではない**。ユーザーのGoogle API projectの分単位rate limitに達した応答と扱い、**連続再試行、他remoteでの迂回API試行、retry増加、Drive設定変更・新世代バックアップ転送・旧backup上書きはしない**。
+- 直近entry合成E01〜E12は23:24修正版12/12 PASS（実DB未操作）。本番13VIEW・legacy収集維持、stage venues初回24件、stage entry未作成。独立外部保全・隔離復元、writer全経路、差分同期、切替承認は未完了。正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`rclone lsd v5_gdrive: --retries 1 --low-level-retries 1`を一度だけ実行し、V5候補リモートのルート直下のフォルダ名だけをread-only確認**。LISTは軽量なAPI読取であり転送/バックアップの作成/上書きはしない。認証失敗・空ディレクトリでも勝手に作成しない。残り2 remoteには触れない。フォルダ名と接続成功だけでアカウント・バックアップ独立・復元の証明としない。V5専用の新世代独立保全と隔離復元は未実施。実DB entry CREATE/COPY/同期、venues再COPY、VIEW切替、collector停止、cron変更、BUYはNO-GO維持。
+**ConoHaのローカルrclone設定のみをread-onlyで調べ、`v5_gdrive`の`type`・`root_folder_id`設定有無・`team_drive`設定有無など、秘密値を一切表示せず安全な項目だけ確認する**。APIへ通信せず`rclone config show v5_gdrive`出力を許可したキーの真偽だけにフィルタする。OAuth token/client_secret・root ID値・認証情報は端末表示/チャット添付禁止。結果は登録設定の確認だけで接続・独立保全実証ではない。Google Driveへの再接続や既存バックアップ更新は別途慎重に判断。entry CREATE/COPY、同期、切替、BUYは禁止。
