@@ -146,5 +146,9 @@
 - 旧原本21列、PK=id、旧SERIAL型採番default=`nextval('v2_realtime_entry_snapshots_id_seq'::regclass)`のみ、流入/流出FK0、user trigger0。新`boat_data_stage.entry_snapshots`はabsent。**`LIKE INCLUDING ALL`無修正による旧sequence共有は禁止**。独立stageは別承認まで未作成、ConoHa収集は旧物理原本に継続。
 - 既存`boat_data_stage.venues`24件は保護、再コピーなし。共有13VIEW、本番正本切替0/13。独立バックアップ復元・全writer証明・差分実適用/rollbackは未完了。
 
+## 10/23 23:10以降：GitHubのみ entry独立stage設計完了
+- 新規`docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`：旧`public.v2_realtime_entry_snapshots`21列、serial`id`の旧seqを継承しない`INCLUDING ALL EXCLUDING DEFAULTS`候補（実装・実SQL検証未実施）、PK idと自然キー`(race_id,snapshot_label,lane)`、独立stageへの明示id全列複製、一貫MVCC snapshot、原本収集継続中の追い付き/INSERT UPDATE DELETE、安全負荷/WAL、全行双方向照合・例外ROLLBACK、外部独立新世代backup+隔離復元と個別承認のゲートを設計。
+- **E01～E12のfail-closedオフライン合成テストは検査項目として記載のみ**。Pythonテスト実装・実行・ConoHa DB DDL/DML・物理COPYは一切未実施。GitHubファイル保存/readbackと静的10確認PASS。`boat_data_stage.entry_snapshots`はabsent、venues24行stageは再COPY禁止、本番切替0/13。独立外部保全/全writer監査は未完了でNO-GO。
+
 ## Next ONE task（次の一作業）
-**GitHub上のみでentry snapshots独立stageの安全なDDL/初回コピー計画とオフライン検査項目を設計する**。旧原本のID sequenceに影響しない`EXCLUDING DEFAULTS`等、PK/3列UNIQUE/全21列、既存ID明示コピー、全キー+全列照合、一貫スナップショット、収集が続く間の増分追跡、33MB約12.5万行の負荷制御、例外時rollbackを整理。**実DDL/複製SQLのConoHa実行はまだ承認されておらず禁止**。必要な独立バックアップと部分復元証明を物理コピー前ゲートにする。旧writer/timer/VIEW未変更、venues再コピー禁止、切替NO-GO。
+**GitHubのみで`docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`のE01～E12合成fail-closedテストを実装してGitHub静的確認**。DB接続・実行可能なDDL/DML・実COPY・cron・BUYを含めない。ConoHa隔離Python実行は次の別作業として結果確認する。実stage作成/複製/同期/切替はユーザーの別途明示承認と独立backup隔離復元、writer監査を条件としてNO-GO継続。tool最小、1回1作業。
