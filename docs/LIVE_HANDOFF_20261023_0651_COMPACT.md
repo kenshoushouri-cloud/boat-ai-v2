@@ -185,5 +185,10 @@
 - `gdrive_a_backup`とV5は**refresh tokenが一致しない**が、違うGoogleアカウントの証明ではない。V5の専用root_folder_id/team_driveは未設定（00:12確認）、API 403 rate limit（00:09）でフォルダを確認できず、V5専用Drive・独立新世代バックアップ・復元試験は未証明。
 - 旧remoteの設定変更/旧backup上書き/Google APIの連続再試行は禁止。entry合成12/12、旧合成56/56は維持、stage venues24件保全、entry未作成。本番正本切替0/13・NO-GO。
 
+## 10/24 00:18 JST：rclone 3 remoteローカル設定の状態（Termius）
+- 機密値を出さず`rclone config dump`→ローカルPython確認：`drive:`はtype=drive/root=no/team=no/refresh=no_or_unknown、`gdrive_a_backup:`と`v5_gdrive:`はそれぞれtype=drive/root=no/team=no/refresh=yes。前段の2つのrefresh tokenは不同一。**違うGoogleアカウント/バックアップ保存先の物理分離は未証明**。root IDなしは必ずしも専用フォルダを使用できないことを意味しない（後日リモート内の専用パスを明示できる）。
+- 00:09 Drive API 403 rate limitのためリモート接続/転送なし。Google Driveの既存バックアップ上書き・認証変更禁止。V5専用バックアップ作成・隔離復元は未実施。
+- 旧収集維持、stage venues24行保全、entry stage未作成。実正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaのローカルrclone設定（drive/gdrive_a_backup/v5_gdrive）について、type、root_folder_id設定有無、team_drive設定有無、refresh token設定有無だけを機密値抜きで確認**。前回の`drive=UNKNOWN`の理由を判別するためのメタデータ監査であり、Google API通信なし。結果で保存先アカウントが独立したと断定しない。リモート更新・バックアップ作成/削除/上書き・collector/DB変更なし。13物理正本切替0/13・NO-GO。
+**ConoHaで`/var/backups`直下〜最大3階層の既存ローカルDB dumpファイルのパス・サイズ・更新日時だけをread-onlyで棚卸し**。DBやDriveには通信/読み込みせず、ファイルメタデータだけ確認する。既存`railway.dump`は10/23 375MBが確認済みだが、`boat_history_archive`やV5本体保全を含めた完全バックアップとは判定しない。旧バックアップの削除/上書き、追加バックアップ作成、entry COPY、本番切替、BUYはNO-GO。
