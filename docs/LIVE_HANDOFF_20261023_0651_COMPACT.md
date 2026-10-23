@@ -42,5 +42,10 @@
 - 保存先は既存2アカウントのうち**V5用Googleドライブ側（B）に新しい定期バックアップ専用フォルダ**を設ける方針。旧V3/V4は別アカウント（A）側で世代維持。今ある暗号化8ファイルと鍵復旧資産は削除/移動/上書きしない。`v5_gdrive:`は過去の接続名のため、実運用前に生きた接続・空き容量を確認。詳細`docs/BOAT_SHARED_BACKUP_POLICY_20261023.md`。
 - 開発・データ移行を優先し、初回DB変更前にConoHaローカルで新世代の保護用バックアップと復元試験。深夜切替前には同一VPS障害にも耐える独立保全と差分整合が必須。整理済みの自動Drive暗号化バックアップは移行後に別承認で設定、現時点は**未予約・未実行**。
 
+## 10/23 共有13テーブルの安全な物理移行コード準備
+- GitHub `deploy/conoha/boat_shared_staging_delta_plan_offline.py`新規。13旧物理表/現行13非更新VIEWの厳密マッピングを読み、VIEWに衝突しない**`boat_data_stage.*`の複製先計画**を生成（このschemaは**未作成**）。`v5_data.venues`の既存24行ステージは変更なし。
+- 全件PK昇順・全列digestの2入力からINSERT/UPDATE/DELETEの**差分計画候補**をストリーム検出する関数を実装。日時watermarkだけで削除を見落とさないための仕様であり、**CDCも実SQL同期も実装・実行していない**。13の現行コード候補とGO/NO-GOを分離、証拠がない限りNO-GO。
+- `tests/test_boat_shared_staging_delta_plan_offline.py`に8件の単体試験を新規追加。さらに`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`で`origin/main`から必要4ファイルだけを隔離`/tmp`へ取得し、**ConoHaの現行worktreeを変更しない**単体試験を1回実施できるよう用意。GitHub作成とreadbackは確認済、**ConoHa/Actions上のテスト実行PASSは未確認**。現行収集・DB/Drive・BUY・timerは変更していない。
+
 ## Next ONE task（次の一作業）
-ユーザー合意：**移行準備の構築を優先**し、初回のDB変更前に**ConoHaローカルで新規世代の保護用バックアップ＋限定復元試験**を行う。切替前には同一VPS故障にも耐える最新の独立保全を別途検証（必要な単回外部転送）、不足ならNO-GO。**移行整理後はGoogle Driveへ毎日1回を基本とする暗号化世代別自動バックアップ**を実装・別承認で稼働（初期案：日次7＋週次4世代、容量実測で調整）。旧Drive8件は保存し、勝手に上書き/削除しない。詳細`docs/BOAT_SHARED_BACKUP_POLICY_20261023.md`。**次のONE task**は13系列の共有物理staging設計とUPSERT/DELETE差分追従・切替GO/NO-GOのオフライン安全設計を進めること。今はバックアップ作成・DBコピー・停止・予約・BUYなし。
+Termiusで`git -C /opt/boat-ai-v5 fetch --no-tags origin main && git -C /opt/boat-ai-v5 show origin/main:deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh > /tmp/boat_stage_test.sh && bash /tmp/boat_stage_test.sh`を一度だけ実行し、8件テストとOFFLINEステージ計画CLIの動作を確認する。失敗はSTOPしてGitHub側のコードを修正。`git pull`、DB COPY、schema DDL、night schedule、BUY、古い表削除は禁止。成功後は実DBへの**最小venues一表のステージ準備**を安全に設計し、初のDB変更直前にConoHaローカルバックアップ＋復元試験を行う。Google Drive自動バックアップは整理完了後にV5専用アカウントで別承認。
