@@ -27,6 +27,9 @@
 ### 3. 移行後
 旧実表は隔離し**すぐには削除しない**。数日以上の収集・read/realtime/historical/walk-forward照合、別媒体バックアップ再取得と復元、rollbackの実証後に、**1表ずつ別承認**して削除する。研究用shadow・隔離・archiveの扱いは別判断。予測とBUYは移行成功に連動して自動ONにしない。
 
+## 10/23 Google Driveバックアップ実在確認
+接続済み2アカウントのフォルダ直接一覧で、10/19メイン暗号化dump約298MB（2アカウント・同ファイル名/バイト数）、10/19履歴dump約52MB、10/18メイン旧版、V3/V4旧版等**計8件のファイル実在**を確認。検索APIは直下ファイルの一部を返さなかったため、フォルダ一覧で検証した。**内容・暗号鍵・復元性・ハッシュ同一性・10/19以降の収集分の保護は未検証**。今あるGoogle Drive世代の上書き・削除はしない。詳細：`docs/BOAT_GDRIVE_BACKUP_METADATA_20261023.md`。整理完了後の新世代アップロードとは別に、**本番切替前の最新バックアップ＋限定復元試験は省略できない**。
+
 ## 現在の検査で分かっているNO-GO
 - 10/23 16:22旧物理13件→共通13VIEW READ-ONLY確認。**共通側に13物理実表なし**。
 - 16:29 read-only実行`v5_active_writer_routes_readonly_20261022.py`末尾：`NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`。forwardの子は`v5.conoha_realtime_window_pg → v21_realtime_collector_pg_safe.py → v21_realtime_collector_pg.py`、修復/日次/K/DDLの経路も残る。**この静的ヒントを切替完了証明に使用しない**。
