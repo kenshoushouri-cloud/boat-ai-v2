@@ -1,0 +1,426 @@
+{
+  "schema_id": "boat_shared_cutover_route_inventory_v1",
+  "last_documented_jst_date": "2026-10-23",
+  "provenance": "GitHub source/static script hints + user-provided read-only ConoHa screenshots; not complete runtime trace",
+  "intent": "inventory_only_not_operational_instruction",
+  "safety": {
+    "cutover_ready": false,
+    "unattended_cutover_scheduled": false,
+    "canary_passed": false,
+    "backup_independent_restore_verified": false,
+    "rollback_tested": false,
+    "all_runtime_writers_verified": false,
+    "delta_sync_covers_insert_update_delete": false,
+    "all_13_physical_targets_present": false,
+    "active_write_route": "legacy",
+    "reason": "boat_data contains 13 non-updatable views; live writer routes, source recency and independent restore are not fully verified",
+    "forbidden_until_separate_approval": [
+      "DROP_OLD_TABLES",
+      "REPLACE_VIEWS",
+      "SWITCH_WRITE_ROUTE",
+      "STOP_LIVE_COLLECTORS",
+      "BULK_COPY_OR_STAGE_APPLY",
+      "ENABLE_BUY",
+      "SCHEDULE_NIGHT_CUTOVER"
+    ]
+  },
+  "datastore": {
+    "active_db": "railway",
+    "target_schema": "boat_data",
+    "current_target_relation_kind": "non-updatable VIEW",
+    "archived_history_db": "boat_history_archive",
+    "history_copy_required": false,
+    "existing_google_drive_backup": "user_reports_prior_backup; content and recovery not independently verified; preserve original generation",
+    "data_origin_rule": "exclude research shadow/quarantine from live canonical copy without independent original-source proof"
+  },
+  "known_schedule_candidates": [
+    {
+      "group": "daily_morning",
+      "cue": "07:00 JST",
+      "entrypoint": "/opt/boat-ai-collector/daily_v5_safe.sh",
+      "calls": [
+        "repair_month_all_pg.py"
+      ],
+      "verified_complete": false
+    },
+    {
+      "group": "daily_night",
+      "cue": "23:00 JST",
+      "entrypoint": "/opt/boat-ai-collector/daily_v5_safe.sh",
+      "calls": [
+        "repair_month_all_pg.py"
+      ],
+      "verified_complete": false
+    },
+    {
+      "group": "forward",
+      "cue": "every 5 minutes",
+      "entrypoint": "v5/conoha_realtime_window_pg.py",
+      "calls": [
+        "v21_realtime_collector_pg_safe.py",
+        "v21_realtime_collector_pg.py"
+      ],
+      "verified_complete": false
+    },
+    {
+      "group": "midnight_catchup",
+      "cue": "01:20 JST and additional instances to verify",
+      "entrypoint": "v5/conoha_midnight_results_pg.py",
+      "calls": [
+        "repair_month_all_pg.py"
+      ],
+      "verified_complete": false
+    },
+    {
+      "group": "manual_k_backfill",
+      "cue": "manual/unknown",
+      "entrypoint": "save_k_day_results_pg.py",
+      "calls": [
+        "audit_k_day_all_pg.py"
+      ],
+      "verified_complete": false
+    },
+    {
+      "group": "historical_course_seed",
+      "cue": "manual/unknown",
+      "entrypoint": "research/historical_course_term_seed_pg.py",
+      "calls": [],
+      "verified_complete": false
+    },
+    {
+      "group": "compat_ddl",
+      "cue": "startup/manual unknown",
+      "entrypoint": "pg_schema_compat_v5.py",
+      "calls": [],
+      "verified_complete": false
+    }
+  ],
+  "route_modules": [
+    "v5_daily_table_routes.py",
+    "v5_realtime_table_routes.py",
+    "v5_k_result_routes.py",
+    "v5_core_read_routes.py"
+  ],
+  "gating_requirements_before_cutover": [
+    "complete_runtime_writer_reader_cron_child_ddl_inventory",
+    "physical_staging_with_distinct_names_and_schema_parity",
+    "online_copy_with_update_delete_tracking",
+    "per_table_final_delta_and_bidirectional_row_validation",
+    "new_backup_generation_including_latest_valuable_snapshots",
+    "independent_test_restore",
+    "recorded_quiet_window_and_all_child_writers_idle",
+    "atomic_single_canonical_writer_transition",
+    "live_collecting_canary_no_buy",
+    "tested_rollback_no_split_brain"
+  ],
+  "tables": [
+    {
+      "family": "master",
+      "legacy_relation": "public.v2_venues",
+      "canonical_relation": "boat_data.venues",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "repair_month_all_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v5_core_read_routes.py"
+      ],
+      "candidate_ddl_files": [
+        "pg_schema_compat_v5.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "MASTER",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "core",
+      "legacy_relation": "public.v2_races",
+      "canonical_relation": "boat_data.races",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "repair_month_all_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py",
+        "v5/conoha_midnight_results_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "pg_schema_compat_v5.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "CORE",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "core",
+      "legacy_relation": "public.v2_race_entries",
+      "canonical_relation": "boat_data.entries",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "repair_month_all_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py",
+        "feature_lab_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "pg_schema_compat_v5.py",
+        "v5_core_read_routes.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "CORE",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "result",
+      "legacy_relation": "public.v2_results",
+      "canonical_relation": "boat_data.results",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "repair_month_all_pg.py",
+        "v5/conoha_midnight_results_pg.py",
+        "save_k_day_results_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v5/conoha_midnight_results_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "pg_schema_compat_v5.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "POSTRACE",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "result",
+      "legacy_relation": "public.v2_result_entries",
+      "canonical_relation": "boat_data.racer_results",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "save_k_day_results_pg.py"
+      ],
+      "candidate_reader_files": [
+        "research/v5_lc_rf_exrank_rc_plus_opponent_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "save_k_day_results_pg.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "POSTRACE",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "odds",
+      "legacy_relation": "public.v2_odds_trifecta",
+      "canonical_relation": "boat_data.trifecta_odds",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "repair_month_all_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py",
+        "feature_lab_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "pg_schema_compat_v5.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "ASOF_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "feature",
+      "legacy_relation": "public.v2_racer_course_stats_snapshots",
+      "canonical_relation": "boat_data.racer_course_stats_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "collect_racer_course_stats_pg.py",
+        "research/historical_course_term_seed_pg.py"
+      ],
+      "candidate_reader_files": [
+        "feature_lab_pg.py",
+        "feature_lab_no_odds_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "collect_racer_course_stats_pg.py"
+      ],
+      "relevant_route_module": "v5_daily_table_routes.py",
+      "provenance_gate": "HISTORICAL_SNAPSHOT_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_entry_snapshots",
+      "canonical_relation": "boat_data.entry_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_exhibition_snapshots",
+      "canonical_relation": "boat_data.exhibition_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v5/conoha_realtime_window_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_odds_snapshots",
+      "canonical_relation": "boat_data.odds_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v5/conoha_realtime_window_pg.py",
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_weather_snapshots",
+      "canonical_relation": "boat_data.weather_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_race_condition_snapshots",
+      "canonical_relation": "boat_data.race_condition_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    },
+    {
+      "family": "realtime",
+      "legacy_relation": "public.v2_realtime_racer_condition_snapshots",
+      "canonical_relation": "boat_data.racer_condition_snapshots",
+      "source_relation_kind": "physical_table_observed_2026_10_23",
+      "target_relation_kind": "view_nonupdatable_observed_2026_10_23",
+      "candidate_writer_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_reader_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "candidate_ddl_files": [
+        "v21_realtime_collector_pg.py"
+      ],
+      "relevant_route_module": "v5_realtime_table_routes.py",
+      "provenance_gate": "FIRST_CAPTURE_UNVERIFIED",
+      "candidate_files_only_not_runtime_proof": true,
+      "full_writer_reader_and_ddl_coverage_certified": false,
+      "physical_copy_completed": false,
+      "ongoing_change_capture_validated": false,
+      "production_cutover_approved": false
+    }
+  ]
+}
