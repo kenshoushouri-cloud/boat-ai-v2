@@ -66,6 +66,64 @@ class TestHeldCounterCellPreview(unittest.TestCase):
         self.assertIn("CELL_PS_TOTAL=30_DISTINCT_NONZERO=30",summary)
         self.assertIn("PRIOR_STATE_FITTED=0",summary)
 
+    def test_13_family_distinct_cell_math_matches_isolated_research_projection(self):
+        # SYNTHETIC math parity ONLY. Mock 'OFFICIAL'/clean flags below are
+        # deliberate unit-test fixtures, NEVER evidence about real races.
+        # The real source object remains UNVERIFIED / hard HOLD.
+        from collections import Counter
+        from v5.offline_prior_day_factor_export import MAP_KEYS, NESTED
+        from v5.offline_research_two_population_day import project_two_population_day
+
+        synthetic = rows("20261020_21_02", True)
+        synthetic += rows("20261020_21_03", False)
+        cross_venue = rows("20261020_17_04", True)
+        for entry in cross_venue:
+            entry["racer_number"] += 100
+            entry["k_racer_number"] += 100
+            entry["exhibition_time_rank"] = 7-entry["lane"]
+        synthetic += cross_venue
+        src = assemble_source_proposals(DAY, synthetic)
+        self.assertEqual((len(src.fit_proposals),len(src.course_proposals)),(2,3))
+        audit = count_unverified_cells(src)
+        self.assertFalse(audit.prior_state_fitted)
+        self.assertFalse(audit.forward_eligible)
+        self.assertFalse(audit.buy_eligible)
+        self.assertTrue(all(p.refund_boats is None for p in src.fit_proposals))
+        self.assertTrue(all(p.refund_boats is None for p in src.course_proposals))
+
+        # Reference maths uses separately constructed synthetic, presumed-clean
+        # rows in this test ONLY; do not pass these claims to the DB adapter.
+        fit = tuple(replace(r, result_status="OFFICIAL",
+                            incident_free_verified=True,refund_boats=())
+                    for r in src.fit_proposals)
+        k = tuple(replace(r,result_status="OFFICIAL",
+                          incident_free_verified=True,refund_boats=())
+                  for r in src.course_proposals)
+        reference = project_two_population_day(DAY, fit, k)
+        self.assertEqual(reference.state.completed_races,2)
+        self.assertEqual(len(reference.course_race_ids),3)
+        self.assertEqual(set(reference.state.counters), MAP_KEYS)
+        got={key:(total,distinct) for key,total,distinct in audit.family_cells}
+        self.assertEqual(set(got),MAP_KEYS)
+
+        for key in sorted(MAP_KEYS):
+            values=reference.state.counters[key]
+            if key in NESTED:
+                # Flatten nested (lane/racer OR venue/lane) counters so that
+                # distinct cells mean *exactly* the same keys in both paths.
+                flattened=Counter({
+                    (outer,inner):int(count)
+                    for outer,group in values.items()
+                    for inner,count in group.items() if count>0
+                })
+            else:
+                flattened=Counter({k:int(v) for k,v in values.items() if v>0})
+            with self.subTest(counter_family=key):
+                self.assertEqual(got[key],(sum(flattened.values()),len(flattened)))
+        self.assertEqual(got["vc"],(2,2))
+        self.assertEqual(got["vn"],(2,2))
+        self.assertEqual(got["cs"],(18,6))
+
     def test_refund_eligibility_claims_refused(self):
         p=self.src.fit_proposals[0]
         unsafe=replace(self.src,fit_proposals=(
