@@ -24,6 +24,11 @@
 - `public.v2_bao_exhibition_shadow_snapshots`/`public.v2_bao_market_shadow_snapshots` はテーブルが存在するが、当該レースは両方0行（他レース・全表は未検査）。このBao研究用表は稼働中の `v5/conoha_realtime_window_pg.py` + `v21_realtime_collector_pg_safe.py` の保存先ではない。V5専用の`official_http_transport.py`/`official_first_write_storage.py`/`official_first_write_executor.py`/`official_capture_pipeline.py`はGitHubの未配備設計。後者はofficial_beforeinfoに対して認証済み6艇出走証拠未確定のためPRE-HTTP HARD HOLD。既存の保護ゲートを無断解除/改造しない。将来の初回取得証拠は取得時に独立記録し、後からレース原本を捏造しない。
 - ユーザーと再確認：予想に必要なデータは将来V5/V6共通の`boat_data`に一元化。**今も稼働中の旧writerは維持して13 VIEW経由で読む**。物理正本切替はバックアップ・同期・停止窓・戻し確認後、表単位。履歴別DBは重複コピーせずread-only参照。収集停止・大量移行・削除・BUYは引続き不可。
 
+## 2026-10-23 前日学習状態の実モデル接続監査
+- `v5/offline_prior_day_counter_update.py`（13Counter増分）/ `v5/offline_prior_day_factor_export.py`（基礎確率+5x6因子）を静的点検。モデル入力には `lw/lcs/lcw/rks/rkw/cs/ct/rcs/rct/ps/pw/vc/vn` の**13系統の前日固定Counter**が必要。公式K5走とTOP3率だけでは作れない。凍結された当時の完全なCounter/独立原本証拠は未確認。
+- 実6艇の前日Kの個別`race_date`+`finish_position` JSONB配列を返す**read-only専用SQL** `deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql` をGitHub追加。文書`docs/V5_REAL_PRIOR_DAY_FACTOR_BOUNDARY_20261023.md`に全5因子・13Counter・HOLD条件を記載。**ConoHaでは未実行、実予測/BUY未実行**。
+- 既存writer/共通13VIEW/物理移行/旧表/タイマーは一切変更なし。初回原本とofficial positive six-active evidenceのHARD HOLD継続。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -31,4 +36,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-10/23 GitHub Actions `v5-official-first-write-executor-offline.yml` 模擬DBテストが **21/21 PASS**（Issue #581 comment 6356024189）。同一原本保全、改ざん/衝突拒否、失敗rollbackを確認したが、実DB/公式HTTPの初回原本証明やV5 Forward許可ではない。既報PRE-HTTP beforeinfo 6/6 PASS・official-http-transport 21/21 PASS、HARD HOLD維持。実入力6艇/展示6/odds120/K5は同一ラベルで橋渡し済み、独立初回証明と前日状態固定は未完成。次のONE taskは**`v5/offline_prior_day_counter_update.py`＋`v5/offline_prior_day_factor_export.py`の前日状態入力境界の静的確認**。物理移行/旧表削除/ConoHa writer/13VIEW/BUYは変更しない。
+GitHubから`deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql`をConoHa上の一時ファイルに取り出し、read-onlyで**`20261023_21_02`の6艇・K5走JSONB**を1回確認。期限20s、DB書込なし。返る`HOLD_NO_FROZEN_PRIOR_COUNTERS_OR_FIRST_CAPTURE`は想定された保護判定でモデル完成ではない。実行成功後、13Counterの前日固定材料・母集団を一レースではなく過去日順に安全設計。ConoHaの稼働収集、13VIEW、既存writer、物理移行、BUYは変更しない。
