@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHa旧リアルタイム6物理表の容量と概算行数をpg_class/pg_total_relation_sizeメタデータでread-only確認。10/23 21:49に`public.v2_realtime_*`6種類すべて`r`、21:46に`v5_data.raw_*_snapshots`6種類すべて`absent`を確認。raw物理候補名の無断作成はDDLガードで既存収集を停止させ得るため禁止。stage24行再COPY禁止、独立外部保全・全writer未確認につき切替NO-GO。
+**最新compact末尾の Next ONE task**：ConoHaで最小の旧`public.v2_realtime_entry_snapshots`（33MB、推定12.5万行）の構造/主キー/UNIQUE/trigger/権限をメタデータread-only監査し、`boat_data.entry_snapshots` VIEWと`boat_data_stage.entry_snapshots`の有無を確認。21:52の旧6表総容量約1,133MB（odds653MB）、推定約335万行は统计値で実件数ではない。原本6表は物理、`v5_data.raw_*`6名は未作成。実コピー/切替/STOPは禁止、stage venues24行再コピー禁止、独立外部保全/全writer確認未完了につきNO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
