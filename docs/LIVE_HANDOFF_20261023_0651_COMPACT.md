@@ -3,7 +3,7 @@
 
 ## 目的・優先順位
 - **ConoHa上のV5**を主力に、締切前の一次データを用いた実3連単予測を完成し、2025年7月以降のウォークフォワード・バックテスト、非購入試験運用、結果検証へ。最終的に自動購入を検討するのは別途承認後。純利益+5万円/月、1～3レース/日または見送りの目標は未検証。
-- 最優先：**V5実データ入力→HOLD理由→実モデル接続→非購入試験**。データ物理移行と欠損補完は精度・安全に必要な範囲で並行。全量復旧待ちで本体開発を停止しない。予想精度を下げる特徴量はバックテストで評価し採用しないが、将来用の収集は継続。
+- 最優先：**V5実データ入力と、稼働中のデータを壊さない共通物理基盤への段階移行**を両立。移行では先にwriter/reader・バックアップ/切戻しを検証し、実モデル接続→非購入試験へ進む。欠損補完は必要な範囲で並行。全量復旧待ちで本体開発を停止しない。予想精度を下げる特徴量はバックテストで評価し採用しないが、将来用の収集は継続。
 - 過去データ取得方針：2025-07以降を基本に、保存済み`boat_history_archive`やメインDBの欠損率を先に検査。公式出走表・結果・選手/モーター/ボートのprior-only特徴は必要箇所だけ補完。後日取得の展示/オッズは**本当の締切前捕捉証拠と混同しない**。まずV5非購入試験とバックテストを進め、全期間再取得を開始条件にしない。旧10月中旬目標から遅延、10/31整理目標は未保証。
 - Railway Hobbyはユーザーが2026-10-23に解約済み（契約終了11/03、追加請求予定$4.92は画面時点の見込み）。今後はConoHa優先、Railway Agent/AI禁止、費用/CPU/RAM/Network最小。Google Driveはバックアップ候補だが暗号化/外部転送/復元検証は未完。旧DB/アーカイブ/backupの削除は禁止。
 
@@ -113,6 +113,11 @@
 - **16代表日の展示保管調査もConoHaで正常終了/COMMIT**：2025-07-15=155/156、10/15=141/144、2026-01-15=165/168、04/15=132/132、07/15=167/168、09/15=151/156、10/01=163/168、10/05=129/144。10/10,15,17,18,19は同一ラベル6艇=0。10/20=29/144、10/21=129/156、10/22=150/168。前期のhistoricalは多数、10/01,05はhistorical/forward以外のラベル、10/20以降はforwardが増加。保存方式や時点の変更が疑われるが原因未確定。historicalの`snapshot_at`も**初回取得の原本証明ではない**。別テーブル`public.v2_exhibition`や`public.v4_exhibition_quarantine_20261017`等がある。
 - 次の限定read-only `deploy/conoha/v5_exhibition_alt_source_gap_readonly_20261023.sql`をGitHub追加、**未実行**。10/10,15,17,18,19の`public.v2_exhibition`一致レース数と、別テーブルの列メタデータ（本体行は読まない）、10/01,05の展示ラベル分布を確認する。全期間の保存率や真の初回展示時刻はまだ未確定。
 
+## 10/23 16:16 現行分散保存の確認と共通物理基盤への作業復帰
+- ConoHa Termius `v5_exhibition_alt_source_gap_readonly_20261023.sql`はCOMMIT/監査正常終了。10/10,15,17,18,19の`public.v2_exhibition`一致行/レース数は全て0。10/01は`final_ab`・`learning_all`各162レースの同一ラベル6艇、10/05は各127レース（重複して数えない）。展示・shadow・quarantine等の別物理表が複数存在することをメタデータで確認。これら研究用・隔離データを原本認証なしにライブ学習へ取り込まない。
+- **ユーザーの主目的は保存先統一と物理移行**。設計はConoHa PostgreSQL `railway.boat_data`をV5/V6共通の最終物理正本とする。`boat_data`の13件はまだ**非更新VIEWのみで、旧`public.v2_*`物理表を参照**。旧writer稼働中、V5-specific staging `v5_data.venues`24件も正本ではない。履歴専用`boat_history_archive`は別DBの読み取り専用adapter経由で共通利用し、巨大データの強制複製はしない。**物理移動は未完了**。
+- GitHubで`deploy/conoha/boat_common_physical_inventory_readonly_20261023.sql`を追加（未実行）。13対の旧物理表と共通VIEWの関係/更新禁止/ディスク容量メタデータ、staging/研究shadow/隔離表の種別をまとめて監査。行コピー・DDL・サービス停止・writer切替は行わない。現行writerの全経路点検、10/19以降を含む新バックアップと復元試験、停⽌窓内delta整合、回復策を満たすまでは物理移動/旧表削除禁止。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -120,4 +125,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで`git fetch --no-tags origin main`後、`deploy/conoha/v5_exhibition_alt_source_gap_readonly_20261023.sql`を`git show origin/main:`で`/tmp/v5_ex_alt_gap.sql`に取得し、`sudo -u postgres psql -d railway -X -v ON_ERROR_STOP=1 -f /tmp/v5_ex_alt_gap.sql`を**1回だけREAD ONLY実行**。10/10,15,17,18,19の旧`v2_exhibition`レース数、他展示/shadow/quarantineの列構造、10/01,05のlabel分布を確認。欠測/別保存の区別後に限ってより広い検査を設計。既存collect/timer/DB writer/13VIEW/旧表/物理移行/BUYは変更しない。後日データを当時のpredeadline原本へ格上げ禁止。
+**物理共有化の最優先検査**：ConoHa Termiusで`git fetch --no-tags origin main`、`git show origin/main:deploy/conoha/boat_common_physical_inventory_readonly_20261023.sql`を`/tmp/boat_common_inventory.sql`へ保存し、`sudo -u postgres psql -d railway -X -v ON_ERROR_STOP=1 -f /tmp/boat_common_inventory.sql`を**1回READ ONLY実行**。13件の旧実表→共通VIEWの型/依存・サイズとstage/研究用表の種別を確認。次は稼働中の全writer/readerルートの静的inventoryとバックアップ復元ゲートを整え、1テーブルずつ段階移行を設計。**現段階で物理コピー・VIEW削除・旧表削除・writer変更・cron停止・BUYは絶対に実行しない**。
