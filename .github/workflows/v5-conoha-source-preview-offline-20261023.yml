@@ -20,13 +20,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Nine synthetic source assembly tests only
+      - name: Nine source + five held Counter shape tests only
         id: test
         run: |
           set +e
           python -m unittest discover -s tests -p 'test_v5_conoha_research_one_day_sources_readonly.py' -v > output.txt 2>&1
-          code=$?
-          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          source_code=$?
+          python -m unittest discover -s tests -p 'test_v5_offline_unverified_counter_shape_preview.py' -v >> output.txt 2>&1
+          shape_code=$?
+          if [ "$source_code" -eq 0 ] && [ "$shape_code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
           exit 0
       - name: Report
         id: report
@@ -39,14 +41,15 @@ jobs:
           from pathlib import Path
           raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
           lines=[line[:225] for line in raw.splitlines() if line.startswith(("test_","Ran ","OK","FAILED","FAIL","ERROR","Traceback","AssertionError","ImportError"))]
-          passed=os.environ.get("PASSED")=="true" and "Ran 9 tests" in raw and "\nOK\n" in raw
+          passed=(os.environ.get("PASSED")=="true" and "Ran 9 tests" in raw
+                  and "Ran 5 tests" in raw and raw.count("\nOK\n")==2)
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               f.write("verified="+("true" if passed else "false")+"\n")
           body=[
               "## V5 one-day ConoHa source preview: synthetic offline only",
-              "- Nine bounded synthetic tests: no actual ConoHa, PostgreSQL, GET, prediction, BUY, or deployment.",
+              "- 14 bounded synthetic tests (9+5). No ConoHa DB, HTTP, actual trained Counter state, BUY, or deployment.",
               "- Refund/incident remains UNVERIFIED and all fitted/prospective counters remain HOLD.",
-              "- SQL query and real-data cardinalities are NOT certified by synthetic tests.",
+              "- Counter totals are unverified SHAPE rehearsals, not fitted state. SQL query and real-data cardinalities are NOT certified by synthetic tests.",
               "",
               "~~~text",*lines[-12:],"~~~","",
               "V5_CONOHA_SOURCE_PREVIEW_OFFLINE_PASS" if passed else "V5_CONOHA_SOURCE_PREVIEW_OFFLINE_FAILED",
