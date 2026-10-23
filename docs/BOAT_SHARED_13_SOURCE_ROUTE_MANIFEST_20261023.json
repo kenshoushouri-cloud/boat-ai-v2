@@ -422,5 +422,30 @@
       "ongoing_change_capture_validated": false,
       "production_cutover_approved": false
     }
-  ]
+  ],
+  "isolated_staging_progress": {
+    "source": "user Termius screenshots 2026-10-23 19:50-19:52 JST; point-in-time only",
+    "production_physical_targets_cut_over": 0,
+    "canonical_boat_data_relation_kind": "13 nonupdatable VIEWs remain unchanged",
+    "venues": {
+      "source": "public.v2_venues",
+      "stage": "boat_data_stage.venues",
+      "existing_older_stage_preserve": "v5_data.venues",
+      "stage_first_copy_completed": true,
+      "first_copy_rows": 24,
+      "first_copy_transaction_committed": true,
+      "source_stage_full_column_parity_on_readback": true,
+      "latest_point_in_time_delta_counts": {
+        "SAME": 24,
+        "INSERT": 0,
+        "UPDATE": 0,
+        "DELETE": 0
+      },
+      "current_live_delta_or_cdc_certified": false,
+      "stage_recreate_or_blind_recopy_allowed": false,
+      "live_read_view_or_writer_switched": false,
+      "dml_or_cutover_approved": false,
+      "explanation": "tables[].physical_copy_completed=false refers to uncompleted canonical production migration; this stage pilot has been physically copied and must not be repeated"
+    }
+  }
 }
