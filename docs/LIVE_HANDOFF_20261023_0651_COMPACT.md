@@ -136,5 +136,10 @@
 - **新`boat_data_stage.entry_snapshots`への単純`LIKE ... INCLUDING ALL`は旧sequence defaultを共有し得るため禁止。** 採番defaultを分離/削除する設計、既存IDの明示コピー、複製後整合と将来の採番衝突防止は別検証が必要。現時点でentryのCREATE/COPY・DMLは一切未承認・未実施。
 - 既存venues24行のstageは保全・再コピー禁止。現行収集と13VIEWそのまま。本番物理正本切替0/13、独立保全・全writer証明未完了、NO-GO。
 
+## 10/23 23:08 JST：entry snapshots default/FK最終read-only照合
+- ユーザーTermius画像で`public.v2_realtime_entry_snapshots`の列DEFAULTは**idの`nextval('v2_realtime_entry_snapshots_id_seq'::regclass)`1件のみ**、その他のdefaultなし。該当表の流入・流出FK制約**0件**。`BEGIN READ ONLY`/`ROLLBACK`正常終了。21列、PK id、UNIQUE (race_id,snapshot_label,lane)、user trigger0、原本r/共有VIEW v/新`boat_data_stage.entry_snapshots` absentという前段結果と整合。
+- 新規entry stageは**未作成・未承認**。`LIKE ... INCLUDING ALL`無修正は旧採番シーケンスを共有し得るため禁止。仮に全行を明示IDで複製しても独立採番や唯一キーのNULL安全性を別途検証するまで実COPYは禁止。
+- ConoHa liveのcollector/cron/旧原本/既存venues stage24件に変更なし。独立外部保全・全writer audit・rollback不足で全13表の本番切替0/13、NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa `railway`旧entry表の残り列defaultと外部キー制約（流入・流出）をメタデータのみREAD ONLYで確認**。新stage設計に必要な依存/採番副作用を把握する。大量データ走査、実複製/CREATE、収集停止/cron変更、VIEW切替、旧原本削除・BUYは禁止。新たな承認まで実DBの書込NO-GO。1回1コマンド。
+**ConoHa旧entry原本の差分照合候補UNIQUE 3列`race_id,snapshot_label,lane`について、`pg_attribute.attnotnull`とUNIQUE indexの`indnullsnotdistinct`をREAD ONLYメタデータ確認**。NULLが許される場合はUNIQUEでも同一キー判定が不十分となり、DELETE/UPSERT設計前に空値/重複の実データ検査計画が必要。大量COUNT、stage CREATE/COPY、シーケンス操作、収集停止、cron変更、VIEW切替、BUYは禁止。明示承認まで実書込と本番切替NO-GO。1コマンドだけ。
