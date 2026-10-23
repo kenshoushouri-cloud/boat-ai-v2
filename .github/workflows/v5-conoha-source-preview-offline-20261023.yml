@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Seven synthetic source assembly tests only
+      - name: Nine synthetic source assembly tests only
         id: test
         run: |
           set +e
@@ -39,12 +39,12 @@ jobs:
           from pathlib import Path
           raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
           lines=[line[:225] for line in raw.splitlines() if line.startswith(("test_","Ran ","OK","FAILED","FAIL","ERROR","Traceback","AssertionError","ImportError"))]
-          passed=os.environ.get("PASSED")=="true" and "Ran 7 tests" in raw and "\nOK\n" in raw
+          passed=os.environ.get("PASSED")=="true" and "Ran 9 tests" in raw and "\nOK\n" in raw
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               f.write("verified="+("true" if passed else "false")+"\n")
           body=[
               "## V5 one-day ConoHa source preview: synthetic offline only",
-              "- Seven bounded synthetic tests: no actual ConoHa, PostgreSQL, GET, prediction, BUY, or deployment.",
+              "- Nine bounded synthetic tests: no actual ConoHa, PostgreSQL, GET, prediction, BUY, or deployment.",
               "- Refund/incident remains UNVERIFIED and all fitted/prospective counters remain HOLD.",
               "- SQL query and real-data cardinalities are NOT certified by synthetic tests.",
               "",
@@ -58,6 +58,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
-      - name: Fail if not seven passed
+      - name: Fail if not nine passed
         if: steps.report.outputs.verified != 'true'
         run: exit 1
