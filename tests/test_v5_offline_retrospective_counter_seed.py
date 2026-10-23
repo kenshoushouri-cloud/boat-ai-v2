@@ -18,7 +18,7 @@ DAY = date(2026, 10, 20)
 
 
 def row(
-    *, race_id="20261020_21_02", incident=False,
+    *, race_id="20261020_21_02", incident=True,
     refund=(), status="OFFICIAL",
 ):
     boats = tuple(
