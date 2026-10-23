@@ -1,7 +1,7 @@
-# 最新引き継ぎへの唯一の入口（2026-10-23 06:51 JST）
+# 最新引き継ぎへの入口（2026-10-23）
 
 **Current compact handoff:** `docs/LIVE_HANDOFF_20261023_0651_COMPACT.md`
 
-新チャットでは本ファイルと上記compactだけを読み、末尾の **Next ONE task** から開始。古い`LIVE_HANDOFF_20261011_CHAT_RESET_MINIMAL.md`（約35KB）など過去handoff、PROJECT_HISTORY、長いworkflow、過去会話の一括読みは禁止。特定の根拠が必要な時だけ対象部分を参照。
+新チャットでは本ファイルと指定compactだけを読み、末尾の **Next ONE task** から開始。古いhandoff/PROJECT_HISTORY/大規模workflowの一括読み禁止。
 
-直近：ConoHa `boat_data`の非更新VIEW13件は06:45に13/13検証成功（物理移動ではない）。06:51のV5実入力サンプルSQLは0行、SQL実行は成功、実予測・購入なし。朝7時の収集前だったため未取得と断定不可。**次の1作業は当日07:00収集結果のread-only確認**。データ物理移行、旧表削除、V5本番BUYは未許可。Railway有料プランは解約済み。ConoHa費用最小、1回1作業、重要なゲートを飛ばさない。
+直近10/23：ConoHa`boat_data`は非更新VIEW13件（物理移行前）。10/20 read-onlyは144レース、正常K履歴132、展示付き候補27、13Counterセル件数出力成功。GitHub合成テスト22/22 PASS。ただし実学習・事故/返還原本・初回取得・予測/BUYは未承認のHOLD。ConoHaの既存収集を維持し、低費用・1回1作業・破壊的変更は禁止。詳細と次の1作業はcompact参照。
