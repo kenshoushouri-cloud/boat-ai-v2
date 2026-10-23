@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -31,6 +30,7 @@ from v5.offline_retrospective_counter_seed import (
 from v5.offline_research_two_population_day import (
     CourseHistoryRace, CourseKBoat, project_two_population_day,
 )
+from v5.conoha_research_source_contract import SourceProposals
 
 # One bounded query; never selects postrace odds or a raw payload. A complete
 # exhibition label is accepted for SHAPE only, not immutable as-of receipt.
@@ -89,23 +89,6 @@ LEFT JOIN boat_data.exhibition_snapshots x
 LEFT JOIN public.v2_results rs ON rs.race_id=r.race_id
 ORDER BY r.race_id,e.lane
 """
-
-@dataclass(frozen=True)
-class SourceProposals:
-    day: date
-    race_total: int
-    roster6: int
-    k_course_shape6: int
-    exhibition6: int
-    fit_source_shape6: int
-    fit_proposals: tuple[RetrospectiveResearchRace, ...]
-    course_proposals: tuple[CourseHistoryRace, ...]
-    # Absolutely no independent positive incident/refund/first-write evidence.
-    first_capture_verified: bool = False
-    retrospective_fit_authorized: bool = False
-    forward_eligible: bool = False
-    buy_eligible: bool = False
-
 
 def _integer(v: object) -> int | None:
     return v if type(v) is int else None
