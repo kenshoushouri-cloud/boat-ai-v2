@@ -71,5 +71,11 @@
 - ユーザーTermiusスクリーンショットで`Ran 17 tests in 0.011s`、`OK`、`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`、rootプロンプト復帰を確認。隔離`/tmp`でGitHubの必要3ファイルを実行し、**ConoHa本番DB/既存stage/収集/BUY変更なし**。合成データ上の全PK・全列 INSERT/UPDATE/DELETE検出と不完全入力NO-GOを確認。**自動差分同期・CDC・本番書込・夜間切替は一切実施/認証していない**。19:52の実DB差分0は一時点の結果のみ。
 - 既存`boat_data_stage.venues`24件は再CREATE・再COPY・DROP禁止。共通物理正本への切替依然0/13。旧原本収集継続。ConoHaローカル旧世代dumpを保持。独立保全・全writer証明・非購入canary・切替承認未完了。
 
+## 10/23 20:01以降：GitHub上のvenues現行writerルート一次監査（静的・実行変更なし）
+- `repair_month_all_pg.py` 1317-1319 `main()`で`ensure_venues()`を呼ぶ。312-325で24会場`venue_code=venue_id`、`updated_at=_now_iso()`を作り、`upsert_rows("v2_venues", rows, "venue_id")`。既存原本vs旧stageの毎朝24件timestamp差と整合的だが、**稼働実トレースの証明ではない**。
+- 同ファイル287-307の`upsert_rows`は`v5_daily_table_routes.resolve_table`経由で`db_pg.upsert_rows`へ。後者は`ON CONFLICT (venue_id) DO UPDATE`（競合キー以外の送信列を更新）として動く。**物理PKはvenue_codeでありUNIQUE venue_idと両方保護必要**。入力にないcreated_atは維持する。更新日時のみの差分も完全列照合でUPDATE候補扱い。
+- `v5_daily_table_routes.py`は既定`legacy`、opt-in二重/三重gate。**`shared_venues_v1`は現在非更新VIEWの`boat_data.venues`に向けるため、有効化禁止**。既存`v5_data.venues`向けprofileも今回作成した`boat_data_stage.venues`の安全同期手段ではない。`db_pg.py`の許可済みスキーマ名に`boat_data_stage.venues`はなく、writer切替・DB処理は未実装/未承認。
+- ConoHaにはこのGitHub読取で一切操作なし。現行稼働writer完全認証・複数子ジョブ・DDL・readers網羅は未完了。旧収集継続、stage初回24件は再コピー禁止。
+
 ## Next ONE task（次の一作業）
-**GitHubのみ、venuesの実運用writer/reader/DDL依存の不足分を1経路ずつread-only静的確認**。優先：`repair_month_all_pg.py`の`public.v2_venues`書き込み形態（毎朝updated_at変更）、`v5_daily_table_routes.py` opt-in適用可否、呼び出し元とDDL。差分同期計画・writer静止/最終全PK整合/ロールバックに必要な事実だけを短く記録する。ConoHa DBへの同期DML・自動化・VIEW置換・無条件COPY・旧表削除・BUYは禁止、別承認までNO-GO。13表の共通切替0/13は維持。外部独立新世代バックアップ＋復元も本番切替前必須。
+**GitHubだけでvenues専用の差分反映プロトコルを安全設計**（DML本番実装・実行なし）。現行writerは`venue_id` UNIQUEでupsertし主キーは`venue_code`、`updated_at`毎朝更新を考慮。source/stageの一貫snapshot全キー比較、二重writerを防ぐ静止/再照合、INSERT/UPDATE/DELETE（特にDELETE誤適用防止）、制約競合、失敗時ROLLBACK、短い非購入canary、最終GO/NO-GOゲートを整理。現行`boat_data.venues`VIEW、他12表VIEWは変更禁止。ConoHa DB追加DML・自動同期/予約・旧表削除・切替は新たな明示承認まで禁止。外部独立保全＋復元・全writer確認が欠けているため本番切替NO-GO。GitHub/ConoHa/実証を区別して1作業ずつ。
