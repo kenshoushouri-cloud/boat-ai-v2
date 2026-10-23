@@ -1,0 +1,63 @@
+name: V5 ConoHa real source preview isolated tests
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 conoha-source-preview-offline-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Seven synthetic source assembly tests only
+        id: test
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_conoha_research_one_day_sources_readonly.py' -v > output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Report
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
+          lines=[line[:225] for line in raw.splitlines() if line.startswith(("test_","Ran ","OK","FAILED","FAIL","ERROR","Traceback","AssertionError","ImportError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 7 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("verified="+("true" if passed else "false")+"\n")
+          body=[
+              "## V5 one-day ConoHa source preview: synthetic offline only",
+              "- Seven bounded synthetic tests: no actual ConoHa, PostgreSQL, GET, prediction, BUY, or deployment.",
+              "- Refund/incident remains UNVERIFIED and all fitted/prospective counters remain HOLD.",
+              "- SQL query and real-data cardinalities are NOT certified by synthetic tests.",
+              "",
+              "~~~text",*lines[-12:],"~~~","",
+              "V5_CONOHA_SOURCE_PREVIEW_OFFLINE_PASS" if passed else "V5_CONOHA_SOURCE_PREVIEW_OFFLINE_FAILED",
+          ]
+          Path("summary.md").write_text("\n".join(body)+"\n")
+          PY
+      - name: Comment on test issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Fail if not seven passed
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
