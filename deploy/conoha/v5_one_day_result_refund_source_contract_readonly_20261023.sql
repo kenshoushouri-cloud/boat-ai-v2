@@ -62,11 +62,11 @@ WITH one_day AS MATERIALIZED (
 ), present AS (
   SELECT key,
          count(*) FILTER (
-           WHERE jsonb_typeof(doc->key)<>'null'
+           WHERE jsonb_typeof(doc->fld.key)<>'null'
          ) AS nonnull_rows
   FROM one_day
-  CROSS JOIN LATERAL jsonb_object_keys(doc) key
-  WHERE key ~* 'refund|return|cancel|void|invalid|incident|status|raw'
+  CROSS JOIN LATERAL jsonb_object_keys(doc) AS fld(key)
+  WHERE fld.key ~* 'refund|return|cancel|void|invalid|incident|status|raw'
   GROUP BY key
 )
 SELECT key,nonnull_rows
