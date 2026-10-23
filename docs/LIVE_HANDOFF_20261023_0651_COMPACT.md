@@ -180,5 +180,10 @@
 - **専用root_folder_idがなく、マイドライブrootを基点とする設定だが、Googleアカウントが他remoteと異なるかは不明。名前だけではV5専用アカウント/保存先の分離証明にならない。** rclone既定API client利用であり00:09のDrive API 403 rate limitのリスクが残る。既存backup上書き・remote修正・Google API再試行なし。
 - entryオフライン12/12、過去合成累計68件PASSは維持。V5用の独立バックアップと隔離復元は**未実施**。旧collector・VIEW13個・venues stage24件不変。本番切替0/13・NO-GO。
 
+## 10/24 00:15 JST：ConoHaローカルrclone認証の同一性比較（機密値不表示）
+- ユーザーTermius画像：`rclone config dump`をローカルPythonへ直接パイプし、`v5_token_present=yes`、`drive=UNKNOWN`、`gdrive_a_backup=DIFFERENT_REFRESH_TOKEN`。いずれもトークン実体・指紋表示なし、Drive API通信/転送なし。`drive=UNKNOWN`は比較に使えるrefresh tokenが少なくとも一方で取得できなかったことを示し、同一/別アカウントの判定は不可。
+- `gdrive_a_backup`とV5は**refresh tokenが一致しない**が、違うGoogleアカウントの証明ではない。V5の専用root_folder_id/team_driveは未設定（00:12確認）、API 403 rate limit（00:09）でフォルダを確認できず、V5専用Drive・独立新世代バックアップ・復元試験は未証明。
+- 旧remoteの設定変更/旧backup上書き/Google APIの連続再試行は禁止。entry合成12/12、旧合成56/56は維持、stage venues24件保全、entry未作成。本番正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaでrcloneの3 remote（drive/gdrive_a_backup/v5_gdrive）のローカルOAuth refresh tokenが完全一致するかを、秘密値を一切表示せず比較**。API通信しない`rclone config dump`のJSONを同一パイプ内Pythonで解析し、`SAME_REFRESH_TOKEN`/`DIFFERENT_REFRESH_TOKEN`/`UNKNOWN`のみ出力。**DIFFERENTは別Googleアカウントの証拠ではない**。設定の変更・既存Driveへの再接続・アップロード/上書き・DB変更なし。判断後にV5バックアップ分離を設計する。stage COPY/本番切替/BUYは禁止。
+**ConoHaのローカルrclone設定（drive/gdrive_a_backup/v5_gdrive）について、type、root_folder_id設定有無、team_drive設定有無、refresh token設定有無だけを機密値抜きで確認**。前回の`drive=UNKNOWN`の理由を判別するためのメタデータ監査であり、Google API通信なし。結果で保存先アカウントが独立したと断定しない。リモート更新・バックアップ作成/削除/上書き・collector/DB変更なし。13物理正本切替0/13・NO-GO。
