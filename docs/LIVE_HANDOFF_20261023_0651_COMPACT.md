@@ -71,6 +71,11 @@
 - 根因の有力候補：`pg_schema_compat_v5.py`で`v2_race_entries.racer_class`は**integer**。旧アダプターの`type(racer_class) is str`が全艇拒否。公式Bファイル`CLASS_MAP={B2:1,B1:2,A2:3,A1:4}`と同じ対応で数値コードを正規化し、`racer_class_text`と矛盾する場合はfail-closedする修正を`v5/conoha_research_one_day_sources_readonly.py`に実装。SELECTにも`racer_class_text`追加。
 - GitHub Actions Issue #581 コメント`6357476166`：修正後の合成テスト**9/9 PASS**。**ConoHa再検査は未実行、144/132/29/27を復元したとはまだ断言しない**。元サービス/DB/13VIEW/旧writerは変更していない。独立事故/返還なし・初回原本証明は未完了、HOLD継続。
 
+## 10/23 13:39 実DB sourceアダプター完全一致＋13Counter安全プレビュー
+- ユーザーTermiusで修正版 `v5.conoha_research_one_day_sources_readonly --date 2026-10-20` を隔離`git archive`からread-only実行：**RACES=144、ROSTER6=144、K_COURSE_SHAPE6=132、展示の時刻付き6形状=29、共通fit形状=27、fit proposals=27、course proposals=132**。以前のSQL結果に完全一致。正常終了。**研究fit承認0、course fit承認0、初回原本0、Forward0、BUY0**は意図したHOLD（事故/返還独立証明不足）。実DB/稼働収集/13VIEWへ書込み変更なし。
+- GitHub `v5/offline_unverified_counter_shape_preview.py`を追加。上記ソースproposalsから13Counter**各系統の総数だけ**を計算する非モデル用構造確認。実Counterの中身・`PriorDayCounters`オブジェクト・係数・予測を生成せず、未証明出所/事故/返還を実学習へ昇格しない。独立Kコース母集団132と展示付き27を区別し二重計上/不一致拒否。`v5.conoha_research_one_day_sources_readonly`へオプション`--counter-shape-preview`を追加。本番収集とは未接続。
+- 合成オフライン tests 9+5＝**14/14 PASS**（Issue #581 `6357573649`）。最初の5件テストには重複拒否の期待値誤りが1つあり修正済み。**ConoHa上で追加オプションの実行はまだ**。実際のモデル学習値・独立predeadline原本・ROI/BUYは完成していない。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -78,4 +83,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ユーザーのConoHa Termiusで**前回と同じ一時`git archive origin/main`コマンド**を再実行し、修正済み数値級別アダプターの`--date 2026-10-20`1日READ-ONLY実測を取得する。前回0/0/0はコードの文字列型限定が原因の有力候補。144/132/29/27を期待するが差があれば型/SQL条件を改めてread-only診断する。結果の`UNVERIFIED...=HOLD`、`FIT_ACCEPTED=0`は意図的。稼働サービス、物理移行、旧writer、13VIEW、BUYは変更しない。
+Termiusで隔離`git archive origin/main`を使った**前回と同じ1日read-onlyスクリプトに`--counter-shape-preview`を追加し、一度だけ2026-10-20を検査**。期待：source件数144/144/132/29/27再現、`SHAPE_*_TOTAL`13系統を単純計数（fit=27/course=132から構造的に決定）するが**実Counter学習値ではない**。終了時`PRIOR_STATE_FITTED=0`・`FORWARD_ELIGIBLE=0`・`BUY_ELIGIBLE=0`必須。続いて独立返還・事故証拠と実モデル版/校正を検討。既存収集、DB writer、13VIEW、物理移行、旧表削除、BUY変更なし。
