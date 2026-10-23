@@ -16,7 +16,7 @@ from v5.offline_prior_day_factor_export import (
     MAP_KEYS, NESTED, PriorDayCounters,
 )
 
-_RACE = re.compile(r"^\\d{8}_(?:0[1-9]|1\\d|2[0-4])_(?:0[1-9]|1[0-2])$")
+_RACE = re.compile(r"^\d{8}_(?:0[1-9]|1\d|2[0-4])_(?:0[1-9]|1[0-2])$")
 _SIX = set(range(1, 7))
 _MIN = date(2025, 7, 1)
 
