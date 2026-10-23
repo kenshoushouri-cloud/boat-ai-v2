@@ -37,6 +37,10 @@
 - `v5_exhibition_label_coverage_readonly_20261023.sql`を10/20だけread-only実行：全144レース中**29レース**で展示6艇が同じラベルに揃い、計174艇行。`conoha_forward_*` 28レース/168行、`conoha_other_*` 1レース/6行、`historical` 0。29件とも現存`snapshot_at`が締切前の形式条件を満たすが**初回取得の不変証明ではない**。残り115件はforward対象絞込か欠測か未分類。K6正常132件と展示6の**積集合は未計測**。
 - GitHubに`deploy/conoha/v5_exhibition_k_joint_coverage_readonly_20261023.sql`追加。10/20の1日だけでK正常132件と展示29件の同一race_id積集合を集計するSQL。未実行、DB write/モデル/BUYなし。
 
+## 10/23 12:17 公式K×展示の同一レース積集合（Termius実測）
+- `v5_exhibition_k_joint_coverage_readonly_20261023.sql`を`2026-10-20`1日だけ実行成功/COMMIT：全144、出走6=144、clean-K6=132、いずれか同一ラベル展示6=29、現存時刻上締切前展示6=29、**Kと展示が同一race_idで両立=27**、時刻条件込み=27（**初回原本証明ではない**）、展示6だがclean-K6ではない=2、clean-K6だが展示6なし=105、展示6なし合計=115。
+- Kの非clean対象12件の欠測/進入コース/着順/ F・L 状況を1日だけ診断する `deploy/conoha/v5_k_six_row_exclusions_readonly_20261023.sql` を追加、**未実行**。F/L等の事後情報は研究用学習可否の分類専用であり、当時の出走前フィルタや事後的な負け除去に使わない。後日展示再取得でpredeadline原本と認定しない。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -44,4 +48,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`deploy/conoha/v5_exhibition_k_joint_coverage_readonly_20261023.sql`を日付2026-10-20だけread-only実行**し、144全レース・K正常132・展示6の29レースがどれだけ重なるか確認。K/展示どちらかを欠くレースの件数も算出。現存`snapshot_at`が締切前でもfirst-write proofとみなさず、後日historical補完で実際の当時観測を偽装しない。学習モデル凍結、公式6艇positive start証明、BUYはいずれも未完成。既存収集/13VIEW/物理移行/旧表/費用は変更しない。
+**ConoHa Termiusで`deploy/conoha/v5_k_six_row_exclusions_readonly_20261023.sql`を`day=2026-10-20`に限定し、一度だけread-only実行**。期待するのはK正常132/144の差分12件の詳細理由と、そのうち展示6が揃う2レースの診断。未知なNULLをF/Lなしと誤認しない。原因に応じて研究用13Counter母集団を決定するが、本番Forward適格認証と混同しない。ConoHa稼働収集/共通VIEW/物理移行/旧表削除/モデルBUYは禁止。
