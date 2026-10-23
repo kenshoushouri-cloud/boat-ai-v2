@@ -161,5 +161,10 @@
 - `deploy/conoha/boat_entry_stage_guard_offline_20261023.py`の2か所を`original == source.rows`へ修正してGitHub commit、readback済み。12テスト残存・両箇所置換・DB client/SQL不使用・NO_GO維持の静的確認PASS。**修正後のPython 12件はまだ未実行、PASSと記録しない**。
 - ConoHa stage`entry_snapshots`は未作成、venues24行はそのまま、旧原本・VIEW・収集・BUY・cronは変更なし。本番切替0/13。
 
+## 10/23 23:24 JST：entry E01〜E12オフライン再検査12/12 PASS
+- ユーザーTermius画面：修正版を新規隔離`/tmp/entry-retest-*`に`git fetch`＋`FETCH_HEAD`から一時的に取得、`python3 -B guard.py --self-test`を実行。`Ran 12 tests in 0.025s`、`OK`、`ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`、rootプロンプト復帰を確認。**12件全PASS**。
+- 同じ画面上部には23:22旧テストの`FAILED (failures=3)`も残っているが、後続の修正後テストが明確にPASS。E11のtuple/list比較バグ修正後の合成rollback判定OK。**実DBのrollback・stageのCREATE/COPY・CDC・実同期の成功を示すものではない**。
+- 過去の合成8+7+17+24=56件と今回の12件で、実行確認済み合成テスト計**68/68**（別検査群、実本番保証とはしない）。entry stageは未作成、venues初回stage24件は維持・再COPY禁止、13VIEWの物理正本切替0/13。旧収集・タイマー・DB・シーケンス変更なし。外部独立保全/全writer完全監査/切替承認は未完了。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで修正済みGitHub単独Pythonを隔離`/tmp`に再FETCHして、E01〜E12`--self-test`を1度再実行**。必要条件は`Ran 12 tests`、`OK`、`ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`、プロンプト復帰。**実DB/実COPY/シーケンス操作/VIEW切替/収集変更は禁止**。成功時も本番切替NO-GOで独立保全・全writer認証・ユーザー別承認が必要。
+**ConoHa Termiusでバックアップ向け外部rclone接続先の名前が登録されているかread-only確認**。`rclone listremotes`とrclone有無を確認するだけで、Driveへの読書き・転送・既存バックアップ上書き・DB変更はしない。**remoteの存在は独立保全/復元成功の証明ではない**。その後、新世代独立バックアップの保全・検証手順を一作業ずつ設計する。entryの実CREATE/COPY/差分DML、venues再COPY、本番切替、BUYは個別承認と必須ゲート成立までNO-GO。
