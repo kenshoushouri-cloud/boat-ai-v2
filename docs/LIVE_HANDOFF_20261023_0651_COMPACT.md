@@ -131,5 +131,10 @@
 - 21:55確認分：旧entry21列、PRIMARY KEYは`id`、UNIQUEは`(race_id,snapshot_label,lane)`、user trigger0。6旧snapshot表の最小33MB/推定124631行という一時点の推定。**これらのキー構造はvenuesと異なる**。 `LIKE INCLUDING ALL`でserial/identity/defaultが旧原本のシーケンスを参照すると副作用の可能性があるため、別stage設計前にid defaultとowned sequenceを確認する。
 - 既存`boat_data_stage.venues`24行はCOMMIT済で保全・再複製禁止。`boat_data`13個のVIEW保持、切替0/13、収集稼働中、独立外部保全・writer/readers完全監査・rollback未完成。**新しいentry stageのCREATE/COPYは未承認**。
 
+## 10/23 23:05 JST：entry採番元をConoHa read-only確認
+- `public.v2_realtime_entry_snapshots.id`はidentity指定なし（`attidentity`空欄）、default=`nextval('v2_realtime_entry_snapshots_id_seq'::regclass)`、owned sequence=`public.v2_realtime_entry_snapshots_id_seq`。ユーザーTermius画像で確認、`ROLLBACK`正常終了。
+- **新`boat_data_stage.entry_snapshots`への単純`LIKE ... INCLUDING ALL`は旧sequence defaultを共有し得るため禁止。** 採番defaultを分離/削除する設計、既存IDの明示コピー、複製後整合と将来の採番衝突防止は別検証が必要。現時点でentryのCREATE/COPY・DMLは一切未承認・未実施。
+- 既存venues24行のstageは保全・再コピー禁止。現行収集と13VIEWそのまま。本番物理正本切替0/13、独立保全・全writer証明未完了、NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa `railway`の旧entry表`id`列のidentity/default/所有シーケンスだけをメタデータREAD ONLYで確認**。stageを独立した採番にするために必要な設計確認。DB DDL/DML、全件走査、collector/cron停止、本番切替、旧原本削除、stage再COPY、BUYは禁止。独立保全/全writer監査が未完了のためNO-GO。1コマンドずつ短く進める。
+**ConoHa `railway`旧entry表の残り列defaultと外部キー制約（流入・流出）をメタデータのみREAD ONLYで確認**。新stage設計に必要な依存/採番副作用を把握する。大量データ走査、実複製/CREATE、収集停止/cron変更、VIEW切替、旧原本削除・BUYは禁止。新たな承認まで実DBの書込NO-GO。1回1コマンド。
