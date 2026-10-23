@@ -25,6 +25,11 @@
 
 **実行禁止事項：** 13 VIEWへINSERT、今のwriter停止/経路切替、DB全件COPY、過去のmutable snapshotの「初回原本」昇格、BUY・LINE変更、未承認DDL・SQL UPDATE。
 
+## 10/23 11:53 実測更新と次の源泉監査
+
+- ユーザーのTermiusで `20261023_21_02` の公式K先行5走JSONが6艇とも5走、各走の対象日前日以前レース日付・着順を含み、COMMITとread-only audit正常終了。`HOLD_NO_FROZEN_PRIOR_COUNTERS_OR_FIRST_CAPTURE`は予想非認証を明示した正常HOLD。K行の保存時刻は真のimmutable時点証拠ではない。
+- 前日固定13Counter再現の元データについて、`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`を追加。日付`2026-10-20`のみに限定し、出走6・級別、`historical`展示順位6、公式K着順/進入コース6、公式結果有無のカバレッジを集計。**まだ実DB未実行**。これは構造的学習候補の確認のみで、公式原本・初回展示時刻やfit admissibilityを認証せず、現在のV5予測も動かさない。
+
 ## 次の一作業
 
-ConoHa Termiusで上記read-only SQLを一度だけ実行し、6艇のK5走レコード日時・配列が仕様どおりか確認する。タイムアウト時は無条件再実行せず原因を確認。
+ConoHa Termiusで`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`を一度だけread-only実行し、`2026-10-20`の過去レースに対して13Counter元データの構造的充足率を確認する。全期間学習、原本証拠の偽装、コレクター停止は禁止。
