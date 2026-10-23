@@ -41,12 +41,12 @@ jobs:
           raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
           tests=[s[:220] for s in raw.splitlines()
                  if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","ValueError"))]
-          passed=os.environ.get("PASSED")=="true" and "Ran 8 tests" in raw and "\nOK\n" in raw
+          passed=os.environ.get("PASSED")=="true" and "Ran 10 tests" in raw and "\nOK\n" in raw
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               f.write("verified="+("true" if passed else "false")+"\n")
           body=[
             "## V5 research fit / K-course independent populations",
-            "- Synthetic 8-case verification only. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
+            "- Synthetic 10-case verification only. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
             "- COURSE source may cover legitimate K races even without exhibition; matched fit race must agree with independent K source.",
             "- Result is strictly retrospective; first-capture and predecision Forward remain unverified.",
             "",
