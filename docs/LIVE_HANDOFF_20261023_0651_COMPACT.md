@@ -217,5 +217,10 @@
   `boat_history_archive` live `pg_class`で同名3表を確認。TABLE DATAも3項目あり、**名前集合の一致のみ確認**。
 - 08:31隔離DB復元成功・一時DB削除、08:28新規独立ローカルdump約79MiB/TOC PASS、10/23旧railway.dump約375MiB保持。**列型・索引・正確な行数・内容一致やVPS外保全は未証明**。Google Drive API rate limit検出済み、連続再試行/アップロード禁止。現行collector/timers変更なし、共有13VIEW、venues stage24行保持、entry stage absent、物理正本切替0/13 NO-GO。
 
+## 10/24 08:37 JST：archive dump ハッシュ取得PASS（Termius）
+- **実在するパス**：`/var/backups/boat-history-20261024-U6CRLt/boat_history_archive.dump`（ランダム名の末尾は`Lt`。旧案内の`U6CRtL`は誤記でFILE_NOT_FOUND）。自動検出による再試行は成功。
+- `SIZE_BYTES=81865791`、SHA-256=`7301975821593cdab2fdcf30eedc8d78558537023ed7af30f03d679de19fd37e`、`ARCHIVE_SHA256_READ_ONLY_PASS`確認。読み取り専用の全バイトハッシュであり、**VPS外複製/復元成功ではない**。08:31同VPS一時DB全体復元・削除、08:34TOC/live3表一致は確認済み。実データ全件一致は未検証。
+- Drive API 403でGoogle Drive転送なし。旧バックアップ上書き/現行収集停止なし。stage venues24行保護、entry stage未作成、物理正本切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaの新規archiveローカルdumpのSHA-256と実バイト数だけをREAD ONLY取得**。後日のVPS外保全転送・受信照合で使用する基準値。元ファイルの削除/上書き/Drive通信/DBアクセス不要。出力を受けたら最新handoffに記録し、独立外部保全の検証条件を設計する。旧railway dump、stage venues24行、collectorとtimerを保持。本番正本切替0/13・NO-GO。
+**ConoHa既存`railway.dump`（10/23作成）のSHA-256と実バイト数をREAD ONLY取得**。パスは`/var/backups/boat-railway-20261023-*/railway.dump`から一致数=1を確認して選択し、既存バックアップを上書き・変更しない。二つのローカルdumpのハッシュ基準が揃ってからVPS外独立新世代の保全手順を設計する。Drive API再試行/DB変更/entry COPY/collector停止/VIEW切替/BUY禁止。NO-GO。
