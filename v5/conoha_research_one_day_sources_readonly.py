@@ -257,6 +257,8 @@ def main(argv: list[str] | None=None) -> int:
     parser.add_argument("--date",required=True)
     parser.add_argument("--counter-shape-preview",action="store_true",
                         help="Only research Counter FAMILY TOTALS; no fitted state")
+    parser.add_argument("--counter-cell-preview",action="store_true",
+                        help="Anonymous distinct Counter keys only; no fitted state")
     args=parser.parse_args(argv)
     day=checked_date(args.date)
     url=local_connection_url(os.getenv("DATABASE_URL",""))
@@ -279,6 +281,11 @@ def main(argv: list[str] | None=None) -> int:
             rehearse_unverified_counter_shapes, preview_summary,
         )
         print(preview_summary(rehearse_unverified_counter_shapes(src)))
+    if args.counter_cell_preview:
+        from v5.offline_unverified_counter_cell_preview import (
+            count_unverified_cells, cell_summary,
+        )
+        print(cell_summary(count_unverified_cells(src)))
     return 0
 
 
