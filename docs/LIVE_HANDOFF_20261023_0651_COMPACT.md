@@ -103,4 +103,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで`deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を`day=2026-10-20`で1回だけREAD ONLY実行し、144レースの公式K事故・不明データ分類と返還原本の候補列を確認。正常コードでも返還なしと認証しない。`boa_history_archive`等別DBまでは今回確認しない。ConoHa収集、13VIEW、旧writer、物理移行、DB更新、BUYは維持・不変更。最小の1作業ずつ進める。
+ConoHa Termiusで`deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を`day=2026-10-20`で1回だけREAD ONLY実行し、144レースの公式K事故・不明データ分類と返還原本の候補列を確認。正常コードでも返還なしと認証しない。`boat_history_archive`等別DBまでは今回確認しない。ConoHa収集、13VIEW、旧writer、物理移行、DB更新、BUYは維持・不変更。最小の1作業ずつ進める。
