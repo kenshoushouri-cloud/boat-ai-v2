@@ -61,6 +61,11 @@
 - `v5_one_day_result_refund_source_contract_readonly_20261023.sql`で`2026-10-20`の`v2_results`**144/144がresult_status=official/race_status=official、raw JSONBあり**、COMMIT済み。ただし別列の返還艇証拠は未確認。公式扱いでも事故・特殊着順・返還なしを推認不可。前日監査では12レースにK異常あり。 `save_k_day_results_pg.py`はK結果をstructured/rawへ保存する設計だが`raw`の実内容は未確認。
 - `deploy/conoha/v5_result_raw_keys_readonly_20261023.sql`追加：同日144行の`v2_results.raw`最上位/1階層下の**JSONキー名・型だけ**をread-only調査。未実行。独立の返還なし証拠が見つかるまで実27候補を`incident_free_verified=True/refund_boats=()`としない。
 
+## 10/23 13:08 V5実DB読取アダプター整備
+- ConoHa Termiusで`v5_result_raw_keys_readonly_20261023.sql`成功/COMMIT。10/20結果`raw`144/144がJSON objectで、上位は`finish_order/race_title/source/wave_height_cm/weather/wind_direction/wind_speed_m/winning_method`の8キー、下位objectキー0。**返還艇原本は確認できず**。公式result status=official全144でも事故・返還なしを立証しない。
+- GitHub`v5/conoha_research_one_day_sources_readonly.py`追加：ローカルPostgres 1日限定SELECTのみ、`boat_data`出走6+展示同ラベル6+公式K6+結果ticketを照合して**fit構造候補とKコース構造候補**を独立に準備。全候補の事故/返還/初回取得権限を明示的にUNVERIFIEDとして計算への昇格を拒否。**実DB実行は未実施**、Python/SQLは本番収集コマンドへ接続しない。
+- 合成オフラインテスト`tests/test_v5_conoha_research_one_day_sources_readonly.py` **7/7 PASS**（Issue #581 bot `6357196894`）。これはSQL/cardinality/実学習のPASSではない。新実装の現場読取には稼働git作業ツリーを`git pull`せず、`git archive origin/main`を一時ディレクトリへ抽出して実行する。自動収集・DB/BUYは継続無変更。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -68,4 +73,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで`deploy/conoha/v5_result_raw_keys_readonly_20261023.sql`を`day=2026-10-20`限定、1回read-only実行。結果JSONの最上位/1階層下のキー名と非NULL状況を確認し、公式返還・事故原本が既存DB内にあるかの**手掛かりだけ**得る。存在しなくても「返還なし」とはみなさない。実データ2系統adapterの研究fit承認前に独立検証が必要。ConoHa収集・共通VIEW・writer・物理移行・BUYは不変更。
+**ConoHa Termiusで一時ディレクトリにGitHubの`v5`・`research`・`db_pg.py`を`git archive`展開し、`v5.conoha_research_one_day_sources_readonly --date 2026-10-20`をREAD-ONLY実行**。現行`/opt/boat-ai-v5`のHEAD/ファイル・timers・writerは変更しない。結果は144/132/29/27に近い構造候補件数を再検査するだけ、差があれば原因確認。返還証拠なし/初回不変証拠なし、実13Counter fitting/Forward/BUY/物理移行は禁止。次工程で証拠採否条件と既存研究の数学parityに戻る。
