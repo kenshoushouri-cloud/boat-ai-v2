@@ -2,6 +2,13 @@
 from __future__ import annotations
 
 import unittest
+import io
+import os
+import runpy
+import sys
+from contextlib import redirect_stdout
+from types import ModuleType
+from unittest.mock import MagicMock, patch
 from dataclasses import replace
 from datetime import date
 
@@ -11,6 +18,7 @@ from v5.conoha_research_one_day_sources_readonly import (
 from v5.offline_unverified_counter_shape_preview import (
     rehearse_unverified_counter_shapes, preview_summary,
 )
+from v5.conoha_research_source_contract import SourceProposals
 
 DAY=date(2026,10,20)
 
@@ -97,6 +105,53 @@ class TestUnverifiedCounterShape(unittest.TestCase):
         self.assertEqual(len(x.aggregates),13)
         self.assertEqual(sum(v for _,v in x.aggregates),0)
         self.assertFalse(x.buy_eligible)
+
+class TestModuleModeSourceContract(unittest.TestCase):
+    def test_runpy_alias_uses_canonical_proposals_type(self):
+        # Formerly this data class lived inside the -m program. Re-importing
+        # the same code under another name yielded a distinct class object.
+        with patch("warnings.warn"):
+            isolated=runpy.run_module(
+                "v5.conoha_research_one_day_sources_readonly",
+                run_name="v5_second_import_for_test",
+            )
+        src=isolated["assemble_source_proposals"](
+            DAY,one("20261020_21_02",True)
+        )
+        self.assertIs(type(src),SourceProposals)
+        report=preview_summary(rehearse_unverified_counter_shapes(src))
+        self.assertIn("SHAPE_LW_TOTAL=1",report)
+        self.assertIn("PRIOR_STATE_FITTED=0",report)
+
+    def test_exact_minus_m_entry_point_with_mocked_db(self):
+        # Run the same __main__ execution pattern as the ConoHa command,
+        # but intercept all database access. This catches -m type splits.
+        conn=MagicMock()
+        cur=conn.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cur.fetchall.return_value=one("20261020_21_02",True)
+        pg=ModuleType("psycopg")
+        pg.connect=MagicMock(return_value=conn)
+        pg_rows=ModuleType("psycopg.rows")
+        pg_rows.dict_row=object()
+        output=io.StringIO()
+        with patch.dict(sys.modules,{"psycopg":pg,"psycopg.rows":pg_rows}), \
+             patch.dict(os.environ,{"DATABASE_URL":"postgresql:///railway"}), \
+             patch.object(sys,"argv",["-m","--date","2026-10-20","--counter-shape-preview"]), \
+             patch("research.v5_recent_form_asof_audit_pg.local_connection_url",return_value="postgresql:///railway"), \
+             patch("warnings.warn"), redirect_stdout(output):
+            with self.assertRaises(SystemExit) as status:
+                runpy.run_module(
+                    "v5.conoha_research_one_day_sources_readonly",
+                    run_name="__main__",
+                )
+        self.assertEqual(status.exception.code,0)
+        self.assertIn("V5_SHAPE_ONLY_13_COUNTER_FAMILIES=13",output.getvalue())
+        self.assertIn("FIT_CANDIDATES_NOT_AUTHORIZED=1",output.getvalue())
+        self.assertIn("PRIOR_STATE_FITTED=0",output.getvalue())
+        self.assertIn("BUY_ELIGIBLE=0",output.getvalue())
+        pg.connect.assert_called_once()
+        conn.rollback.assert_called_once()
+
 
 if __name__=="__main__":
     unittest.main()
