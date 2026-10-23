@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHaの`v21_realtime_collector_pg.py`実ファイルをread-only検査し、旧snapshot6表とDDL/UPSERT経路を確認する。21:35 live: forwardの子`v21_realtime_collector_pg_safe.py`、midnightの`v2_results` upsertを確認。stage24行は再COPY禁止。独立外部保全・writer完全確認なしでは切替NO-GO。
+**最新compact末尾の Next ONE task**：ConoHa railwayの`v5_data.raw_*_snapshots`6対象のrelkindをread-only確認。21:39 liveで旧snapshot6系統とDDL/UPSERT経路確認済み。GitHub legacy DDLガードは`to_regclass`でVIEWも検出し得るため誤停止リスクを検査。stage24行再COPY禁止、外部独立保全・全writer未確認のため切替NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
