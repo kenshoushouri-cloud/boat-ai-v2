@@ -66,6 +66,11 @@
 - GitHub`v5/conoha_research_one_day_sources_readonly.py`追加：ローカルPostgres 1日限定SELECTのみ、`boat_data`出走6+展示同ラベル6+公式K6+結果ticketを照合して**fit構造候補とKコース構造候補**を独立に準備。全候補の事故/返還/初回取得権限を明示的にUNVERIFIEDとして計算への昇格を拒否。**実DB実行は未実施**、Python/SQLは本番収集コマンドへ接続しない。
 - 合成オフラインテスト`tests/test_v5_conoha_research_one_day_sources_readonly.py` **7/7 PASS**（Issue #581 bot `6357196894`）。これはSQL/cardinality/実学習のPASSではない。新実装の現場読取には稼働git作業ツリーを`git pull`せず、`git archive origin/main`を一時ディレクトリへ抽出して実行する。自動収集・DB/BUYは継続無変更。
 
+## 10/23 13:32 初回実DB adapter 0件の原因と修正
+- ユーザーが一時tar展開の`v5.conoha_research_one_day_sources_readonly --date 2026-10-20`を実行。RACES=144だがROSTER_6=0、K_COURSE_SHAPE_6=0、EXHIBITION_6=0、JOINT=0、各提案0、HOLD=維持。過去SQLの144/132/29/27と矛盾し、**データ消失ではなくPython入力型の非互換**。現時点でDB実データ0件の原因解消はまだ現場未確認。
+- 根因の有力候補：`pg_schema_compat_v5.py`で`v2_race_entries.racer_class`は**integer**。旧アダプターの`type(racer_class) is str`が全艇拒否。公式Bファイル`CLASS_MAP={B2:1,B1:2,A2:3,A1:4}`と同じ対応で数値コードを正規化し、`racer_class_text`と矛盾する場合はfail-closedする修正を`v5/conoha_research_one_day_sources_readonly.py`に実装。SELECTにも`racer_class_text`追加。
+- GitHub Actions Issue #581 コメント`6357476166`：修正後の合成テスト**9/9 PASS**。**ConoHa再検査は未実行、144/132/29/27を復元したとはまだ断言しない**。元サービス/DB/13VIEW/旧writerは変更していない。独立事故/返還なし・初回原本証明は未完了、HOLD継続。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -73,4 +78,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで一時ディレクトリにGitHubの`v5`・`research`・`db_pg.py`を`git archive`展開し、`v5.conoha_research_one_day_sources_readonly --date 2026-10-20`をREAD-ONLY実行**。現行`/opt/boat-ai-v5`のHEAD/ファイル・timers・writerは変更しない。結果は144/132/29/27に近い構造候補件数を再検査するだけ、差があれば原因確認。返還証拠なし/初回不変証拠なし、実13Counter fitting/Forward/BUY/物理移行は禁止。次工程で証拠採否条件と既存研究の数学parityに戻る。
+ユーザーのConoHa Termiusで**前回と同じ一時`git archive origin/main`コマンド**を再実行し、修正済み数値級別アダプターの`--date 2026-10-20`1日READ-ONLY実測を取得する。前回0/0/0はコードの文字列型限定が原因の有力候補。144/132/29/27を期待するが差があれば型/SQL条件を改めてread-only診断する。結果の`UNVERIFIED...=HOLD`、`FIT_ACCEPTED=0`は意図的。稼働サービス、物理移行、旧writer、13VIEW、BUYは変更しない。
