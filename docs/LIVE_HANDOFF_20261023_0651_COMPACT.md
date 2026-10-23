@@ -84,6 +84,10 @@
 - Termiusで `--date 2026-10-20 --counter-shape-preview` 正常終了：**144/144/132/29/27**、未認証fit27/K履歴132。13家族のSHAPE総数は`lw27/lcs162/lcw27/rks162/rkw27/ps810/pw135/vc27/vn27/cs792/ct396/rcs792/rct396`で整合。**純粋な件数で本当の前日Counter/予測ではない**。`PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`は意図通り、結果/返還/初回時刻は未証明。
 - ギャップを`docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md`に整理：本来の研究K進入母集団と旧`offline_prior_day_counter_update.py`のfit限定コース更新で差が生じ得る。また研究側の級別数字文字列と新側`A1/A2/B1/B2`を混用できない。数式・日次母集団一致と事故/返還根拠が次の優先ゲート。
 
+## 10/23 14:24 実測更新
+- Termiusの1日read-onlyプレビュー完了：全144、出走6艇144、K正常132、展示6艇29、共通形状27。13集計系統の総件数が構造的に一致。正式な学習済み状態ではない。
+- 研究CounterとKコース母集団の差、級別キーの規約、同日結果の先読み禁止を検査。合成回帰10/10成功。詳細は docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
