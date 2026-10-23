@@ -31,4 +31,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-10/23 GitHub Actionsで既設`v5-official-http-transport-offline.yml`をIssue #581のowner許可済みコメントから実行し、`tests/test_v5_official_http_transport.py` **21/21 PASS**（Issue #581 comment 6355930958）。公式HTTP・DB・BUY実行なし。既報のPRE-HTTP beforeinfoテスト6/6 PASSと合わせ、現行ガードを維持。初回原本の独立取得証拠は未整備、V5モデル接続/前日カウンタも未完成。**次の一作業：GitHub既設`v5-official-first-write-executor-offline.yml`をread-only検査して、適切なら模擬DBのfirst-writeテストを1件だけ実行する**。既存ConoHa収集、物理移行、13VIEW、旧writer、BUYは一切変更しない。
+10/23 GitHub Actions `v5-official-first-write-executor-offline.yml` 模擬DBテストが **21/21 PASS**（Issue #581 comment 6356024189）。同一原本保全、改ざん/衝突拒否、失敗rollbackを確認したが、実DB/公式HTTPの初回原本証明やV5 Forward許可ではない。既報PRE-HTTP beforeinfo 6/6 PASS・official-http-transport 21/21 PASS、HARD HOLD維持。実入力6艇/展示6/odds120/K5は同一ラベルで橋渡し済み、独立初回証明と前日状態固定は未完成。次のONE taskは**`v5/offline_prior_day_counter_update.py`＋`v5/offline_prior_day_factor_export.py`の前日状態入力境界の静的確認**。物理移行/旧表削除/ConoHa writer/13VIEW/BUYは変更しない。
