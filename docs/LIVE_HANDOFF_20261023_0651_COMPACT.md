@@ -31,4 +31,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-10/23公式初回取得保存経路の静的レビューを`docs/V5_OFFICIAL_FIRST_CAPTURE_STATIC_REVIEW_20261023.md`に記載。**次の最小安全テスト：`tests/test_v5_official_http_transport.py`のみをオフライン実行**。直前に`tests/test_v5_capture_pre_http_hard_hold.py`をGitHub blob SHA一致の2ファイルで独立したローカル環境実行：**6/6 PASS**（外部GET/DBなし）。beforeinfo PRE-HTTP HARD HOLDを保持。旧writer/13VIEW/ConoHaサービス/DB/BUYは無変更。Bao専用0件は初回証拠未形成を意味するだけ。予測モデル入力の前日状態固定・独立観測証拠は引き続き未検証。物理移行/旧表削除は行わない。
+10/23 GitHub Actionsで既設`v5-official-http-transport-offline.yml`をIssue #581のowner許可済みコメントから実行し、`tests/test_v5_official_http_transport.py` **21/21 PASS**（Issue #581 comment 6355930958）。公式HTTP・DB・BUY実行なし。既報のPRE-HTTP beforeinfoテスト6/6 PASSと合わせ、現行ガードを維持。初回原本の独立取得証拠は未整備、V5モデル接続/前日カウンタも未完成。**次の一作業：GitHub既設`v5-official-first-write-executor-offline.yml`をread-only検査して、適切なら模擬DBのfirst-writeテストを1件だけ実行する**。既存ConoHa収集、物理移行、13VIEW、旧writer、BUYは一切変更しない。
