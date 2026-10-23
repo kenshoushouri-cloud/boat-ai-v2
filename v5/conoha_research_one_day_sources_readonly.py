@@ -70,7 +70,7 @@ WITH races AS MATERIALIZED (
   WHERE rn=1
 )
 SELECT r.race_id,
-       e.lane,e.racer_number,e.racer_class,
+       e.lane,e.racer_number,e.racer_class,e.racer_class_text,
        k.racer_number AS k_racer_number,
        k.start_course,k.finish_position,k.finish_status,
        k.is_flying,k.is_late,
@@ -111,6 +111,34 @@ def _integer(v: object) -> int | None:
     return v if type(v) is int else None
 
 
+# Same integer grade code as the official B-file parser. Never guess
+# unrecognized values, or silently prefer one of two contradictory fields.
+_CLASS_CODE = {1: "B2", 2: "B1", 3: "A2", 4: "A1"}
+_CLASS_VALUES = frozenset(_CLASS_CODE.values())
+
+
+def _normalized_class(code: object, label: object) -> str | None:
+    grade_code = _integer(code)
+    if grade_code is None and type(code) is str and code in ("1", "2", "3", "4"):
+        grade_code = int(code)
+    code_text = _CLASS_CODE.get(grade_code)
+    direct_text = None
+    if type(code) is str and code.strip().upper() in _CLASS_VALUES:
+        direct_text = code.strip().upper()
+    label_text = None
+    if type(label) is str and label.strip():
+        label_text = label.strip().upper()
+        if label_text not in _CLASS_VALUES:
+            return None
+    known = [x for x in (code_text,direct_text,label_text) if x is not None]
+    if not known or len(set(known)) != 1:
+        return None
+    # Nonempty unknown codes cannot be overridden by a valid label.
+    if code is not None and code_text is None and direct_text is None:
+        return None
+    return known[0]
+
+
 def _winner(ticket: object) -> int | None:
     if not isinstance(ticket,str):
         return None
@@ -146,8 +174,9 @@ def assemble_source_proposals(day: date, rows: list[dict[str, Any]]) -> SourcePr
             len(group)==6 and set(lanes)==set(range(1,7))
             and len({v.get("racer_number") for v in group})==6
             and all(_integer(v.get("racer_number")) is not None
-                    and type(v.get("racer_class")) is str
-                    and bool(v["racer_class"].strip())
+                    and _normalized_class(
+                      v.get("racer_class"),v.get("racer_class_text")
+                    ) is not None
                     for v in group)
         )
         roster_n+=int(roster)
@@ -196,7 +225,9 @@ def assemble_source_proposals(day: date, rows: list[dict[str, Any]]) -> SourcePr
         fit_boats=tuple(
             RetrospectiveKBoat(
                 lane=v["lane"],racer_number=v["racer_number"],
-                racer_class=v["racer_class"].strip().upper(),
+                racer_class=_normalized_class(
+                    v.get("racer_class"),v.get("racer_class_text")
+                ),
                 exhibition_rank=v["exhibition_time_rank"],
                 start_course=v["start_course"],finish_position=v["finish_position"],
                 is_flying=v["is_flying"],is_late=v["is_late"],
