@@ -77,5 +77,10 @@
 - `v5_daily_table_routes.py`は既定`legacy`、opt-in二重/三重gate。**`shared_venues_v1`は現在非更新VIEWの`boat_data.venues`に向けるため、有効化禁止**。既存`v5_data.venues`向けprofileも今回作成した`boat_data_stage.venues`の安全同期手段ではない。`db_pg.py`の許可済みスキーマ名に`boat_data_stage.venues`はなく、writer切替・DB処理は未実装/未承認。
 - ConoHaにはこのGitHub読取で一切操作なし。現行稼働writer完全認証・複数子ジョブ・DDL・readers網羅は未完了。旧収集継続、stage初回24件は再コピー禁止。
 
+## 10/23：venues安全な差分反映プロトコルをGitHub設計（新しいConoHa操作なし）
+- `docs/BOAT_VENUES_DELTA_APPLY_SAFETY_PROTOCOL_20261023.md`を追加し、GitHub readback/静的12確認PASS。**設計のみでSQL/DML・CLI・DB実行・cronは新規なし**。
+- 現行`repair_month_all_pg.py`の`ON CONFLICT(venue_id)` UNIQUEと原本PK `venue_code`の違い、全6列・全PK・同一スナップショット、UPDATE/INSERT/DELETE（不完全原本からの誤DELETE禁止）、書込み競合ロックの順序、単一writerと子ジョブ静止、失敗時ROLLBACK、異常な差分/UNIQUE衝突時NO-GO、外部独立バックアップ＋限定復元、非購入canary、別操作承認の各ゲートを記載。
+- 19:50作成済の`boat_data_stage.venues`24行は**再作成/再COPY禁止**。物理正本切替0/13、共通VIEW13件そのまま。ConoHa本番DBへの反映や実際の静止/rollback試験は**未実施**、既存収集維持。
+
 ## Next ONE task（次の一作業）
-**GitHubだけでvenues専用の差分反映プロトコルを安全設計**（DML本番実装・実行なし）。現行writerは`venue_id` UNIQUEでupsertし主キーは`venue_code`、`updated_at`毎朝更新を考慮。source/stageの一貫snapshot全キー比較、二重writerを防ぐ静止/再照合、INSERT/UPDATE/DELETE（特にDELETE誤適用防止）、制約競合、失敗時ROLLBACK、短い非購入canary、最終GO/NO-GOゲートを整理。現行`boat_data.venues`VIEW、他12表VIEWは変更禁止。ConoHa DB追加DML・自動同期/予約・旧表削除・切替は新たな明示承認まで禁止。外部独立保全＋復元・全writer確認が欠けているため本番切替NO-GO。GitHub/ConoHa/実証を区別して1作業ずつ。
+**GitHubのみでvenues差分反映プロトコルのfail-closedオフライン合成検査を追加・実行検証できるように準備**。既存17件のvenues全PK差分計画試験と重複せず、意図せぬDELETE・PK/UNIQUE衝突、writer未静止、独立保全未検証、スナップショット不一致、個別承認不足、失敗ROLLBACKをNo-Goとして証明する。ConoHaへの本番DML/DDL、stage再CREATE/再COPY、VIEW切替、自動同期、collector変更、cron、BUYは禁止。独立新世代バックアップ＋復元試験、全writer/readers証明・新たな個別明示承認までは本番切替NO-GO。ツール最小・1作業ずつ。
