@@ -61,5 +61,11 @@
 - 19:51再監査：原本24/stage24/VIEW24、双方向全列差分0、stage物理(r)、owner postgres、PUBLIC権限REVOKE済（個別ロール権限は別確認要）。19:52 `REPEATABLE READ READ ONLY`全PK/JSONB比較で **SAME24、INSERT0/UPDATE0/DELETE0、ROLLBACK**。**一時点で差分0という意味**で、継続差分同期/CDC、writer完全監査、夜間自動切替は未実装・未承認。
 - **重要：`boat_data`の13関係は依然すべて既存非更新VIEWであり、共通物理正本への本番切替完了数は0/13。** 隔離stageの初回複製だけ1/13。ConoHa稼働収集はlegacyのまま継続。差分追跡、外部独立バックアップ＋復元、全writer/readers/DDLゲート、非購入canaryが未確認の間は**NO-GO**。
 
+## 10/23 19:52以降：GitHubのみvenues差分同期オフライン計画を追加
+- 新規`deploy/conoha/boat_shared_venues_delta_plan_offline_20261023.py`：既存`plan_full_key_delta`再利用。venuesの全6列をSHA256で厳密比較（timestamptzはUTC正規化）し、全PKでINSERT/UPDATE/DELETEとSAMEを合成スナップショットから検出する**実SQL不含の計画のみ**。24件一斉`updated_at`更新、追加/更新/削除同時、全列差、時差表現、重複PK/uniqueID、欠落列、不完全snapshot、取得トークン不一致、誤ったVIEW route、空ソース時の大量削除防止など**17単体試験を定義**。
+- マーカー`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`は**Python実行時に17/17 PASSした場合のみ出る**。GitHub保存/readbackと静的検査はPASS、**ConoHaでの17テスト実行は未確認**。scriptにはDB接続・DML・DDL・予約処理なし、証拠が揃っても`decision=NO_GO`。
+- 共有マニフェスト`docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`に`isolated_staging_progress.venues`追記：初回24行複製済・point-in-time差分0、二重COPY禁止、canon `boat_data`物理切替0/13、全writer未証明。旧`tables[].physical_copy_completed=false`は本番物理正本切替未完了を示す（stage複製済みとは区別）。既存13 route gateは変更せず。
+- ConoHa DBと既存worktree、collector、Drive、cron、BUYには今のGitHub作業で変更なし。
+
 ## Next ONE task（次の一作業）
-**GitHubのみで venues専用の安全な差分同期設計とオフライン合成検査を1作業**。既存`boat_data_stage.venues`は作成・24行複製済みなので再CREATE/無条件COPY禁止。全PKと全列比較によるINSERT/UPDATE/DELETEを、特に毎朝の`updated_at`変更・欠損・DELETE・スナップショット一貫性・単一writer・ロールバックを含めて**計画のみ**で検証。既存コード`deploy/conoha/boat_shared_staging_delta_plan_offline.py`とvenues個別検査コードを利用し、必要最小の追加だけ行う。ConoHaへの次の実書込・自動同期・VIEW置換・切替・旧原本削除は**別途明示承認**まで禁止。全13共通表の正本移行は未完了。Google Drive旧8ファイル保護、独立新世代バックアップと復元試験は本番切替前必須。費用/CPU/RAM/通信を最小化。作業は1回1件、ツール最小、短い報告。
+**ConoHa Termiusで17件の合成オフラインテストを隔離`/tmp`から1回だけ実行し、`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`と17/17 OKをスクリーンショット確認**。必要なGitHub3ファイルだけFETCH_HEADから取得、**Git pull禁止、live worktree・DB・VIEW・既存stageは無変更**。その後、安全な差分追跡方式（更新・DELETEを含む再照合、writer静止・ロールバック）を検討。ConoHa実DB差分適用、cron、旧表削除、夜間切替は別の明示承認までNO-GO。独立新世代バックアップ＋復元/全writer認証/非購入canaryは切替前必須。ツール・費用最小、1作業ずつ。
