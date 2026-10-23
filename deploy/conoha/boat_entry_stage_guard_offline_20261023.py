@@ -157,14 +157,14 @@ def in_memory_initial_copy(source: Snapshot, contract: Contract,
             raise RuntimeError("synthetic parity check failed")
         return {
             "initial_parity": True, "synthetic_rollback": False,
-            "stage_rows": stage.rows, "original_source_unchanged": original == list(source.rows),
+            "stage_rows": stage.rows, "original_source_unchanged": original == source.rows,
             "future_sync_proven": False, "production_decision": "NO_GO",
         }
     except RuntimeError:
         staged.clear()  # simulated atomic rollback
         return {
             "initial_parity": False, "synthetic_rollback": True,
-            "stage_rows": (), "original_source_unchanged": original == list(source.rows),
+            "stage_rows": (), "original_source_unchanged": original == source.rows,
             "future_sync_proven": False, "production_decision": "NO_GO",
         }
 
