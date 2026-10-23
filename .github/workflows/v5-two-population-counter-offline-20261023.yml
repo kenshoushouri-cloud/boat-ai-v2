@@ -20,14 +20,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run synthetic-only course and fit population tests
+      - name: Run synthetic cohort and contiguous-day reference tests
         id: test
         shell: bash
         run: |
           set +e
           python -m unittest discover -s tests -p 'test_v5_offline_research_two_population_day.py' -v > output.txt 2>&1
-          code=$?
-          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          first_code=$?
+          python -m unittest discover -s tests -p 'test_v5_offline_retrospective_prior_day_chain.py' -v >> output.txt 2>&1
+          second_code=$?
+          if [ "$first_code" -eq 0 ] && [ "$second_code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
           exit 0
       - name: Summarize
         id: report
@@ -41,14 +43,15 @@ jobs:
           raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
           tests=[s[:220] for s in raw.splitlines()
                  if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","ValueError"))]
-          passed=os.environ.get("PASSED")=="true" and "Ran 10 tests" in raw and "\nOK\n" in raw
+          passed=os.environ.get("PASSED")=="true" and "Ran 10 tests" in raw and "Ran 8 tests" in raw and raw.count("\nOK\n")==2
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               f.write("verified="+("true" if passed else "false")+"\n")
           body=[
             "## V5 research fit / K-course independent populations",
-            "- Synthetic 10-case verification only. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
+            "- Synthetic 18 tests total: 10 split-cohort + 8 contiguous-day reference-chain checks. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
             "- COURSE source may cover legitimate K races even without exhibition; matched fit race must agree with independent K source.",
-            "- Result is strictly retrospective; first-capture and predecision Forward remain unverified.",
+            "- Legacy reference loops advance K course history on days with trained fit races; course-only days are explicitly held, not silently mixed into the baseline.
+            - Result is strictly retrospective; source provenance, full historical parity, and Forward remain unverified.",
             "",
             "~~~text",*tests[-14:],"~~~","",
             "V5_TWO_POPULATION_ADAPTER_PASS" if passed else "V5_TWO_POPULATION_ADAPTER_FAILED",
