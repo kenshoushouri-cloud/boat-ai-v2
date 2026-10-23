@@ -92,6 +92,10 @@
 - `v5/offline_retrospective_prior_day_chain.py`追加。旧研究ループの2母集団・日付D→D+1加算を合成日付で再現。**fit対象がある日には展示なしKもコース履歴へ加算、fit0の暦日は旧研究ループと合わせKだけの増加を保留**。他方式は研究候補として別比較。欠損日・同日結果使用・Counter矛盾を拒否、HOLD/BUY無効固定。
 - `tests/test_v5_offline_retrospective_prior_day_chain.py`8件を追加し、従来2母集団10件とあわせ**GitHub Actions 18/18 PASS**（Issue #581 comment 6358891179）。全実データ学習・公式返還認証・本番予測は未実施。詳細`docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md`。
 
+## 10/23 公式K事故・返還証拠の最小監査
+- `research/historical_incident_eligibility.py`は`NO_INCIDENT_EVIDENCE`でも`primary_training_eligible=None`。公式Kの正常艇6行・result_status=officialは**返還ゼロ認証ではない**。`save_k_day_results_pg.py`のK保存は`finish_status`/F/L等の事故兆候を保持するが、独立した返還節の証明は未確認。確認済み全レース取消レジストリ71件は対象日が別で、非掲載＝返還なしではない。
+- `deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を追加。**10/20の1日限定**で公式Kの正常・事故・未知着順・進入不完全レースを分類、現在のDBスキーマ内の返還関連列候補だけを列挙。**ConoHa未実行**。履歴別DBのメタデータは未検査。削除・fit昇格・BUYなし。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -99,4 +103,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-GitHubで**合成済み2母集団→研究Counter暦日連結**の一日単位数学パリティは18/18 PASS。次の1作業は公式結果・Kの事故/返還の独立証拠とその欠損率を**既存データ・コード上でread-onlyに監査する設計**。証拠がないとき`refund_boats=()`等を捏造しない。ユーザーのConoHa現行収集/13VIEW/writer/物理移行/旧表/BUYは変更せず、2025-07全期間の学習/予測を勝手に有効化しない。
+ConoHa Termiusで`deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を`day=2026-10-20`で1回だけREAD ONLY実行し、144レースの公式K事故・不明データ分類と返還原本の候補列を確認。正常コードでも返還なしと認証しない。`boa_history_archive`等別DBまでは今回確認しない。ConoHa収集、13VIEW、旧writer、物理移行、DB更新、BUYは維持・不変更。最小の1作業ずつ進める。
