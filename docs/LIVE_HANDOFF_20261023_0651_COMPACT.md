@@ -109,5 +109,9 @@
 - GitHub `v5_realtime_table_routes.py`は既定legacy、physicalは明示2ゲート。**GitHub `v5_legacy_ddl_guard.py`の`forbid_legacy_realtime_if_physical_exists`は`to_regclass`が任意の対象を返すとlegacy DDLを拒否するため、対象が非更新VIEWでも拒否される可能性がある**（relkind判定なし）。ConoHa現物コードの適用状態・対象6名のlive relkindは未確認。writer正常動作/不動作も未証明。移行に先立ちこの疑義をread-onlyで切り分ける。
 - 既存stage `boat_data_stage.venues`24件保持。13 VIEW維持・物理正本切替0/13・BUY/自動同期なし。
 
+## 10/23 21:46 JST：ConoHa旧DDLガード候補先6表のlive relkind検査
+- ユーザーTermius画像：`railway`で`BEGIN READ ONLY`、`v5_data.raw_{weather,exhibition,entry,odds,race_condition,racer_condition}_snapshots`は全6件とも`absent`（`pg_class`上未作成）、`ROLLBACK`で終了。**現時点でこれら6対象に存在するVIEW/物理表による`forbid_legacy_realtime_if_physical_exists`の誤停止条件は確認されない**。ただし稼働collectorの実行成否は未証明、今後`v5_data.raw_*`名でstage作成するとDDLガードが拒否する設計。改変前に別隔離stage命名/切替計画を確定する。
+- 旧`public.v2_realtime_*`が全て物理原本であるか、収集実動作・他writer・全reader/DDLの監査は引き続き未完了。**既存`boat_data_stage.venues`24行保持、二重COPY禁止、物理正本切替0/13**。
+
 ## Next ONE task（次の一作業）
-**ConoHa `railway`の`v5_data.raw_*_snapshots` 6対象について`pg_class.relkind`をREAD ONLYで一覧取得**し、既存VIEWがlegacy DDLガードに誤検知される可能性がないか確認する。対象有無と種類のみ、DB書込/collector起動/停止/タイマー変更なし。結果確認後に次の一作業。再COPY・旧表削除・切替・BUY禁止。独立保全/全writer/ロールバック未完成のためNO-GO。
+**ConoHa `railway`で旧原本`public.v2_realtime_*`6表の`pg_class.relkind`をREAD ONLYで1回確認**。存在/種別のみを確認し、大量行数カウントやDB変更、collector/cron変更はしない。結果を画像で確認してから次の一作業。旧データ削除・stage再CREATE/COPY・実同期DML・VIEW切替・BUY禁止、全移行はNO-GO継続。
