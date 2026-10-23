@@ -209,5 +209,13 @@
 - **復元した3表の実行数・内容・インデックス動作や元DBとの全件一致までは未検証**。旧DBからの最新更新反映保証もない。単一ConoHa VPS上のローカル復元PASSであり、独立VPS外保全/復元は依然未実施。
 - Google Drive API 403のため転送なし、旧backup上書きなし。13 VIEWを維持、venues stage24件、entry stage未作成、物理正本切替0/13・NO-GO。
 
+## 10/24 08:34 JST：archive dump TOCと現行テーブル名 read-only照合 PASS
+- ユーザーTermius画像：`pg_restore -l`の`TABLE`と`TABLE DATA`は3表：
+  `archive.v2_realtime_race_condition_snapshots`、
+  `archive.v2_realtime_racer_condition_snapshots`、
+  `public.v2_recent_form_archive`。
+  `boat_history_archive` live `pg_class`で同名3表を確認。TABLE DATAも3項目あり、**名前集合の一致のみ確認**。
+- 08:31隔離DB復元成功・一時DB削除、08:28新規独立ローカルdump約79MiB/TOC PASS、10/23旧railway.dump約375MiB保持。**列型・索引・正確な行数・内容一致やVPS外保全は未証明**。Google Drive API rate limit検出済み、連続再試行/アップロード禁止。現行collector/timers変更なし、共有13VIEW、venues stage24行保持、entry stage absent、物理正本切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**`boat_history_archive.dump`のTOC内ユーザーテーブル名（TABLEおよびTABLE DATA）と、現行`boat_history_archive`のpg_class上のユーザーテーブル名をread-onlyで照合**。元DBのデータ全件スキャン/大量件数COUNTをしない。現行原本との構造名一致でも復元したデータの全列・件数一致証明ではないと明記。Google Driveアクセス/backup上書き/collector停止/実entry COPY/VIEW切替/BUY禁止、NO-GO。
+**ConoHaの新規archiveローカルdumpのSHA-256と実バイト数だけをREAD ONLY取得**。後日のVPS外保全転送・受信照合で使用する基準値。元ファイルの削除/上書き/Drive通信/DBアクセス不要。出力を受けたら最新handoffに記録し、独立外部保全の検証条件を設計する。旧railway dump、stage venues24行、collectorとtimerを保持。本番正本切替0/13・NO-GO。
