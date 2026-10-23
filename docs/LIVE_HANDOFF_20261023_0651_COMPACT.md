@@ -100,5 +100,9 @@
 - GitHub現行source静的調査：`v5/conoha_realtime_window_pg.py`は子`v21_realtime_collector_pg_safe.py`をsubprocess起動する候補。`v5/conoha_midnight_results_pg.py`は`repair_month_all_pg`の`_fetch/parse_result/upsert_rows`を利用し`v2_results`へupsertする候補。**GitHub sourceはConoHa稼働コード実体の完全照合ではない**。実ファイルと全子ジョブ・writer宛先のruntime確認は継続課題。
 - 旧writer継続、共有`boat_data`13個はVIEW、本番物理正本切替0/13。stage`boat_data_stage.venues`24件再COPY禁止。深夜補完timerはデータ補完であり物理切替予約ではない。
 
+## 10/23 21:35 JST：ConoHa子処理の実ファイル照合・GitHub依存追跡
+- Termius画面：`/opt/boat-ai-v5/v5/conoha_realtime_window_pg.py` 125行付近で`v21_realtime_collector_pg_safe.py`を起動、`/opt/boat-ai-v5/v5/conoha_midnight_results_pg.py` 90/107行付近で`repair_month_all_pg`からimportし`v2_results` UPSERTすることを確認。**GitHubの経路候補とConoHaのlive fileはこの接続点で一致**。起動成功や全write経路・子プロセス群の完全証明ではない。
+- GitHubの`v21_realtime_collector_pg_safe.py`は`v21_realtime_collector_pg.py`をimportして子処理を再利用。`_ensure_realtime_tables`は旧表のDDL許可ガード付きで`v2_realtime_weather/exhibition/entry/odds/race_condition/racer_condition_snapshots`6系統のCREATE/ALTER/INDEX候補と`legacy_entry_alters()`を持ち、`_upsert`は`resolve_realtime_table`を経由。**ConoHa実ファイルの全内容と実行分岐は次にread-onlyで確認**。現行`boat_data`13VIEW、物理正本切替0/13、既存stage24件保全。旧収集とtimerは無変更。
+
 ## Next ONE task（次の一作業）
-**ConoHa liveファイル2件について読み取り専用grepで子処理接続点を検証**：`/opt/boat-ai-v5/v5/conoha_realtime_window_pg.py`の`v21_realtime_collector_pg_safe.py`呼出し、`/opt/boat-ai-v5/v5/conoha_midnight_results_pg.py`の`repair_month_all_pg` importと`v2_results` upsert。GitHub sourceだけでruntime認定しない。実データ変更・収集停止・timer変更・再複製・差分DML/cron切替・BUY禁止。手順はTermiusで1コマンドずつ、安全・低負荷・NO-GO維持。
+**ConoHa Termiusで`/opt/boat-ai-v5/v21_realtime_collector_pg.py`をREAD ONLY・局所grepして6種類のsnapshotテーブル名、`_ensure_realtime_tables`のDDL経路、`_upsert`の関数を確認する。** 実コード確認のみ（実行・imports・DB接続・DDL/DMLなし）。前回の4timer起動元確認は済み。旧原本・stage再複製禁止、収集停止/cron変更/共有VIEW切替/BUYは禁止。別承認・独立バックアップ・全writer証明まで切替NO-GO。
