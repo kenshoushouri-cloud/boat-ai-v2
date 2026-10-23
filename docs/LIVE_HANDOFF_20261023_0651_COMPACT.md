@@ -126,5 +126,10 @@
 - `public.v2_realtime_entry_snapshots`について**21列**、PRIMARY KEY `id`、別UNIQUE index `(race_id,snapshot_label,lane)`、ユーザーtrigger 0件、`ROLLBACK`正常終了を確認。PKは自動採番ID、差分キー候補は3列UNIQUE。NULL制約や付随列・比較方式の証明はさらに必要。
 - 画面が途中から始まるため`public`原本/ `boat_data.entry_snapshots` VIEW / `boat_data_stage.entry_snapshots`の**存在とrelkind結果・所有権/権限は未確認**。実データCOPYや自動同期は未承認。venuesの作成済stage24件には触れない。
 
+## 10/23 23:03 JST：entry snapshot 3関係のConoHa read-only検査（Termius画像）
+- `public.v2_realtime_entry_snapshots`は **relkind=r** owner postgres（ACL NULLの表示）、`boat_data.entry_snapshots`は **relkind=v** owner postgres（ACL postgres表示）、`boat_data_stage.entry_snapshots`は **absent**。queryは`BEGIN READ ONLY`、`ROLLBACK`正常、書込なし。
+- 21:55確認分：旧entry21列、PRIMARY KEYは`id`、UNIQUEは`(race_id,snapshot_label,lane)`、user trigger0。6旧snapshot表の最小33MB/推定124631行という一時点の推定。**これらのキー構造はvenuesと異なる**。 `LIKE INCLUDING ALL`でserial/identity/defaultが旧原本のシーケンスを参照すると副作用の可能性があるため、別stage設計前にid defaultとowned sequenceを確認する。
+- 既存`boat_data_stage.venues`24行はCOMMIT済で保全・再複製禁止。`boat_data`13個のVIEW保持、切替0/13、収集稼働中、独立外部保全・writer/readers完全監査・rollback未完成。**新しいentry stageのCREATE/COPYは未承認**。
+
 ## Next ONE task（次の一作業）
-**ConoHa `railway`でこの3関係の`pg_class.relkind`と所有者・ACLだけをREAD ONLYで一覧確認**。関係名：`public.v2_realtime_entry_snapshots`、`boat_data.entry_snapshots`、`boat_data_stage.entry_snapshots`。列や実件数は再スキャンしない。結果が揃ってからステージング方式を設計する。収集/タイマー無変更、他12表VIEW保護、既存stage再COPY禁止、移行/BUY切替NO-GO。
+**ConoHa `railway`の旧entry表`id`列のidentity/default/所有シーケンスだけをメタデータREAD ONLYで確認**。stageを独立した採番にするために必要な設計確認。DB DDL/DML、全件走査、collector/cron停止、本番切替、旧原本削除、stage再COPY、BUYは禁止。独立保全/全writer監査が未完了のためNO-GO。1コマンドずつ短く進める。
