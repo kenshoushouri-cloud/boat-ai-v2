@@ -31,4 +31,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-GitHubで**既存V5公式初回取得保存経路の静的接続レビューと、収集サービス無変更の最小オフラインテスト計画**を作る。Baо研究用0行をV5証拠と誤認しない。beforeinfoのPRE-HTTP HARD HOLD（公式6艇active statusの真正根拠未確認）は維持。既存`forward` snapshotとread-only bridgeから実モデルへの入力整備を並行し、初回原本取得と前日までの学習状態が揃うまでは実予測/Forward/BUYの承認を行わない。
+10/23 GitHubで`docs/V5_OFFICIAL_FIRST_CAPTURE_STATIC_REVIEW_20261023.md`を追加（静的レビューのみ）。従来forwardはmutable snapshotsへ保存、Bao専用0件は別系統。V5 first-write保存系は未配備、beforeinfo PRE-HTTP HARD HOLDを維持。**次は`tests/test_v5_capture_pre_http_hard_hold.py`のみをGitHub開発/CIのオフライン環境で実行して結果確認**。ConoHa収集/DDL/サービス/旧writer/BUY変更なし。実モデル接続は前日カウンタ固定と独立した取得時刻証拠が未検証。移行は13VIEW利用を続け、物理切替を別工程にする。
