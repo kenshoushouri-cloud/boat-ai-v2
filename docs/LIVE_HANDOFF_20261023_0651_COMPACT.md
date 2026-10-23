@@ -82,5 +82,10 @@
 - 現行`repair_month_all_pg.py`の`ON CONFLICT(venue_id)` UNIQUEと原本PK `venue_code`の違い、全6列・全PK・同一スナップショット、UPDATE/INSERT/DELETE（不完全原本からの誤DELETE禁止）、書込み競合ロックの順序、単一writerと子ジョブ静止、失敗時ROLLBACK、異常な差分/UNIQUE衝突時NO-GO、外部独立バックアップ＋限定復元、非購入canary、別操作承認の各ゲートを記載。
 - 19:50作成済の`boat_data_stage.venues`24行は**再作成/再COPY禁止**。物理正本切替0/13、共通VIEW13件そのまま。ConoHa本番DBへの反映や実際の静止/rollback試験は**未実施**、既存収集維持。
 
+## 10/23 20:01以降：venues差分反映fail-closed合成テストをGitHub追加
+- `deploy/conoha/boat_venues_delta_apply_guard_offline_20261023.py`新規。**24件のPython unittestを定義**しGitHub保存/readback・静的13項目PASS。完全キー・同一スナップショット、独立backup復元、writer静止/子job認証、別承認、巨大/不明DELETE、venue_code PK/venue_id UNIQUEの衝突、試験用メモリ内の故障時ROLLBACKなどを保守的に判定。`production_decision=NO_GO`固定、DB接続/実SQL/cron/BUYなし。
+- **Python実行試験は未確認、24/24 PASSとはまだ記録しない**。成功マーカー予定：`VENUES_DELTA_APPLY_FAIL_CLOSED_OFFLINE_PASS_NO_DB_NO_BUY`。GitHub上の静的検査とConoHa/Python実行を区別。
+- ConoHa内で作成済`boat_data_stage.venues`24件には触れていない。原本とVIEWも維持、本番切替0/13、旧writer収集継続。リアルの独立バックアップ・全writer証明・stage差分適用/rollback演習は未実施。
+
 ## Next ONE task（次の一作業）
-**GitHubのみでvenues差分反映プロトコルのfail-closedオフライン合成検査を追加・実行検証できるように準備**。既存17件のvenues全PK差分計画試験と重複せず、意図せぬDELETE・PK/UNIQUE衝突、writer未静止、独立保全未検証、スナップショット不一致、個別承認不足、失敗ROLLBACKをNo-Goとして証明する。ConoHaへの本番DML/DDL、stage再CREATE/再COPY、VIEW切替、自動同期、collector変更、cron、BUYは禁止。独立新世代バックアップ＋復元試験、全writer/readers証明・新たな個別明示承認までは本番切替NO-GO。ツール最小・1作業ずつ。
+**ConoHa Termiusの隔離`/tmp`で新規単独Pythonファイルの24件合成unittestを1回実行し、成功マーカーと結果画面を確認**。GitHubの必要1ファイルのみFETCH_HEADで取り込み、live worktree/DB/stage/VIEW/collectorは変更禁止、Git pull禁止。テスト合格も実DML/CDCの認証や切替許可ではない。別承認、独立保全復元、全writer証明までNO-GO。1回1作業、短く報告。
