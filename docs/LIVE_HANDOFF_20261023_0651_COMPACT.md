@@ -175,5 +175,10 @@
 - これは**Drive保存容量不足やroot ID破損の証明ではない**。ユーザーのGoogle API projectの分単位rate limitに達した応答と扱い、**連続再試行、他remoteでの迂回API試行、retry増加、Drive設定変更・新世代バックアップ転送・旧backup上書きはしない**。
 - 直近entry合成E01〜E12は23:24修正版12/12 PASS（実DB未操作）。本番13VIEW・legacy収集維持、stage venues初回24件、stage entry未作成。独立外部保全・隔離復元、writer全経路、差分同期、切替承認は未完了。正本切替0/13・NO-GO。
 
+## 10/24 00:12 JST：v5_gdriveローカルrclone構成（機密値非表示）
+- ユーザーTermius画像：`rclone config show v5_gdrive`出力をawkで許可された状態フラグのみに変換し、`type=drive`、`root_folder_id_configured=no`、`team_drive_configured=no`、`custom_client_id_configured=no`を確認。OAuth tokenやID値は表示していない。
+- **専用root_folder_idがなく、マイドライブrootを基点とする設定だが、Googleアカウントが他remoteと異なるかは不明。名前だけではV5専用アカウント/保存先の分離証明にならない。** rclone既定API client利用であり00:09のDrive API 403 rate limitのリスクが残る。既存backup上書き・remote修正・Google API再試行なし。
+- entryオフライン12/12、過去合成累計68件PASSは維持。V5用の独立バックアップと隔離復元は**未実施**。旧collector・VIEW13個・venues stage24件不変。本番切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaのローカルrclone設定のみをread-onlyで調べ、`v5_gdrive`の`type`・`root_folder_id`設定有無・`team_drive`設定有無など、秘密値を一切表示せず安全な項目だけ確認する**。APIへ通信せず`rclone config show v5_gdrive`出力を許可したキーの真偽だけにフィルタする。OAuth token/client_secret・root ID値・認証情報は端末表示/チャット添付禁止。結果は登録設定の確認だけで接続・独立保全実証ではない。Google Driveへの再接続や既存バックアップ更新は別途慎重に判断。entry CREATE/COPY、同期、切替、BUYは禁止。
+**ConoHaでrcloneの3 remote（drive/gdrive_a_backup/v5_gdrive）のローカルOAuth refresh tokenが完全一致するかを、秘密値を一切表示せず比較**。API通信しない`rclone config dump`のJSONを同一パイプ内Pythonで解析し、`SAME_REFRESH_TOKEN`/`DIFFERENT_REFRESH_TOKEN`/`UNKNOWN`のみ出力。**DIFFERENTは別Googleアカウントの証拠ではない**。設定の変更・既存Driveへの再接続・アップロード/上書き・DB変更なし。判断後にV5バックアップ分離を設計する。stage COPY/本番切替/BUYは禁止。
