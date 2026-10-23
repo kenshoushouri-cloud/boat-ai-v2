@@ -13,10 +13,12 @@ import subprocess
 
 ROOT = Path("/opt/boat-ai-v5")
 TABLES = (
-    "v2_races", "v2_race_entries", "v2_results", "v2_result_entries",
+    "v2_venues", "v2_races", "v2_race_entries", "v2_results",
+    "v2_result_entries", "v2_odds_trifecta",
+    "v2_racer_course_stats_snapshots", "v2_realtime_entry_snapshots",
     "v2_realtime_exhibition_snapshots", "v2_realtime_odds_snapshots",
     "v2_realtime_weather_snapshots", "v2_realtime_race_condition_snapshots",
-    "v2_realtime_racer_condition_snapshots", "v2_racer_course_stats_snapshots",
+    "v2_realtime_racer_condition_snapshots",
     "v2_v24_motor2_forward_shadow",
 )
 IMPORTANT = (
@@ -28,6 +30,13 @@ IMPORTANT = (
     "collect_v24_motor2_forward_shadow_pg.py",
     "v21_realtime_collector_pg_safe.py",
     "v21_realtime_collector_pg.py",
+    # Also inspect production-adjacent routes/DDL: enabling only one route
+    # never proves that every timer/catch-up/correction path was switched.
+    "v5_daily_table_routes.py",
+    "v5_realtime_table_routes.py",
+    "v5_k_result_routes.py",
+    "v5_core_read_routes.py",
+    "pg_schema_compat_v5.py",
 )
 MATCH_TABLE = re.compile(r"\b(" + "|".join(map(re.escape, TABLES)) + r")\b", re.I)
 DIRECT_WRITE = re.compile(
@@ -138,6 +147,9 @@ def main():
     print_cron_identifiers()
     print_source_routes()
     print("FORWARD_CHILD=v5.conoha_realtime_window_pg -> v21_realtime_collector_pg_safe.py -> v21_realtime_collector_pg.py",flush=True)
+    print("CANONICAL_BOAT_DATA=13_NON_UPDATABLE_VIEWS_NOT_PHYSICAL_WRITER_TARGETS",flush=True)
+    print("ROUTE_PROFILES_MUST_REMAIN_LEGACY_WHILE_VIEWS_EXIST",flush=True)
+    print("STATIC_SOURCE_MATCHES_ARE_HINTS_NOT_EXHAUSTIVE_WRITER_PROOF",flush=True)
     print("NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET",flush=True)
     print("V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES",flush=True)
 
