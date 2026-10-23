@@ -50,6 +50,10 @@
 - `v5/offline_retrospective_counter_seed.py` で**明示的にretrospective限定**の13Counter「1日分寄与値」計算を追加。未知の公式結果/事故なし/返還なしはfail-closed、着順とwinnerの矛盾・6艇/展示/進入異常も除外、出力は`forward_eligible=False,buy_eligible=False`固定。ConoHaからの実27行アダプターは未作成、過去の全日付累積も未完成。
 - `tests/test_v5_offline_retrospective_counter_seed.py` の合成8件をGitHub Actionsで実行。当初のfixtureの`incident_free_verified`指定ミスにより4 FAIL、修正後**8/8 PASS**（Issue #581 `6356816325`）。公式HTTP/ConoHa/Postgres/BUY未使用。**research-native parity未証明**：特に研究版のコース別履歴には展示がない正常Kレースも使われ得る一方、現1日prototypeは受理した展示有りレース由来のcourse値のみ。これを完成した前日学習状態としてV5へ流用禁止。
 
+## 10/23 研究fitとK進入履歴の母集団分離（GitHub実装）
+- `v5/offline_research_two_population_day.py`を追加：展示順位6艇を要するモデルfit用と、展示欠損でも正常公式K進入・着順から利用できる`cs/ct/rcs/rct`履歴用を別集計するretrospective専用純粋Python。交差レースは二重計上せず、K未提示・選手/着順/進入不一致・事故/返還が未確認ならfail-closed。前日以降にしか学習対象へ反映しない。初回原本認証・長期モデル凍結・BUYの証明にはならず、全許可flag=False。
+- `tests/test_v5_offline_research_two_population_day.py`模擬8件をGitHub Actionsで**8/8 PASS**（Issue #581 コメント`6356897640`）。ConoHa/HTTP/Postgresには未接続。既存 `v5/offline_retrospective_counter_seed.py`の1日fit寄与のコースカウンタを、独立Kコース母集団の値に置換して二重計上を防ぐ。原本/公式事故・返還独立証明が揃う実DB adapter と本家research数式・コース母集団のparityは未検証。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -57,4 +61,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**V5本体開発優先**：一日read-only source adapterの接続設計。2026-10-20の全144/出走6=144/正常K6=132/展示6=29/共通shape=27をもとに、旧writerを変更せず、`boat_data`VIEW + 公式K + 結果・返還/事故の独立検証元から入力候補を抽出する。**研究fit母集団とコース履歴母集団を分離**（展示欠損でも正常Kは進入履歴候補）、27件全部を根拠なしに学習採用しない。合成8/8 PASSの1日Counterコードへ安全に入力するには返還なし・事故なしの別証拠が必要。現存ラベル時刻はfirst-write認証ではない。収集/13VIEW/DB書込/物理移行/BUY変更なし。
+**1日限定のConoHa実データread-only入力adapterを準備**：`2026-10-20`の144レースについて、`boat_data`VIEW・公式K・展示ラベル・公式結果の既存列と事故/返還証拠の所在を最小限点検し、fit母集団とKコース履歴を独立に抽出可能な形式にする。**27件は構造候補であり全件fit承認ではない**。事故なし/返還なしの実証がなければ後知恵で学習採用しない。研究用集計と実予測の予測前ゲートは厳格に分ける。収集timer/13VIEW/DB書込/物理移行/旧表削除/BUYは変更しない。
