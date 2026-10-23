@@ -63,9 +63,13 @@
 
 ## 10/23 19:52以降：GitHubのみvenues差分同期オフライン計画を追加
 - 新規`deploy/conoha/boat_shared_venues_delta_plan_offline_20261023.py`：既存`plan_full_key_delta`再利用。venuesの全6列をSHA256で厳密比較（timestamptzはUTC正規化）し、全PKでINSERT/UPDATE/DELETEとSAMEを合成スナップショットから検出する**実SQL不含の計画のみ**。24件一斉`updated_at`更新、追加/更新/削除同時、全列差、時差表現、重複PK/uniqueID、欠落列、不完全snapshot、取得トークン不一致、誤ったVIEW route、空ソース時の大量削除防止など**17単体試験を定義**。
-- マーカー`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`は**Python実行時に17/17 PASSした場合のみ出る**。GitHub保存/readbackと静的検査はPASS、**ConoHaでの17テスト実行は未確認**。scriptにはDB接続・DML・DDL・予約処理なし、証拠が揃っても`decision=NO_GO`。
+- マーカー`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`は**Python実行時に17/17 PASSした場合のみ出る**。GitHub保存/readbackと静的検査はPASS、**10/23 20:01 JST、ユーザーTermius画像で17 tests / 0.011s / OK + 成功マーカーを確認済み**。scriptにはDB接続・DML・DDL・予約処理なし、証拠が揃っても`decision=NO_GO`。
 - 共有マニフェスト`docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`に`isolated_staging_progress.venues`追記：初回24行複製済・point-in-time差分0、二重COPY禁止、canon `boat_data`物理切替0/13、全writer未証明。旧`tables[].physical_copy_completed=false`は本番物理正本切替未完了を示す（stage複製済みとは区別）。既存13 route gateは変更せず。
 - ConoHa DBと既存worktree、collector、Drive、cron、BUYには今のGitHub作業で変更なし。
 
+## 10/23 20:01 JST：venuesフルキー差分オフライン17/17 PASS
+- ユーザーTermiusスクリーンショットで`Ran 17 tests in 0.011s`、`OK`、`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`、rootプロンプト復帰を確認。隔離`/tmp`でGitHubの必要3ファイルを実行し、**ConoHa本番DB/既存stage/収集/BUY変更なし**。合成データ上の全PK・全列 INSERT/UPDATE/DELETE検出と不完全入力NO-GOを確認。**自動差分同期・CDC・本番書込・夜間切替は一切実施/認証していない**。19:52の実DB差分0は一時点の結果のみ。
+- 既存`boat_data_stage.venues`24件は再CREATE・再COPY・DROP禁止。共通物理正本への切替依然0/13。旧原本収集継続。ConoHaローカル旧世代dumpを保持。独立保全・全writer証明・非購入canary・切替承認未完了。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで17件の合成オフラインテストを隔離`/tmp`から1回だけ実行し、`VENUES_FULL_KEY_DELTA_OFFLINE_TESTS_PASS_NO_DB_NO_BUY`と17/17 OKをスクリーンショット確認**。必要なGitHub3ファイルだけFETCH_HEADから取得、**Git pull禁止、live worktree・DB・VIEW・既存stageは無変更**。その後、安全な差分追跡方式（更新・DELETEを含む再照合、writer静止・ロールバック）を検討。ConoHa実DB差分適用、cron、旧表削除、夜間切替は別の明示承認までNO-GO。独立新世代バックアップ＋復元/全writer認証/非購入canaryは切替前必須。ツール・費用最小、1作業ずつ。
+**GitHubのみ、venuesの実運用writer/reader/DDL依存の不足分を1経路ずつread-only静的確認**。優先：`repair_month_all_pg.py`の`public.v2_venues`書き込み形態（毎朝updated_at変更）、`v5_daily_table_routes.py` opt-in適用可否、呼び出し元とDDL。差分同期計画・writer静止/最終全PK整合/ロールバックに必要な事実だけを短く記録する。ConoHa DBへの同期DML・自動化・VIEW置換・無条件COPY・旧表削除・BUYは禁止、別承認までNO-GO。13表の共通切替0/13は維持。外部独立新世代バックアップ＋復元も本番切替前必須。
