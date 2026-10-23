@@ -57,6 +57,10 @@
 ## 10/23 返還・事故ソースの実DB接続前提（GitHub準備）
 - `deploy/conoha/v5_one_day_result_refund_source_contract_readonly_20261023.sql` を追加。10/20の144レースを対象に、結果/返還・事故・公式K・展示の**実在列と結果状態の分布**をread-onlyで検査する。DBへの実行はまだ。現存 `result_status='official'` やF/Lが偽でも**返還なしが独立証明されたことにならない**。ない列を架空の証拠にせず、27構造候補を勝手にfit採用しない。先行 `v5/offline_research_two_population_day.py` 8/8 PASS は合成検査だけ。
 
+## 10/23 13:03 結果・返還源泉の実DB構造（Termius実測）
+- `v5_one_day_result_refund_source_contract_readonly_20261023.sql`で`2026-10-20`の`v2_results`**144/144がresult_status=official/race_status=official、raw JSONBあり**、COMMIT済み。ただし別列の返還艇証拠は未確認。公式扱いでも事故・特殊着順・返還なしを推認不可。前日監査では12レースにK異常あり。 `save_k_day_results_pg.py`はK結果をstructured/rawへ保存する設計だが`raw`の実内容は未確認。
+- `deploy/conoha/v5_result_raw_keys_readonly_20261023.sql`追加：同日144行の`v2_results.raw`最上位/1階層下の**JSONキー名・型だけ**をread-only調査。未実行。独立の返還なし証拠が見つかるまで実27候補を`incident_free_verified=True/refund_boats=()`としない。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -64,4 +68,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで `deploy/conoha/v5_one_day_result_refund_source_contract_readonly_20261023.sql` を `day=2026-10-20` で**1回だけread-only実行**。実在する返還/事故/結果列、状態分布、根拠不足を確認。返還なしの原本証明が見つかるまで `refund_boats=()` や `incident_free_verified=True` を勝手に設定しない。翌作業で実データ2系統入力adapterを作成する。現行ConoHa収集、共通13VIEW、旧writer、物理移行、自動購入は無変更。
+ConoHa Termiusで`deploy/conoha/v5_result_raw_keys_readonly_20261023.sql`を`day=2026-10-20`限定、1回read-only実行。結果JSONの最上位/1階層下のキー名と非NULL状況を確認し、公式返還・事故原本が既存DB内にあるかの**手掛かりだけ**得る。存在しなくても「返還なし」とはみなさない。実データ2系統adapterの研究fit承認前に独立検証が必要。ConoHa収集・共通VIEW・writer・物理移行・BUYは不変更。
