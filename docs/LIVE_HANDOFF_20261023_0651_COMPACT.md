@@ -204,5 +204,10 @@
 - 10/23 19:32の既存`railway.dump`（393,138,215bytes）を保護、別ファイルで作成。**TOC検査は復元成功とは異なり、実DBの隔離復元テストは未実施**。クラウド独立保全/隔離VPS外復元も未完了。外部rcloneはAPI 403制限、転送はしない。
 - 既存collector/systemd timers、共有13VIEW、venues stage24行、旧表は無変更、entry stageはabsent、正本切替0/13・NO-GO。
 
+## 10/24 08:31 JST：archiveローカルdump隔離復元検査 PASS
+- ConoHa Termius結果：新規一時DBへの`boat_history_archive.dump`全体`pg_restore`後、`RESTORED_TABLES=3`、`ISOLATED_DB_REMOVED`、`ARCHIVE_ISOLATED_RESTORE_PASS_CLEANED`を確認。既存`boat_history_archive`・`railway`の変更なし。dumpファイル79MiB維持。
+- **復元した3表の実行数・内容・インデックス動作や元DBとの全件一致までは未検証**。旧DBからの最新更新反映保証もない。単一ConoHa VPS上のローカル復元PASSであり、独立VPS外保全/復元は依然未実施。
+- Google Drive API 403のため転送なし、旧backup上書きなし。13 VIEWを維持、venues stage24件、entry stage未作成、物理正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaで新規一意名の一時DBへ`boat_history_archive.dump`を低優先度で全体隔離復元し、エラーなし・ユーザーテーブル存在・DB容量を検査、成功/失敗どちらでも一時DBを削除できたことを明示確認**。元`boat_history_archive`と`railway`には一切DML/DDLしない。入力は既存root所有0600のバックアップをrootシェルのstdinリダイレクトでpostgres pg_restoreに渡す。実行前に空き容量閾値と既存dumpの存在をチェック。restoreはtimeout/low priority/1job、no-owner/no-acl。失敗した場合は必ずSTOPし次の原因診断へ。**実復元PASSでもConoHa単一VPS内の検証であり独立外部復元証明ではない**。Google Driveアクセス、entry CREATE/COPY、venues再COPY、collector停止/cron変更、VIEW正本切替、BUYは禁止。
+**`boat_history_archive.dump`のTOC内ユーザーテーブル名（TABLEおよびTABLE DATA）と、現行`boat_history_archive`のpg_class上のユーザーテーブル名をread-onlyで照合**。元DBのデータ全件スキャン/大量件数COUNTをしない。現行原本との構造名一致でも復元したデータの全列・件数一致証明ではないと明記。Google Driveアクセス/backup上書き/collector停止/実entry COPY/VIEW切替/BUY禁止、NO-GO。
