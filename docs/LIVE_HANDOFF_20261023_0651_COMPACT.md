@@ -190,5 +190,10 @@
 - 00:09 Drive API 403 rate limitのためリモート接続/転送なし。Google Driveの既存バックアップ上書き・認証変更禁止。V5専用バックアップ作成・隔離復元は未実施。
 - 旧収集維持、stage venues24行保全、entry stage未作成。実正本切替0/13・NO-GO。
 
+## 10/24 00:21 JST：ConoHaローカルbackup棚卸し（Termius）
+- `find /var/backups -maxdepth 3`で`*.dump/*.backup/*.sql.gz/*.tar.gz`のみread-onlyメタデータ検査。結果は**1件**：`/var/backups/boat-railway-20261023-ORfLpY/railway.dump`、**393,138,215 bytes（約375MiB）**、2026-10-23 19:32更新。10/23のvenues限定隔離復元24件PASSは既確認だが、**railway DB全体/別DBの完全復元証明ではない**。
+- 同検索範囲・形式では`boat_history_archive`のdumpは見つからず、**バックアップ無しと断定せず未確認扱い**。`pg_dump -d railway`は別データベース`boat_history_archive`の内容を含まない。履歴DBは以前`pg_database_size`約1069MBだったが最新容量ではない。
+- Google Drive API 403 RATE_LIMIT_EXCEEDED継続リスク、外部独立保全/復元未実証。既存ファイルを削除・上書きしない。旧collector/timers維持、stage venues24件保全、entry stage未作成、本番切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaで`/var/backups`直下〜最大3階層の既存ローカルDB dumpファイルのパス・サイズ・更新日時だけをread-onlyで棚卸し**。DBやDriveには通信/読み込みせず、ファイルメタデータだけ確認する。既存`railway.dump`は10/23 375MBが確認済みだが、`boat_history_archive`やV5本体保全を含めた完全バックアップとは判定しない。旧バックアップの削除/上書き、追加バックアップ作成、entry COPY、本番切替、BUYはNO-GO。
+**ConoHaでアーカイブDB`boat_history_archive`の存在・接続状況とバックアップ保存先の空き容量だけをread-onlyで事前確認**。PostgreSQL`pg_database`＋`pg_stat_activity`のメタデータと`df -h /var/backups`のみ。大量SQL/DBバックアップ本体の実行はまだしない。アーカイブを新世代ローカルdumpとして保全する場合は別ファイル名、低優先度、既存バックアップ上書き禁止、collector影響/復元試験を先に計画する。Drive通信、entry stage CREATE/COPY、実DML/自動切替/BUYはNO-GO。
