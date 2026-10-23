@@ -272,6 +272,8 @@ def held_summary(src: SourceProposals) -> str:
 def main(argv: list[str] | None=None) -> int:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--date",required=True)
+    parser.add_argument("--counter-shape-preview",action="store_true",
+                        help="Only research Counter FAMILY TOTALS; no fitted state")
     args=parser.parse_args(argv)
     day=checked_date(args.date)
     url=local_connection_url(os.getenv("DATABASE_URL",""))
@@ -288,6 +290,12 @@ def main(argv: list[str] | None=None) -> int:
         conn.rollback()
     src=assemble_source_proposals(day,list(rows))
     print(held_summary(src))
+    if args.counter_shape_preview:
+        # Import here to keep the source-only path light and avoid cyclic imports.
+        from v5.offline_unverified_counter_shape_preview import (
+            rehearse_unverified_counter_shapes, preview_summary,
+        )
+        print(preview_summary(rehearse_unverified_counter_shapes(src)))
     return 0
 
 
