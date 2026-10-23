@@ -1,0 +1,65 @@
+name: V5 two-population course and fit offline regression
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 two-population-counter-offline-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run synthetic-only course and fit population tests
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_offline_research_two_population_day.py' -v > output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Summarize
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
+          tests=[s[:220] for s in raw.splitlines()
+                 if s.startswith(("test_","Ran ","OK","FAILED","ERROR","FAIL","Traceback","AssertionError","ImportError","ValueError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 8 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("verified="+("true" if passed else "false")+"\n")
+          body=[
+            "## V5 research fit / K-course independent populations",
+            "- Synthetic 8-case verification only. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
+            "- COURSE source may cover legitimate K races even without exhibition; matched fit race must agree with independent K source.",
+            "- Result is strictly retrospective; first-capture and predecision Forward remain unverified.",
+            "",
+            "~~~text",*tests[-14:],"~~~","",
+            "V5_TWO_POPULATION_ADAPTER_PASS" if passed else "V5_TWO_POPULATION_ADAPTER_FAILED",
+          ]
+          Path("summary.md").write_text("\n".join(body)+"\n")
+          PY
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Reject failure
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
