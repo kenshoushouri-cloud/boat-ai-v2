@@ -1,14 +1,19 @@
-# 新チャット開始文（2026-10-23 06:51 JST・短縮）
-
-以下をそのまま新チャットに貼り付ける：
+# 新チャット貼り付け案内（2026-10-23 17:47 JST）
 
 @GitHub
 
 新競艇AI開発プロジェクトNo.2の続きです。
 Repository: kenshoushouri-cloud/boat-ai-v2
 
-まず `docs/HANDOFF_LATEST.md` と、そこが示す **current compact handoffのみ** 読んでください。過去の長いhandoff・PROJECT_HISTORY・過去会話の大量参照は禁止。実行済み作業の再実行禁止。最新compactの **Next ONE task** から1回1作業、最小tool call・短い出力で進めてください。
+最初に以下だけを確認してください。
+1. docs/HANDOFF_LATEST.md
+2. そこが指定する current compact handoff の全文（現時点 docs/LIVE_HANDOFF_20261023_0651_COMPACT.md）
+3. 必要があれば docs/NEXT_CHAT_START_HERE.md
 
-2026-10-23 06:45：ConoHaの`boat_data`にある非更新VIEW13件が13/13 PASS。ただしデータの物理移動・V5本番予想切替は未了。06:51：実入力の限定read-only SQLは**0 rows・SQL正常終了**、朝7時の収集前なので収集失敗とは断定不可。まず07時morning/forward収集ログをread-only確認し、実データの時点根拠を調べてV5の**非購入予想試験**を優先。古い共有bulk stage実行・旧DB/backup削除・本番切替・自動購入・有料契約・LINE送信は禁止（独立した明示承認が必要）。ConoHaを優先、Railway Hobbyは解約済み、コスト最小。
+10月23日17:47、ConoHa Termiusで共有13表の隔離オフラインstage＋全PK差分判定のテスト **8件/8件PASS**（OFFLINE_STAGE_AND_COMPLETE_KEY_DELTA_TESTS_PASS_NO_DB_NO_BUY）。これは実DB複製・差分適用・深夜切替の完了ではありません。**実データ移行はまだ未着手**です。
 
-V5運用の目標は実3連単予想・2025年7月以降の時点厳守バックテスト・非購入試験、その後に自動購入可否を検討する。遅延しているため設計や調査を増やしすぎず、実稼働へ直接必要な作業を優先。
+目標はV5/V6共通の物理正本への安全な移行です。現在 boat_data.* は13個の非更新VIEW、原本は public.v2_* 物理表です。稼働中の朝夜/forward/深夜の収集は止めないでください。旧研究shadowや隔離データは無条件に混ぜないでください。
+
+current compact handoff末尾の「Next ONE task」から進めてください。次はGitHubで**venues 1表のstaging安全実装設計とオフライン検査**を1作業のみ。ConoHaの最初のDB変更より前にローカル新世代バックアップと限定復元試験を必須とし、本番切替前は外部独立保全も必要です。既存Google Drive8ファイル保護、移行完了後にV5本体・共通データだけをV3/V4とは別のV5専用Driveへ定期暗号化バックアップする方針。現時点で自動予約なし。
+
+古い長いhandoffやPROJECT_HISTORYを大量参照せず、1回1作業・ツール最小・短い日本語報告。SHA・容量・実行結果は固定値扱いせず都度必要な分だけ再確認。Railway Agent/AI、無断課金、Git pull、無条件bulk COPY、VIEW置換、旧表削除、writer変更、本番予測/BUYは禁止。タイムアウトを避け、ConoHaへの実行指示は1コマンドずつお願いします。
