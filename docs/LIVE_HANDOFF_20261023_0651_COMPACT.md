@@ -47,5 +47,10 @@
 - 全件PK昇順・全列digestの2入力からINSERT/UPDATE/DELETEの**差分計画候補**をストリーム検出する関数を実装。日時watermarkだけで削除を見落とさないための仕様であり、**CDCも実SQL同期も実装・実行していない**。13の現行コード候補とGO/NO-GOを分離、証拠がない限りNO-GO。
 - `tests/test_boat_shared_staging_delta_plan_offline.py`に8件の単体試験を新規追加。さらに`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`で`origin/main`から必要4ファイルだけを隔離`/tmp`へ取得し、**ConoHaの現行worktreeを変更しない**単体試験を1回実施できるよう用意。GitHub作成とreadbackは確認済、**ConoHa/Actions上のテスト実行PASSは未確認**。現行収集・DB/Drive・BUY・timerは変更していない。
 
+## 10/23 17:47 JST オフラインステージ検査（実証済み）
+- ユーザーTermiusスクリーンショット：`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`実行、`ISOLATED_OFFLINE_STAGE_TESTS_BEGIN`、**8 tests / 0.002s / OK**、`OFFLINE_STAGE_AND_COMPLETE_KEY_DELTA_TESTS_PASS_NO_DB_NO_BUY`、rootシェル復帰。GitHubから必要ファイルのみisolated取込のオフライン試験。13のVIEWと衝突しないstaging計画、PK完全キーのINSERT/UPDATE/DELETE差分計画、未検証時のNO-GOが**合成ケースでPASS**。
+- **未実施**：ConoHa DBに`boat_data_stage` schema/実表の作成、venues一表でも物理複製、差分適用/CDC、最新バックアップ復元試験、夜間切替予約、V5実予想・BUY。旧`public.v2_*` writer収集継続。合成試験を実DBの正確さや準備完了とは扱わない。
+- バックアップ合意：初の物理DB変更前はConoHaローカルの新世代＋復元試験。深夜本番切替前はVPS障害にも耐える独立保全が必須。整理後の自動Drive保存はV5本体・共通原本・必要な履歴/設定/モデルのみに限定し、V3/V4は別アカウント側に旧世代を保持。未設定。
+
 ## Next ONE task（次の一作業）
-Termiusで`git -C /opt/boat-ai-v5 fetch --no-tags origin main && git -C /opt/boat-ai-v5 show origin/main:deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh > /tmp/boat_stage_test.sh && bash /tmp/boat_stage_test.sh`を一度だけ実行し、8件テストとOFFLINEステージ計画CLIの動作を確認する。失敗はSTOPしてGitHub側のコードを修正。`git pull`、DB COPY、schema DDL、night schedule、BUY、古い表削除は禁止。成功後は実DBへの**最小venues一表のステージ準備**を安全に設計し、初のDB変更直前にConoHaローカルバックアップ＋復元試験を行う。Google Drive自動バックアップは整理完了後にV5専用アカウントで別承認。
+**最小venues 1表のstaging準備をGitHubのみで実装・オフライン検査**。現行`boat_data.venues`は非更新VIEW、旧`public.v2_venues`実表、既存`v5_data.venues`24件staging。上書き/二重コピーしない。候補`boat_data_stage.venues`への安全な段階移行のDDL/PK/制約/権限・ビュー依存・差分整合・切り戻しのゲートを明示し、**初回DB変更前のConoHaローカルbackup＋限定復元PASSなしでは絶対適用しない**。無条件のbulk stage、旧表DELETE/rename、cron/collector変更、Git pull、BUY、Drive上書き/定期予約は禁止。ツールは少なく短い作業1つずつ。実行結果や容量・SHAは次回liveで再取得。
