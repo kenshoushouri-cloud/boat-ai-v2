@@ -15,9 +15,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from typing import Iterable
 
-from v5.offline_prior_day_factor_export import NESTED, PriorDayCounters
+from v5.offline_prior_day_factor_export import PriorDayCounters
 from v5.offline_retrospective_counter_seed import (
     RetrospectiveResearchRace, project_one_retrospective_day,
 )
@@ -139,6 +138,26 @@ def project_two_population_day(
             if b.finish_position <= 3:
                 ct[course] += 1
                 rct[course][b.racer_number] += 1
+
+    # A fitted race MUST also be present and consistent in the separate K
+    # population, so a caller cannot silently train on incompatible sources.
+    fit_set = set(fitted.accepted_race_ids)
+    if not fit_set.issubset(accepted):
+        raise ValueError("FIT_RACE_HAS_NO_APPROVED_K_HISTORY")
+    k_index = {r.race_id: r for r in course_history_races
+               if r.race_id in fit_set}
+    fit_index = {r.race_id: r for r in model_fit_races
+                 if r.race_id in fit_set}
+    for race_id in fit_set:
+        actual = {row.lane: row for row in k_index[race_id].boats}
+        claimed = {row.lane: row for row in fit_index[race_id].boats}
+        if any((actual[lane].racer_number != claimed[lane].racer_number
+                or actual[lane].start_course != claimed[lane].start_course
+                or actual[lane].finish_position != claimed[lane].finish_position
+                or actual[lane].is_flying != claimed[lane].is_flying
+                or actual[lane].is_late != claimed[lane].is_late)
+               for lane in range(1, 7)):
+            raise ValueError("MODEL_FIT_AND_K_SOURCE_CONFLICT")
 
     c = dict(fitted.state.counters)
     # Replace four categories; do not double count overlapping fit/K races.
