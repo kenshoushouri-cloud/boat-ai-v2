@@ -54,6 +54,9 @@
 - `v5/offline_research_two_population_day.py`を追加：展示順位6艇を要するモデルfit用と、展示欠損でも正常公式K進入・着順から利用できる`cs/ct/rcs/rct`履歴用を別集計するretrospective専用純粋Python。交差レースは二重計上せず、K未提示・選手/着順/進入不一致・事故/返還が未確認ならfail-closed。前日以降にしか学習対象へ反映しない。初回原本認証・長期モデル凍結・BUYの証明にはならず、全許可flag=False。
 - `tests/test_v5_offline_research_two_population_day.py`模擬8件をGitHub Actionsで**8/8 PASS**（Issue #581 コメント`6356897640`）。ConoHa/HTTP/Postgresには未接続。既存 `v5/offline_retrospective_counter_seed.py`の1日fit寄与のコースカウンタを、独立Kコース母集団の値に置換して二重計上を防ぐ。原本/公式事故・返還独立証明が揃う実DB adapter と本家research数式・コース母集団のparityは未検証。
 
+## 10/23 返還・事故ソースの実DB接続前提（GitHub準備）
+- `deploy/conoha/v5_one_day_result_refund_source_contract_readonly_20261023.sql` を追加。10/20の144レースを対象に、結果/返還・事故・公式K・展示の**実在列と結果状態の分布**をread-onlyで検査する。DBへの実行はまだ。現存 `result_status='official'` やF/Lが偽でも**返還なしが独立証明されたことにならない**。ない列を架空の証拠にせず、27構造候補を勝手にfit採用しない。先行 `v5/offline_research_two_population_day.py` 8/8 PASS は合成検査だけ。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -61,4 +64,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**1日限定のConoHa実データread-only入力adapterを準備**：`2026-10-20`の144レースについて、`boat_data`VIEW・公式K・展示ラベル・公式結果の既存列と事故/返還証拠の所在を最小限点検し、fit母集団とKコース履歴を独立に抽出可能な形式にする。**27件は構造候補であり全件fit承認ではない**。事故なし/返還なしの実証がなければ後知恵で学習採用しない。研究用集計と実予測の予測前ゲートは厳格に分ける。収集timer/13VIEW/DB書込/物理移行/旧表削除/BUYは変更しない。
+ConoHa Termiusで `deploy/conoha/v5_one_day_result_refund_source_contract_readonly_20261023.sql` を `day=2026-10-20` で**1回だけread-only実行**。実在する返還/事故/結果列、状態分布、根拠不足を確認。返還なしの原本証明が見つかるまで `refund_boats=()` や `incident_free_verified=True` を勝手に設定しない。翌作業で実データ2系統入力adapterを作成する。現行ConoHa収集、共通13VIEW、旧writer、物理移行、自動購入は無変更。
