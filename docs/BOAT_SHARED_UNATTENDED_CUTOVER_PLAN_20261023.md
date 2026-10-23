@@ -36,6 +36,12 @@
 ## 10/23 Google Driveバックアップ実在確認
 接続済み2アカウントのフォルダ直接一覧で、10/19メイン暗号化dump約298MB（2アカウント・同ファイル名/バイト数）、10/19履歴dump約52MB、10/18メイン旧版、V3/V4旧版等**計8件のファイル実在**を確認。検索APIは直下ファイルの一部を返さなかったため、フォルダ一覧で検証した。**内容・暗号鍵・復元性・ハッシュ同一性・10/19以降の収集分の保護は未検証**。今あるGoogle Drive世代の上書き・削除はしない。詳細：`docs/BOAT_GDRIVE_BACKUP_METADATA_20261023.md`。整理完了後の新世代アップロードとは別に、**本番切替前の最新バックアップ＋限定復元試験は省略できない**。
 
+## 13表の衝突回避ステージ／差分計画コード（2026-10-23）
+- 新しい`deploy/conoha/boat_shared_staging_delta_plan_offline.py`をGitHubに追加。現行`boat_data.*`13件は非更新VIEWのため、**候補の物理複製先を独立した`boat_data_stage.*`と計画**（schema/実表は未作成）。旧`v5_data.venues`24件の実ステージはそのまま保持し、自動重複コピー・自動MOVEはしない。追加13対は`docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`と`boat_shared_storage_contract.py`の厳密一致のみ通す。
+- 同コードに`plan_full_key_delta`追加。**全行を網羅した一貫性あるPK昇順ストリームと全更新対象列のSHA256**同士を比べ、INSERT/UPDATE/DELETEの候補を出すジェネレーター。**SQL発行・CDC・差分の実適用はしない**。レース日・更新時刻だけから「削除なし」と決めず、コピー中更新/削除を見落とさないための照合仕様。実際の差分実行はデータ型・PK・複合PK・トランザクション/静止窓・大表スキャン費用を別途確定する。
+- ステージと本番切替の**別々の全ゲート**を初期NO-GOに固定。既存の`boat_shared_bulk_stage_20261023.py --apply`と`boat_shared_bulk_schedule_once_20261023.sh`は引き続き禁止。8件のオフライン単体テスト`tests/test_boat_shared_staging_delta_plan_offline.py`をGitHub追加済み。**テストの実行結果は未確認**（本チャットのGitHub接続では実行できない）。コードは既存DB/タイマー/Drive/サービスへ変更なし。
+- 最初のDB更新を伴うSTAGING操作より前にConoHaローカルの新しい世代バックアップ＋限定復元試験を実施。深夜の実切替前に同一VPS障害にも耐える独立保全が必要。整理後のV5本体＋共有DB＋必要な履歴のGoogle Drive定期バックアップは旧V3/V4保存先と分け、設置には別承認。
+
 ## 現在の検査で分かっているNO-GO
 - 10/23 16:22旧物理13件→共通13VIEW READ-ONLY確認。**共通側に13物理実表なし**。
 - 16:29 read-only実行`v5_active_writer_routes_readonly_20261022.py`末尾：`NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`。forwardの子は`v5.conoha_realtime_window_pg → v21_realtime_collector_pg_safe.py → v21_realtime_collector_pg.py`、修復/日次/K/DDLの経路も残る。**この静的ヒントを切替完了証明に使用しない**。
@@ -43,4 +49,4 @@
 - よって**本日や次の深夜の自動COPY/切替を予約してはならない**。現時点の実装は設計のみ。
 
 ## Next ONE task
-まずGitHubのみで**13元テーブル×writer/reader/DDL/cron/子processの機械可読manifest案**を作り、既存ルートにないwriterを識別する。実行コード・モデル・cronは変更しない。次にConoHaで限定read-onlyの稼働経路検証とバックアップ／復元を進める。実際のコピー・自動スケジュール・正本切替・DROPはユーザー個別承認後。
+`python3 -m unittest discover -s tests -p test_boat_shared_staging_delta_plan_offline.py -v`の**オフライン検証**。まずGitHubのファイル内容をConoHa作業コピーとは別の隔離一時ディレクトリへ4ファイル（計画コード・テスト・storage contract・13表manifest）取得して、既存稼働コードを`git pull`で上書きせずに実行する。テストがPASSするまでは本番DBコピー、深夜切替を行わない。その後、最小venuesのPK/索引/依存関係と事前保護を確認した一表限りのステージ実装を進める。
