@@ -13,8 +13,8 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHa TermiusでGitHub新規venues差分計画の合成Python単体テスト17件を隔離/tmpで実施し、結果画像を確認（まだ実行未確認）。ConoHa本番DBの追加書込、stage再作成、無条件COPY、切替、旧表削除、Git pull、Drive上書き、BUYは禁止（明示的な別承認要）。本番切替前には新鮮な独立世代の保全と復元試験が必要。将来のDrive自動暗号化バックアップはV5本体・共有物理原本・必要履歴/設定/モデルをV5専用ドライブへ、旧V3/V4世代と分離し旧8ファイルは保護。
+**最新compact末尾の Next ONE task**：GitHubでvenues現行writer/reader/DDLを1経路ずつread-only静的監査。合成テスト17/17は10/23 20:01にPASS確認済み。ConoHa本番DBの追加書込、stage再作成、無条件COPY、切替、旧表削除、Git pull、Drive上書き、BUYは禁止（明示的な別承認要）。本番切替前には新鮮な独立世代の保全と復元試験が必要。将来のDrive自動暗号化バックアップはV5本体・共有物理原本・必要履歴/設定/モデルをV5専用ドライブへ、旧V3/V4世代と分離し旧8ファイルは保護。
 
-GitHubには差分計画専用Python（17件テスト定義・実行未確認）とマニフェストのstage複製済み記録を追加済み。同期SQL/DML・CDCは未実装。再複製禁止。
+GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。同期SQL/DML・CDCは未実装。再複製禁止。
 
 一度に1作業、必要最小のツール、短い日本語報告。ConoHa操作が要る場合はTermiusコマンド1個ずつ、GitHub更新とDB実行を厳密に区別。低CPU/RAM/通信・無断追加課金なし、Railway Agent/AI禁止。
