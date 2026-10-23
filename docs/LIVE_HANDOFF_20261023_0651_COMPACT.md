@@ -23,6 +23,11 @@
 - Termiusの`v5_active_writer_routes_readonly_20261022.py`正常終了（`V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES`）。forward子`v5.conoha_realtime_window_pg → v21_realtime_collector_pg_safe.py → v21_realtime_collector_pg.py`と日次/K/補完/DDLへの旧表参照の存在を確認。ただし`NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`＝**全writer経路の保証なし**。共通側13は非更新VIEWで物理正本でない。
 - ユーザー案「稼働中に複製→深夜に自動切替」は**設計上可能で推奨**。ただし時刻固定でGOにしない：23:00/01:20等の収集、UPDATE/DELETE差分、最新外部バックアップ+復元、13writer/reader/DDL統一・短期静止・非購入canary・ロールバックが**全部検証済み**の場合だけ条件付きGO。未達なら**旧収集を維持しNO-GO/延期**。現時点は**GO不可能、予約も未実施**。`docs/BOAT_SHARED_UNATTENDED_CUTOVER_PLAN_20261023.md`をGitHub追加。既存`boat_shared_bulk_*20261023`はVIEW13件と衝突し実行禁止。
 
+## 10/23 共有13元表の機械可読経路管理表（GitHub準備）
+- `docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`追加。**13対すべて**（master1/core2/result2/odds1/feature1/realtime6）の`public.v2_*`旧物理→`boat_data.*`非更新VIEW、コード上の候補writer/reader/DDL、朝夜・5分forward・深夜catchup・K補完・選手コース履歴・DDL候補、モデル固有/時点証拠のHOLDを機械可読に記載。JSONを再読し13件/重複なし/全件NO-GOを確認。**コード上の候補であり稼働writer完全証明ではない**。
+- Googleドライブ旧バックアップはユーザー申告（実ファイルの世代・復元性未照合）。整理中の全量上書きは避け古い世代を保持するが、実物理切替前には当日差分を含む独立の新世代バックアップ・復元試験が必須。
+- `cutover_ready=false`, `unattended_cutover_scheduled=false`; 本ターンConoHa/Google Drive実体/cron/DBに変更なし。
+
 ## 収集・移行の安全条件
 - 現行ConoHaのmorning07:00/night23:00、forward毎5分（期限9〜24分）、midnight catchup01:20等のtimer/子processを停止しない。oneshot inactiveやflockコード75だけでは故障とは限らない。旧writerを片方だけ切替するとsplit-brain・差分漏れの危険。固定時刻になっただけで停止しない。
 - ユーザー申告ではGoogleドライブに以前のバックアップあり（**内容・復元可能性は未検証**）。**整理途中の全量バックアップを何度も上書きせず、古い世代は保持**。整理・共通化を終えた段階で新しい世代を保存する。ただし10/19以降の展示・オッズ等は旧世代だけでは守れないため、**物理切替の直前までに、当日変更分を含む整合した別世代バックアップと限定復元試験を必須**とする。バックアップが未準備なら深夜切替はNO-GO/延期。新世代の復元・照合までは古いGoogle Drive世代を上書き/削除しない。全writer/reader・最終delta・ロールバックも必須。旧表削除は別承認。
@@ -30,4 +35,4 @@
 - `v5_daily_table_routes.py`や`v5_realtime_table_routes.py`にopt-in案があっても、**現行共通VIEWへINSERTできず、全子ジョブ対応の保証もない**。既存flagsはlegacyから変更禁止。
 
 ## Next ONE task（次の一作業）
-GitHub側で`docs/BOAT_SHARED_UNATTENDED_CUTOVER_PLAN_20261023.md`を根拠に、13共通元表の書込責任者/朝・夜・forward・catchup・backfill・DDL・readerの**機械可読manifest案**を1工程だけ作成する。改名/複製/切替/自動予約/サービス停止/BUYは行わない。ConoHa最新バックアップと別媒体復元検査、実writerの完全列挙、全差分追従・GO/NO-GOが揃った時点で、対象と日時をユーザーに明示して別承認する。収集を旧表のまま継続。
+**移行前のバックアップ現状をread-onlyで確かめる**：Googleドライブの既存バックアップがどの世代・日付・サイズ・内容を持つかメタデータだけ確認し、10/20以降に増えた原本の保護不足を特定する。勝手な上書き・削除・全量再アップロードなし。あわせて移行管理表`docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`は候補経路のため、実行時writer/reader/cron/DDLが未認証の間は切替NO-GO。旧収集・13VIEW・DB writer・BUYを継続維持し、stage物理複製と深夜予約は別途承認まで禁止。
