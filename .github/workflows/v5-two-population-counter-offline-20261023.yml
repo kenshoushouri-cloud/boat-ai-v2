@@ -50,8 +50,8 @@ jobs:
             "## V5 research fit / K-course independent populations",
             "- Synthetic 18 tests total: 10 split-cohort + 8 contiguous-day reference-chain checks. No official HTTP, ConoHa/other DB access, live collectors, model fit, BUY or real history proof.",
             "- COURSE source may cover legitimate K races even without exhibition; matched fit race must agree with independent K source.",
-            "- Legacy reference loops advance K course history on days with trained fit races; course-only days are explicitly held, not silently mixed into the baseline.
-            - Result is strictly retrospective; source provenance, full historical parity, and Forward remain unverified.",
+            "- Reference K course history advances on days with model-fit races; course-only days are not silently mixed into this frozen baseline.",
+            "- Retrospective only: source provenance, full historical parity, and Forward remain unverified.",
             "",
             "~~~text",*tests[-14:],"~~~","",
             "V5_TWO_POPULATION_ADAPTER_PASS" if passed else "V5_TWO_POPULATION_ADAPTER_FAILED",
