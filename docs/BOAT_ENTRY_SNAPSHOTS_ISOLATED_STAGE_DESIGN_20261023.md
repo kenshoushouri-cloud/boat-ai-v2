@@ -32,7 +32,7 @@
 - 大規模分割COPYを行う場合、異なるMVCC時点の単純バッチ寄せ集めでは同期完了としない。各snapshotの整合と最終全キー再照合、欠損/重複/DELETEを検証するまでNO-GO。
 - COPYが成功しても**ステージ同期は未完成、本番切替0/13のまま**。全writer静止、正本1系統・readers・短い非購入canary・原子的戻しの実証と別承認が必要。
 
-## D. オフラインfail-closed試験計画（12ケースはGitHubに実装済み、初回E11が3 subTest失敗、GitHub比較修正後の再実行は未確認）
+## D. オフラインfail-closed試験計画（12ケース実装・23:24修正後のConoHa隔離実行12/12 PASS）
 | ケース | 故障/入力 | 期待 |
 |---|---|---|
 | E01 | 21列・PK・UNIQUE・NOT NULL定義の差異 | STOP |
@@ -48,4 +48,4 @@
 | E11 | COPY途中の失敗・timeout・ディスク不足 | 模擬トランザクション全体ROLLBACK |
 | E12 | 新世代独立保全/復元、全writer確認、別承認の欠落 | **常時NO-GO** |
 
-**現況**：entry stage作成=0、entry実COPY=0、venues初回隔離コピー=1/13、本番切替=0/13。E01～E12は`deploy/conoha/boat_entry_stage_guard_offline_20261023.py`に定義済み。GitHub上のreadbackと8静的項目PASS。**23:22初回Python unittestはE11のfail_after=1/13/24で失敗。tuple vs listの合成immutability比較ミスと判明しGitHubコード2か所修正済み。修正後再実行未確認で12/12 PASSとは記録しない**。次はConoHaの隔離`/tmp`で単独ファイルを`--self-test`実行し結果画像確認。ConoHaへのDDL/DMLは別の明示承認まで禁止。
+**現況**：entry stage作成=0、entry実COPY=0、venues初回隔離コピー=1/13、本番切替=0/13。E01～E12は`deploy/conoha/boat_entry_stage_guard_offline_20261023.py`に定義済み。GitHub上のreadbackと8静的項目PASS。**23:22初回E11が3 subTest失敗したが、tuple/list比較ミスをGitHubで修正し、23:24にConoHa隔離`/tmp`で12 tests / 0.025s / OK、成功マーカーを確認済み。合成テスト12/12 PASS。**実DBのCOPY・rollback・差分適用を検証したものではない。次は外部独立保全の設定をread-onlyで確認。ConoHaへのDDL/DMLは別の明示承認まで禁止。
