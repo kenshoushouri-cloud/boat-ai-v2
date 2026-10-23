@@ -45,6 +45,11 @@
 - `v5_k_six_row_exclusions_readonly_20261023.sql` を10/20だけ実行、**12行/COMMIT/監査正常終了**。画像下部で`K_FINISH_NOT_1_TO_6`（不正/欠測着順）と`K_COURSES_NOT_SIX`（進入コース6種類不成立）の双方を確認。可視行のF/L真・未知は0だが**画像上部切れのため12件全体の原因内訳は未確定**。12件は勝手に補完/削除せず研究用除外候補、実際の出走前選別には使わない。
 - 例外艇の`finish_status`、進入/着順、展示6の有無を12件の短い一覧として調べる`deploy/conoha/v5_k_anomalous_lanes_readonly_20261023.sql`をGitHub追加、未実行。**既存27のK+展示6の重複はあくまで学習用source shape**であり、当時時点初回の証明でも収益証明でもない。
 
+## 10/23 12:33 K除外の全レース原因と13Counterオフライン実装
+- Termius `v5_k_anomalous_lanes_readonly_20261023.sql` 12行/COMMIT：`F_OR_L` **1**（`20261020_01_08` 展示6あり）、`FINISH_OR_STATUS` **8**（うち`20261020_19_06`展示6あり）、`COURSE` **3**。F/Lまたは着順・コース不明を公式事前判定で後知恵除外禁止。12件は保存し研究適合を別分類。10/20のK6 + 展示6の共通**27件は構造候補**、証拠確定ではない。
+- `v5/offline_retrospective_counter_seed.py` で**明示的にretrospective限定**の13Counter「1日分寄与値」計算を追加。未知の公式結果/事故なし/返還なしはfail-closed、着順とwinnerの矛盾・6艇/展示/進入異常も除外、出力は`forward_eligible=False,buy_eligible=False`固定。ConoHaからの実27行アダプターは未作成、過去の全日付累積も未完成。
+- `tests/test_v5_offline_retrospective_counter_seed.py` の合成8件をGitHub Actionsで実行。当初のfixtureの`incident_free_verified`指定ミスにより4 FAIL、修正後**8/8 PASS**（Issue #581 `6356816325`）。公式HTTP/ConoHa/Postgres/BUY未使用。**research-native parity未証明**：特に研究版のコース別履歴には展示がない正常Kレースも使われ得る一方、現1日prototypeは受理した展示有りレース由来のcourse値のみ。これを完成した前日学習状態としてV5へ流用禁止。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -52,4 +57,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで`deploy/conoha/v5_k_anomalous_lanes_readonly_20261023.sql`を`day=2026-10-20`で**1回read-only実行**し、12対象レースの例外艇と`finish_status`内訳を短い表で確認（スクショ上端の見切れ防止）。不明な状態を正常着順として埋めない。結果により研究用13Counterからの除外条件を確定し、正常候補27レースの集計実装へ移行する。予測時点の選別に事後着順/F・Lを使わない。ConoHa収集・13VIEW・旧writer・物理移行・BUY変更なし。
+**V5本体開発優先**：一日read-only source adapterの接続設計。2026-10-20の全144/出走6=144/正常K6=132/展示6=29/共通shape=27をもとに、旧writerを変更せず、`boat_data`VIEW + 公式K + 結果・返還/事故の独立検証元から入力候補を抽出する。**研究fit母集団とコース履歴母集団を分離**（展示欠損でも正常Kは進入履歴候補）、27件全部を根拠なしに学習採用しない。合成8/8 PASSの1日Counterコードへ安全に入力するには返還なし・事故なしの別証拠が必要。現存ラベル時刻はfirst-write認証ではない。収集/13VIEW/DB書込/物理移行/BUY変更なし。
