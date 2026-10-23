@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：GitHubのみでvenuesの更新・DELETE差分反映安全プロトコルを設計（本番DB処理なし）。17/17合成試験は20:01 PASS、writer一次静的監査済み。ConoHa本番DBの追加書込、stage再作成、無条件COPY、切替、旧表削除、Git pull、Drive上書き、BUYは禁止（明示的な別承認要）。本番切替前には新鮮な独立世代の保全と復元試験が必要。将来のDrive自動暗号化バックアップはV5本体・共有物理原本・必要履歴/設定/モデルをV5専用ドライブへ、旧V3/V4世代と分離し旧8ファイルは保護。
+**最新compact末尾の Next ONE task**：GitHubのみでvenues差分反映プロトコルのfail-closed合成テストを追加。設計書`docs/BOAT_VENUES_DELTA_APPLY_SAFETY_PROTOCOL_20261023.md`は保存/readback確認済み（設計のみ、DB操作なし）。17/17合成差分計画テストは20:01 PASS。ConoHa本番DBの追加書込、stage再作成、無条件COPY、切替、旧表削除、Git pull、Drive上書き、BUYは禁止（明示的な別承認要）。本番切替前には新鮮な独立世代の保全と復元試験が必要。将来のDrive自動暗号化バックアップはV5本体・共有物理原本・必要履歴/設定/モデルをV5専用ドライブへ、旧V3/V4世代と分離し旧8ファイルは保護。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。同期SQL/DML・CDCは未実装。再複製禁止。
 
