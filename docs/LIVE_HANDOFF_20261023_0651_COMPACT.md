@@ -166,5 +166,9 @@
 - 同じ画面上部には23:22旧テストの`FAILED (failures=3)`も残っているが、後続の修正後テストが明確にPASS。E11のtuple/list比較バグ修正後の合成rollback判定OK。**実DBのrollback・stageのCREATE/COPY・CDC・実同期の成功を示すものではない**。
 - 過去の合成8+7+17+24=56件と今回の12件で、実行確認済み合成テスト計**68/68**（別検査群、実本番保証とはしない）。entry stageは未作成、venues初回stage24件は維持・再COPY禁止、13VIEWの物理正本切替0/13。旧収集・タイマー・DB・シーケンス変更なし。外部独立保全/全writer完全監査/切替承認は未完了。
 
+## 10/23 23:26 JST：ConoHa rclone remote登録名の確認
+- ユーザーTermius画面：`rclone listremotes`に`drive:`、`gdrive_a_backup:`、`v5_gdrive:`の**3名**が表示。rcloneコマンド利用可能、シェルへ正常復帰。**V5専用バックアップ候補は名前上`v5_gdrive:`だが、Googleアカウント・ルート/保存先の独立性・リモート接続・バックアップの有無・外部独立復元は未確認**。
+- 転送/更新/Driveファイル削除・旧バックアップ上書きやDB/collector変更なし。先ほどのentry E01～E12合成12/12 PASSは維持、物理stage entry=absent、venues=24件保全、本番切替0/13。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusでバックアップ向け外部rclone接続先の名前が登録されているかread-only確認**。`rclone listremotes`とrclone有無を確認するだけで、Driveへの読書き・転送・既存バックアップ上書き・DB変更はしない。**remoteの存在は独立保全/復元成功の証明ではない**。その後、新世代独立バックアップの保全・検証手順を一作業ずつ設計する。entryの実CREATE/COPY/差分DML、venues再COPY、本番切替、BUYは個別承認と必須ゲート成立までNO-GO。
+**ConoHa Termiusで`rclone lsd v5_gdrive: --retries 1 --low-level-retries 1`を一度だけ実行し、V5候補リモートのルート直下のフォルダ名だけをread-only確認**。LISTは軽量なAPI読取であり転送/バックアップの作成/上書きはしない。認証失敗・空ディレクトリでも勝手に作成しない。残り2 remoteには触れない。フォルダ名と接続成功だけでアカウント・バックアップ独立・復元の証明としない。V5専用の新世代独立保全と隔離復元は未実施。実DB entry CREATE/COPY/同期、venues再COPY、VIEW切替、collector停止、cron変更、BUYはNO-GO維持。
