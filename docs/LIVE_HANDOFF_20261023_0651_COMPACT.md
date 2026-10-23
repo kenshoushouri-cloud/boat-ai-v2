@@ -155,5 +155,11 @@
 - GitHub保存・再取得、定義12件と危険なDB/CLI import不在等の静的8確認PASS。**Python unittest実行はまだ未確認、12/12 PASSとは記録しない**。marker `ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`はPython実行で全件PASSした場合のみ出力。
 - `docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`も実装済み・実行未確認と更新。ConoHa stage`boat_data_stage.entry_snapshots`は未作成、venues stage24行は再コピー禁止。旧collector/VIEW/backup不変更、本番正本切替0/13。
 
+## 10/23 23:22 JST：entry guard E11合成rollback判定の誤りを修正（GitHubのみ）
+- ユーザーTermius画像：隔離`/tmp`で12 unittestを実行、`Ran 12 tests in 0.025s`、**FAILED (failures=3)**。失敗はE11の`fail_after=1/13/24`の3 subTest。`original_source_unchanged`のassertがFalse（**12/12 PASSではない**）。他の11テストはエラー表示なし。
+- GitHub現行コードを確認：`original=deepcopy(source.rows)`はtupleだが、成功・例外経路とも`original == list(source.rows)`で型不一致になりFalse。**旧原本データ変更や実DB rollback障害を示すログではなく、合成テストの型比較ミス**。
+- `deploy/conoha/boat_entry_stage_guard_offline_20261023.py`の2か所を`original == source.rows`へ修正してGitHub commit、readback済み。12テスト残存・両箇所置換・DB client/SQL不使用・NO_GO維持の静的確認PASS。**修正後のPython 12件はまだ未実行、PASSと記録しない**。
+- ConoHa stage`entry_snapshots`は未作成、venues24行はそのまま、旧原本・VIEW・収集・BUY・cronは変更なし。本番切替0/13。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで隔離`/tmp`に上記GitHub Python単独ファイルのみFETCH_HEADから取得し、E01～E12の`--self-test`を1度だけ実行、12 tests/OK と `ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`を結果画面で確認**。Git pull/本番worktree変更やDB接続/DDL/DML、stage作成・COPY・cron・BUYは禁止。検査合格しても物理stage実作成や同期・切替承認ではない。独立バックアップ隔離復元、全writer監査、個別承認までNO-GO。
+**ConoHa Termiusで修正済みGitHub単独Pythonを隔離`/tmp`に再FETCHして、E01〜E12`--self-test`を1度再実行**。必要条件は`Ran 12 tests`、`OK`、`ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`、プロンプト復帰。**実DB/実COPY/シーケンス操作/VIEW切替/収集変更は禁止**。成功時も本番切替NO-GOで独立保全・全writer認証・ユーザー別承認が必要。
