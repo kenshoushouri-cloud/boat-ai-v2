@@ -88,6 +88,10 @@
 - Termiusの1日read-onlyプレビュー完了：全144、出走6艇144、K正常132、展示6艇29、共通形状27。13集計系統の総件数が構造的に一致。正式な学習済み状態ではない。
 - 研究CounterとKコース母集団の差、級別キーの規約、同日結果の先読み禁止を検査。合成回帰10/10成功。詳細は docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md。
 
+## 10/23 15時台 研究13Counterの暦日ロールフォワード検証
+- `v5/offline_retrospective_prior_day_chain.py`追加。旧研究ループの2母集団・日付D→D+1加算を合成日付で再現。**fit対象がある日には展示なしKもコース履歴へ加算、fit0の暦日は旧研究ループと合わせKだけの増加を保留**。他方式は研究候補として別比較。欠損日・同日結果使用・Counter矛盾を拒否、HOLD/BUY無効固定。
+- `tests/test_v5_offline_retrospective_prior_day_chain.py`8件を追加し、従来2母集団10件とあわせ**GitHub Actions 18/18 PASS**（Issue #581 comment 6358891179）。全実データ学習・公式返還認証・本番予測は未実施。詳細`docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md`。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -95,4 +99,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-GitHubで過去の学習基準と研究Counterの2系統（展示付き候補、独立Kコース履歴）との日付境界・対象母集団の数学的一致を追加検証。未確認の返還・事故は未知のままとし、実データの学習認証は行わない。ConoHaの現行収集と共通VIEWは維持、DB変更や物理移行は別承認。
+GitHubで**合成済み2母集団→研究Counter暦日連結**の一日単位数学パリティは18/18 PASS。次の1作業は公式結果・Kの事故/返還の独立証拠とその欠損率を**既存データ・コード上でread-onlyに監査する設計**。証拠がないとき`refund_boats=()`等を捏造しない。ユーザーのConoHa現行収集/13VIEW/writer/物理移行/旧表/BUYは変更せず、2025-07全期間の学習/予測を勝手に有効化しない。
