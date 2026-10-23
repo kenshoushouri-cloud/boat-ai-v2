@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from v5.conoha_research_one_day_sources_readonly import SourceProposals
+from v5.conoha_research_source_contract import SourceProposals
 from v5.offline_prior_day_factor_export import MAP_KEYS
 
 
