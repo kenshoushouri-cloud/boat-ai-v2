@@ -43,6 +43,35 @@ class TestOneDayReadOnlySourceBridge(unittest.TestCase):
         self.assertIn("BUY_ELIGIBLE=0",report)
         self.assertFalse(src.buy_eligible)
 
+    def test_integer_official_grade_codes_restore_roster_six(self):
+        x=sample()
+        for row, code, name in zip(
+            x, (4,3,2,1,4,2), ("A1","A2","B1","B2","A1","B1")
+        ):
+            row["racer_class"]=code
+            row["racer_class_text"]=name
+        src=assemble_source_proposals(DAY,x)
+        self.assertEqual(src.roster6,1)
+        self.assertEqual(src.k_course_shape6,1)
+        self.assertEqual(src.exhibition6,1)
+        self.assertEqual(src.fit_source_shape6,1)
+        self.assertEqual(src.fit_proposals[0].boats[0].racer_class,"A1")
+        self.assertIn("RESEARCH_FIT_ACCEPTED=0",held_summary(src))
+
+    def test_grade_text_conflict_and_unknown_code_hold(self):
+        x=sample()
+        x[0]["racer_class"]=4
+        x[0]["racer_class_text"]="B2"
+        self.assertEqual(assemble_source_proposals(DAY,x).roster6,0)
+        y=sample()
+        y[0]["racer_class"]=9
+        y[0]["racer_class_text"]="A1"
+        self.assertEqual(assemble_source_proposals(DAY,y).roster6,0)
+        z=sample()
+        z[0]["racer_class"]=4
+        z[0]["racer_class_text"]=None
+        self.assertEqual(assemble_source_proposals(DAY,z).roster6,1)
+
     def test_exhibition_missing_does_not_remove_course_history_proposal(self):
         src=assemble_source_proposals(DAY,sample(exhibition=False))
         self.assertEqual((src.exhibition6,src.fit_source_shape6),(0,0))
