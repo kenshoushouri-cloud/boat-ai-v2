@@ -26,12 +26,16 @@
 
 ## 2026-10-23 前日学習状態の実モデル接続監査
 - `v5/offline_prior_day_counter_update.py`（13Counter増分）/ `v5/offline_prior_day_factor_export.py`（基礎確率+5x6因子）を静的点検。モデル入力には `lw/lcs/lcw/rks/rkw/cs/ct/rcs/rct/ps/pw/vc/vn` の**13系統の前日固定Counter**が必要。公式K5走とTOP3率だけでは作れない。凍結された当時の完全なCounter/独立原本証拠は未確認。
-- 実6艇の前日Kの個別`race_date`+`finish_position` JSONB配列を返す**read-only専用SQL** `deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql` をGitHub追加。文書`docs/V5_REAL_PRIOR_DAY_FACTOR_BOUNDARY_20261023.md`に全5因子・13Counter・HOLD条件を記載。**ConoHaでは未実行、実予測/BUY未実行**。
+- 実6艇の前日Kの個別`race_date`+`finish_position` JSONB配列を返す**read-only専用SQL** `deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql` をGitHub追加。文書`docs/V5_REAL_PRIOR_DAY_FACTOR_BOUNDARY_20261023.md`に全5因子・13Counter・HOLD条件を記載。**ConoHaで11:53実行し6艇各5走のKデータJSONを確認、実予測/BUY未実行**。
 - 既存writer/共通13VIEW/物理移行/旧表/タイマーは一切変更なし。初回原本とofficial positive six-active evidenceのHARD HOLD継続。
 
 ## 10/23 12:04 13Counter元データの1日検査（Termius実測）
 - `v5_prior_day_counter_sources_coverage_readonly_20261023.sql`をConoHaで`2026-10-20`だけ実行。race_total **144**、出走6艇 **144**、official results **144**、clean K6艇・コース等 **132**、`historical`展示順位6艇 **0**、全条件の構造的学習候補 **0**、historical時刻条件 **0**、COMMITで成功。**展示データ全体が0とはまだ判断できない**（他ラベル未集計）。132との差分12レースは原因不明、後で分類。
 - 他ラベルの展示6艇の保存有無を調べる限定read-only `deploy/conoha/v5_exhibition_label_coverage_readonly_20261023.sql` をGitHub追加。未実行、学習/予想/BUYなし。後日取得の展示を当時の初回取得証明に転用禁止。
+
+## 10/23 12:09 過去展示ラベル調査（Termius実測）
+- `v5_exhibition_label_coverage_readonly_20261023.sql`を10/20だけread-only実行：全144レース中**29レース**で展示6艇が同じラベルに揃い、計174艇行。`conoha_forward_*` 28レース/168行、`conoha_other_*` 1レース/6行、`historical` 0。29件とも現存`snapshot_at`が締切前の形式条件を満たすが**初回取得の不変証明ではない**。残り115件はforward対象絞込か欠測か未分類。K6正常132件と展示6の**積集合は未計測**。
+- GitHubに`deploy/conoha/v5_exhibition_k_joint_coverage_readonly_20261023.sql`追加。10/20の1日だけでK正常132件と展示29件の同一race_id積集合を集計するSQL。未実行、DB write/モデル/BUYなし。
 
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
@@ -40,4 +44,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`deploy/conoha/v5_exhibition_label_coverage_readonly_20261023.sql`を2026-10-20だけ一度read-only実行**。全ラベルの展示6艇記録・ラベル別件数を確認し、historical=0と展示自体の欠損を切り分ける。今回のtimestamp<deadline列も初回原本性を証明せず、3連単/実収支/BUYには昇格不可。DB更新・既存収集停止・物理移行・旧表削除なし。12レースのK欠落理由はこの次の別作業。
+**ConoHa Termiusで`deploy/conoha/v5_exhibition_k_joint_coverage_readonly_20261023.sql`を日付2026-10-20だけread-only実行**し、144全レース・K正常132・展示6の29レースがどれだけ重なるか確認。K/展示どちらかを欠くレースの件数も算出。現存`snapshot_at`が締切前でもfirst-write proofとみなさず、後日historical補完で実際の当時観測を偽装しない。学習モデル凍結、公式6艇positive start証明、BUYはいずれも未完成。既存収集/13VIEW/物理移行/旧表/費用は変更しない。
