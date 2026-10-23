@@ -8,6 +8,7 @@ import unittest
 from dataclasses import replace
 from datetime import date
 
+from v5.offline_prior_day_factor_export import MAP_KEYS, export_prior_day_factors
 from v5.offline_retrospective_counter_seed import (
     RetrospectiveKBoat, RetrospectiveResearchRace,
 )
@@ -71,6 +72,41 @@ class TestV5TwoPopulationOffline(unittest.TestCase):
         self.assertEqual(x.state.completed_races,0)
         self.assertEqual(sum(x.state.counters["cs"].values()),6)
         self.assertEqual(sum(x.state.counters["rks"].values()),0)
+
+    def test_canonical_class_key_parity_and_all_thirteen_families(self):
+        out=project_two_population_day(
+            DAY,(fit(),),(k_course(),k_course("20261020_21_03"))
+        )
+        c=out.state.counters
+        self.assertEqual(set(c),MAP_KEYS)
+        self.assertEqual(c["lcs"][1]["A1"],1)
+        self.assertEqual(c["lcw"][2]["A2"],1)
+        self.assertEqual(c["rks"][(1,"A1","3")],1)
+        self.assertEqual(c["rkw"][(2,"A2","1")],1)
+        self.assertEqual(c["ps"][(1,"A1",2,"A2")],1)
+        self.assertEqual(c["pw"][(2,"A2",1,"A1")],1)
+        self.assertEqual(c["vc"]["21"][2],1)
+        self.assertEqual(c["vn"]["21"],1)
+        self.assertEqual(c["cs"][1],2)
+        self.assertEqual(c["ct"][1],2)
+        self.assertEqual(c["rcs"][1][4211],2)
+        self.assertEqual(c["rct"][1][4211],2)
+        self.assertFalse(out.source_state_independently_verified)
+
+    def test_day_d_outcome_state_is_rejected_for_day_d_prediction(self):
+        out=project_two_population_day(DAY,(fit(),),(k_course(),))
+        self.assertEqual(
+            export_prior_day_factors("20261020_21_02",(),out.state).reason,
+            "PRIOR_DAY_STATE_DATE_OR_SOURCE_UNVERIFIED",
+        )
+        # Date boundary is acceptable the next day, but still needs six
+        # authenticated prediction-time input lanes and genuine provenance.
+        self.assertEqual(
+            export_prior_day_factors("20261021_21_02",(),out.state).reason,
+            "SIX_LANES_REQUIRED",
+        )
+        self.assertFalse(out.forward_eligible)
+        self.assertFalse(out.buy_eligible)
 
     def test_fit_missing_from_independent_k_set_rejected(self):
         with self.assertRaisesRegex(ValueError,"NO_APPROVED_K_HISTORY"):
