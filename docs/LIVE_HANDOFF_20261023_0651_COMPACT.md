@@ -19,6 +19,10 @@
 - 10/18,19,20の3日で432レース・K正常履歴候補399、展示6艇29、両方27（10/20のみ）。10/20全144/出走6=144/K正常6=132/展示6=29/共通候補27。公式K特殊着順12R／14艇のうち進入欠損3艇。結果`official`でも事故/返還ゼロの独立証明は**ない**。
 - 13系統Counter（27fit形状候補＋132K履歴形状候補）構造総数・非ゼロセル検査済み。合成数学/日次チェーンのオフライン回帰最大22/22 PASS（個々のフローはIssue #581）。**本番モデル学習・原本証明・真正なforward ROI・BUYは未実装/未認証、HOLD継続**。
 
+## 10/23 16:29 稼働writer監査と深夜自動移行のユーザー提案
+- Termiusの`v5_active_writer_routes_readonly_20261022.py`正常終了（`V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES`）。forward子`v5.conoha_realtime_window_pg → v21_realtime_collector_pg_safe.py → v21_realtime_collector_pg.py`と日次/K/補完/DDLへの旧表参照の存在を確認。ただし`NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`＝**全writer経路の保証なし**。共通側13は非更新VIEWで物理正本でない。
+- ユーザー案「稼働中に複製→深夜に自動切替」は**設計上可能で推奨**。ただし時刻固定でGOにしない：23:00/01:20等の収集、UPDATE/DELETE差分、最新外部バックアップ+復元、13writer/reader/DDL統一・短期静止・非購入canary・ロールバックが**全部検証済み**の場合だけ条件付きGO。未達なら**旧収集を維持しNO-GO/延期**。現時点は**GO不可能、予約も未実施**。`docs/BOAT_SHARED_UNATTENDED_CUTOVER_PLAN_20261023.md`をGitHub追加。既存`boat_shared_bulk_*20261023`はVIEW13件と衝突し実行禁止。
+
 ## 収集・移行の安全条件
 - 現行ConoHaのmorning07:00/night23:00、forward毎5分（期限9〜24分）、midnight catchup01:20等のtimer/子processを停止しない。oneshot inactiveやflockコード75だけでは故障とは限らない。旧writerを片方だけ切替するとsplit-brain・差分漏れの危険。固定時刻になっただけで停止しない。
 - 10/19バックアップだけではその後の展示・オッズ等の唯一の原本を守れない。**最新の別媒体バックアップ・限定復元試験・必要な最終delta整合・ロールバック・全reader/writer/DDL経路の確認が最終切替の条件**。旧表は移行後も保持し、削除は別承認。短い停止窓がなければ収集を旧表のまま維持する。
@@ -26,4 +30,4 @@
 - `v5_daily_table_routes.py`や`v5_realtime_table_routes.py`にopt-in案があっても、**現行共通VIEWへINSERTできず、全子ジョブ対応の保証もない**。既存flagsはlegacyから変更禁止。
 
 ## Next ONE task（次の一作業）
-- **既存のread-only稼働writer監査スクリプトを13系列対応に更新済み（GitHub、ConoHa未実行）**：`deploy/conoha/v5_active_writer_routes_readonly_20261022.py`。Termiusで`git fetch --no-tags origin main`、`git show origin/main:deploy/conoha/v5_active_writer_routes_readonly_20261022.py > /tmp/v5_active_writer_routes.py`、`PYTHONDONTWRITEBYTECODE=1 python3 /tmp/v5_active_writer_routes.py`を**1回だけREAD ONLY実行**。rootでsystemd/cronのユニット名・状態、allowlist上の13旧実表の静的参照/INSERT/DDLヒントのみ表示、秘密情報/ExecStart全文は表示しない。これは**全経路の動的完全証明ではない**。結果から書込経路・遅延ジョブ・backfillを個別に分類し、バックアップ/切戻しを準備。ここではSQLデータ移動、サービス停止、定期収集設定変更、VIEW置換、BUY、旧表削除をしない。
+GitHub側で`docs/BOAT_SHARED_UNATTENDED_CUTOVER_PLAN_20261023.md`を根拠に、13共通元表の書込責任者/朝・夜・forward・catchup・backfill・DDL・readerの**機械可読manifest案**を1工程だけ作成する。改名/複製/切替/自動予約/サービス停止/BUYは行わない。ConoHa最新バックアップと別媒体復元検査、実writerの完全列挙、全差分追従・GO/NO-GOが揃った時点で、対象と日時をユーザーに明示して別承認する。収集を旧表のまま継続。
