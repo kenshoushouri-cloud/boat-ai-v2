@@ -113,5 +113,10 @@
 - ユーザーTermius画像：`railway`で`BEGIN READ ONLY`、`v5_data.raw_{weather,exhibition,entry,odds,race_condition,racer_condition}_snapshots`は全6件とも`absent`（`pg_class`上未作成）、`ROLLBACK`で終了。**現時点でこれら6対象に存在するVIEW/物理表による`forbid_legacy_realtime_if_physical_exists`の誤停止条件は確認されない**。ただし稼働collectorの実行成否は未証明、今後`v5_data.raw_*`名でstage作成するとDDLガードが拒否する設計。改変前に別隔離stage命名/切替計画を確定する。
 - 旧`public.v2_realtime_*`が全て物理原本であるか、収集実動作・他writer・全reader/DDLの監査は引き続き未完了。**既存`boat_data_stage.venues`24行保持、二重COPY禁止、物理正本切替0/13**。
 
+## 10/23 21:49 JST：ConoHaの旧リアルタイム原本6表確認
+- Termius画像で`public.v2_realtime_{entry,exhibition,odds,race_condition,racer_condition,weather}_snapshots`が**すべてrelkind=r（物理表）**、読み取り専用クエリ`ROLLBACK`正常終了。21:46時点の`v5_data.raw_*_snapshots`6候補は全て`absent`。
+- 現行collectorはlegacy物理原本を使う設計。**既存DDL guardは`v5_data.raw_*`名を作るとlegacy収集を遮断し得るためその名前で無断CREATEしない**。別名の隔離stageは構造・容量・バックアップ・writer監査後に個別承認する。
+- 既存`boat_data_stage.venues`24件を再コピーしない。13種類本番物理正本切替0/13。差分同期/深夜自動切替/BUYは未実施。
+
 ## Next ONE task（次の一作業）
-**ConoHa `railway`で旧原本`public.v2_realtime_*`6表の`pg_class.relkind`をREAD ONLYで1回確認**。存在/種別のみを確認し、大量行数カウントやDB変更、collector/cron変更はしない。結果を画像で確認してから次の一作業。旧データ削除・stage再CREATE/COPY・実同期DML・VIEW切替・BUY禁止、全移行はNO-GO継続。
+**ConoHa旧リアルタイム原本6物理表のメタデータ容量・概算行数をread-onlyで確認**。実`COUNT(*)`を回さず、`pg_total_relation_size`＋`pg_class.reltuples`（推定値に過ぎない）を一度だけ取得。CPU/RAM/ディスク予算、隔離stage設計に使う。収集/タイマー無変更、stage CREATE/COPY、旧表削除、VIEW変更、実同期DML、BUYは別承認までNO-GO。独立保全・全writer監査も未完成。
