@@ -19,7 +19,8 @@ SET LOCAL work_mem='8MB';
 
 -- 1) Detect, not assume, the available result/refund/incident source columns.
 SELECT table_schema||'.'||table_name AS relation,
-       column_name, data_type
+       string_agg(column_name||':'||data_type, ', ' ORDER BY column_name)
+         AS relevant_columns
 FROM information_schema.columns
 WHERE table_schema='public'
   AND table_name IN (
@@ -31,8 +32,8 @@ WHERE table_schema='public'
     ||'trifecta|payout|raw|is_flying|is_late|finish_status|'
     ||'start_course|fetched_at|snapshot_at|snapshot_label'
   )
-ORDER BY relation,column_name
-LIMIT 90;
+GROUP BY table_schema,table_name
+ORDER BY relation;
 
 -- 2) The complete one-day status distribution; no postrace status becomes
 -- an input to historical predeadline racing decisions.
