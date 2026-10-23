@@ -34,5 +34,8 @@
 - 移行は13ソースの書込責任者/読み込み依存を洗い出し、まずvenues24件pilotでroute/read/rollback検証、大きなオッズ/展示は容量/WALとlive追記を見積もって表単位で段階切替。データ欠損を補完したことと当時のforward証拠を再現したことを混同しない。
 - `v5_daily_table_routes.py`や`v5_realtime_table_routes.py`にopt-in案があっても、**現行共通VIEWへINSERTできず、全子ジョブ対応の保証もない**。既存flagsはlegacyから変更禁止。
 
+## 10/23 Google Driveバックアップ実体の読取確認
+- **2つの接続済みGoogleドライブ**を直接フォルダ一覧（検索のみでは一部非表示）で検査し、**実ファイル8件**確認：10/19メイン`main_current_20261019.dump.age` 297756932 bytes がA/B双方、10/18メイン297740778、10/19履歴`archive_current_20261019.dump.age` 52130144、10/16名履歴52125309、V3のdump/ZIP・V4 dump。詳細`docs/BOAT_GDRIVE_BACKUP_METADATA_20261023.md`。**存在のみ検証**、暗号解除/pg_restore/復元/ハッシュ/中身/10/19以降の差分は未検証。旧世代を上書き/削除しない。
+
 ## Next ONE task（次の一作業）
-**移行前のバックアップ現状をread-onlyで確かめる**：Googleドライブの既存バックアップがどの世代・日付・サイズ・内容を持つかメタデータだけ確認し、10/20以降に増えた原本の保護不足を特定する。勝手な上書き・削除・全量再アップロードなし。あわせて移行管理表`docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`は候補経路のため、実行時writer/reader/cron/DDLが未認証の間は切替NO-GO。旧収集・13VIEW・DB writer・BUYを継続維持し、stage物理複製と深夜予約は別途承認まで禁止。
+ConoHaにある現在のバックアップ/復元用スクリプトとrclone/age実行経路を**読み取り専用・秘密非表示**で棚卸しする最小検査をGitHubで準備。Drive旧8件は保護し、整理中の全量アップロードは繰り返さない。ただし深夜の実物理切替前には10/19以降の差分を含む別世代のバックアップ＋限定復元試験を必須とし、未達ならNO-GO。収集・VIEW13件・legacy writer・BUY・切替タイマーは変更しない。
