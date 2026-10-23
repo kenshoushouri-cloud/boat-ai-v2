@@ -96,6 +96,11 @@
 - `research/historical_incident_eligibility.py`は`NO_INCIDENT_EVIDENCE`でも`primary_training_eligible=None`。公式Kの正常艇6行・result_status=officialは**返還ゼロ認証ではない**。`save_k_day_results_pg.py`のK保存は`finish_status`/F/L等の事故兆候を保持するが、独立した返還節の証明は未確認。確認済み全レース取消レジストリ71件は対象日が別で、非掲載＝返還なしではない。
 - `deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を追加。**10/20の1日限定**で公式Kの正常・事故・未知着順・進入不完全レースを分類、現在のDBスキーマ内の返還関連列候補だけを列挙。**ConoHa未実行**。履歴別DBのメタデータは未検査。削除・fit昇格・BUYなし。
 
+## 10/23 15:46 事故・返還証拠とCounterセル監査
+- Termius`v5_k_incident_refund_gap_readonly_20261023.sql`（10/20のみREAD ONLY/COMMIT）：**144R中K通常着順形状132R、事故・特殊着順12R、該当艇14行、進入コース欠落3行、未知艇状態0行**。正常132≠返還なし証明。`return_yen`/`return_amount`等4表の金額計算列は公式返還艇の根拠ではない。公式`v2_results.raw`に返還独立証拠なし。非認証27fit/132K進入候補は引き続きHOLD。
+- 既設`v5/offline_trifecta_refund_section.py`は模擬HTMLの明示`返還`節を解析するが**実公式HTMLの原本妥当性未検証**。`docs/V5_REAL_RESULT_HTML_FIXTURE_ONE_GET_PLAN_20261010.md`は公式1 GETの明示的なレース単位の別承認が必要。本ターンGET/DB変更は不実施。
+- `v5/offline_unverified_counter_cell_preview.py`追加。未認証ソース27/132を再構成し、13Counter系統の**distinct非ゼロキー数＋件数**だけ匿名出力、Counterマップ・前日学習済Stateは返さない。`--counter-cell-preview`を既存read-only一日CLIに追加。GitHub Actions合成**21/21 PASS**（Issue #581 コメント6359275742）。ConoHaで新オプションは未実行。`FIRST_OBSERVATION_AUTHENTICATED=0/PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`継続。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -103,4 +108,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-ConoHa Termiusで`deploy/conoha/v5_k_incident_refund_gap_readonly_20261023.sql`を`day=2026-10-20`で1回だけREAD ONLY実行し、144レースの公式K事故・不明データ分類と返還原本の候補列を確認。正常コードでも返還なしと認証しない。`boat_history_archive`等別DBまでは今回確認しない。ConoHa収集、13VIEW、旧writer、物理移行、DB更新、BUYは維持・不変更。最小の1作業ずつ進める。
+Termiusで従来と同じ隔離`git archive origin/main`を使い`v5.conoha_research_one_day_sources_readonly --date 2026-10-20 --counter-cell-preview`を**1回だけREAD ONLY実行**。144/132/29/27のソース整合と13系統のdistinctセル数を点検し、出力に`PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`必須。公式事故/返還・predeadline証拠がないので研究モデル認証/利益/自動購入へ昇格しない。既存収集/DB書込/13VIEW/物理移行/旧writer変更なし。
