@@ -150,5 +150,10 @@
 - 新規`docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`：旧`public.v2_realtime_entry_snapshots`21列、serial`id`の旧seqを継承しない`INCLUDING ALL EXCLUDING DEFAULTS`候補（実装・実SQL検証未実施）、PK idと自然キー`(race_id,snapshot_label,lane)`、独立stageへの明示id全列複製、一貫MVCC snapshot、原本収集継続中の追い付き/INSERT UPDATE DELETE、安全負荷/WAL、全行双方向照合・例外ROLLBACK、外部独立新世代backup+隔離復元と個別承認のゲートを設計。
 - **E01～E12のfail-closedオフライン合成テストは検査項目として記載のみ**。Pythonテスト実装・実行・ConoHa DB DDL/DML・物理COPYは一切未実施。GitHubファイル保存/readbackと静的10確認PASS。`boat_data_stage.entry_snapshots`はabsent、venues24行stageは再COPY禁止、本番切替0/13。独立外部保全/全writer監査は未完了でNO-GO。
 
+## 10/23 23:10以降：entry独立stage合成安全テストをGitHubに実装
+- 新規`deploy/conoha/boat_entry_stage_guard_offline_20261023.py`に設計書E01～E12の純粋なPython unittest **12件を定義**。旧serial default/sequence依存、21列・PK/id/3列UNIQUE、不完全/混合スナップショット、INSERT/UPDATE/DELETE（時刻不変更新）、ID自然キー衝突/大量DELETE、途中失敗の仮想ROLLBACK、外部backup・writer認証・承認の不足をfail-closedで検査する設計。**合成上すべての証拠がTrueでもproduction_decision=NO_GO**。
+- GitHub保存・再取得、定義12件と危険なDB/CLI import不在等の静的8確認PASS。**Python unittest実行はまだ未確認、12/12 PASSとは記録しない**。marker `ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`はPython実行で全件PASSした場合のみ出力。
+- `docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`も実装済み・実行未確認と更新。ConoHa stage`boat_data_stage.entry_snapshots`は未作成、venues stage24行は再コピー禁止。旧collector/VIEW/backup不変更、本番正本切替0/13。
+
 ## Next ONE task（次の一作業）
-**GitHubのみで`docs/BOAT_ENTRY_SNAPSHOTS_ISOLATED_STAGE_DESIGN_20261023.md`のE01～E12合成fail-closedテストを実装してGitHub静的確認**。DB接続・実行可能なDDL/DML・実COPY・cron・BUYを含めない。ConoHa隔離Python実行は次の別作業として結果確認する。実stage作成/複製/同期/切替はユーザーの別途明示承認と独立backup隔離復元、writer監査を条件としてNO-GO継続。tool最小、1回1作業。
+**ConoHa Termiusで隔離`/tmp`に上記GitHub Python単独ファイルのみFETCH_HEADから取得し、E01～E12の`--self-test`を1度だけ実行、12 tests/OK と `ENTRY_STAGE_FAIL_CLOSED_OFFLINE_12_PASS_NO_DB_NO_BUY`を結果画面で確認**。Git pull/本番worktree変更やDB接続/DDL/DML、stage作成・COPY・cron・BUYは禁止。検査合格しても物理stage実作成や同期・切替承認ではない。独立バックアップ隔離復元、全writer監査、個別承認までNO-GO。
