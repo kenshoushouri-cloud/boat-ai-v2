@@ -76,6 +76,10 @@
 - GitHub `v5/offline_unverified_counter_shape_preview.py`を追加。上記ソースproposalsから13Counter**各系統の総数だけ**を計算する非モデル用構造確認。実Counterの中身・`PriorDayCounters`オブジェクト・係数・予測を生成せず、未証明出所/事故/返還を実学習へ昇格しない。独立Kコース母集団132と展示付き27を区別し二重計上/不一致拒否。`v5.conoha_research_one_day_sources_readonly`へオプション`--counter-shape-preview`を追加。本番収集とは未接続。
 - 合成オフライン tests 9+5＝**14/14 PASS**（Issue #581 `6357573649`）。最初の5件テストには重複拒否の期待値誤りが1つあり修正済み。**ConoHa上で追加オプションの実行はまだ**。実際のモデル学習値・独立predeadline原本・ROI/BUYは完成していない。
 
+## 10/23 13:55 Counter shape preview の `python -m` 型エラー修正
+- ユーザーTermiusの`--counter-shape-preview`実行ではSOURCE検査は**144/144/132/29/27**で再一致、その後`ValueError: EXACT_SOURCE_PROPOSALS_REQUIRED`で停止。原因は`SourceProposals`を実行用モジュールに定義したため、`__main__`と通常importの同名クラスが別オブジェクトになったこと。データ欠損/収集故障でない。`SHAPE_*`値の実DBプレビューは未取得。
+- 型を独立した`v5/conoha_research_source_contract.py`へ切り出し、実行側/計算側が共有するよう変更。回帰テストには**実際の`runpy.run_module(..., run_name='__main__')`+模擬DB**を追加、最終GitHub Actions Issue #581コメント`6357768348`で**16/16 PASS**。途中のモック`rollback`検査期待値の修正を含む。**実ConoHa再実行は未実施**。返還/事故・初回原本証明なし/実Counter fit未完了/Forward0/BUY0を維持。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -83,4 +87,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-Termiusで隔離`git archive origin/main`を使った**前回と同じ1日read-onlyスクリプトに`--counter-shape-preview`を追加し、一度だけ2026-10-20を検査**。期待：source件数144/144/132/29/27再現、`SHAPE_*_TOTAL`13系統を単純計数（fit=27/course=132から構造的に決定）するが**実Counter学習値ではない**。終了時`PRIOR_STATE_FITTED=0`・`FORWARD_ELIGIBLE=0`・`BUY_ELIGIBLE=0`必須。続いて独立返還・事故証拠と実モデル版/校正を検討。既存収集、DB writer、13VIEW、物理移行、旧表削除、BUY変更なし。
+Termiusで先ほどの隔離`git archive origin/main`経由で`v5.conoha_research_one_day_sources_readonly --date 2026-10-20 --counter-shape-preview`を**再度1回だけread-only実行**。直前の実データ144/132/29/27を維持しつつ、`SHAPE_*`13系統の総数を取得し、`PRIOR_STATE_FITTED=0`・`FORWARD_ELIGIBLE=0`・`BUY_ELIGIBLE=0`を確認する。今回の修正は`python -m`二重importの型ID問題のみ。独立事故/返還・時点証拠がないので本番学習値への昇格不可。稼働収集/DB物理移行/旧writer/共通VIEW/BUYは変更しない。
