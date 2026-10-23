@@ -91,5 +91,9 @@
 - ユーザーTermius画像：隔離`/tmp`で`boat_venues_delta_apply_guard_offline_20261023.py --self-test`実行、`Ran 24 tests in 0.004s`、`OK`、`VENUES_DELTA_APPLY_FAIL_CLOSED_OFFLINE_PASS_NO_DB_NO_BUY`。過去の8/8、7/7、17/17と合わせ**合成検査累計56/56 PASS（異なる検査群）**。**本番DB上の同期・ロック・ROLLBACKを実証したわけではない**。
 - `boat_data_stage.venues`は19:50の初回24件複製済みで再コピー禁止。現時点で物理正本切替0/13、実CDC/同期DML/BUY/cron/無人切替未実施。ローカル`railway`dumpのvenues限定復元のみPASS、VPS外独立保全や全writer経路確認は未完了。
 
+## 10/23 21:19 JST venues実DB最新差分read-only確認（ユーザーTermius画像）
+- `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`、statement_timeout=10秒、原本`public.v2_venues`と隔離物理stage`boat_data_stage.venues`のフルキー/全列JSONB比較、`boat_data.venues`relkind=**v**。**source_rows=24、stage_rows=24、SAME=24、INSERT=0、UPDATE=0、DELETE=0**、`ROLLBACK`正常終了、rootシェル復帰。
+- **一時点の差分ゼロ**であり連続同期/CDC/実DML/本番切替の成功ではない。19:50に作成済みのstageを再CREATE・再COPYしない。現行収集writerは旧原本、`boat_data`13件はVIEW、本番物理正本切替0/13、独立外部保全・writer全経路保証は未完了。
+
 ## Next ONE task（次の一作業）
-**ConoHaのvenues旧原本と既存stageの読み取り専用・単一スナップショット最新差分確認**。read-onlyトランザクションで両方の行数、INSERT/UPDATE/DELETE/SAME、旧原本を指す共有VIEWの種別を一度だけ取得。結果画像で日時・差分を確認し、**まだ差分適用はしない**。現行writer/readerを停止・変更せず、`boat_data_stage.venues`の再CREATE/再COPY/DROP、旧原本削除、VIEW置換、本番同期DML、切替、BUYは禁止。独立保全・全writer確認・別承認までNO-GO。1コマンドずつ。
+**ConoHa Termiusでsystemd timerの稼働予定を読み取り専用で確認し、朝夜/forward/深夜に関係する実ユニット名を特定**。未検出でも収集停止とは断定しない（wrapper、手動、service、cronの可能性あり）。その後writer経路のread-only監査へ進む。収集停止・タイマー変更・stage再複製・差分DML・切替・DB/VIEW削除・BUYは禁止。無断課金なし、1回1コマンド、低負荷。
