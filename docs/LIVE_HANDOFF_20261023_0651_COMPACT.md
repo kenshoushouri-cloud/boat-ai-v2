@@ -84,8 +84,12 @@
 
 ## 10/23 20:01以降：venues差分反映fail-closed合成テストをGitHub追加
 - `deploy/conoha/boat_venues_delta_apply_guard_offline_20261023.py`新規。**24件のPython unittestを定義**しGitHub保存/readback・静的13項目PASS。完全キー・同一スナップショット、独立backup復元、writer静止/子job認証、別承認、巨大/不明DELETE、venue_code PK/venue_id UNIQUEの衝突、試験用メモリ内の故障時ROLLBACKなどを保守的に判定。`production_decision=NO_GO`固定、DB接続/実SQL/cron/BUYなし。
-- **Python実行試験は未確認、24/24 PASSとはまだ記録しない**。成功マーカー予定：`VENUES_DELTA_APPLY_FAIL_CLOSED_OFFLINE_PASS_NO_DB_NO_BUY`。GitHub上の静的検査とConoHa/Python実行を区別。
+- **10/23 21:17 JST、ユーザーTermius画像で24 tests / 0.004s / OK、成功マーカー、rootプロンプト復帰を確認（24/24 PASS）**。成功マーカー予定：`VENUES_DELTA_APPLY_FAIL_CLOSED_OFFLINE_PASS_NO_DB_NO_BUY`。GitHub上の静的検査とConoHa/Python実行を区別。
 - ConoHa内で作成済`boat_data_stage.venues`24件には触れていない。原本とVIEWも維持、本番切替0/13、旧writer収集継続。リアルの独立バックアップ・全writer証明・stage差分適用/rollback演習は未実施。
 
+## 10/23 21:17 JST venues fail-closed合成24/24 PASS（実証）
+- ユーザーTermius画像：隔離`/tmp`で`boat_venues_delta_apply_guard_offline_20261023.py --self-test`実行、`Ran 24 tests in 0.004s`、`OK`、`VENUES_DELTA_APPLY_FAIL_CLOSED_OFFLINE_PASS_NO_DB_NO_BUY`。過去の8/8、7/7、17/17と合わせ**合成検査累計56/56 PASS（異なる検査群）**。**本番DB上の同期・ロック・ROLLBACKを実証したわけではない**。
+- `boat_data_stage.venues`は19:50の初回24件複製済みで再コピー禁止。現時点で物理正本切替0/13、実CDC/同期DML/BUY/cron/無人切替未実施。ローカル`railway`dumpのvenues限定復元のみPASS、VPS外独立保全や全writer経路確認は未完了。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusの隔離`/tmp`で新規単独Pythonファイルの24件合成unittestを1回実行し、成功マーカーと結果画面を確認**。GitHubの必要1ファイルのみFETCH_HEADで取り込み、live worktree/DB/stage/VIEW/collectorは変更禁止、Git pull禁止。テスト合格も実DML/CDCの認証や切替許可ではない。別承認、独立保全復元、全writer証明までNO-GO。1回1作業、短く報告。
+**ConoHaのvenues旧原本と既存stageの読み取り専用・単一スナップショット最新差分確認**。read-onlyトランザクションで両方の行数、INSERT/UPDATE/DELETE/SAME、旧原本を指す共有VIEWの種別を一度だけ取得。結果画像で日時・差分を確認し、**まだ差分適用はしない**。現行writer/readerを停止・変更せず、`boat_data_stage.venues`の再CREATE/再COPY/DROP、旧原本削除、VIEW置換、本番同期DML、切替、BUYは禁止。独立保全・全writer確認・別承認までNO-GO。1コマンドずつ。
