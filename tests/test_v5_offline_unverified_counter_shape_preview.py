@@ -150,7 +150,8 @@ class TestModuleModeSourceContract(unittest.TestCase):
         self.assertIn("PRIOR_STATE_FITTED=0",output.getvalue())
         self.assertIn("BUY_ELIGIBLE=0",output.getvalue())
         pg.connect.assert_called_once()
-        conn.rollback.assert_called_once()
+        conn.__enter__.return_value.rollback.assert_called_once()
+        cur.execute.assert_any_call("SET TRANSACTION READ ONLY")
 
 
 if __name__=="__main__":
