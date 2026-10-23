@@ -1,19 +1,18 @@
-# 新チャット貼り付け案内（2026-10-23 17:47 JST）
+# 新チャット貼り付け案内（2026-10-23 19:52 JST）
 
 @GitHub
 
-新競艇AI開発プロジェクトNo.2の続きです。
-Repository: kenshoushouri-cloud/boat-ai-v2
+新競艇AI開発プロジェクトNo.2 続き。Repository: kenshoushouri-cloud/boat-ai-v2
 
-最初に以下だけを確認してください。
-1. docs/HANDOFF_LATEST.md
-2. そこが指定する current compact handoff の全文（現時点 docs/LIVE_HANDOFF_20261023_0651_COMPACT.md）
-3. 必要があれば docs/NEXT_CHAT_START_HERE.md
+最初に3点だけ：1. docs/HANDOFF_LATEST.md、2. そこが指定する最新compact handoff全文、3. docs/NEXT_CHAT_START_HERE.md。古いhandoff/PROJECT_HISTORY/長いチャットは大量参照禁止。
 
-10月23日17:47、ConoHa Termiusで共有13表の隔離オフラインstage＋全PK差分判定のテスト **8件/8件PASS**（OFFLINE_STAGE_AND_COMPLETE_KEY_DELTA_TESTS_PASS_NO_DB_NO_BUY）。これは実DB複製・差分適用・深夜切替の完了ではありません。**実データ移行はまだ未着手**です。
+10/23 19:52実績（ConoHa Termius画面で確認）：
+- オフライン：共有13系統8/8 PASS、venues個別7/7 PASS。
+- ConoHa `railway`の新世代ローカルdump375MBを作成し、venues24行の隔離限定復元に成功。一時DB残存0。DB全体/別DB履歴復元や外部独立保全の完了ではない。
+- **承認を得て`boat_data_stage.venues`を新規作成し、旧`public.v2_venues`から24行初回物理複製済み。** 19:50 COMMIT、双方向全列差分0。19:51再監査も24/24/24・差分0、19:52 read-only INSERT0/UPDATE0/DELETE0/SAME24。これは一時点の一致のみ。**stageを再作成・二重複製しないこと。**
+- `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
+- 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-目標はV5/V6共通の物理正本への安全な移行です。現在 boat_data.* は13個の非更新VIEW、原本は public.v2_* 物理表です。稼働中の朝夜/forward/深夜の収集は止めないでください。旧研究shadowや隔離データは無条件に混ぜないでください。
+**最新compact末尾の Next ONE task**：GitHubでvenues専用の差分同期の安全設計＋合成オフライン検査のみ。ConoHa本番DBの追加書込、stage再作成、無条件COPY、切替、旧表削除、Git pull、Drive上書き、BUYは禁止（明示的な別承認要）。本番切替前には新鮮な独立世代の保全と復元試験が必要。将来のDrive自動暗号化バックアップはV5本体・共有物理原本・必要履歴/設定/モデルをV5専用ドライブへ、旧V3/V4世代と分離し旧8ファイルは保護。
 
-current compact handoff末尾の「Next ONE task」から進めてください。次はGitHubで**venues 1表のstaging安全実装設計とオフライン検査**を1作業のみ。ConoHaの最初のDB変更より前にローカル新世代バックアップと限定復元試験を必須とし、本番切替前は外部独立保全も必要です。既存Google Drive8ファイル保護、移行完了後にV5本体・共通データだけをV3/V4とは別のV5専用Driveへ定期暗号化バックアップする方針。現時点で自動予約なし。
-
-古い長いhandoffやPROJECT_HISTORYを大量参照せず、1回1作業・ツール最小・短い日本語報告。SHA・容量・実行結果は固定値扱いせず都度必要な分だけ再確認。Railway Agent/AI、無断課金、Git pull、無条件bulk COPY、VIEW置換、旧表削除、writer変更、本番予測/BUYは禁止。タイムアウトを避け、ConoHaへの実行指示は1コマンドずつお願いします。
+一度に1作業、必要最小のツール、短い日本語報告。ConoHa操作が要る場合はTermiusコマンド1個ずつ、GitHub更新とDB実行を厳密に区別。低CPU/RAM/通信・無断追加課金なし、Railway Agent/AI禁止。
