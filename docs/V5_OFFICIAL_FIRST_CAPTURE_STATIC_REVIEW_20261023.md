@@ -53,6 +53,13 @@ python -m unittest discover -s tests -p 'test_v5_official_capture_pipeline.py' -
 - `python -m unittest discover -s tests -p 'test_v5_capture_pre_http_hard_hold.py' -v` をオフライン実行：**6 tests / 6 PASS、0.004秒、OK**。実ネットワーク・ConoHa・Railway DBは未使用。
 - 6試験：偽の6艇active証拠/無効設定/不正レースID/接続無しでbeforeinfoをHTTP/DB以前に拒否。非beforeinfoは注入した偽transportまでの動作のみを検証。これは**オフラインガードのPASSのみ**であり、独立した一次取得証明や本番予測/BUYの解除ではない。
 
+## 2026-10-23：既存GitHub Actions HTTP transportオフライン検証
+
+- 既設`.github/workflows/v5-official-http-transport-offline.yml`をrepository ownerがIssue #581の許可済みコメント `/v5 official-http-transport-offline-20261010` で起動（新CI workflow不作成）。
+- GitHub Actions報告：`Ran 21 tests in 0.015s`、`OK`、`V5_MAINLINE_HTTP_TRANSPORT_PASS`。記録： https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/581#issuecomment-6355930958
+- 模擬HTTPセッションだけを使用。公式GET、ConoHa/Railway DB接続、Service/DDL、モデル/LINE/BUYは行わず。取得元URL、非200/redirect、raw body、サイズ、timezone/タイムアウト、衝突拒否を検証。
+- PASSは**未配備の保存提案生成**に限る。初回観測の原本認証・前日学習状態・出走activeの独立証明ができたわけではなく、official_beforeinfo PRE-HTTP HARD HOLDは継続。
+
 ## 次のONE task
 
-**次は`tests/test_v5_official_http_transport.py`だけをオフライン実行**し、公式URL・HTTP結果・生バイト・時刻の拒否条件を確認する。ConoHa稼働・公式HTTP・DB・DDL・BUYは不使用。次段の本番配備・ロール権限・原本監査は独立審査・承認が必要。
+既設`v5-official-first-write-executor-offline.yml`の起動条件をread-only確認し、合致する場合に限定して**first-write executor模擬DBテスト1件**を実行する。DB上のfirst-write独立証明・リリース許可と混同しない。ConoHa現行writer/13 VIEW/収集は変更しない。
