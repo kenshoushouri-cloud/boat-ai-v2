@@ -199,5 +199,10 @@
 - `boat_history_archive`存在、datallowconn=t、sessions=0/active=0。/var/backups同一ディスク99G/使用28G/空き67G（30%）。読取のみ。OS critical updateの再起動要求あり、collector保護のため未実施。
 - 旧`railway.dump`375MiBは維持。archiveの独立dumpは未実施、Google Drive独立保全/隔離復元は未証明。DB本体や旧collectorには変更なし、正本切替0/13 NO-GO。
 
+## 10/24 08:28 JST：boat_history_archive独立ローカルdumpとTOC検査PASS（Termius）
+- 2026-10-24 08:28、ConoHaで`boat_history_archive`単独の低優先度`pg_dump -Fc -Z 1 --lock-wait-timeout=5s`成功。`/var/backups/boat-history-20261024-U6CRtL/boat_history_archive.dump`、`ls -lh` **79M**、owner root/mode0600（umask077）。`pg_restore -l`のTOC読み取り成功、`ARCHIVE_LOCAL_BACKUP_CREATED_TOC_PASS_RESTORE_NOT_TESTED`マーカー/プロンプト復帰を画像で確認。
+- 10/23 19:32の既存`railway.dump`（393,138,215bytes）を保護、別ファイルで作成。**TOC検査は復元成功とは異なり、実DBの隔離復元テストは未実施**。クラウド独立保全/隔離VPS外復元も未完了。外部rcloneはAPI 403制限、転送はしない。
+- 既存collector/systemd timers、共有13VIEW、venues stage24行、旧表は無変更、entry stageはabsent、正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaでarchive DB単独の新世代ローカル`pg_dump -Fc -Z 1`を別の一意な/var/backupsディレクトリに低優先度（nice+15）、短いlock wait、umask077で作成**。既存dump上書き禁止、失敗時partial削除、成功時`pg_restore -l`でTOCが読めることだけ確認。**TOC成功を隔離復元成功と誤認しない**。構造/データの実復元試験は次の別作業で計画。Google Driveへの接続/アップロードは引き続き禁止。現行収集・timer・旧表・venues stage・BUY変更禁止、本番切替0/13 NO-GO。
+**ConoHaで新規一意名の一時DBへ`boat_history_archive.dump`を低優先度で全体隔離復元し、エラーなし・ユーザーテーブル存在・DB容量を検査、成功/失敗どちらでも一時DBを削除できたことを明示確認**。元`boat_history_archive`と`railway`には一切DML/DDLしない。入力は既存root所有0600のバックアップをrootシェルのstdinリダイレクトでpostgres pg_restoreに渡す。実行前に空き容量閾値と既存dumpの存在をチェック。restoreはtimeout/low priority/1job、no-owner/no-acl。失敗した場合は必ずSTOPし次の原因診断へ。**実復元PASSでもConoHa単一VPS内の検証であり独立外部復元証明ではない**。Google Driveアクセス、entry CREATE/COPY、venues再COPY、collector停止/cron変更、VIEW正本切替、BUYは禁止。
