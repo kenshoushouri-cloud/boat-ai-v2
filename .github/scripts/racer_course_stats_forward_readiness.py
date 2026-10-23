@@ -12,6 +12,9 @@ Important interpretation:
 - snapshot rows must have been created before each race deadline.
 - no result/outcome data are read here, so readiness cannot be selected from
   apparent predictive performance.
+- required `(racer_number, snapshot_date, course)` row coverage is reported
+  separately from field completeness. A racer having usable metrics for another
+  course does not satisfy the exact row required by today's lane/course proxy.
 """
 from __future__ import annotations
 
@@ -104,6 +107,8 @@ def main() -> None:
                   select r.race_id,r.race_date,r.deadline_at,
                          e.lane,e.racer_number,
                          e.local_place2_rate,e.national_place2_rate,e.avg_st entry_avg_st,
+                         s.racer_number snapshot_racer_number,
+                         s.course snapshot_course,
                          s.entry_rate course_entry_rate,
                          s.top3_rate course_top3_rate,
                          s.avg_st course_avg_st,
@@ -123,6 +128,8 @@ def main() -> None:
     by_race: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_date: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     matched_entries = 0
+    required_key_present_entries = 0
+    required_key_missing_entries = 0
     top3_valid = 0
     avg_st_valid = 0
     entry_rate_valid = 0
@@ -138,6 +145,14 @@ def main() -> None:
         by_race[rid].append(row)
         d = str(row["race_date"])
         by_date[d]["entries"] += 1
+
+        required_key_present = row.get("snapshot_racer_number") is not None
+        if required_key_present:
+            required_key_present_entries += 1
+            by_date[d]["required_key_present"] += 1
+        else:
+            required_key_missing_entries += 1
+            by_date[d]["required_key_missing"] += 1
 
         ctop3 = sf(row.get("course_top3_rate"))
         cst = sf(row.get("course_avg_st"))
@@ -173,7 +188,9 @@ def main() -> None:
 
     total_races = len(by_race)
     full6_races = 0
+    full6_required_keys = 0
     full6_top3 = 0
+    full6_top3_timing_safe = 0
     full6_avgst = 0
     full6_all3 = 0
     for race_rows in by_race.values():
@@ -185,8 +202,18 @@ def main() -> None:
         matched6 = all(sf(x.get("course_top3_rate")) is not None or sf(x.get("course_avg_st")) is not None or sf(x.get("course_entry_rate")) is not None for x in race_rows)
         if matched6:
             full6_races += 1
+        if all(x.get("snapshot_racer_number") is not None for x in race_rows):
+            full6_required_keys += 1
         if all(sf(x.get("course_top3_rate")) is not None for x in race_rows):
             full6_top3 += 1
+        if all(
+            sf(x.get("course_top3_rate")) is not None
+            and x.get("snapshot_created_at") is not None
+            and x.get("deadline_at") is not None
+            and x.get("snapshot_created_at") < x.get("deadline_at")
+            for x in race_rows
+        ):
+            full6_top3_timing_safe += 1
         if all(sf(x.get("course_avg_st")) is not None for x in race_rows):
             full6_avgst += 1
         if all(
@@ -205,8 +232,17 @@ def main() -> None:
     )
     print(
         "RACER_COURSE_READY_RACES="
-        f"target:{total_races} full6_any:{full6_races} full6_top3:{full6_top3} "
+        f"target:{total_races} full6_any:{full6_races} full6_required_keys:{full6_required_keys} "
+        f"full6_top3:{full6_top3} full6_top3_timing_safe:{full6_top3_timing_safe} "
         f"full6_avgst:{full6_avgst} full6_all3:{full6_all3}",
+        flush=True,
+    )
+    print(
+        "RACER_COURSE_REQUIRED_KEY_COVERAGE="
+        f"entries:{len(rows)} present:{required_key_present_entries} missing:{required_key_missing_entries} "
+        f"present_pct:{pct(required_key_present_entries,len(rows)):.2f} "
+        f"races_full6:{full6_required_keys}/{total_races} "
+        f"races_full6_pct:{pct(full6_required_keys,total_races):.2f}",
         flush=True,
     )
     print(
@@ -237,7 +273,9 @@ def main() -> None:
         m = by_date[d]
         print(
             f"RACER_COURSE_READY_DATE=date:{d} entries:{m['entries']} matched:{m['matched']} "
-            f"matched_pct:{pct(m['matched'],m['entries']):.2f}",
+            f"matched_pct:{pct(m['matched'],m['entries']):.2f} "
+            f"required_key_present:{m['required_key_present']} required_key_missing:{m['required_key_missing']} "
+            f"required_key_pct:{pct(m['required_key_present'],m['entries']):.2f}",
             flush=True,
         )
 
