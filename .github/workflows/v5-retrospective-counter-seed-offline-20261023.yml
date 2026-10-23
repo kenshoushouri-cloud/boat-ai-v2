@@ -1,0 +1,64 @@
+name: V5 one-day 13-counter seed offline tests
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  offline:
+    if: >-
+      github.event.issue.number == 581 &&
+      github.actor == github.repository_owner &&
+      github.event.comment.body == '/v5 retrospective-13counter-seed-offline-20261023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Synthetic one-day 13-counter tests
+        id: test
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -p 'test_v5_offline_retrospective_counter_seed.py' -v > output.txt 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Generate short result
+        id: report
+        if: always()
+        env:
+          PASSED: ${{ steps.test.outputs.passed }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          raw=Path("output.txt").read_text(errors="replace") if Path("output.txt").exists() else ""
+          keep=[s[:240] for s in raw.splitlines() if s.startswith(("test_", "Ran ", "OK", "FAILED", "ERROR", "FAIL", "Traceback", "AssertionError", "ImportError"))]
+          passed=os.environ.get("PASSED")=="true" and "Ran 8 tests" in raw and "\nOK\n" in raw
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("verified="+("true" if passed else "false")+"\n")
+          report=[
+            "## V5 retrospective 13-Counter one-day seed (synthetic only)",
+            "- 8 offline tests. No ConoHa, Railway, official HTTP, DB, real fit, Forward, LINE or BUY.",
+            "- Source data are supplied from synthetic fixtures, not authenticated historical records.",
+            "- This one-day projection is NOT a complete V5 historical baseline or research-model parity certification.",
+            "",
+            "~~~text",*keep[-15:],"~~~","",
+            "V5_RETROSPECTIVE_COUNTER_SEED_PASS" if passed else "V5_RETROSPECTIVE_COUNTER_SEED_FAILED",
+          ]
+          Path("summary.md").write_text("\n".join(report)+"\n")
+          PY
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 581 --repo "$GITHUB_REPOSITORY" --body-file summary.md
+      - name: Reject failing tests
+        if: steps.report.outputs.verified != 'true'
+        run: exit 1
