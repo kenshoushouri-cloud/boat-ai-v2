@@ -101,6 +101,9 @@
 - 既設`v5/offline_trifecta_refund_section.py`は模擬HTMLの明示`返還`節を解析するが**実公式HTMLの原本妥当性未検証**。`docs/V5_REAL_RESULT_HTML_FIXTURE_ONE_GET_PLAN_20261010.md`は公式1 GETの明示的なレース単位の別承認が必要。本ターンGET/DB変更は不実施。
 - `v5/offline_unverified_counter_cell_preview.py`追加。未認証ソース27/132を再構成し、13Counter系統の**distinct非ゼロキー数＋件数**だけ匿名出力、Counterマップ・前日学習済Stateは返さない。`--counter-cell-preview`を既存read-only一日CLIに追加。GitHub Actions合成**21/21 PASS**（Issue #581 コメント6359275742）。ConoHaで新オプションは未実行。`FIRST_OBSERVATION_AUTHENTICATED=0/PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`継続。
 
+## 10/23 15:55 V5実データ13系統のセル占有検査（Termius実測）
+- 隔離`git archive origin/main`から`v5.conoha_research_one_day_sources_readonly --date 2026-10-20 --counter-cell-preview`をread-only実行・正常終了。全144、出走6=144、K正常形状=132、展示同ラベル6=29、fit構造候補=27、Kコース候補=132、fit認証0。13系統の`(総数/非ゼロキー)`：`cs 792/6, ct 396/6, lcs 162/23, lcw 27/11, lw 27/6, ps 810/286, pw 135/90, rcs 792/782, rct 396/393, rks 162/85, rkw 27/22, vc 27/14, vn 27/3`。全て既報の総件数と一致。**Counterキーの占有数だけ**で学習済みの前日状態ではない。原本/事故/返還未認証、`FIRST_OBSERVATION_AUTHENTICATED=0, PRIOR_STATE_FITTED=0, FORWARD_ELIGIBLE=0, BUY_ELIGIBLE=0`。ConoHa収集/DB/旧writer/13VIEW変更なし。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -108,4 +111,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-Termiusで従来と同じ隔離`git archive origin/main`を使い`v5.conoha_research_one_day_sources_readonly --date 2026-10-20 --counter-cell-preview`を**1回だけREAD ONLY実行**。144/132/29/27のソース整合と13系統のdistinctセル数を点検し、出力に`PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`必須。公式事故/返還・predeadline証拠がないので研究モデル認証/利益/自動購入へ昇格しない。既存収集/DB書込/13VIEW/物理移行/旧writer変更なし。
+V5本体の完成を優先し、既存`v5/offline_research_two_population_day.py`の13Counter**実カテゴリ別キー計算**と、新しい`v5/offline_unverified_counter_cell_preview.py`の13系統distinctキー数が**同じ未認証候補で数式一致するか**を、GitHub合成データの比較テスト1件だけで確認する。既存プレビューは本番Counter/Forwardへ昇格不可、事故・返還証拠を偽造しない。ConoHaの収集/DB/writer/13VIEW/物理移行/BUYには触れない。認証問題は別作業として公式結果原本の実際の返還節契約を確認する必要あり。
