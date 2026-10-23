@@ -47,6 +47,12 @@ python -m unittest discover -s tests -p 'test_v5_official_capture_pipeline.py' -
 
 **合格条件**：実GET=0、実DB=0、デプロイ/タイマー変更0、HARD HOLD=維持、重複/不一致や時刻異常がfail-closed、検証済みでない状態を`forward_eligible`や`buy_eligible`へ昇格しない。GitHubにテストファイルがあるだけではPASS扱いにしない。必要なら次工程で既存テストを実行し、個別の結果に従って最小修正する。
 
+## 2026-10-23 実行結果：PRE-HTTP HARD HOLD最小回帰
+
+- GitHubの`v5/official_capture_pipeline.py` blob `0831dcfc768ef2598f97f1615b94bed3b3eec2a8` と `tests/test_v5_capture_pre_http_hard_hold.py` blob `4385de7356a3dc0d693b35d68b2eca69a093362d` を、独立した一時ローカルテストディレクトリへ正確に再現。git hash-objectで**両ファイルともGitHubのblob SHA一致**を確認。
+- `python -m unittest discover -s tests -p 'test_v5_capture_pre_http_hard_hold.py' -v` をオフライン実行：**6 tests / 6 PASS、0.004秒、OK**。実ネットワーク・ConoHa・Railway DBは未使用。
+- 6試験：偽の6艇active証拠/無効設定/不正レースID/接続無しでbeforeinfoをHTTP/DB以前に拒否。非beforeinfoは注入した偽transportまでの動作のみを検証。これは**オフラインガードのPASSのみ**であり、独立した一次取得証明や本番予測/BUYの解除ではない。
+
 ## 次のONE task
 
-**GitHubの安全なオフライン環境で既存`test_v5_capture_pre_http_hard_hold.py`のみを実行**して、現在の静的結論が回帰テストでも成立するか確認する。ConoHaの稼働環境をテストで停止・変更しない。テスト結果が確認できてから他の最小検査へ進む。V5初回取得の本番配備・新DDL/権限・モデル昇格・購入は別承認。
+**次は`tests/test_v5_official_http_transport.py`だけをオフライン実行**し、公式URL・HTTP結果・生バイト・時刻の拒否条件を確認する。ConoHa稼働・公式HTTP・DB・DDL・BUYは不使用。次段の本番配備・ロール権限・原本監査は独立審査・承認が必要。
