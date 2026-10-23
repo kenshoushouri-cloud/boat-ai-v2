@@ -36,4 +36,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-GitHubから`deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql`をConoHa上の一時ファイルに取り出し、read-onlyで**`20261023_21_02`の6艇・K5走JSONB**を1回確認。期限20s、DB書込なし。返る`HOLD_NO_FROZEN_PRIOR_COUNTERS_OR_FIRST_CAPTURE`は想定された保護判定でモデル完成ではない。実行成功後、13Counterの前日固定材料・母集団を一レースではなく過去日順に安全設計。ConoHaの稼働収集、13VIEW、既存writer、物理移行、BUYは変更しない。
+10/23 Termiusスクショ11:53で `deploy/conoha/v5_prior_day_recent_form_bridge_readonly_20261023.sql` が**6/6艇・各5走の当日以前のK日付/着順JSON**を取得、COMMIT、`HOLD_NO_FROZEN_PRIOR_COUNTERS_OR_FIRST_CAPTURE`。これは予測適格ではない。13Counterの前日凍結元を確認するため`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`をGitHub追加。**次のONE作業：ConoHaで2026-10-20のみ、read-only SQLを実行**し、過去出走6/展示historical6/公式K進入コース6/結果存在の件数を確認。歴史的展示はfirst-capture proofではなく、Kのpostraceフィルタを予想前gateにしない。データ書込/学習/物理移行/writer変更/BUYは禁止。
