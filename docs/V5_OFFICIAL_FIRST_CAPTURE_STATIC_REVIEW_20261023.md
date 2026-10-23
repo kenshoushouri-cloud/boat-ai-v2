@@ -60,6 +60,13 @@ python -m unittest discover -s tests -p 'test_v5_official_capture_pipeline.py' -
 - 模擬HTTPセッションだけを使用。公式GET、ConoHa/Railway DB接続、Service/DDL、モデル/LINE/BUYは行わず。取得元URL、非200/redirect、raw body、サイズ、timezone/タイムアウト、衝突拒否を検証。
 - PASSは**未配備の保存提案生成**に限る。初回観測の原本認証・前日学習状態・出走activeの独立証明ができたわけではなく、official_beforeinfo PRE-HTTP HARD HOLDは継続。
 
+## 2026-10-23：First-write executor 模擬DBオフライン回帰結果
+- 既設 GitHub Actions `.github/workflows/v5-official-first-write-executor-offline.yml` のオーナー限定Issue #581コマンド`/v5 first-write-executor-offline-20261010`で`tests/test_v5_official_first_write_executor.py`のみを起動。
+- GitHub Actionsのコメント証拠：https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/581#issuecomment-6356024189 。`Ran 21 tests in 0.036s`、`OK`、`V5_MAINLINE_FIRST_WRITE_EXECUTOR_PASS`。
+- 模擬DBで初回INSERT→同一トランザクション照合、同一キー・同一bytesは上書きしない、別bytes/URL衝突、偽の時刻/ID/改ざん、読戻し失敗・書込/COMMIT失敗時のrollbackが21件すべてPASS。**実DB/HTTP、DDL、ConoHa収集、BUYは不実行**。
+- 本結果は**モック内での保存機能の整合性のみ**。PostgreSQL本番での初回受信・非改変・commit時刻・外部監査、公式6艇active証明、V5モデル接続は未完了。beforeinfo PRE-HTTP HARD HOLDを維持。
+
 ## 次のONE task
 
-既設`v5-official-first-write-executor-offline.yml`の起動条件をread-only確認し、合致する場合に限定して**first-write executor模擬DBテスト1件**を実行する。DB上のfirst-write独立証明・リリース許可と混同しない。ConoHa現行writer/13 VIEW/収集は変更しない。
+実予測の完成を優先し、`v5/offline_prior_day_counter_update.py` と `v5/offline_prior_day_factor_export.py` の**前日固定モデル状態の入出力条件だけ**静的に確認する。10/23対象実レースの6艇/展示/odds/K5走ブリッジからV5確率/3連単影順位付けへ渡す未実装接続を洗い出す。ConoHa DBで長い学習・全量COPY・本番予測/BUYは行わない。実原本保存の独立証明は別工程。
+
