@@ -104,5 +104,10 @@
 - Termius画面：`/opt/boat-ai-v5/v5/conoha_realtime_window_pg.py` 125行付近で`v21_realtime_collector_pg_safe.py`を起動、`/opt/boat-ai-v5/v5/conoha_midnight_results_pg.py` 90/107行付近で`repair_month_all_pg`からimportし`v2_results` UPSERTすることを確認。**GitHubの経路候補とConoHaのlive fileはこの接続点で一致**。起動成功や全write経路・子プロセス群の完全証明ではない。
 - GitHubの`v21_realtime_collector_pg_safe.py`は`v21_realtime_collector_pg.py`をimportして子処理を再利用。`_ensure_realtime_tables`は旧表のDDL許可ガード付きで`v2_realtime_weather/exhibition/entry/odds/race_condition/racer_condition_snapshots`6系統のCREATE/ALTER/INDEX候補と`legacy_entry_alters()`を持ち、`_upsert`は`resolve_realtime_table`を経由。**ConoHa実ファイルの全内容と実行分岐は次にread-onlyで確認**。現行`boat_data`13VIEW、物理正本切替0/13、既存stage24件保全。旧収集とtimerは無変更。
 
+## 10/23 21:39 JST：リアルタイムcollector現物の旧6系統・DDL経路read-only照合
+- Termius実ファイル`/opt/boat-ai-v5/v21_realtime_collector_pg.py`から旧6テーブル：`v2_realtime_{weather,exhibition,entry,odds,race_condition,racer_condition}_snapshots`が全て確認できた。`_ensure_realtime_tables`（102行）、`legacy_entry_alters`、`CREATE TABLE IF NOT EXISTS`（113行）、`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`（123行）、6 UNIQUE index（128～133行）、`_upsert`（135～138行）から`resolve_realtime_table`を呼ぶ経路を確認。**コード存在の証拠でありDDL実行証拠ではない**。ConoHa収集・タイマーは変更していない。
+- GitHub `v5_realtime_table_routes.py`は既定legacy、physicalは明示2ゲート。**GitHub `v5_legacy_ddl_guard.py`の`forbid_legacy_realtime_if_physical_exists`は`to_regclass`が任意の対象を返すとlegacy DDLを拒否するため、対象が非更新VIEWでも拒否される可能性がある**（relkind判定なし）。ConoHa現物コードの適用状態・対象6名のlive relkindは未確認。writer正常動作/不動作も未証明。移行に先立ちこの疑義をread-onlyで切り分ける。
+- 既存stage `boat_data_stage.venues`24件保持。13 VIEW維持・物理正本切替0/13・BUY/自動同期なし。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`/opt/boat-ai-v5/v21_realtime_collector_pg.py`をREAD ONLY・局所grepして6種類のsnapshotテーブル名、`_ensure_realtime_tables`のDDL経路、`_upsert`の関数を確認する。** 実コード確認のみ（実行・imports・DB接続・DDL/DMLなし）。前回の4timer起動元確認は済み。旧原本・stage再複製禁止、収集停止/cron変更/共有VIEW切替/BUYは禁止。別承認・独立バックアップ・全writer証明まで切替NO-GO。
+**ConoHa `railway`の`v5_data.raw_*_snapshots` 6対象について`pg_class.relkind`をREAD ONLYで一覧取得**し、既存VIEWがlegacy DDLガードに誤検知される可能性がないか確認する。対象有無と種類のみ、DB書込/collector起動/停止/タイマー変更なし。結果確認後に次の一作業。再COPY・旧表削除・切替・BUY禁止。独立保全/全writer/ロールバック未完成のためNO-GO。
