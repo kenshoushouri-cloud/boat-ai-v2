@@ -31,4 +31,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-10/23 GitHubで`docs/V5_OFFICIAL_FIRST_CAPTURE_STATIC_REVIEW_20261023.md`を追加（静的レビューのみ）。従来forwardはmutable snapshotsへ保存、Bao専用0件は別系統。V5 first-write保存系は未配備、beforeinfo PRE-HTTP HARD HOLDを維持。**次は`tests/test_v5_capture_pre_http_hard_hold.py`のみをGitHub開発/CIのオフライン環境で実行して結果確認**。ConoHa収集/DDL/サービス/旧writer/BUY変更なし。実モデル接続は前日カウンタ固定と独立した取得時刻証拠が未検証。移行は13VIEW利用を続け、物理切替を別工程にする。
+10/23公式初回取得保存経路の静的レビューを`docs/V5_OFFICIAL_FIRST_CAPTURE_STATIC_REVIEW_20261023.md`に記載。**次の最小安全テスト：`tests/test_v5_official_http_transport.py`のみをオフライン実行**。直前に`tests/test_v5_capture_pre_http_hard_hold.py`をGitHub blob SHA一致の2ファイルで独立したローカル環境実行：**6/6 PASS**（外部GET/DBなし）。beforeinfo PRE-HTTP HARD HOLDを保持。旧writer/13VIEW/ConoHaサービス/DB/BUYは無変更。Bao専用0件は初回証拠未形成を意味するだけ。予測モデル入力の前日状態固定・独立観測証拠は引き続き未検証。物理移行/旧表削除は行わない。
