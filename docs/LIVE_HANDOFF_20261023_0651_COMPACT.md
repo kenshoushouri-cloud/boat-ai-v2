@@ -95,5 +95,10 @@
 - `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`、statement_timeout=10秒、原本`public.v2_venues`と隔離物理stage`boat_data_stage.venues`のフルキー/全列JSONB比較、`boat_data.venues`relkind=**v**。**source_rows=24、stage_rows=24、SAME=24、INSERT=0、UPDATE=0、DELETE=0**、`ROLLBACK`正常終了、rootシェル復帰。
 - **一時点の差分ゼロ**であり連続同期/CDC/実DML/本番切替の成功ではない。19:50に作成済みのstageを再CREATE・再COPYしない。現行収集writerは旧原本、`boat_data`13件はVIEW、本番物理正本切替0/13、独立外部保全・writer全経路保証は未完了。
 
+## 10/23 21:22–21:30 JST：ConoHa V5の4タイマー・実行先の静的確認
+- Termius画面にてsystemd 22 timersのうち`boat-v5-forward-window.timer`, `boat-v5-daily@morning.timer`, `boat-v5-daily@night.timer`, `boat-v5-midnight-catchup.timer`を確認。朝夜は`/opt/boat-ai-collector/daily_v5_safe.sh`→`/opt/boat-ai-v5/repair_month_all_pg.py`を参照。forward/midnightサービスには`flock`・`timeout`・venv Pythonが設定され、`systemctl show ExecStart`で`-m v5.conoha_realtime_window_pg`, `-m v5.conoha_midnight_results_pg`をConoHa live設定として確認。
+- GitHub現行source静的調査：`v5/conoha_realtime_window_pg.py`は子`v21_realtime_collector_pg_safe.py`をsubprocess起動する候補。`v5/conoha_midnight_results_pg.py`は`repair_month_all_pg`の`_fetch/parse_result/upsert_rows`を利用し`v2_results`へupsertする候補。**GitHub sourceはConoHa稼働コード実体の完全照合ではない**。実ファイルと全子ジョブ・writer宛先のruntime確認は継続課題。
+- 旧writer継続、共有`boat_data`13個はVIEW、本番物理正本切替0/13。stage`boat_data_stage.venues`24件再COPY禁止。深夜補完timerはデータ補完であり物理切替予約ではない。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusでsystemd timerの稼働予定を読み取り専用で確認し、朝夜/forward/深夜に関係する実ユニット名を特定**。未検出でも収集停止とは断定しない（wrapper、手動、service、cronの可能性あり）。その後writer経路のread-only監査へ進む。収集停止・タイマー変更・stage再複製・差分DML・切替・DB/VIEW削除・BUYは禁止。無断課金なし、1回1コマンド、低負荷。
+**ConoHa liveファイル2件について読み取り専用grepで子処理接続点を検証**：`/opt/boat-ai-v5/v5/conoha_realtime_window_pg.py`の`v21_realtime_collector_pg_safe.py`呼出し、`/opt/boat-ai-v5/v5/conoha_midnight_results_pg.py`の`repair_month_all_pg` importと`v2_results` upsert。GitHub sourceだけでruntime認定しない。実データ変更・収集停止・timer変更・再複製・差分DML/cron切替・BUY禁止。手順はTermiusで1コマンドずつ、安全・低負荷・NO-GO維持。
