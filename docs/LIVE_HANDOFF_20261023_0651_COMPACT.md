@@ -141,5 +141,10 @@
 - 新規entry stageは**未作成・未承認**。`LIKE ... INCLUDING ALL`無修正は旧採番シーケンスを共有し得るため禁止。仮に全行を明示IDで複製しても独立採番や唯一キーのNULL安全性を別途検証するまで実COPYは禁止。
 - ConoHa liveのcollector/cron/旧原本/既存venues stage24件に変更なし。独立外部保全・全writer audit・rollback不足で全13表の本番切替0/13、NO-GO。
 
+## 10/23 23:10 JST：entry差分用3列UNIQUEのNULL安全性（ConoHa read-only）
+- Termius画像で`public.v2_realtime_entry_snapshots`の`race_id`, `snapshot_label`, `lane`は**全てattnotnull=t**。3列のUNIQUE btree index `uq_v2_rt_entry_race_label_lane`存在。`indnullsnotdistinct=false`だが3列ともNOT NULLのためNULL重複問題は起きない。原本の安定した自然キー候補を`(race_id,snapshot_label,lane)`と確定できる（source/stage行のUPDATE/DELETE追跡は別途実データ証明が必要）。`BEGIN READ ONLY`/`ROLLBACK`正常終了。
+- 旧原本21列、PK=id、旧SERIAL型採番default=`nextval('v2_realtime_entry_snapshots_id_seq'::regclass)`のみ、流入/流出FK0、user trigger0。新`boat_data_stage.entry_snapshots`はabsent。**`LIKE INCLUDING ALL`無修正による旧sequence共有は禁止**。独立stageは別承認まで未作成、ConoHa収集は旧物理原本に継続。
+- 既存`boat_data_stage.venues`24件は保護、再コピーなし。共有13VIEW、本番正本切替0/13。独立バックアップ復元・全writer証明・差分実適用/rollbackは未完了。
+
 ## Next ONE task（次の一作業）
-**ConoHa旧entry原本の差分照合候補UNIQUE 3列`race_id,snapshot_label,lane`について、`pg_attribute.attnotnull`とUNIQUE indexの`indnullsnotdistinct`をREAD ONLYメタデータ確認**。NULLが許される場合はUNIQUEでも同一キー判定が不十分となり、DELETE/UPSERT設計前に空値/重複の実データ検査計画が必要。大量COUNT、stage CREATE/COPY、シーケンス操作、収集停止、cron変更、VIEW切替、BUYは禁止。明示承認まで実書込と本番切替NO-GO。1コマンドだけ。
+**GitHub上のみでentry snapshots独立stageの安全なDDL/初回コピー計画とオフライン検査項目を設計する**。旧原本のID sequenceに影響しない`EXCLUDING DEFAULTS`等、PK/3列UNIQUE/全21列、既存ID明示コピー、全キー+全列照合、一貫スナップショット、収集が続く間の増分追跡、33MB約12.5万行の負荷制御、例外時rollbackを整理。**実DDL/複製SQLのConoHa実行はまだ承認されておらず禁止**。必要な独立バックアップと部分復元証明を物理コピー前ゲートにする。旧writer/timer/VIEW未変更、venues再コピー禁止、切替NO-GO。
