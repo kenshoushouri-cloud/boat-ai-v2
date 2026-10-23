@@ -79,9 +79,16 @@ class TestUnverifiedCounterShape(unittest.TestCase):
             rehearse_unverified_counter_shapes(
                 replace(src,course_proposals=())
             )
-        with self.assertRaisesRegex(ValueError,"FIT_CANDIDATE_NOT_UNVERIFIED_MATCHED"):
+        with self.assertRaisesRegex(ValueError,"DUPLICATE_CANDIDATE_RACE"):
             rehearse_unverified_counter_shapes(
                 replace(src,course_proposals=(src.course_proposals[1],src.course_proposals[1]))
+            )
+        with self.assertRaisesRegex(ValueError,"FIT_CANDIDATE_NOT_UNVERIFIED_MATCHED"):
+            rehearse_unverified_counter_shapes(
+                replace(src,course_proposals=(
+                    replace(src.course_proposals[0],race_id="20261020_21_04"),
+                    src.course_proposals[1],
+                ))
             )
 
     def test_zero_sources_stays_zero_and_hold(self):
