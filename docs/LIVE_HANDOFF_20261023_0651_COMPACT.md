@@ -43,14 +43,23 @@
 - 開発・データ移行を優先し、初回DB変更前にConoHaローカルで新世代の保護用バックアップと復元試験。深夜切替前には同一VPS障害にも耐える独立保全と差分整合が必須。整理済みの自動Drive暗号化バックアップは移行後に別承認で設定、現時点は**未予約・未実行**。
 
 ## 10/23 共有13テーブルの安全な物理移行コード準備
-- GitHub `deploy/conoha/boat_shared_staging_delta_plan_offline.py`新規。13旧物理表/現行13非更新VIEWの厳密マッピングを読み、VIEWに衝突しない**`boat_data_stage.*`の複製先計画**を生成（このschemaは**未作成**）。`v5_data.venues`の既存24行ステージは変更なし。
+- GitHub `deploy/conoha/boat_shared_staging_delta_plan_offline.py`新規。13旧物理表/現行13非更新VIEWの厳密マッピングを読み、VIEWに衝突しない**`boat_data_stage.*`の複製先計画**を生成（**17:47時点では未作成**。19:50にvenues1表だけ作成済み。後掲最新状態を優先）。`v5_data.venues`の既存24行ステージは変更なし。
 - 全件PK昇順・全列digestの2入力からINSERT/UPDATE/DELETEの**差分計画候補**をストリーム検出する関数を実装。日時watermarkだけで削除を見落とさないための仕様であり、**CDCも実SQL同期も実装・実行していない**。13の現行コード候補とGO/NO-GOを分離、証拠がない限りNO-GO。
-- `tests/test_boat_shared_staging_delta_plan_offline.py`に8件の単体試験を新規追加。さらに`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`で`origin/main`から必要4ファイルだけを隔離`/tmp`へ取得し、**ConoHaの現行worktreeを変更しない**単体試験を1回実施できるよう用意。GitHub作成とreadbackは確認済、**ConoHa/Actions上のテスト実行PASSは未確認**。現行収集・DB/Drive・BUY・timerは変更していない。
+- `tests/test_boat_shared_staging_delta_plan_offline.py`に8件の単体試験を新規追加。さらに`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`で`origin/main`から必要4ファイルだけを隔離`/tmp`へ取得し、**ConoHaの現行worktreeを変更しない**単体試験を1回実施できるよう用意。GitHub作成とreadbackは確認済、**当初未確認だったが10/23 17:47 ConoHa 8/8 PASS、19:28 venues個別7/7 PASSを確認済み**。現行収集・DB/Drive・BUY・timerは変更していない。
 
 ## 10/23 17:47 JST オフラインステージ検査（実証済み）
 - ユーザーTermiusスクリーンショット：`deploy/conoha/boat_shared_staging_offline_test_once_20261023.sh`実行、`ISOLATED_OFFLINE_STAGE_TESTS_BEGIN`、**8 tests / 0.002s / OK**、`OFFLINE_STAGE_AND_COMPLETE_KEY_DELTA_TESTS_PASS_NO_DB_NO_BUY`、rootシェル復帰。GitHubから必要ファイルのみisolated取込のオフライン試験。13のVIEWと衝突しないstaging計画、PK完全キーのINSERT/UPDATE/DELETE差分計画、未検証時のNO-GOが**合成ケースでPASS**。
-- **未実施**：ConoHa DBに`boat_data_stage` schema/実表の作成、venues一表でも物理複製、差分適用/CDC、最新バックアップ復元試験、夜間切替予約、V5実予想・BUY。旧`public.v2_*` writer収集継続。合成試験を実DBの正確さや準備完了とは扱わない。
+- **17:47時点で未実施だったもの**：ConoHa DBのstage/venues物理複製、差分適用/CDC、バックアップ復元、夜間切替予約、V5実予想・BUY。**stageと限定復元のみ19:50までに完了**（最新状態は後掲）。旧`public.v2_*` writer収集継続。合成試験を実DBの正確さや準備完了とは扱わない。
 - バックアップ合意：初の物理DB変更前はConoHaローカルの新世代＋復元試験。深夜本番切替前はVPS障害にも耐える独立保全が必須。整理後の自動Drive保存はV5本体・共通原本・必要な履歴/設定/モデルのみに限定し、V3/V4は別アカウント側に旧世代を保持。未設定。
 
+## 10/23 19:52 JST 更新：venues初回物理複製完了（ユーザーTermius画像）
+- GitHub `deploy/conoha/boat_shared_venues_pilot_offline_20261023.py`追加。隔離取得して**個別オフライン7/7 PASS**（`VENUES_OFFLINE_GATES_PASS_NO_DB_NO_COPY_NO_BUY`）。共有13表の既存合成テスト**8/8 PASS**も維持。これらは実DB同期の証明ではない。
+- ConoHa容量：/ 99GB中使用28GB/空き67GB（19:29観測）。DB `railway` 3464MB、別DB `boat_history_archive` 1069MB（19:30観測）。
+- ConoHa内 **railway単独** 新世代`/var/backups/boat-railway-20261023-*/railway.dump` 375MB（19:32）。**venuesのアーカイブ取り出しPASS**、隔離テストDBへ**venues24件を限定復元PASS**、後の残存一時DB=0。**railway全体/別DB履歴の復元試験ではない**。このバックアップはstage作成前の世代。Drive独立新世代や定期自動化は未実施。
+- 19:39 read-only：`public.v2_venues`物理表(r)24件、`boat_data.venues`既存VIEW(v)、`v5_data.venues`旧物理stage(r)24件、作成前`boat_data_stage.venues`なし。原本vs旧stageは**全24行updated_atのみ差**（旧stageは10/22、原本は10/23朝更新）。venue_code PK、6列・制約・unique venue_id等の基本監査済み。旧原本の外部キー依存=0、VIEW依存`boat_data.venues`。全実行writer経路/権限継承/ロールバック保証は依然未認証。
+- **19:50 ユーザー明示承認後 ConoHa本番DB `railway`内に新規`boat_data_stage` schema＋`boat_data_stage.venues`物理表をCREATEし、旧原本から24行INSERT、全列EXCEPT ALL両方向0、unique index2件確認後COMMIT。** マーカー`VENUES_STAGE_24_COPY_AND_PARITY_PASS_NO_CUTOVER`。旧`public.v2_venues`・`v5_data.venues`・`boat_data.venues`VIEWは維持、collector/cron/BUY・route未変更。**このstageを再作成・再複製・DROPしてはいけない**。
+- 19:51再監査：原本24/stage24/VIEW24、双方向全列差分0、stage物理(r)、owner postgres、PUBLIC権限REVOKE済（個別ロール権限は別確認要）。19:52 `REPEATABLE READ READ ONLY`全PK/JSONB比較で **SAME24、INSERT0/UPDATE0/DELETE0、ROLLBACK**。**一時点で差分0という意味**で、継続差分同期/CDC、writer完全監査、夜間自動切替は未実装・未承認。
+- **重要：`boat_data`の13関係は依然すべて既存非更新VIEWであり、共通物理正本への本番切替完了数は0/13。** 隔離stageの初回複製だけ1/13。ConoHa稼働収集はlegacyのまま継続。差分追跡、外部独立バックアップ＋復元、全writer/readers/DDLゲート、非購入canaryが未確認の間は**NO-GO**。
+
 ## Next ONE task（次の一作業）
-**最小venues 1表のstaging準備をGitHubのみで実装・オフライン検査**。現行`boat_data.venues`は非更新VIEW、旧`public.v2_venues`実表、既存`v5_data.venues`24件staging。上書き/二重コピーしない。候補`boat_data_stage.venues`への安全な段階移行のDDL/PK/制約/権限・ビュー依存・差分整合・切り戻しのゲートを明示し、**初回DB変更前のConoHaローカルbackup＋限定復元PASSなしでは絶対適用しない**。無条件のbulk stage、旧表DELETE/rename、cron/collector変更、Git pull、BUY、Drive上書き/定期予約は禁止。ツールは少なく短い作業1つずつ。実行結果や容量・SHAは次回liveで再取得。
+**GitHubのみで venues専用の安全な差分同期設計とオフライン合成検査を1作業**。既存`boat_data_stage.venues`は作成・24行複製済みなので再CREATE/無条件COPY禁止。全PKと全列比較によるINSERT/UPDATE/DELETEを、特に毎朝の`updated_at`変更・欠損・DELETE・スナップショット一貫性・単一writer・ロールバックを含めて**計画のみ**で検証。既存コード`deploy/conoha/boat_shared_staging_delta_plan_offline.py`とvenues個別検査コードを利用し、必要最小の追加だけ行う。ConoHaへの次の実書込・自動同期・VIEW置換・切替・旧原本削除は**別途明示承認**まで禁止。全13共通表の正本移行は未完了。Google Drive旧8ファイル保護、独立新世代バックアップと復元試験は本番切替前必須。費用/CPU/RAM/通信を最小化。作業は1回1件、ツール最小、短い報告。
