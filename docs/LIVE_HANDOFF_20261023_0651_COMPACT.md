@@ -80,6 +80,10 @@
 - ユーザーTermiusの`--counter-shape-preview`実行ではSOURCE検査は**144/144/132/29/27**で再一致、その後`ValueError: EXACT_SOURCE_PROPOSALS_REQUIRED`で停止。原因は`SourceProposals`を実行用モジュールに定義したため、`__main__`と通常importの同名クラスが別オブジェクトになったこと。データ欠損/収集故障でない。`SHAPE_*`値の実DBプレビューは未取得。
 - 型を独立した`v5/conoha_research_source_contract.py`へ切り出し、実行側/計算側が共有するよう変更。回帰テストには**実際の`runpy.run_module(..., run_name='__main__')`+模擬DB**を追加、最終GitHub Actions Issue #581コメント`6357768348`で**16/16 PASS**。途中のモック`rollback`検査期待値の修正を含む。**実ConoHa再実行は未実施**。返還/事故・初回原本証明なし/実Counter fit未完了/Forward0/BUY0を維持。
 
+## 10/23 14:24 実DB13Counter構造プレビュー成功
+- Termiusで `--date 2026-10-20 --counter-shape-preview` 正常終了：**144/144/132/29/27**、未認証fit27/K履歴132。13家族のSHAPE総数は`lw27/lcs162/lcw27/rks162/rkw27/ps810/pw135/vc27/vn27/cs792/ct396/rcs792/rct396`で整合。**純粋な件数で本当の前日Counter/予測ではない**。`PRIOR_STATE_FITTED=0/FORWARD_ELIGIBLE=0/BUY_ELIGIBLE=0`は意図通り、結果/返還/初回時刻は未証明。
+- ギャップを`docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md`に整理：本来の研究K進入母集団と旧`offline_prior_day_counter_update.py`のfit限定コース更新で差が生じ得る。また研究側の級別数字文字列と新側`A1/A2/B1/B2`を混用できない。数式・日次母集団一致と事故/返還根拠が次の優先ゲート。
+
 ## 破壊防止・重要
 - **`deploy/conoha/boat_shared_bulk_schedule_once_20261023.sh`と`boat_shared_bulk_stage_20261023.py --apply`は実行しない**：同名の13 VIEWが存在し物理COPY先と競合。実行予約があったならread-onlyで確認。旧`public`物理DBテーブルや`v5_data.venues`のDROP、`ALTER TABLE SET SCHEMA`、大量COPY、収集停止、サービス設定、課金、LINE、自動購入は独立検証とユーザーの明示承認後。新`boat_data.venues`は非更新VIEWなので`shared_venues_v1` writer profileは**絶対に有効化しない**。
 - 締切前に保存された展示・オッズ等の一次証拠と単なる取得日/後日公式履歴を区別すること。未来情報リーク禁止、結果/払戻は予想特徴量に混ぜない。結果は翌日追補可でも事前スナップショットは後日再現不可。
@@ -87,4 +91,4 @@
 - トーク容量対策：**1回1作業**、必要最小のGitHub/Railwayツール、巨大文書・過去会話参照禁止。SHA/run/件数/容量はliveに必要なものだけ。タイムアウト後の再実行禁止。短い結果報告、所要時間は精度がある場合だけ。最新進捗の追記は**このcompactを上書き・精査**、古い長文handoffへの追記は禁止。
 
 ## Next ONE task（次の一作業）
-Termiusで先ほどの隔離`git archive origin/main`経由で`v5.conoha_research_one_day_sources_readonly --date 2026-10-20 --counter-shape-preview`を**再度1回だけread-only実行**。直前の実データ144/132/29/27を維持しつつ、`SHAPE_*`13系統の総数を取得し、`PRIOR_STATE_FITTED=0`・`FORWARD_ELIGIBLE=0`・`BUY_ELIGIBLE=0`を確認する。今回の修正は`python -m`二重importの型ID問題のみ。独立事故/返還・時点証拠がないので本番学習値への昇格不可。稼働収集/DB物理移行/旧writer/共通VIEW/BUYは変更しない。
+GitHubで**前日Counterの2系統母集団および級別キーのresearch数学パリティを、1レース/複数レースの合成データで独立テスト**。資料：`docs/V5_PRIOR_STATE_COHORT_PARITY_REVIEW_20261023.md`。日付D結果が日付Dの予想へ流れないこと、展示が無いK進入歴を落とさないこと、同一レースのK二重計上無し、全13系統の同一キー規約を確認。**ConoHaで全期間学習・DB書込・物理移行・旧writer切替・BUYは不可**。事故/返還独立原本がない以上、fit承認0/HOLDのまま。
