@@ -13,6 +13,8 @@ import argparse
 import json
 import os
 import sys
+import subprocess
+import re
 
 from boat_shared_storage_contract import RELATIONS
 from deploy.conoha.boat_shared_staging_delta_plan_offline import (
@@ -129,6 +131,74 @@ def assess(source: str, old: dict | None, staged: dict | None) -> tuple[StageSha
     return shape, issues
 
 
+def psql_fallback_all_preview() -> int:
+    """psql-only catalog preview when the optional psycopg driver is missing.
+
+    Only --all; no dynamic user identifiers, no row SELECTs, no DDL/DML.
+    Uses the exact allowlisted source-to-stage mapping in TARGETS.
+    """
+    names = []
+    for src, (stage, wave) in TARGETS.items():
+        if wave == 0:
+            continue
+        for identifier in (src, stage):
+            if not re.fullmatch(r"[a-z_][a-z_0-9]*\\.[a-z_][a-z_0-9]*", identifier):
+                raise ValueError("STOP: unexpected source/stage identifier")
+        names.append("('%s','%s')" % (src, stage))
+    if len(names) != 12 or len(set(names)) != 12:
+        raise ValueError("STOP: not exactly 12 canonical source-stage pairs")
+    query = """
+BEGIN TRANSACTION READ ONLY;
+SET LOCAL statement_timeout='12s';
+SET LOCAL lock_timeout='750ms';
+WITH planned(source_name,stage_name) AS (
+  VALUES
+    %s
+), targets AS (
+  SELECT source_name,stage_name,
+         to_regclass(source_name) AS source_oid,
+         to_regclass(stage_name) AS stage_oid
+  FROM planned
+), pk AS (
+  SELECT t.source_name,
+         string_agg(a.attname, ',' ORDER BY k.ord) AS source_pk
+  FROM targets t
+  JOIN pg_index i ON i.indrelid=t.source_oid AND i.indisprimary
+  JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum,ord) ON TRUE
+  JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
+  GROUP BY t.source_name
+)
+SELECT t.source_name AS source,
+       t.stage_name AS proposed_stage,
+       coalesce(s.relkind::text,'ABSENT') AS source_kind,
+       coalesce(d.relkind::text,'ABSENT') AS stage_kind,
+       coalesce(pk.source_pk,'NONE') AS source_primary_key
+FROM targets t
+LEFT JOIN pg_class s ON s.oid=t.source_oid
+LEFT JOIN pg_class d ON d.oid=t.stage_oid
+LEFT JOIN pk ON pk.source_name=t.source_name
+ORDER BY t.source_name;
+ROLLBACK;
+SELECT 'V5_STAGE_ALL_12_PREVIEW_READ_ONLY_FINISHED' AS verdict;
+""" % (",\n    ".join(names))
+    result = subprocess.run(
+        ["psql", "-X", "-P", "pager=off",
+         "-P", "format=unaligned", "-P", "fieldsep= | ",
+         "-v", "ON_ERROR_STOP=1", "-d", "railway"],
+        input=query, text=True, capture_output=True, timeout=25, check=False,
+    )
+    if result.returncode != 0:
+        print("STOP: psql catalog read-only preview failed", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr.strip()[:500], file=sys.stderr)
+        return 2
+    if "V5_STAGE_ALL_12_PREVIEW_READ_ONLY_FINISHED" not in result.stdout:
+        raise RuntimeError("STOP: read-only PostgreSQL marker not received")
+    print(result.stdout, end="")
+    print("STAGE_CANDIDATES=12 COPY_PERFORMED=NO CUTOVER=NO_GO")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     selector = parser.add_mutually_exclusive_group(required=True)
@@ -152,7 +222,9 @@ def main(argv=None) -> int:
     try:
         import psycopg
     except ImportError as exc:
-        raise SystemExit("STOP: psycopg not installed in runner environment") from exc
+        if args.all:
+            return psql_fallback_all_preview()
+        raise SystemExit("STOP: psycopg required for single-table or COPY mode; no pip install attempted") from exc
 
     with psycopg.connect("dbname=railway", autocommit=True,
                          options="-c application_name=v5_stage_preview_or_copy") as conn:
