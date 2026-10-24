@@ -176,12 +176,15 @@ def main(argv=None) -> int:
                             "stage_pk":list(staged["pk"]) if staged else [],
                             "issues":issues,
                         })
-            print(json.dumps({
-                "mode":"PREVIEW_ALL_12_READ_ONLY",
-                "rows":result,
-                "copy_performed":False,
-                "cutover":"NO_GO",
-            }, ensure_ascii=False, indent=2))
+            print("SOURCE | STAGE | PHYSICAL_EXISTS | PRIMARY_KEY | BLOCKERS")
+            for item in result:
+                print(" | ".join((
+                    item["source"], item["stage"],
+                    "YES" if item["stage_exists"] else "NO",
+                    ",".join(item["source_pk"]) or "NONE",
+                    ",".join(item["issues"]) or "NONE",
+                )))
+            print(f"STAGE_CANDIDATES={len(result)} COPY_PERFORMED=NO CUTOVER=NO_GO")
             print("V5_STAGE_ALL_12_PREVIEW_READ_ONLY_FINISHED")
             return 0
         destination, wave = TARGETS[source]
