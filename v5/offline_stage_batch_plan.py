@@ -11,22 +11,24 @@ import argparse
 import json
 from pathlib import Path
 
+from boat_shared_storage_contract import RELATIONS, assert_contract
+
 # Explicit audited allowlist: physical source -> proposed stage destination.
 # Existing venues stage stays untouched. VIEWs are not overwritten.
 TARGETS = {
     "public.v2_venues": ("boat_data_stage.venues", 0),
-    "public.v2_races": ("v5_data.raw_races", 1),
-    "public.v2_race_entries": ("v5_data.raw_entries", 1),
-    "public.v2_results": ("v5_data.raw_results", 1),
-    "public.v2_result_entries": ("v5_data.raw_racer_results", 1),
-    "public.v2_odds_trifecta": ("v5_data.trifecta_odds", 1),
-    "public.v2_realtime_exhibition_snapshots": ("v5_data.raw_exhibition_snapshots", 1),
-    "public.v2_racer_course_stats_snapshots": ("v5_data.raw_racer_course_stats_snapshots", 2),
-    "public.v2_realtime_entry_snapshots": ("v5_data.raw_entry_snapshots", 2),
-    "public.v2_realtime_odds_snapshots": ("v5_data.raw_odds_snapshots", 2),
-    "public.v2_realtime_weather_snapshots": ("v5_data.raw_weather_snapshots", 2),
-    "public.v2_realtime_race_condition_snapshots": ("v5_data.raw_race_condition_snapshots", 2),
-    "public.v2_realtime_racer_condition_snapshots": ("v5_data.raw_racer_condition_snapshots", 2),
+    "public.v2_races": ("boat_data_stage.races", 1),
+    "public.v2_race_entries": ("boat_data_stage.entries", 1),
+    "public.v2_results": ("boat_data_stage.results", 1),
+    "public.v2_result_entries": ("boat_data_stage.racer_results", 1),
+    "public.v2_odds_trifecta": ("boat_data_stage.trifecta_odds", 1),
+    "public.v2_realtime_exhibition_snapshots": ("boat_data_stage.exhibition_snapshots", 1),
+    "public.v2_racer_course_stats_snapshots": ("boat_data_stage.racer_course_stats_snapshots", 2),
+    "public.v2_realtime_entry_snapshots": ("boat_data_stage.entry_snapshots", 2),
+    "public.v2_realtime_odds_snapshots": ("boat_data_stage.odds_snapshots", 2),
+    "public.v2_realtime_weather_snapshots": ("boat_data_stage.weather_snapshots", 2),
+    "public.v2_realtime_race_condition_snapshots": ("boat_data_stage.race_condition_snapshots", 2),
+    "public.v2_realtime_racer_condition_snapshots": ("boat_data_stage.racer_condition_snapshots", 2),
 }
 
 BLOCKERS = (
@@ -50,10 +52,12 @@ def plan(manifest: dict) -> dict:
     sources = [r.get("legacy_relation") for r in rows]
     if len(set(sources)) != 13 or set(sources) != set(TARGETS):
         raise ValueError("manifest source allowlist mismatch or duplicate")
+    assert_contract()
+    verified_views = {r.legacy: r.canonical for r in RELATIONS}
     canonical = [r.get("canonical_relation") for r in rows]
     if len(set(canonical)) != 13 or any(
-        not isinstance(x, str) or not x.startswith("boat_data.")
-        for x in canonical
+        verified_views.get(r.get("legacy_relation")) != r.get("canonical_relation")
+        for r in rows
     ):
         raise ValueError("unexpected/duplicate canonical VIEW names")
     approved = manifest.get("safety", {})
