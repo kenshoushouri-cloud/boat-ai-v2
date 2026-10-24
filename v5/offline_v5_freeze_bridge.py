@@ -12,7 +12,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from v5.forward_shadow_freeze import prepare_candidate
+from v5.forward_shadow_freeze import _dt, prepare_candidate
 from v5.offline_mainline_inference import (
     FROZEN_TEMPERATURE, FROZEN_WEIGHTS,
     OfflineV5InferenceInput, check_offline_v5_inference,
@@ -55,6 +55,15 @@ def build_paper_shadow_freeze(
     seconds_since_cutoff = (current - cutoff.astimezone(timezone.utc)).total_seconds()
     if not 0 <= seconds_since_cutoff <= 60:
         raise ValueError("stale or future V5 scoring cutoff")
+    # A source first captured after the model's declared cutoff was not
+    # available for that decision. This is a synthetic as-of guard only:
+    # caller-supplied captured_at is NOT authenticated first-observation proof.
+    for source_name, evidence in (("exhibition", exhibition), ("odds", odds)):
+        if not isinstance(evidence, dict):
+            raise ValueError(f"invalid {source_name} evidence")
+        captured = _dt(evidence.get("captured_at"))
+        if captured > cutoff.astimezone(timezone.utc):
+            raise ValueError(f"{source_name} captured after V5 decision cutoff")
     verdict = check_offline_v5_inference(case)
     if not verdict.synthetic_math_consistent:
         raise ValueError("V5 six-lane inference hard hold: " + verdict.reason)
