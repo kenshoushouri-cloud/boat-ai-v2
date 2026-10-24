@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：15:00 展示リード時間read-only：津10Rは14:40:44記録、14:59締切まで1095.7秒、福岡9Rは14:40:21記録、14:55締切まで878.9秒。`V5_EXHIBITION_LEAD_TIME_READ_ONLY_PASS`。V5 forwardはすでに9–24分前（late_retryなら5–24分前）の締切連動/展示6艇・オッズ120件未達で再取得する設計。次は2raceの展示6行についてexhibition_time非NULL艇数と重複の有無をrailway READ ONLYで検査。取得真正性と予測最終判定時点での利用は未証明、stage1/13、切替0/13 NO-GO、Drive403 STOP。
+**最新compact末尾の Next ONE task**：15:04展示品質PASS：津10R/福岡9Rとも6行・6艇・exhibition_time非NULL6・重複0・締切前6（ROLLBACK）。場別公式サイトの直取得は追加データ可能だが24場の仕様差・更新時刻・利用条件・保守負荷が課題。現行全国共通取得を維持、場別は後で小規模read-only比較し効果実証後に検討。次は**V5の予測決定時刻の証拠の格納先をGitHub read-only確認**し、展示14:40台とas-of整合を検証。Drive write 403 STOP、stage1/13、本番0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
