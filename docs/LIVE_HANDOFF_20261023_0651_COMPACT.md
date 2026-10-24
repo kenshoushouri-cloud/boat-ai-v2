@@ -227,5 +227,10 @@
 - 詳細は新規`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`（2件の完全SHA、パス、独立保全ゲート）。**ローカル同一VPS内のみ**で、V5専用Google Drive保存先・実転送・外部復元・railway全体復元は未完了。Google Drive API 403制限歴があり勝手な再試行・転送を行わない。
 - collector/timer稼働維持、旧表保護、venues stage24行を再コピーしない、entry stage未作成、共有VIEW13、切替0/13・NO-GO。
 
+## 10/24：GitHubのみ V5外部バックアップfail-closed設計完了
+- 新規`docs/V5_EXTERNAL_BACKUP_FAIL_CLOSED_PLAN_20261024.md`：G0〜G5安全ゲート（V5本体・2 DB対象、専用remoteと新規不変世代、V3/V4上書き禁止、API403 STOP、外部から取得した実バイトSHA256照合、VPS外隔離復元、個別承認）を策定。`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`からリンク済み。
+- GitHub新規ファイルをreadbackし9静的項目PASS。**実転送・API再接続・ConoHa実操作・本番正本変更・V5本体ファイル保全・VPS外復元は一切未実施**。既存VPS内のrailway dump 393138215B/限定復元とarchive dump 81865791B/同VPS隔離復元が現在の検査上限。
+- legacy collector/timers、共有VIEW13、venues stage24件保全、entry stage未作成。物理本番切替0/13、BUY無効、NO-GO継続。
+
 ## Next ONE task（次の一作業）
-**GitHubのみで`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`を基準としたV5外部バックアップのフェイルクローズ設計を点検**。新世代専用パス・既存V3/V4データの上書き禁止・外部から再取得した実バイトSHA-256と隔離復元の検査条件を固める。ConoHa上でのDB/collector/cron/バックアップ変更やGoogle Drive API再接続・実アップロードは別承認まで実施しない。外部独立保全/全writer監査/実同期未完成につき本番切替0/13 NO-GO。
+**GitHubのみでV5本体バックアップ対象（デプロイコミット、実ファイル、依存/起動定義、systemd units/timers、必要な環境変数の名前・再設定手順、秘密情報の安全保管先）に関する証拠採取用チェックリストを用意する**。機密値をGitHubへ記録せず、ConoHa現地調査は次の別作業。Google Drive API再試行/転送・実backup・entry COPY・現行収集/cron停止・VIEW切替・BUYは未承認で禁止。本番切替0/13 NO-GO。
