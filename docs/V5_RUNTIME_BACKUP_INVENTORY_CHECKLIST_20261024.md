@@ -45,4 +45,6 @@
 
 **10/24 11:19 read-onlyメタデータ**：直下9ファイル計114031 B（約111KiB）、全root:root。`daily_v5_safe.sh`637B/750、`collect_refund_evidence.py`1672B/750、その他7ファイル644。`refund_evidence` 700、`__pycache__` 755。dir自身の4096Bは配下容量ではない。実内容・稼働参照・バックアップ未確認。
 
-**Next ONE task：** collector直下2ディレクトリの実容量を低優先度・タイムアウト付きread-onlyで調べる。
+**10/24 11:21 Termius**：`refund_evidence/`=2.2M、`__pycache__/`=24Kを低優先度・15秒のread-only `du`で確認。成功マーカー`COLLECTOR_DIR_SIZE_READ_ONLY_PASS`。dirの内容は未確認。9ファイル114031Bを加えた全体は数MiB、初回保全ではどちらのdirも保持。
+
+**Next ONE task：** Git管理外collector全体をConoHa内の新規root-only tarに保全し、TOC・SHA256を確認。実復元とVPS外保全は別工程。
