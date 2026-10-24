@@ -9,8 +9,9 @@ This is as-of snapshot convergence, not ongoing CDC. Re-run when needed.
 
 Run without --apply for catalog-only preview (no user table scans).
 --apply requires V5_STAGE12_DELTA_APPROVED=YES. Only the single small
---table races pilot may run 08:00-22:59 JST; other tables and --all
-remain 03:00-05:44 JST. Stage-only; no active production route changes.
+--table races pilot may run 08:00-22:59 JST; other tables, --remaining
+(excludes races, sorts 11 sources smallest-first), and --all remain
+03:00-05:44 JST. Stage-only; no production cutover.
 """
 from __future__ import annotations
 import argparse
@@ -311,12 +312,17 @@ def main():
     mx = parser.add_mutually_exclusive_group(required=True)
     mx.add_argument("--table", choices=[d for _, d in ROWS])
     mx.add_argument("--all", action="store_true")
+    mx.add_argument("--remaining", action="store_true",
+                    help="Exclude piloted races; stage-only eleven tables")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     if os.environ.get("DATABASE_URL") != "postgresql:///railway":
         raise RuntimeError("HOLD_LOCAL_POSTGRES_REQUIRED")
-    selected = ROWS if args.all else tuple(
-        row for row in ROWS if row[1] == args.table)
+    selected = (
+        ROWS if args.all else
+        tuple(row for row in ROWS if row[1] != "races") if args.remaining else
+        tuple(row for row in ROWS if row[1] == args.table)
+    )
     daylight_pilot = bool(
         args.apply and args.table == "races" and 8 <= now().hour < 23)
     if args.apply:
@@ -339,8 +345,14 @@ def main():
             free = shutil.disk_usage(datadir).free
             if free < 16 * 1024 ** 3:
                 raise RuntimeError("HOLD_LOW_DISK_OR_WAL_HEADROOM")
+        if args.remaining:
+            with conn.cursor() as cur:
+                selected = tuple(sorted(selected, key=lambda pair: one(
+                    cur, "SELECT pg_total_relation_size(to_regclass(%s))",
+                    ("public." + pair[0],))))
         report("APPLY_SCOPE", "stage_only", "tables=" + str(len(selected)),
-               "free_gib=%.2f" % (free / (1024**3)))
+               "free_gib=%.2f" % (free / (1024**3)),
+               "order=" + ",".join(dest for _, dest in selected))
         for src, dest in selected:
             sync_table(conn, src, dest, daylight_pilot=daylight_pilot)
         report("STAGE12_DELTA_SNAPSHOT_PASS", "families=" + str(len(selected)),
