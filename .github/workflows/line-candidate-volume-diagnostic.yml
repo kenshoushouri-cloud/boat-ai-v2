@@ -1,0 +1,152 @@
+name: LINE candidate volume diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "research/line_candidate_volume_diagnostic.py"
+      - "tests/test_line_candidate_volume_diagnostic.py"
+      - "research/candidate_shadow_volume_pg.py"
+      - "tests/test_candidate_shadow_volume_pg.py"
+      - "research/s03_m2_volume_pg.py"
+      - "tests/test_s03_m2_volume_pg.py"
+      - ".github/workflows/line-candidate-volume-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pure-diagnostic-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run pure diagnostic tests
+        run: |
+          python3 - <<'PY'
+          import runpy
+
+          paths = [
+              "tests/test_line_candidate_volume_diagnostic.py",
+              "tests/test_candidate_shadow_volume_pg.py",
+              "tests/test_s03_m2_volume_pg.py",
+          ]
+          total = 0
+          for path in paths:
+              ns = runpy.run_path(path)
+              tests = [
+                  (name, fn)
+                  for name, fn in sorted(ns.items())
+                  if name.startswith("test_") and callable(fn)
+              ]
+              assert tests, f"no diagnostic tests discovered in {path}"
+              for name, fn in tests:
+                  fn()
+                  total += 1
+                  print(f"PASS {path}::{name}")
+          print(f"PASS total={total}")
+          PY
+
+  live-read-only-shadow-volume:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+      RAILWAY_ENVIRONMENT: "production"
+      RAILWAY_DB_SERVICE: "postgres-recovery"
+      START_DATE: "2026-09-23"
+      END_DATE: "2026-09-29"
+      RULE_IDS: "S01,S02,S03,S04,S05,N02"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: npm install --global @railway/cli
+
+      - name: Verify live diagnostic safety contracts
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          shadow = Path("research/candidate_shadow_volume_pg.py").read_text(encoding="utf-8")
+          assert "default_transaction_read_only=on" in shadow
+          assert "select\n            race_date,\n            race_id,\n            window_name,\n            rule_id,\n            snapshot_at" in shadow
+          assert "from v2_candidate_filter_shadow" in shadow
+          assert "insert into" not in shadow.lower()
+          assert "update v2_candidate_filter_shadow" not in shadow.lower()
+          assert "delete from" not in shadow.lower()
+
+          s03 = Path("research/s03_m2_volume_pg.py").read_text(encoding="utf-8")
+          assert "default_transaction_read_only=on" in s03
+          assert "set transaction read only" in s03
+          assert "s.race_id,\n                    s.race_date,\n                    s.ticket,\n                    s.snapshot_at,\n                    r.deadline_at" in s03
+          assert "select race_id,lane,motor_place2_rate" in s03
+          assert "insert into" not in s03.lower()
+          assert "update v2_candidate_filter_shadow" not in s03.lower()
+          assert "delete from" not in s03.lower()
+          print("PASS live read-only contracts")
+          PY
+
+      - name: Measure unique pre-result shadow race volume
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/candidate_shadow_volume_pg.py --start-date "${START_DATE}" --end-date "${END_DATE}" --rules "${RULE_IDS}"' \
+            2>&1 | tee shadow-volume-read-only.json
+
+      - name: Assert shadow diagnostic output contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [x.strip() for x in Path("shadow-volume-read-only.json").read_text(encoding="utf-8").splitlines() if x.strip()]
+          payload = json.loads(lines[-1])
+          assert payload["contract"] == "CANDIDATE_SHADOW_VOLUME_PRE_RESULT_V1"
+          assert payload["result_fields_read"] is False
+          assert payload["economics_claim"] is False
+          assert payload["promotion_claim"] is False
+          assert payload["db_write"] is False
+          assert payload["line_send"] is False
+          assert payload["purchase_action"] is False
+          print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Measure result-blind S03 M2 positive race volume
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/s03_m2_volume_pg.py --start-date "${START_DATE}" --end-date "${END_DATE}"' \
+            2>&1 | tee s03-m2-volume-read-only.json
+
+      - name: Assert S03 M2 diagnostic output contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [x.strip() for x in Path("s03-m2-volume-read-only.json").read_text(encoding="utf-8").splitlines() if x.strip()]
+          payload = json.loads(lines[-1])
+          assert payload["contract"] == "S03_M2_RESULT_BLIND_VOLUME_V1"
+          assert payload["policy"] == "S03_M2_POSITIVE_V1"
+          assert payload["result_fields_read"] is False
+          assert payload["economics_claim"] is False
+          assert payload["promotion_claim"] is False
+          assert payload["db_write"] is False
+          assert payload["line_send"] is False
+          assert payload["purchase_action"] is False
+          print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+          PY
