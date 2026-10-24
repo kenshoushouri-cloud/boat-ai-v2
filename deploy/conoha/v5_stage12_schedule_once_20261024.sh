@@ -15,7 +15,19 @@ HOUR=$(TZ=Asia/Tokyo date +%H)
 [[ "$HOUR" -ge 20 && "$HOUR" -le 23 ]] || fail "Use only 20:00-23:59 JST"
 [[ -x /opt/boat-ai-v5-venv/bin/python ]] || fail "V5 Python virtualenv missing"
 [[ -d /opt/boat-ai-v5/.git ]] || fail "V5 checkout missing"
-[[ -x /usr/bin/flock && -x /usr/bin/runuser ]] || fail "System utilities unavailable"
+# Ubuntu/Debian can place runuser in /usr/sbin rather than /usr/bin.
+find_binary() {
+  local name="$1" p
+  p=$(command -v "$name" 2>/dev/null || true)
+  if [[ "$p" == /* && -x "$p" ]]; then printf '%s' "$p"; return 0; fi
+  for p in "/usr/bin/$name" "/usr/sbin/$name" "/bin/$name" "/sbin/$name"; do
+    if [[ -x "$p" ]]; then printf '%s' "$p"; return 0; fi
+  done
+  return 1
+}
+FLOCK_BIN=$(find_binary flock) || fail "Missing flock in PATH/usr/bin/usr/sbin/bin/sbin"
+RUNUSER_BIN=$(find_binary runuser) || fail "Missing runuser in PATH/usr/bin/usr/sbin/bin/sbin"
+echo "TOOLS_OK: flock=$FLOCK_BIN runuser=$RUNUSER_BIN"
 [[ ! -e "$TARGET" ]] || fail "Copy runner already installed; do not overwrite"
 [[ "$(systemctl show "$NAME.timer" -p LoadState --value 2>/dev/null || true)" != "loaded" ]] || fail "A stage12 timer already exists"
 [[ "$(systemctl show "$NAME.service" -p ActiveState --value 2>/dev/null || true)" != "active" ]] || fail "Stage12 service already active"
@@ -43,8 +55,8 @@ systemd-run --quiet --unit="$NAME" \
   --property=CPUQuota=50% \
   --property=MemoryMax=350M \
   --property=Nice=10 \
-  /usr/bin/flock -n /run/lock/boat-v5-stage12-copy.lock \
-  /usr/bin/runuser -u postgres -- /usr/bin/env \
+  "$FLOCK_BIN" -n /run/lock/boat-v5-stage12-copy.lock \
+  "$RUNUSER_BIN" -u postgres -- /usr/bin/env \
   DATABASE_URL=postgresql:///railway V5_STAGE12_COPY_APPROVED=YES \
   /opt/boat-ai-v5-venv/bin/python "$TARGET" || fail "Could not register stage-only one-shot job"
 if [[ "$(systemctl show "$NAME.timer" -p ActiveState --value)" != active ]]; then
