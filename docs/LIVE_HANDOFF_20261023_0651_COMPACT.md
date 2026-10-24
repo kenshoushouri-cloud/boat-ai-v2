@@ -261,5 +261,10 @@
 - Termius画面で、SHA-256基準照合・安全なアーカイブパス検査・一時領域への展開・TAR対展開内容の差分なし・一時領域削除を確認。マーカー`ARCHIVE_PATH_GUARD_PASS`、`RESTORED_ARCHIVE_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`COLLECTOR_ISOLATED_RESTORE_PASS_CLEANED`。元`/opt/boat-ai-collector`は変更なし。
 - 既存`collector.tar` 2283520 B/root-onlyは維持。**これは同ConoHa VPS上の検査であり、VPS外の独立保全・復元、実稼働ソースとの差分/最新性は未検証**。V5 Git管理本体と設定保全も未完了。本番切替0/13 NO-GO、GitHub整理Issue #582は未削除。
 
+## 10/24 12:54 JST：V5実機容量・Git変更件数確認 PASS
+- ユーザーTermius画面：`/opt/boat-ai-v5`の`du -sh`は**27M**。`GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --untracked-files=normal`の件数が`CHANGED_ENTRIES=0`、`UNTRACKED_ENTRIES=0`、`V5_INVENTORY_READ_ONLY_PASS`。11:09の実機HEADは`504b61138e3aaae547688194652e7022c196bfc4`（その後のHEAD変化はこの検査で未確認）。
+- **Git ignoredファイル、実行設定、systemd、秘密値の存在/保全は未確認**。27Mはディスク使用量でアーカイブ容量と同値とは限らない。collectorは同VPS隔離復元成功済み、DB2件はローカル保全/限定検証のみ。V5本体のTAR作成・外部バックアップ/復元は未実施。
+- GitHub肥大化Issue #582は整理未着手/削除なし。現行収集/DB/VIEW13/venues stage24件変更なし、本番切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaで`/opt/boat-ai-v5`の総ディスク使用量とGit作業ツリーの変更/未追跡の件数のみread-onlyで確認**。Gitファイル名・秘密値・リモートURLは出さない。低優先度/timeoutでGitHubの現行commitと実機差分を把握し、V5本体バックアップの容量/対象を決める。collector/DB/cron/既存バックアップ変更、Drive API通信、Git削除/履歴変更、切替/BUY禁止。
+**ConoHaの`/opt/boat-ai-v5`全体（Gitメタデータとignored候補を含む）を新規root-only(0600)ローカルtarとして低優先度/時間制限付きで保存し、TAR TOC読み取り・bytes・SHA256を確認**。旧バックアップの上書きなし。秘密を含み得るためGitHub/Driveへの実ファイル転送をしない。実復元・本番復旧の検証は次の別作業。DB/collector/timers/13VIEW/venues stage/BUY・Git履歴変更禁止。切替0/13 NO-GO。
