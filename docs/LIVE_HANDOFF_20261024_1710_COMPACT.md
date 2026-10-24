@@ -15,8 +15,9 @@ ConoHa Termius screenshot 10/24 **17:10 JST** ran `deploy/conoha/v5_exhibition_l
 - No `historical`/`final_ab`/`learning_all` groups for that day.
 - Prior 16:30 research Counter source audit on 10/20: race total144, roster6=144, clean K courses6=132, result present144, **historical-label exhibition complete0**, so current strict training source intersections=0; NOT evidence all labels missing. No data writes.
 
-## Next ONE task
-**Read-only PostgreSQL catalog inventory of `boat_history_archive` for possible archived exhibition / beforeinfo / snapshot relations** (names, kind, approx table size only, no data scans), to assess reuse of historical exhibition without scraping/re-fetch. If archive has no relevant relation, next audit existing main DB older dates/months with bounded efficient read-only samples, rather than assume all history missing. No restoration, training, DB/VIEW/collector/Drive write or BUY. Termius ONE command, low resources, short result.
+## 2026-10-24 17:26 JST archive catalog audit
+- ConoHa `boat_history_archive` catalog-only read-only PASS/ROLLBACK: 2 matching tables, `archive.v2_realtime_race_condition_snapshots` 118MB, `archive.v2_realtime_racer_condition_snapshots` 117MB. No named exhibition/beforeinfo/tenji relation in this filtered inventory. The archive is NOT proven to hold old exhibition ranks; no full data scan or changes.
+- New GitHub `deploy/conoha/v5_exhibition_6_dates_coverage_readonly_20261024.sql` samples six days from 2025-07 to 2026-10; count six-lane + distinct-rank completeness by existing labels in `boat_data.exhibition_snapshots` and count distinct race IDs. `time6_NOT_PROOF` is labeled timestamp only, **not** independent first observation. No data repair/training.
 
-## Work method
-Minimal tool calls. GitHub work directly where possible; ConoHa only via copyable code, one short task at a time and user screenshot. Railway CPU/RAM/network/fees minimize (USD15–20 hard concern, cheaper ideal), Railway Agent/AI never. Old docs retained, don't expand this handoff by appending daily narratives.
+## Next ONE task
+Execute the six-sample-day exhibition coverage SQL on ConoHa `railway` from `/tmp` using `git archive FETCH_HEAD`, READ ONLY/ROLLBACK, 15s SQL statement cap, noninvasive. Summarize which historic periods have reuseable six-lane shapes; do not treat postrace/mutable source as real predecision evidence. No DB changes, historic backfill writes, BUY, timer/Drive/writer modifications.
