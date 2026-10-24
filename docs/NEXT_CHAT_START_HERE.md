@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：10/24 GitHubにas-of安全性ガード実装済：`v5/offline_v5_freeze_bridge.py`で展示/oddsの`captured_at>decision_cutoff_at`を拒否。既存研究数学・保存器は再利用、変更なし。`tests/test_v5_offline_v5_freeze_bridge.py`へ負例2件/境界1件追加（計9定義）、**テスト実行未確認**。次はisolated環境で9件を実行し結果を確認。既存collector/ConoHa/DB/BUY/Drive/timerには触れない。モデルscope conflict未解消、stage1/13・切替0/13 NO-GO。
+**最新compact末尾の Next ONE task**：10/24 16:05 Termius隔離実行で既存6+追加3＝9件 `Ran 9 tests`、`OK`、`V5_ASOF_9_TESTS_PASS`を確認。V5ブリッジの合成as-of修正テストPASS、実予測/first-observation/ROIは依然未確認。次は**既存`tests/test_v5_forward_shadow_freeze.py`の6件**をGitHubから`/tmp`に隔離してnon-root/timeout合成実行。BUY、DB、collector、systemd、Driveは変更しない。stage1/13・本番切替0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
