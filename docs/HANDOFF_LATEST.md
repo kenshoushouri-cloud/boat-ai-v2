@@ -4,4 +4,4 @@
 
 新チャットは本ファイル→current compact→`docs/NEXT_CHAT_START_HERE.md`だけ読む。古いhandoff/PROJECT_HISTORY/旧長いworkflowを一括読みしない。SHA/稼働状況/件数はliveで必要な箇所だけ再取得。
 
-最新19:30：stage新設計17件＋storage契約7件=24/24合成PASS（以前の29件と重複）。実DB`--all`はpsycopg不足で未実行。GitHub runtimeをpsql READ-ONLY fallback対応、専用合成テスト4件追加・未実行。次は4件＋DBの12 Stage read-only preview。現行stage venues1/13・live0/13、03:30未予約、Drive403 STOP、BUY OFF。固定保存先`docs/V5_DATA_LOCATION_AND_CONSOLIDATION_BOARD_20261024.md`、詳しくはcurrent compact末尾。
+最新19:38：GitHub psql fallbackの4/4テストPASS＋`railway` READ ONLYで12原表r/12移行先ABSENTを確認。venues既存stage1/13、live0/13。新`deploy/conoha/v5_stage_12_bootstrap_plan_readonly_20261024.sql`（空stage DDL案のみ/未実行）。次はSQLによる12表schema/PK/default/DDL候補のread-only確認。独立復元未完了、03:30未予約、Drive403 STOP、BUY OFF。保存先は固定管理ボード参照。
