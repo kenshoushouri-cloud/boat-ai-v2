@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：14:53 forward snapshot vs deadline read-only PASS、4race全642行(entry30/exhibition12/odds600)のsnapshot_at<deadline、late0/unknown0。ただし展示0の津10R(09)・福岡9R(22)は未解決、初回観測証拠も未証明。次はこの2raceの旧exhibition物理表をrace_idで限定し、別labelの展示有無・締切前後件数をREAD ONLYで確認。Drive403書込STOP、Stage1/13、切替0/13 NO-GO。
+**最新compact末尾の Next ONE task**：14:57 津10R/福岡9R展示は別のforwardラベルの14:40台に各6行存在、全12行`snapshot_at<deadline`（0 late/unknown）。`V5_EXHIBITION_GAP_READ_ONLY_PASS`。永久欠落ではないが予測決定時点に使えた証明ではない。次は2レースに限り`snapshot_label`、記録最小/最大時刻、締切との差秒数をread-only確認。Drive書込403 STOP、stage1/13、本番0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
