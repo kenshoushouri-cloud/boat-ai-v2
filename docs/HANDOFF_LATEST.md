@@ -4,4 +4,4 @@
 
 新チャットは本ファイル→current compact→`docs/NEXT_CHAT_START_HERE.md`だけ読む。古いhandoff/PROJECT_HISTORY/旧長いworkflowを一括読みしない。SHA/稼働状況/件数はliveで必要な箇所だけ再取得。
 
-最新19:38：GitHub psql fallbackの4/4テストPASS＋`railway` READ ONLYで12原表r/12移行先ABSENTを確認。venues既存stage1/13、live0/13。新`deploy/conoha/v5_stage_12_bootstrap_plan_readonly_20261024.sql`（空stage DDL案のみ/未実行）。次はSQLによる12表schema/PK/default/DDL候補のread-only確認。独立復元未完了、03:30未予約、Drive403 STOP、BUY OFF。保存先は固定管理ボード参照。
+最新19:45：12表empty-stage CREATE候補のREAD ONLY/ROLLBACK成功、venues保持。GitHub `deploy/conoha/v5_stage_12_bootstrap_guarded.py` に12表一括原子DDLのデフォルト`--plan`実装＋オフライン新テスト6件追加（未実行）。stage本番作成は独立外部復元未達でNO-GO、コピー/切替未実行、03:30未予約、Drive403 STOP、BUY OFF。次は6件隔離テスト＋offline plan。保存先は固定board参照。
