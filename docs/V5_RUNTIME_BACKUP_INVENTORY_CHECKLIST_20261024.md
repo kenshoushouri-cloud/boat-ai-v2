@@ -49,4 +49,6 @@
 
 **10/24 11:28 Termius**：Git管理外collector全体を`/var/backups/boat-collector-20261024-7Tn5rg/collector.tar`に新規コピー（2,283,520 bytes、mode600、TOC PASS、SHA-256 `823a46ee4820e66373abaec7d6e099c3e1d99ae019488691e03d6fbd2a4d7d62`）。既存collector停止なし。**隔離復元/VPS外保全/V5本体全体は未完了**。
 
-**Next ONE task：** collector tarを隔離領域に展開し内容バイト一致と後片付けを検査。
+**10/24 12:49 Termius**：collector.tarのSHA照合・安全パス検査・同VPS一時領域の隔離展開・TARとの内容一致・一時領域削除がすべてPASS。成功マーカー`COLLECTOR_ISOLATED_RESTORE_PASS_CLEANED`。VPS外復元・V5本体保全は未完了。
+
+**Next ONE task：** `/opt/boat-ai-v5`の容量と変更/未追跡Gitファイルの**件数のみ**read-only取得し、本体保全対象の規模を見積もる。
