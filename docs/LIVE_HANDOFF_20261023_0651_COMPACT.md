@@ -340,6 +340,10 @@
 - 津10R `20261024_09_10` 14:40:44.275834記録、deadline14:59:00、余裕1095.7秒（18分15.7秒）、label `conoha_forward_20261024_144032`。福岡9R `20261024_22_09` 14:40:21.061322記録、deadline14:55:00、余裕878.9秒（14分38.9秒）、label `conoha_forward_20261024_144009`。双方展示行6件・read-only、`V5_EXHIBITION_LEAD_TIME_READ_ONLY_PASS`、ROLLBACK。
 - GitHub `v5/conoha_realtime_window_pg.py`はすでにdeadline-awareで、9〜24分前（`--late-retry`なら5〜24分前）の候補に限定。`exh_lanes<6 OR odds_tickets<120`の欠損補完方式。安易な全面短間隔pollはCPU/API費用増・rate-limit高リスク。
 - 展示6行でも`exhibition_time`が全艇分NULLなしとは限らず、予測最終判定以前の利用可能性/実取得の証拠も未確定。学習/実予測採用不可。Drive書込403 STOP、stage1/13、本番切替0/13 NO-GO。
+## 10/24 15:04 JST：展示品質read-only合格と場別取得の方針
+- 津10R `20261024_09_10`、福岡9R `20261024_22_09` ともに各forward展示labelで`total_rows=6`、`distinct_lanes=6`、`valid_exhibition_lanes=6`、`duplicate_rows=0`、`before_deadline=6`。`V5_EXHIBITION_QUALITY_READ_ONLY_PASS`、ROLLBACK。展示タイム全艇非NULL、ただし実取得初回/予測最終判定以前に可用だった証拠は未確認。
+- ユーザーから「全国共通の公式でなく各競艇場から直接取る方法」質問。津/福岡の場別公式サイトはあるが、24場分のフォーマット・保守・公開タイミング・取得許諾がまちまち。場独自のオリジナル展示が候補。**全国共通の現行取得を主系統として維持し、場別サイトは利用条件を確認した上で、追加項目・遅延改善を少数場でread-only比較してから採否を決める**。場内部の直接配信には許諾が必要で提供未確認。無断短間隔poll/スクレイパー導入禁止。
+- Drive 403 rate limit write STOP、共通stage1/13、本番cutover0/13 NO-GO、BUY禁止。
 
 ## Next ONE task（次の一作業）
-**ConoHa `railway`で津10R・福岡9Rの各forward展示label（14:40台）について、行数6のうち`exhibition_time IS NOT NULL`なlane数・重複艇数・締切前記録数をREAD ONLYで監査**。race_id限定、10秒timeout、ROLLBACK。6/6かつno duplicateなら収集データ品質の一部を確認できるがV5の最終判定時刻・取得真正性の証明にはならない。DB/cron/timer/writer/BUY、Driveへの追加書込、本番切替禁止。
+**津10R/福岡9Rについて、V5の最終予測・買い判定（存在すれば）を示す記録と展示`snapshot_at`の前後関係を、まずGitHub側の保存先・ログ形式からread-only特定**。決定記録が無ければ未検証扱い。既存collector/DB/systemd/Driveへの書込・予測買い・VIEW切替は禁止。
