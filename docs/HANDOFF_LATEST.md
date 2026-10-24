@@ -10,4 +10,6 @@
 
 2026-10-25 08:25 JSTのユーザーConoHa画面で13/13の`relation_shapes`・`copy_column_shape`・`pk_shape`=PASS、PK `id`/`race_id`/複合`race_id,lane`/`venue_code`、source user_triggers=0、source FK_in/out=0、複数表にserial defaultあり。`ROLLBACK`、`V5_STAGE13_DELTA_CATALOG_READONLY_DONE_NO_TABLE_SCAN_NO_WRITES`で正常終了。これはメタデータ一致の証拠であって差分=0/CDCではない。
 
-**Next ONE task:** 24行の`venues`限定stage差分runner `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py`（commit `ecebc0673428b290d857209a2eee4b64deb52d97`）をTermiusで`--apply`なしPREVIEW実行、実schemaとPK・源/先24行・trigger/FKを確認する。GitHub追加のみで未実機実行・未テスト。実stage APPLYは別承認＆03:00–05:59 JSTゲート、対象表以外や原本/VIEWは変更しない。pilot後13系統upsert/delete全差分と独立復元を準備。BUY OFF、writer/read route本番切替NO-GO。
+**2026-10-25 08:34 JST実機確認:** venues限定read-only差分PREVIEW成功。source=24/stage=24、INSERT=0、UPDATE=24、DELETE=0、`VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES`。24は削除や欠損ではなく行内容差。まだ実反映なし。旧収集・13 VIEW・BUY変更なし。13系統の物理初回copy13/13とPK/型一致13/13を維持。
+
+**Next ONE task:** venues差分の24更新が`updated_at`のみか他列も変わったか、負荷ごく小さいread-only分類を同runnerで確認し、stage-only applyゲートへ。次いで残12系統のCDC(INSERT/UPDATE/DELETE)差分追従。独立復元/全writer/reader証明なしでは物理本番切替NO-GO。
