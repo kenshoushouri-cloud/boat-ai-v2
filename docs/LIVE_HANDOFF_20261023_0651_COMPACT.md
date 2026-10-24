@@ -330,6 +330,9 @@
 - Termius: 14:30〜14:40 collector RC=0ログ5件→ユニーク4レース。旧public.v2_realtime_{entry,exhibition,odds}_snapshotsでforwardラベル14:30〜14:40をread-only検索。`V5_FORWARD_DB_READ_ONLY_CHECK_PASS`、ROLLBACK。
 - `20261024_05_10` 多摩川10R: entry12/exhibition6/odds240。`20261024_09_10` **津10R**: 6/0/120。`20261024_13_09` 尼崎9R: 6/6/120。`20261024_22_09` 福岡9R: 6/0/120。計30/12/600。5回ログと4ユニークレースで再取得あり。実INSERT実行の直接証明やas-of条件/品質/学習採用は未証明。
 - Drive書込HTTP403 RATE_LIMITで追加試験禁止。共通stage1/13、本番cutover0/13 NO-GO。
+## 10/24 14:53 JST：forward 4 race締切時刻監査 read-only PASS
+- Termius `V5_FORWARD_DEADLINE_READ_ONLY_PASS`、`ROLLBACK`。対象4 race、forward label 14:30–14:40 snapshot_at vs public.v2_races.deadline_at。entry30、exhibition12、odds600、**計642行すべてsnapshot_at<締切、late0、unknown0**。ただしsource_first_capture証拠・観測時刻そのものの真正性や学習採用は未証明。
+- 津10R(09)、福岡9R(22)ではこのforward帯の展示0。0行なのでunknown0でも展示取得成功を意味しない。旧テーブルの別snapshot_labelに当該2raceの展示があるか限定read-only確認する。現行収集維持、Stage1/13、本番切替0/13 NO-GO、Drive403書込停止。
 
 ## Next ONE task（次の一作業）
-**ConoHa `railway`の上記4レースに限定し`public.v2_races.deadline_at`とforwardラベル当時の3系統`snapshot_at`を照合、締切前/以後/不明の件数のみREAD ONLY/10秒上限/ROLLBACKで確認**。展示0件を収集失敗と即断しない。DB DML/VIEW変更、Drive再試行、BUY、本番切替は禁止。
+**ConoHa railway DBで津10R/福岡9Rの`public.v2_realtime_exhibition_snapshots`全labelの存否、前後時刻、forward当日行数をrace_id index利用でread-only小集計**。`REPEATABLE READ READ ONLY`・10秒 timeout・ROLLBACK。表示は件数と最新snapshot_atのみ。無い場合は取得タイミング/収集元を別途検査する。DB更新/新収集/Drive試行/BUYは行わない。
