@@ -373,6 +373,10 @@
 - Termiusスクリーンショット：`Ran 9 tests in 0.006s`、`OK`、`V5_ASOF_9_TESTS_PASS`。旧6件+追加3件すべて成功、既存collector/DB/timer/BUYへの実行なし。CI statusではなくConoHa上の`/tmp`隔離Python合成実行をユーザー出力で確認。first-observation・実ROI・モデルscopeは依然未証明。
 - 次に`tests/test_v5_forward_shadow_freeze.py`既存6件（`prepare_candidate`、`append_once`、重複拒否、締切/不完全odds等）を同じ隔離条件で回帰テスト。test内の書込は`tempfile.TemporaryDirectory`のみに限定することをGitHubで読取確認。
 - Drive write403 STOP、Stage1/13・本番切替0/13 NO-GO、BUY禁止維持。
+## 10/24 16:11 JST：shadow記録器6件全PASS
+- Termiusスクリーンショット：`Ran 6 tests in 0.009s`、`OK`、`V5_SHADOW_6_TESTS_PASS`を確認。前回のas-of bridge9件と合わせ**異なる合成検査15/15 PASS**。今回はローカル隔離`/tmp`の6件、DB/既存collector/タイマー/BUY/Drive変更なし。
+- 次の対象は`tests/test_v5_offline_day_real_modules.py`の**3件**。既存`offline_mainline_inference`→`offline_trifecta_shadow_ranking`→`offline_trifecta_cash_ledger`→`offline_trifecta_cash_bridge`→`offline_day_shadow_pipeline`を合成データで接続。K/払戻/VOIDはfictional、実ROIなし。
+- stage1/13、本番切替0/13 NO-GO。モデルscope(T1.00/T2.20)と初回取得証拠・V5実予測の保証なし。Drive write403 STOP。
 
 ## Next ONE task（次の一作業）
-**GitHub mainから`v5/forward_shadow_freeze.py`と`tests/test_v5_forward_shadow_freeze.py`のみをConoHa一時領域にgit archiveし、non-root/nice/timeoutで6件の既存合成回帰テストを実行**。実ジャーナル・実DB・collector・systemd・BUY・Driveを変更しない。成功は`Ran 6 tests`、`OK`を確認後のみ記録。
+**ConoHaの`/tmp`隔離環境（non-root/nice/timeout）で`tests/test_v5_offline_day_real_modules.py`の3件だけ実行**。GitHub mainから必要な7ファイルのみ`git archive`。collector/DB/timer/Drive/BUY変更禁止。実結果`Ran 3 tests`/`OK`確認まで未検証。
