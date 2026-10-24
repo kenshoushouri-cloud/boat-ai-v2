@@ -55,6 +55,10 @@
 - ユーザー方針：**短い計画停止はやむを得ない。停止中の欠落は元資料から回収できる種類なら後日補完**。GitHubに`docs/V5_SHORT_MAINTENANCE_AND_RECOVERY_FASTPATH_20261024.md`作成。多数表を事前オンライン低負荷stage後、最終差分の短時間のみ全関連writer/timers/child workerを限定停止。予め安全復旧・欠落補完・復元可否を確認する。
 - **ただし展示・刻々変化するオッズ・風水面などは後日同一時点の原本が再取得できない場合がある**。正確に復元できないものは`UNKNOWN_AT_DECISION`としてHOLD。後取得は`RETROSPECTIVE_BACKFILL`、本物の締切前に観測された予測証拠と混ぜない。
 - 本日の停止・既存サービス無断操作・VIEW切替・物理コピーの実行承認はまだない。現行収集を維持しつつ停止計画の確認を先行。
+## 2026-10-24 18:41 一括準備の合格とオフラインstageバッチプラン
+- Termius`/var/backups/v5_prepare_wLz5IWY7`で13manifest・DB/read-only・writer監査・disk/backupの一括レポート作成成功。`PRODUCTION_CUTOVER=NO_GO`、`NIGHT_AUTOMATION=NOT_ARMED`で現行収集無変更。
+- GitHub`v5/offline_stage_batch_plan.py`: 原本固定mapに対し、既存venues stage 1件は保護、波1六件（レース/出走/結果/K/公式オッズ/展示）、波2六件（コース統計/直前出走/オッズ/気象/条件/選手条件）の純粋オフライン計画。決してDBへ接続しない。
+- `tests/test_v5_offline_stage_batch_plan.py`の5ケースを追加したがテスト実行結果は未取得。モデル前向き予測と物理コピー完成は別のgate。独立外部復元・writer/CDC差分/自動切戻しは未証明。
 
 ### Next ONE task
-**次は4つの現行timer・サービス・子worker・次実行時刻をread-only棚卸し**し、停止するならいつからいつまでを安全に確保できるかと復帰手順を具体化。その間GitHubで既存研究のVIEW入力アダプタとオンラインバッチstage計画を進める。無断停止/物理COPY/VIEW切替/BUY/Drive再試行は禁止。
+5件合成テストを既存のGitHubコードで/tmp隔離実行後、**13表オンライン段階コピー＋完全差分再同期＋自動ロールバックの具体的実装**へ進む。予測は現行VIEWから先行開発可能。Drive書込/本番切替/BUYはNO-GO。
