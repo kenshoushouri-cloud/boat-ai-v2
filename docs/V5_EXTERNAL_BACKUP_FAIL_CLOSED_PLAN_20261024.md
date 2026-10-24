@@ -57,4 +57,4 @@ FAIL-CLOSEDの例：リモート不明 / 403 / 同名ファイル存在 / ハッ
 ## 現時点の判定
 **DESIGN_DONE、EXTERNAL_BACKUP_NOT_CREATED、EXTERNAL_RESTORE_NOT_TESTED、CUTOVER_0_OF_13_NO_GO、BUY_DISABLED**。
 
-**Next ONE task**：GitHubだけで、V5本体のバックアップ対象インベントリに必要なファイル・systemd・環境定義の証拠採取項目を整理する（ConoHaの実調査・Drive通信は未承認）。その後ConoHaのread-onlyコマンドを1つずつ案内する。
+**V5本体の証拠採取チェックリスト**：[V5_RUNTIME_BACKUP_INVENTORY_CHECKLIST_20261024.md](V5_RUNTIME_BACKUP_INVENTORY_CHECKLIST_20261024.md)。R01〜R12をGitHub上で作成・静的確認済み。**ConoHa実機調査は未実施**。次は候補2ルートのGit管理/HEADを安全なread-onlyコマンド1回で確認する。
