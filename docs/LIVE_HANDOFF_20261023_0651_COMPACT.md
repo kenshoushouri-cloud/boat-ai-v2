@@ -240,5 +240,9 @@
 - ConoHa Termius：`/opt/boat-ai-v5`存在/Git YES/HEAD `504b61138e3aaae547688194652e7022c196bfc4`、`/opt/boat-ai-collector`存在/Git NO。collectorはGitHubだけでは復元できず、先に本体とともに別保全する必要。checklist R01/R02を部分確認済みに更新。
 - ユーザー要望のGitHub容量整理はIssue [#582](https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/582)でread-only計測→稼働参照確認→保全後PR/別承認の順に追跡。**削除・履歴書換えは未実施**。旧DB/13VIEW/collector/timers/venues stage24行は未変更。entry stage absent、本番切替0/13 NO-GO。
 
+## 10/24 11:15 JST：Git管理外collector直下のread-only棚卸し
+- Termius：2ディレクトリ（`__pycache__`, `refund_evidence`）、9ファイル（`backfill_20261017.py`, `.bak_20261019`, `collect_refund_evidence.py`, `daily_v5_safe.sh`, `db_pg.py`, `refund_boats_parser.py`, `refund_pending_20250701_20261005.txt`, `refund_targets_20250701_20261005.txt`, `repair_month_all_pg.py`）。存在の確認のみ。内容や参照先・ファイルサイズは未確認。Git非管理につき保全・現行参照特定前の整理/削除禁止。
+- GitHub肥大化整理Issue #582は登録済み、計測・削除未実施。旧DB/collector/13VIEW/venues stage24行維持、entry stage未作成、切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`/opt/boat-ai-collector`直下エントリの種別と名前だけread-only確認**。内容・設定値/秘密値・remote URLは表示しない。deep scan、Git fetch/pull、実backup、DB/cron/collector変更、Drive API、コード削除禁止。Issue #582の整理は本体保全・復元後に別承認。
+**ConoHa Termiusで`/opt/boat-ai-collector`直下11件のサイズ・permission・所有者（メタデータのみ）をread-only確認**。内容・設定値/秘密値・remote URLは表示しない。deep scan、Git fetch/pull、実backup、DB/cron/collector変更、Drive API、コード削除禁止。Issue #582の整理は本体保全・復元後に別承認。
