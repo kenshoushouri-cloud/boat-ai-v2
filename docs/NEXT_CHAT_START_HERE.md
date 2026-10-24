@@ -1,14 +1,12 @@
-# 新競艇AI開発プロジェクトNo.2｜新チャット開始案内（2026-10-24 22:10）
+# 新チャット最小起点 — 新競艇AI開発No.2
 
 @GitHub
 @Railway
 
-Repo: `kenshoushouri-cloud/boat-ai-v2`。
+repo `kenshoushouri-cloud/boat-ai-v2`。必ず`docs/HANDOFF_LATEST.md`→指定`docs/LIVE_HANDOFF_20261024_NIGHT_WINDOW_COMPACT.md`→本書だけ先に読む。古い長い引継ぎ・PROJECT_HISTORYを一括参照せず、チャット/タイムアウト対策で1作業ずつ必要最小限のlive取得。
 
-最初に **1. `docs/HANDOFF_LATEST.md` → 2. 指定先`docs/LIVE_HANDOFF_20261024_2210_COMPACT.md`全文 → 3. 本ファイル**だけ読み、古いhandoff/PROJECT_HISTORY/長いworkflowは大量参照しない。トーク容量とツール呼出を抑え、1回1作業。Termiusは短い貼付コード1つ。必要な変更はlive SHAで、GitHubの短縮引き継ぎ更新。
+目的：V5主力・2025-07以降の精度/ROI検証・紙上非購入の早期稼働。旧原本collectorを継続し共通stageへ一方向コピー、V5 shadowとread-only backtestを先行。現行13原表`railway.public.v2_*`/13共有VIEW`boat_data.*`、物理stage既存`boat_data_stage.venues`24行のみ、残12未作成、物理本番切替0/13。原本削除禁止。ConoHa同VPSのdump2件sha/TOC PASS、VPS外復元未証明。Drive新規書込403 STOP。Railway安価（$15–20より低く）、Agent/AI禁止、BUY OFF。日中の研究・準備は継続。
 
-**最優先方針**：既存ConoHa原本収集を止めず、`railway.public.v2_*`13系統→`boat_data_stage.*`への一方向段階複製／差分同期。既存`boat_data.*`の13個非更新VIEWを使うV5 read-only実データbacktest・購入なしshadow研究はstage完成を待たず先行。正式な時点証拠がない過去値は実ROI/Forward実証に混ぜない。V5用venues stage24行だけあり、残12物理table未作成、原本物理切替0/13。旧データは既に複数保管先にあり、毎回探し直さない。Google Drive現行外部復元は未証明、Drive403新書込STOP、BUY OFF。
+**タイマー誤解を訂正：** GitHub`deploy/conoha/boat-v5-forward-window.timer`は`07..23:0/5:00 Asia/Tokyo`、07:00〜23:55のみで03:30は起動しない。結果catchupは01:20/02:20/03:20、service各最大30分、nightは23:00開始/最大90分。前倒し案`00:45/01:30/02:15`は`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`にあるが未設置。V5 reader-only shadow切替候補03:30も**未予約**。直前に実unit・完走/未確定PENDING/flock/子worker/DB状態を確認しFail-closed。
 
-**時間の重要な訂正**：5分forward公式展示/オッズタイマーはGitHub定義で07:00〜23:55 JST限定、03:30には起動しない。夜間23:00収集後の結果補完は現行GitHub01:20/02:20/03:20。**ユーザー希望の早期化候補00:45/01:30/02:15**（既存提案`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`）はまだConoHaへ未設置。03:30〜04:00は将来shadow**readerだけ**切替候補であり、本番自動切替未予約。
-
-**Next ONE task**：ConoHaに実設置されている結果補完timer/23時night service・過去journal・競合状態をまずread-only監査し、結果補完を00:45/01:30/02:15へ安全に変えるコード/rollback手順を準備。同時にGitHub既存V5 scorer＋VIEWからの小規模read-only 2025-07以降backtestを実装。勝手なtimer変更・systemd停止・stage CREATE/COPY・03:30予約・BUYは禁止。すでにユーザー回答済みの保存先/希望を質問し直さない。
+**Next ONE task:** ConoHa上のinstalled forward/catchup/night timerと直近journalを一度read-onlyで比較し、前倒しを実施できるか判断する。コードが必要ならTermiusに貼れる短いコードを1つ示す。その後、結果補完前倒しとV5 read-only実データbacktestの準備。秘密鍵・BUY・Drive書込・実stage作成/物理原本切替を無断で実行しない。
