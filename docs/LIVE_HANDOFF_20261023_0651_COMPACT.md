@@ -344,6 +344,11 @@
 - 津10R `20261024_09_10`、福岡9R `20261024_22_09` ともに各forward展示labelで`total_rows=6`、`distinct_lanes=6`、`valid_exhibition_lanes=6`、`duplicate_rows=0`、`before_deadline=6`。`V5_EXHIBITION_QUALITY_READ_ONLY_PASS`、ROLLBACK。展示タイム全艇非NULL、ただし実取得初回/予測最終判定以前に可用だった証拠は未確認。
 - ユーザーから「全国共通の公式でなく各競艇場から直接取る方法」質問。津/福岡の場別公式サイトはあるが、24場分のフォーマット・保守・公開タイミング・取得許諾がまちまち。場独自のオリジナル展示が候補。**全国共通の現行取得を主系統として維持し、場別サイトは利用条件を確認した上で、追加項目・遅延改善を少数場でread-only比較してから採否を決める**。場内部の直接配信には許諾が必要で提供未確認。無断短間隔poll/スクレイパー導入禁止。
 - Drive 403 rate limit write STOP、共通stage1/13、本番cutover0/13 NO-GO、BUY禁止。
+## 10/24：V5独立の最終予測時刻証拠 GitHub read-only追跡
+- `v5/conoha_realtime_window_pg.py`: collector実行/候補ログを記録、**予測・購入・LINEの実行なし**。10/24 14:35 APPLY collector正常終了でもV5意思決定ではない。
+- `v22_realtime_decision_engine_pg.py`の`public.v2_realtime_decisions`は旧v22用、`decision_at`列あり。V5実予測と流用禁止。`v25_final_realtime_pipeline_pg.py`は旧v22 targeted runnerとLINE notifierを呼ぶ。
+- `v5/telegram_trial_performance.py`は外部で固定済みのV5 JSONL ledgerを`--ledger`入力で検証・集計するだけで、書込器や実績台帳ではない。V5の最終判定時刻/入力receipt格納先はGitHub確認範囲で未証明。
+- 津10R展示14:40:44／締切14:59、福岡9R展示14:40:21／締切14:55は締切10分前の**仮定**cutoffには双方入るが、真のdecision_atと初回取得証拠が未検証なので予測採用/ROI不可。公式情報取得を維持、取得間隔・timer変更なし。Drive書込403停止・共通stage1/13・本番0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**津10R/福岡9Rについて、V5の最終予測・買い判定（存在すれば）を示す記録と展示`snapshot_at`の前後関係を、まずGitHub側の保存先・ログ形式からread-only特定**。決定記録が無ければ未検証扱い。既存collector/DB/systemd/Driveへの書込・予測買い・VIEW切替は禁止。
+**ConoHa `railway` DBでV5固有のdecision/ledger/freeze/prediction表の存在と種別をpg_catalogからread-only棚卸し**。旧`public.v2_realtime_decisions`は参考として種類のみ取得し、V5判定と混同しない。10秒制限・ROLLBACK、実データ読込/BUYなし。V5専用表が無ければ別DB/ファイル/ログ経路も残るため実予測が存在しないとは即断しない。
