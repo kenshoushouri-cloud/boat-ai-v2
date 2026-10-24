@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHa Termiusで`/opt/boat-ai-v5`と`/opt/boat-ai-collector`の存在・Git管理・HEADだけを1つのread-onlyコマンドで確認。GitHubに`docs/V5_RUNTIME_BACKUP_INVENTORY_CHECKLIST_20261024.md`（R01〜R12）作成済み、再取得/静的8項目PASS。**実機棚卸し・V5本体保全・VPS外独立バックアップ/復元は未実施**。Drive API 403への再試行・DB/collector/cron/VIEW変更・entry COPYは禁止。本番切替0/13 NO-GO。
+**最新compact末尾の Next ONE task**：ConoHa TermiusでGit管理外`/opt/boat-ai-collector`直下のエントリ名/種別のみread-only確認。11:09 Termiusで`/opt/boat-ai-v5` Git YES HEAD `504b61138e3aaae547688194652e7022c196bfc4`、`/opt/boat-ai-collector` Git NO。collector本体保全が必要。GitHub肥大化整理はIssue #582で計測→参照確認→バックアップ/復元後に別承認PR（削除・履歴改変は未実施）。Drive再試行/DB/collector変更/entry COPY禁止、本番切替0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
