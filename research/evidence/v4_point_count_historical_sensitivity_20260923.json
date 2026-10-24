@@ -1,0 +1,66 @@
+{
+  "contract": "v4_point_count_historical_sensitivity_v1",
+  "source": {
+    "pr_number": 376,
+    "source_head_sha": "13dfd99f602dd32c26c33451064270bf5ae9ae9e",
+    "workflow_run_id": 35806246724,
+    "artifact_id": 10727519397,
+    "artifact_zip_sha256": "426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771"
+  },
+  "method": {
+    "unit_yen": 100,
+    "marginal_rank_definition": "actual trifecta equals preserved pre-result ranked_top5[N-1]",
+    "leave_out": "remove the largest one/two winning payouts within each marginal rank while keeping the original investment denominator",
+    "bootstrap": "20000 deterministic day-cluster resamples, seed 20260923",
+    "production_mutation": false,
+    "purchase_action": false
+  },
+  "windows": [
+    {
+      "name": "fixed_oos",
+      "period": {"start_date": "2026-07-01", "end_date": "2026-08-15"},
+      "evaluated_days": 46,
+      "evaluated_races": 276,
+      "marginal_ranks": [
+        {"rank": 1, "hits": 30, "profit_yen": -7770, "roi_percent": 71.848, "profit_per_race_yen": -28.152, "largest_hit_share_percent": 9.581, "roi_without_largest_hit_percent": 64.964, "day_cluster_bootstrap_roi_95pct": [45.651, 101.413]},
+        {"rank": 2, "hits": 22, "profit_yen": -7410, "roi_percent": 73.152, "profit_per_race_yen": -26.848, "largest_hit_share_percent": 11.392, "roi_without_largest_hit_percent": 64.819, "day_cluster_bootstrap_roi_95pct": [41.448, 109.384]},
+        {"rank": 3, "hits": 18, "profit_yen": -3180, "roi_percent": 88.478, "profit_per_race_yen": -11.522, "largest_hit_share_percent": 14.087, "roi_without_largest_hit_percent": 76.014, "day_cluster_bootstrap_roi_95pct": [43.080, 141.812]},
+        {"rank": 4, "hits": 16, "profit_yen": -5610, "roi_percent": 79.674, "profit_per_race_yen": -20.326, "largest_hit_share_percent": 20.782, "roi_without_largest_hit_percent": 63.116, "day_cluster_bootstrap_roi_95pct": [36.413, 130.653]},
+        {"rank": 5, "hits": 9, "profit_yen": -18510, "roi_percent": 32.935, "profit_per_race_yen": -67.065, "largest_hit_share_percent": 22.112, "roi_without_largest_hit_percent": 25.652, "day_cluster_bootstrap_roi_95pct": [11.993, 58.514]}
+      ]
+    },
+    {
+      "name": "recent_timing_safe",
+      "period": {"start_date": "2026-09-11", "end_date": "2026-09-22"},
+      "evaluated_days": 10,
+      "evaluated_races": 60,
+      "marginal_ranks": [
+        {"rank": 1, "hits": 3, "profit_yen": -4340, "roi_percent": 27.667, "profit_per_race_yen": -72.333, "largest_hit_share_percent": 36.747, "roi_without_largest_hit_percent": 17.500, "day_cluster_bootstrap_roi_95pct": [0.000, 55.833]},
+        {"rank": 2, "hits": 5, "profit_yen": -2220, "roi_percent": 63.000, "profit_per_race_yen": -37.000, "largest_hit_share_percent": 43.386, "roi_without_largest_hit_percent": 35.667, "day_cluster_bootstrap_roi_95pct": [18.500, 118.667]},
+        {"rank": 3, "hits": 5, "profit_yen": -630, "roi_percent": 89.500, "profit_per_race_yen": -10.500, "largest_hit_share_percent": 35.009, "roi_without_largest_hit_percent": 58.167, "day_cluster_bootstrap_roi_95pct": [28.167, 160.500]},
+        {"rank": 4, "hits": 2, "profit_yen": 4370, "roi_percent": 172.833, "profit_per_race_yen": 72.833, "largest_hit_share_percent": 92.189, "roi_without_largest_hit_percent": 13.500, "day_cluster_bootstrap_roi_95pct": [0.000, 491.500]},
+        {"rank": 5, "hits": 2, "profit_yen": -4250, "roi_percent": 29.167, "profit_per_race_yen": -70.833, "largest_hit_share_percent": 60.571, "roi_without_largest_hit_percent": 11.500, "day_cluster_bootstrap_roi_95pct": [0.000, 69.833]}
+      ],
+      "full_feature_subset": {
+        "races": 40,
+        "rank_roi_percent": {"1": 11.750, "2": 64.000, "3": 89.500, "4": 0.000, "5": 26.500}
+      }
+    }
+  ],
+  "cross_window_observations": {
+    "rank3_roi_percent": [88.478, 89.500],
+    "rank3_profit_per_race_yen": [-11.522, -10.500],
+    "rank5_roi_percent": [32.935, 29.167],
+    "recent_rank4_largest_hit_share_percent": 92.189,
+    "recent_rank4_roi_without_largest_hit_percent": 13.500,
+    "recent_full_feature_rank4_roi_percent": 0.000,
+    "interpretation": "rank3 is consistently sub-100% marginal ROI across both windows; rank4 recent gain is concentrated in one large payout and disappears in the full-feature subset; rank5 is consistently weak."
+  },
+  "shortlist": {
+    "formal_points": 2,
+    "shadow_compare_points": 3,
+    "rank4_status": "DIAGNOSTIC_ONLY_UNTIL_REPLICATED",
+    "rank5_status": "DEPRIORITIZE",
+    "production_change": false
+  }
+}
