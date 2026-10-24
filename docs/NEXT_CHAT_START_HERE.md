@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：10/24 16:11 Termius隔離Pythonで`tests/test_v5_forward_shadow_freeze.py` 6件/6 PASS（`V5_SHADOW_6_TESTS_PASS`）。前回bridge9件と合わせ研究用合成検査15/15 PASS。次は**`tests/test_v5_offline_day_real_modules.py`の3件**を必要なV5 6モジュール＋テスト1ファイルだけ`git archive`で/tmp隔離、non-root/timeout実行。これはfictional結果/VOIDの数学連携であり実ROIや本番適格性の証明ではない。Drive書込403 STOP、stage1/13、本番0/13 NO-GO、BUY禁止。
+**最新compact末尾の Next ONE task**：2026-10-24 16:16 Termiusで`V5_DAY_INTEGRATION_3_TESTS_PASS`, `Ran 3 tests`/`OK`。9+6+3=**V5研究用合成検査18/18 PASS**（実レース予測/利益証拠なし）。次は既存`deploy/conoha/v5_live_six_lane_input_bridge_readonly_20261023.sql`をConoHa/tmp隔離実行、`20261024_13_09`尼崎9Rの6艇/展示/odds/K入力データ形状をread-only検査。同一snapshot_labelとas-of自称時刻は初回観測証拠にならない。Drive403 write STOP、stage1/13、本番0/13 NO-GO、BUY禁止。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
