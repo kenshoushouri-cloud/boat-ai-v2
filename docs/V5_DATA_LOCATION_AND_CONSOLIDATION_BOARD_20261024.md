@@ -1,4 +1,7 @@
 # V5データ保存先・集約進捗ボード（2026-10-24 17:39 JST）
+
+> **最新優先：2026-10-25 08:16 JST — 初回物理stageコピー13/13完了。** 先行venues24行に加え12系統の全初回COPYが10/25 02:50〜02:53 JSTで `COPY_COMMITTED`、`STAGE12_INITIAL_COPY_PASS families=12 of_12`、systemd正常終了。計12系統13,129,507行。原本 `public.v2_*` と13 live VIEWは現状維持（本番route切替0/13）。**更新/削除/追加の追込・独立復元・本番切替は未完了**。以降の旧「1/13」「未コピー」は過去時点の記録。次は `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql` をConoHaで実行しメタ検査。再コピーしない。BUY OFF。
+
 **次チャット以降はこの1ファイルを最初の正本として使う。** 保存先を探し直さず、差分が生じたらこのボードのみ更新。GitHub `docs/BOAT_SHARED_13_SOURCE_ROUTE_MANIFEST_20261023.json`が13表write/read routeの技術的な基準。旧長文handoffの一括再読は不要。履歴は削除しない。
 
 ## 現在どこに保存されているか（新規推測を含まない）
@@ -69,4 +72,4 @@
 - `v5/offline_stage_chunk_copy_sql.py`はオンライン分割COPYのためのオフラインSQL生成器、実行不可・PK/スキーマ証拠が揃わなければ拒否。`tests/test_v5_offline_stage_chunk_copy_sql.py`6件は未実行。運用RUNNER／本物のCOPYは未完了。
 
 ### Next ONE task
-新ジェネレータの合成テスト6件を1コマンドで/tmp隔離実行後、同じstage名でsourceとCOPY先を整合させ、既存delta plannerを再利用する**本物のオンラインbatch stage実装**に進む。明示gate欠如の本番DDL/DML禁止。
+**Next ONE task:** ConoHaで `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql` のread-only PG catalog監査を1度実施し、13原本が物理表、13 live `boat_data` がVIEW、13 stageが物理表、今回の12表の完了commentが存在することを確認する。12表COPY済なので再実行・再コピーはしない。次にUPDATE/DELETE含む差分同期・独立復元・writer/readerルート・自動rollbackを完成させ、別途全gate PASS時のみ切替。旧収集維持、BUY OFF。
