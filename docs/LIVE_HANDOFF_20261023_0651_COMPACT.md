@@ -257,5 +257,9 @@
 - ConoHa Termius：新規`/var/backups/boat-collector-20261024-7Tn5rg/collector.tar` 2,283,520bytes / mode600（umask077）。`tar -tf` PASS、SHA-256=`823a46ee4820e66373abaec7d6e099c3e1d99ae019488691e03d6fbd2a4d7d62`。`COLLECTOR_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED`表示。収集root`/opt/boat-ai-collector`を低優先度/最大60秒でTARコピー、既存ローカルDB dumpに触れず。
 - **隔離展開・全内容の復元検査・VPS外独立保全・V5 Git管理本体/設定保全は未実施**。refund_evidenceは敏感な情報を含む可能性あり、秘密内容のGitHub/Google Drive転送は禁止。現行collector/timers、旧原本/VIEW13、venues stage24件維持、本番切替0/13 NO-GO。
 
+## 10/24 12:49 JST：Git管理外collectorの同VPS隔離復元 PASS
+- Termius画面で、SHA-256基準照合・安全なアーカイブパス検査・一時領域への展開・TAR対展開内容の差分なし・一時領域削除を確認。マーカー`ARCHIVE_PATH_GUARD_PASS`、`RESTORED_ARCHIVE_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`COLLECTOR_ISOLATED_RESTORE_PASS_CLEANED`。元`/opt/boat-ai-collector`は変更なし。
+- 既存`collector.tar` 2283520 B/root-onlyは維持。**これは同ConoHa VPS上の検査であり、VPS外の独立保全・復元、実稼働ソースとの差分/最新性は未検証**。V5 Git管理本体と設定保全も未完了。本番切替0/13 NO-GO、GitHub整理Issue #582は未削除。
+
 ## Next ONE task（次の一作業）
-**ConoHaでこのcollector.tarのSHA-256を基準と照合し、安全な相対パス・通常ファイル/ディレクトリのみであることを検査してから、新規0700の一時領域へ低優先度・時間制限付きで隔離展開。アーカイブ内の各ファイルと隔離展開した実バイトを比較し、検査後一時領域を確実に削除**。元collectorの変更/停止なし。既存dump上書き、Drive API、GitHubコード削除、VIEW切替、BUY禁止。実VPS外復元ではない。NO-GO継続。
+**ConoHaで`/opt/boat-ai-v5`の総ディスク使用量とGit作業ツリーの変更/未追跡の件数のみread-onlyで確認**。Gitファイル名・秘密値・リモートURLは出さない。低優先度/timeoutでGitHubの現行commitと実機差分を把握し、V5本体バックアップの容量/対象を決める。collector/DB/cron/既存バックアップ変更、Drive API通信、Git削除/履歴変更、切替/BUY禁止。
