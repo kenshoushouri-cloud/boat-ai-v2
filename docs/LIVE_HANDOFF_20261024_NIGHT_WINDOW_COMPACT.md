@@ -45,7 +45,7 @@
 
 ## 2026-10-25 08:25 JST 差分準備メタ検査PASS
 - 2026-10-25 08:25 JSTのユーザーConoHa画面で13/13の`relation_shapes`・`copy_column_shape`・`pk_shape`=PASS、PK `id`/`race_id`/複合`race_id,lane`/`venue_code`、source user_triggers=0、source FK_in/out=0、複数表にserial defaultあり。`ROLLBACK`、`V5_STAGE13_DELTA_CATALOG_READONLY_DONE_NO_TABLE_SCAN_NO_WRITES`で正常終了。これはメタデータ一致の証拠であって差分=0/CDCではない。
-- GitHubへvenues小規模のINSERT/UPDATE/DELETE guarded delta pilotを追加。実VPSへは未適用。PGのREPEATABLE READでstageのみ整合、恒久的CDCとは別。
+- GitHubへvenues小規模のINSERT/UPDATE/DELETE guarded delta pilotを追加。実VPSへは未適用。既定PREVIEWではvenue24行のINSERT/UPDATE/DELETE差分件数をread-onlyで算出し、PGのREPEATABLE READでstageのみ整合するAPPLYは別gate。恒久的CDCとは別。
 
 ## 次の1作業
-**Next ONE task:** 24行の`venues`限定stage差分runner `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py`（commit `39c17fa530d06e33b8ac1ea695e2a25cce32bee3`）をTermiusで`--apply`なしPREVIEW実行、実schemaとPK・源/先24行・trigger/FKを確認する。GitHub追加のみで未実機実行・未テスト。実stage APPLYは別承認＆03:00–05:59 JSTゲート、対象表以外や原本/VIEWは変更しない。pilot後13系統upsert/delete全差分と独立復元を準備。BUY OFF、writer/read route本番切替NO-GO。
+**Next ONE task:** 24行の`venues`限定stage差分runner `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py`（commit `ecebc0673428b290d857209a2eee4b64deb52d97`）をTermiusで`--apply`なしPREVIEW実行、実schemaとPK・源/先24行・trigger/FKを確認する。GitHub追加のみで未実機実行・未テスト。実stage APPLYは別承認＆03:00–05:59 JSTゲート、対象表以外や原本/VIEWは変更しない。pilot後13系統upsert/delete全差分と独立復元を準備。BUY OFF、writer/read route本番切替NO-GO。
