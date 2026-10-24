@@ -35,5 +35,9 @@
 - 先の「5分タイマーは03:30に起動し得る」は**誤り**。修正済`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`。実VPS unitの一致をread-only確認すれば、それ以上タイマーを変更する必要はない。01:20 catchup、その他不明writer、07:00 morningが終了/待機しているかのgateは別。
 - **夜間の実切替はなお未スケジュール**。stage1/13、live0/13、Drive403 STOP/BUY OFF。
 
+## 2026-10-24 catchup schedule review
+- GitHub current catchup timer 01:20,02:20,03:20 JST (three runs), service max1800sec per run and flock shared with 23:00 night job (night max90min). Earlier proposed times **00:45,01:30,02:15 JST**. Last run can end ~02:45 -> ~45min margin before future 03:30 reader-only switch. On unresolved official PENDING/worker still active, fail-closed hold switch.
+- Provisional config `deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024` GitHub commit only; **not installed nor activated on ConoHa**. 5min realtime forward timer only 07..23. Verify installed unit + recent journal read-only before any live timer change. No BUY, no physical cutover.
+
 ## Next ONE task
 既存V5 scorer/inferenceが`boat_data.*` VIEWを**read-onlyでそのまま消費して非購入の実データbacktest/pilotを開始できるかを確認**し、必要なアダプタをGitHubで実装。stage物理COPY/reader switchの自動ゲートも開発するが未準備でのタイマー登録禁止。
