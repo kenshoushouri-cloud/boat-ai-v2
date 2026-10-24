@@ -266,5 +266,9 @@
 - **Git ignoredファイル、実行設定、systemd、秘密値の存在/保全は未確認**。27Mはディスク使用量でアーカイブ容量と同値とは限らない。collectorは同VPS隔離復元成功済み、DB2件はローカル保全/限定検証のみ。V5本体のTAR作成・外部バックアップ/復元は未実施。
 - GitHub肥大化Issue #582は整理未着手/削除なし。現行収集/DB/VIEW13/venues stage24件変更なし、本番切替0/13 NO-GO。
 
+## 10/24 12:57 JST：V5本体ローカルTAR保全確認
+- ConoHa Termius: /opt/boat-ai-v5 全体のTARが /var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar に新規作成。25,200,640 bytes, mode600。TAR目録検査PASS、SHA256=4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968。マーカー V5_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED。
+- V5本体の隔離復元、ディレクトリ外systemd設定等の保全、VPS外の独立保全/復元は未実施。現行収集/旧DB/13VIEW/venues stage維持、本番切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaの`/opt/boat-ai-v5`全体（Gitメタデータとignored候補を含む）を新規root-only(0600)ローカルtarとして低優先度/時間制限付きで保存し、TAR TOC読み取り・bytes・SHA256を確認**。旧バックアップの上書きなし。秘密を含み得るためGitHub/Driveへの実ファイル転送をしない。実復元・本番復旧の検証は次の別作業。DB/collector/timers/13VIEW/venues stage/BUY・Git履歴変更禁止。切替0/13 NO-GO。
+ConoHaでV5本体TARのSHA一致・安全な相対パスを確認した後、一時領域に隔離展開、内容比較して削除する。元のV5/collectorやDBは変更しない。Drive転送・本番切替は禁止。
