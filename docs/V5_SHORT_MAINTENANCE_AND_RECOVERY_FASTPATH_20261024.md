@@ -20,7 +20,7 @@
 6. **完了後**：旧原表は残し一定期間並行監査。V5本体＋共有原本をV3/V4とは別の外部保全へ（Drive403解消／復元検証が先）、削除は後日の独立承認。
 
 ## 直近1作業
-**ConoHaで現行4 timer・service・稼働worker・次回起動時刻を停止せず read-only 点検し、短時間停止窓の設計に必要な「影響する収集経路」を確認する。** 書込停止前のバックアップは同VPS保全と外部独立保全の違いを厳格に扱う。stop/start/disable/mask/kilI/write migrationはまだ行わない。
+**4 timer/serviceの状態と次回時刻は18:06に確認済み**。forward 18:10/以後5分ごと、night 23:00、catchup翌01:20、morning翌07:00。停止前の残課題はtimer以外のworker/cron/DB writer・未確定結果・独立復元・復旧実行方法。次は実行中writer/DB接続をコマンド行・秘密値を表示せずread-only棚卸し。 書込停止前のバックアップは同VPS保全と外部独立保全の違いを厳格に扱う。stop/start/disable/mask/kilI/write migrationはまだ行わない。
 
 ## 常設禁止
 定時を過ぎたからという理由だけで停止しない。DB/COPY/DDLやサービスSTOPをread-only点検コードに混在させない。Drive新規書込連続再試行、Railway Agent/AI、V3/V4バックアップ上書き、BUY、過去データ削除禁止。コスト下限志向。
