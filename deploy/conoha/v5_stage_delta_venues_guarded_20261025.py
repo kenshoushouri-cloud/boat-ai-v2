@@ -4,7 +4,7 @@
 This program never writes public.v2_venues, boat_data live VIEW, BUY, or timers.
 It reconciles INSERT/UPDATE/DELETE in boat_data_stage.venues against a single
 REPEATABLE READ source snapshot. It is NOT continuous CDC and is NOT cutover.
-Apply requires explicit env flag + --apply + quiet window + source/stage proof.
+Apply requires explicit env flag + --apply + bounded window + source/stage proof.
 """
 from __future__ import annotations
 
@@ -111,14 +111,22 @@ def preview_delta(cur):
         "count(*) FILTER (WHERE s.venue_code IS NOT NULL AND t.venue_code IS NULL), "
         "count(*) FILTER (WHERE s.venue_code IS NULL AND t.venue_code IS NOT NULL), "
         "count(*) FILTER (WHERE s.venue_code IS NOT NULL AND t.venue_code IS NOT NULL "
-        "AND to_jsonb(s) IS DISTINCT FROM to_jsonb(t)) "
+        "AND to_jsonb(s) IS DISTINCT FROM to_jsonb(t)), "
+        "count(*) FILTER (WHERE s.venue_code IS NOT NULL AND t.venue_code IS NOT NULL "
+        "AND s.updated_at IS DISTINCT FROM t.updated_at "
+        "AND ROW(s.venue_name,s.created_at,s.venue_id,s.is_active) "
+        "IS NOT DISTINCT FROM "
+        "ROW(t.venue_name,t.created_at,t.venue_id,t.is_active)) "
         "FROM public.v2_venues s FULL OUTER JOIN boat_data_stage.venues t "
         "USING (venue_code)"
     )
-    inserted, deleted, updated = cur.fetchone()
+    inserted, deleted, updated, only_updated_at = cur.fetchone()
     show("VENUES_STAGE_DELTA_PREVIEW_READONLY",
          "insert=" + str(inserted), "update=" + str(updated),
-         "delete=" + str(deleted), "total_delta=" + str(inserted + updated + deleted),
+         "delete=" + str(deleted),
+         "updated_at_only=" + str(only_updated_at),
+         "other_column_changes=" + str(updated - only_updated_at),
+         "total_delta=" + str(inserted + updated + deleted),
          "snapshot_consistent=YES", "NO_DB_WRITES", "NO_CUTOVER")
     return inserted, updated, deleted
 
@@ -131,14 +139,21 @@ def sync(cur):
         sql.SQL("{}=EXCLUDED.{}").format(sql.Identifier(c), sql.Identifier(c))
         for c in COLUMNS if c not in PK
     )
+    update_columns = tuple(c for c in COLUMNS if c not in PK)
+    compare_dst = sql.SQL(",").join(
+        sql.SQL("dst.{}").format(sql.Identifier(c)) for c in update_columns)
+    compare_new = sql.SQL(",").join(
+        sql.SQL("EXCLUDED.{}").format(sql.Identifier(c)) for c in update_columns)
+    # SELECT WHERE true removes the PostgreSQL parser ambiguity between
+    # JOIN ... ON and INSERT ... ON CONFLICT.
     upsert = sql.SQL(
-        "INSERT INTO {} ({}) SELECT {} FROM {} "
+        "INSERT INTO {} AS dst ({}) SELECT {} FROM {} WHERE true "
         "ON CONFLICT ({}) DO UPDATE SET {} "
-        "WHERE to_jsonb({}) IS DISTINCT FROM to_jsonb(EXCLUDED)"
+        "WHERE ROW({}) IS DISTINCT FROM ROW({})"
     ).format(
         sql.Identifier("boat_data_stage", "venues"), col_list, col_list,
         sql.Identifier("public", "v2_venues"), sql.Identifier("venue_code"),
-        updates, sql.Identifier("venues")
+        updates, compare_dst, compare_new
     )
     cur.execute(upsert)
     inserted_or_updated = cur.rowcount
@@ -179,8 +194,10 @@ def main():
         if os.environ.get("V5_VENUES_STAGE_DELTA_APPROVED") != "YES":
             raise RuntimeError("HOLD_EXPLICIT_STAGING_APPROVAL_REQUIRED")
         n = now()
-        if not (n.hour >= 3 and n.hour < 6):
-            raise RuntimeError("HOLD_APPLY_ONLY_03_00_TO_05_59_JST")
+        # The venues pilot updates only an isolated 24-row staging table.
+        # It may run in daylight; legacy collectors and live views are untouched.
+        if not ((3 <= n.hour < 6) or (8 <= n.hour < 23)):
+            raise RuntimeError("HOLD_APPLY_OUTSIDE_SAFE_VENUES_WINDOWS")
     with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=8,
                          autocommit=False) as conn:
         with conn.cursor() as cur:
