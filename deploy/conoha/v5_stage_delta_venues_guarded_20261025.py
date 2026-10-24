@@ -51,6 +51,15 @@ def columns(cur, qualified):
     return tuple(row[0] for row in cur.fetchall())
 
 
+def signature(cur, qualified):
+    cur.execute(
+        "SELECT attname, atttypid::text, atttypmod, attnotnull, "
+        "attcollation::text, attidentity, attgenerated "
+        "FROM pg_attribute WHERE attrelid=to_regclass(%s) "
+        "AND attnum>0 AND NOT attisdropped ORDER BY attnum", (qualified,))
+    return tuple(cur.fetchall())
+
+
 def pk(cur, qualified):
     cur.execute(
         "SELECT a.attname FROM pg_index i "
@@ -73,6 +82,8 @@ def validate(cur):
             (relation,))
         if found != kind:
             raise RuntimeError("HOLD_RELATION_KIND_" + relation)
+    if signature(cur, SOURCE) != signature(cur, STAGE):
+        raise RuntimeError("HOLD_SCHEMA_SIGNATURE_MISMATCH")
     for relation in (SOURCE, STAGE):
         if columns(cur, relation) != COLUMNS:
             raise RuntimeError("HOLD_COLUMN_SHAPE_" + relation)
