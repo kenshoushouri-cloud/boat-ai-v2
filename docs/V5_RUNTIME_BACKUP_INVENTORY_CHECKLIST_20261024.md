@@ -8,8 +8,8 @@
 
 | ID | 対象・候補 | 調査して残す証拠 | 完了判定 |
 |---|---|---|---|
-| R01 | 実行ルート候補 `/opt/boat-ai-v5` と `/opt/boat-ai-collector`、その他 `systemd ExecStart` が参照する実パス | ディレクトリの存在、所有者、symlink実体、コードと実起動場所の対応 | **未調査** |
-| R02 | Gitリポジトリとデプロイ状態 | 各実行ルートの現在のcommit SHA、Git管理有無、作業ツリー差分/未追跡の**有無のみ**、ブランチ/タグ。GitHub `main` と同一とは決めつけない | **未調査** |
+| R01 | 実行ルート候補 `/opt/boat-ai-v5` と `/opt/boat-ai-collector`、その他 `systemd ExecStart` が参照する実パス | ディレクトリの存在、所有者、symlink実体、コードと実起動場所の対応 | **部分確認：2ルート実在（11:09）** |
+| R02 | Gitリポジトリとデプロイ状態 | 各実行ルートの現在のcommit SHA、Git管理有無、作業ツリー差分/未追跡の**有無のみ**、ブランチ/タグ。GitHub `main` と同一とは決めつけない | **部分確認：V5 Git HEAD・collector非Git（11:09）** |
 | R03 | 実際に稼働するV5本体/collector・ラッパー・起動モジュール | 対象ファイルの相対パス、サイズ、SHA-256、取得時刻、対応するGit commit、復元対象範囲。手作業修正・管理外スクリプトを漏らさない | **未調査** |
 | R04 | 依存ランタイム | Python実行ファイル・版、virtualenv位置、`requirements/lock/pyproject`有無、必要ライブラリ/システムパッケージの**バージョン一覧（秘密値なし）**、PostgreSQL/OS版 | **未調査** |
 | R05 | `systemd` のV5関連`.service/.timer`、drop-in、override、masked/enabled | **名前と稼働・有効化状態、実パス**。ExecStart・Environment・EnvironmentFileの実際の値は画面/GitHubへそのまま貼らない。定義の安全な赤塗り複製の保全手順を設計 | **未調査** |
@@ -37,4 +37,8 @@
 
 **状態：CHECKLIST_CREATED_ONLY / R01〜R10 NOT_AUDITED / R11〜R12 NOT_EXECUTED / EXTERNAL_BACKUP_NOT_VERIFIED / CUTOVER_0_OF_13_NO_GO**
 
-**Next ONE task：** ConoHa Termiusの**単一read-onlyコマンド**で、候補2ルート（`/opt/boat-ai-v5`、`/opt/boat-ai-collector`）の存在とGit管理の有無・HEADだけを確認する。設定値・環境変数・remotesは表示せず、Git fetch/pullや深い再帰走査はしない。結果を受けて次の1項目を確認する。
+**10/24 11:09 Termius確認**：`/opt/boat-ai-v5`は存在・Git YES・HEAD `504b61138e3aaae547688194652e7022c196bfc4`。`/opt/boat-ai-collector`は存在・Git NO。後者はGitHubのコピーでは復元できない。実際のファイル・設定の保全は未実施。
+
+**GitHubリポジトリ肥大化の安全整理**：[Issue #582](https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/582)で追跡。read-only容量/重複の計測→現行collector/systemdの参照照合→独立バックアップ/復元後に分割PR・別承認。現時点でコード削除・履歴改変なし。
+
+**Next ONE task：** `/opt/boat-ai-collector`直下の名前と種別をread-onlyで調査（実ファイル内容や秘密値は出さない）。
