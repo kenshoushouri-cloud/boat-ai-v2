@@ -244,5 +244,9 @@
 - Termius：2ディレクトリ（`__pycache__`, `refund_evidence`）、9ファイル（`backfill_20261017.py`, `.bak_20261019`, `collect_refund_evidence.py`, `daily_v5_safe.sh`, `db_pg.py`, `refund_boats_parser.py`, `refund_pending_20250701_20261005.txt`, `refund_targets_20250701_20261005.txt`, `repair_month_all_pg.py`）。存在の確認のみ。内容や参照先・ファイルサイズは未確認。Git非管理につき保全・現行参照特定前の整理/削除禁止。
 - GitHub肥大化整理Issue #582は登録済み、計測・削除未実施。旧DB/collector/13VIEW/venues stage24行維持、entry stage未作成、切替0/13 NO-GO。
 
+## 10/24 11:19 collector直下メタデータ確認
+- Termius：Git非管理`/opt/boat-ai-collector`直下9ファイル合計114031 B（約111KiB）、全root:root。shell`daily_v5_safe.sh`637 B/750、`collect_refund_evidence.py`1672 B/750、その他7ファイル644。`refund_evidence/`700、`__pycache__/`755、各dirエントリ4096 Bは**配下全容量ではない**。証拠フォルダ内容/容量は未確認・削除禁止。
+- 旧収集、DB、VIEW13件、venues stage24行、entry stage未作成に変更なし。V5本体・collector全体のバックアップやDrive保全は未実施。GitHub整理Issue #582も計測・削除なし。切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`/opt/boat-ai-collector`直下11件のサイズ・permission・所有者（メタデータのみ）をread-only確認**。内容・設定値/秘密値・remote URLは表示しない。deep scan、Git fetch/pull、実backup、DB/cron/collector変更、Drive API、コード削除禁止。Issue #582の整理は本体保全・復元後に別承認。
+**ConoHa Termiusで`refund_evidence/`と`__pycache__/`の実使用ディスク量だけを低優先度・15秒制限のread-only `du`で確認**。ファイル名や内容は出さず、タイムアウト時はSTOP、強制再試行しない。collector保全範囲を判断する。既存collector/cron/DB変更、バックアップ転送や上書き、Drive API、GitHub削除、切替・BUYは禁止。
