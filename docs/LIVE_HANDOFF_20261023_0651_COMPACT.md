@@ -336,6 +336,10 @@
 ## 10/24 14:57 JST：展示0行の2レースは後続取得で6行ずつ存在
 - Termiusのrailway read-only集計：津10R `20261024_09_10` 展示6行/1 label、締切前6/後0/不明0、forward当日6行、latest_snapshot_at=14:40:44.275834+09。福岡9R `20261024_22_09` も6行/1 label、締切前6/後0/不明0、forward当日6行、latest_snapshot_at=14:40:21.061322+09。`V5_EXHIBITION_GAP_READ_ONLY_PASS`、ROLLBACK。
 - 14:30～14:40 labelの確認だけでは0行だったが、後続14:40台のforward取得に存在。**永久欠損ではない。ただし本来の予測締切までに取得・参照できたか/初回取得の証明は未確定**。Drive書込403制限継続、13切替0/13 NO-GO。
+## 10/24 15:00 JST：展示取得間隔・締切余裕の確認
+- 津10R `20261024_09_10` 14:40:44.275834記録、deadline14:59:00、余裕1095.7秒（18分15.7秒）、label `conoha_forward_20261024_144032`。福岡9R `20261024_22_09` 14:40:21.061322記録、deadline14:55:00、余裕878.9秒（14分38.9秒）、label `conoha_forward_20261024_144009`。双方展示行6件・read-only、`V5_EXHIBITION_LEAD_TIME_READ_ONLY_PASS`、ROLLBACK。
+- GitHub `v5/conoha_realtime_window_pg.py`はすでにdeadline-awareで、9〜24分前（`--late-retry`なら5〜24分前）の候補に限定。`exh_lanes<6 OR odds_tickets<120`の欠損補完方式。安易な全面短間隔pollはCPU/API費用増・rate-limit高リスク。
+- 展示6行でも`exhibition_time`が全艇分NULLなしとは限らず、予測最終判定以前の利用可能性/実取得の証拠も未確定。学習/実予測採用不可。Drive書込403 STOP、stage1/13、本番切替0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**津10R・福岡9Rの展示6行の`snapshot_label`、最小/最大`snapshot_at`、レース締切`deadline_at`、最も遅い記録から締切までの秒数だけをConoHa railway READ ONLYで検査**（レースID限定、10秒制限・ROLLBACK）。展示行が存在してもその時点でV5の意思決定が済んでいた可能性があるため、学習/ROIへの採用をまだ許可しない。新規収集・DB更新・Drive書込・BUY・VIEW切替禁止。
+**ConoHa `railway`で津10R・福岡9Rの各forward展示label（14:40台）について、行数6のうち`exhibition_time IS NOT NULL`なlane数・重複艇数・締切前記録数をREAD ONLYで監査**。race_id限定、10秒timeout、ROLLBACK。6/6かつno duplicateなら収集データ品質の一部を確認できるがV5の最終判定時刻・取得真正性の証明にはならない。DB/cron/timer/writer/BUY、Driveへの追加書込、本番切替禁止。
