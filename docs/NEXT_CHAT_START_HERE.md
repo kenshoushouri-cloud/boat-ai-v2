@@ -1,12 +1,12 @@
-# 新チャット最小起点 — 新競艇AI開発No.2
+# 新チャット最小起点 — 新競艇AI開発No.2（2026-10-25）
 
 @GitHub
 @Railway
 
-repo `kenshoushouri-cloud/boat-ai-v2`。必ず`docs/HANDOFF_LATEST.md`→指定`docs/LIVE_HANDOFF_20261024_NIGHT_WINDOW_COMPACT.md`→本書だけ先に読む。古い長い引継ぎ・PROJECT_HISTORYを一括参照せず、チャット/タイムアウト対策で1作業ずつ必要最小限のlive取得。
+repo `kenshoushouri-cloud/boat-ai-v2`。最初に `docs/HANDOFF_LATEST.md`→指定compact→本書だけ。古いhandoffと長いworkflowは大量参照せず、1作業ずつ短いlive取得。
 
-目的：V5主力・2025-07以降の精度/ROI検証・紙上非購入の早期稼働。旧原本collectorを継続し共通stageへ一方向コピー、V5 shadowとread-only backtestを先行。現行13原表`railway.public.v2_*`/13共有VIEW`boat_data.*`、物理stage既存`boat_data_stage.venues`24行のみ、残12未作成、物理本番切替0/13。原本削除禁止。ConoHa同VPSのdump2件sha/TOC PASS、VPS外復元未証明。Drive新規書込403 STOP。Railway安価（$15–20より低く）、Agent/AI禁止、BUY OFF。日中の研究・準備は継続。
+**目的:** V5主力、2025-07以降の精度/真ROI検証、紙上非購入を早期稼働。ConoHa主・Railway費用最低限（$15–20/月を下回るほど良い）、Railway Agent/AI禁止。BUY OFF。
 
-**タイマー誤解を訂正：** GitHub`deploy/conoha/boat-v5-forward-window.timer`は`07..23:0/5:00 Asia/Tokyo`、07:00〜23:55のみで03:30は起動しない。結果catchupは01:20/02:20/03:20、service各最大30分、nightは23:00開始/最大90分。前倒し案`00:45/01:30/02:15`は`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`にあるが未設置。V5 reader-only shadow切替候補03:30も**未予約**。直前に実unit・完走/未確定PENDING/flock/子worker/DB状態を確認しFail-closed。
+**最新の実データ状態（10/25 08:16 JSTユーザーConoHa journal）:** 12系統ステージ初回物理snapshotが10/25 02:53:42 JSTに全件 `COPY_COMMITTED`、`STAGE12_INITIAL_COPY_PASS families=12 of_12`、systemd正常終了。先行会場24行と合わせ `boat_data_stage` **13/13初回コピー済**。12系統13,129,507行。原本 `public.v2_*` と live 13 VIEW `boat_data.*` を変えず旧収集継続。**更新・削除差分/CDC、独立復元、全writer切替・rollbackは未証明、本番切替0/13**。2026-10-24夜にcatchup前倒し00:45/01:30/02:15実機PASS。Drive書込403 STOP、原本削除禁止。
 
-**Next ONE task:** 12系統のCOPYを最優先。Termiusで `curl -fsSL https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/56db44eaa1300315018b052fc96c9231ee09111f/deploy/conoha/v5_stage12_schedule_once_20261024.sh | bash` を10/24 20-23時JSTに一度実行して予約PASS確認。10/25 02:50にstage-only12系統の原子的snapshot COPY、最大06:10で停止。**10/24 23:34のユーザーTermius結果：修正版installer PASS、10/25 02:50 JST NextElapse、Active、予約完了。実COPYまだ未開始**。翌日journalと全表件数/欠損を確認。旧収集停止なし・venues24保全・13 VIEW/原本writer変更なし。CDC/独立復元/本番切替は未実装、BUY OFF。
+**Next ONE task:** ConoHaで `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql` のread-only PG catalog監査を1度実施し、13原本が物理表、13 live `boat_data` がVIEW、13 stageが物理表、今回の12表の完了commentが存在することを確認する。12表COPY済なので再実行・再コピーはしない。次にUPDATE/DELETE含む差分同期・独立復元・writer/readerルート・自動rollbackを完成させ、別途全gate PASS時のみ切替。旧収集維持、BUY OFF。
