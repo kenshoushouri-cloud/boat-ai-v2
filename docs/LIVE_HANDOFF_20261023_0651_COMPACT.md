@@ -312,5 +312,8 @@
 ## 10/24 14:28 JST：V5 Drive極小書込probe FAIL（原因未取得）
 - Termius画面：14:25 `rclone about v5_gdrive:` 読み取りPASS、14:28 `rclone copyto` --immutable・1回retry・低TPSの新規専用prefixへの極小テストは`V5_DRIVE_WRITE_TEST_FAILED`。stderr/stdout破棄したため根本原因・HTTP status不明。readback未到達。**Google DriveへのV5バックアップ成功と扱わない**。残存remote試験ファイル有無も未確認。
 - 直近00:08 API 403 rate limit発生履歴あり。しかし今回のFAILをrate limit断定しない。旧backup/V3/V4/ConoHa/DB/timer/13 VIEWに変更なし。切替0/13 NO-GO。
+## 10/24 14:31 JST：V5専用Google Drive書込probe 403 RATE_LIMITで停止
+- Termius：`V5_DRIVE_WRITE_FAILED`, `RCLONE_EXIT_CODE=1`, `HTTP_STATUS=403`, `ERROR_CLASS=RATE_LIMIT`, `V5_DRIVE_DIAGNOSTIC_FINISHED`。同日14:25読取about PASSだが、書込は14:28/14:31連続失敗・readback未到達。HTTP 403/分類から**API書込レート制限が強く疑われる**。消費クォータや解除時刻は未確定。**本日このremoteへの追加書込probe/大容量転送/強制リトライ禁止**。旧V3/V4と本番データの削除・変更なし、外部バックアップ達成ではない。
+- 外部新世代が保全できない間はConoHaでの事前保全/同VPS復元PASS済みを維持し、DB新stage COPYや本番切替は不可。代わりに収集writer/read routingをread-only監査して実切替の準備を進める。
 ## Next ONE task（次の一作業）
-**Google Drive V5リモートに新規ランダム極小プローブを最大1回だけ再試行**、stdout/stderrをローカル0600一時ファイルに捕捉し、判定可能なHTTP codeと理由カテゴリだけ出力（元エラー文/認証値/remote名なし、終了時ログ消去）。書込成功時のみ1回readback比較。403/429はSTOPし追加retry禁止。実バックアップや既存remoteファイル更新は禁止。
+**GitHub現行スクリプト `deploy/conoha/v5_active_writer_routes_readonly_20261022.py` をConoHa上のV5 HEADから一時ファイルとして読み出し、no DB/no writeでActiveState・unit/cron名・SOURCE参照/書込みヒントを安全に取得**。スクリプト未存在ならSTOP。DB/schema/VIEW/collector/timers/BUY変更なし。独立バックアップと全writer実証前にステージングCOPY禁止、共有物理本番切替0/13 NO-GO。
