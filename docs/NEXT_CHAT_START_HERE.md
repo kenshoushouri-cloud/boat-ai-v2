@@ -1,13 +1,14 @@
-# 新チャット最小起点 — 新競艇AI開発No.2（2026-10-24）
+# 新競艇AI開発プロジェクトNo.2｜新チャット開始案内（2026-10-24 22:10）
 
 @GitHub
+@Railway
 
-repo `kenshoushouri-cloud/boat-ai-v2`。1. `docs/HANDOFF_LATEST.md`、2. そこで指定された`docs/LIVE_HANDOFF_20261024_OFFSITE_RECOVERY_COMPACT.md`、3. 本ファイルの3点のみを読む。古い長いhandoffやPROJECT_HISTORYを大量参照しない。
+Repo: `kenshoushouri-cloud/boat-ai-v2`。
 
-目的：V5主力・2025年7月以降・10月末限定非購入運用目標。旧原本`railway.public.v2_*`13表／`boat_data.*`VIEW13／`boat_data_stage.venues`24行、残り物理stage未作成、本番切替0。前向き締切前証明・費用最小・安全停止復帰優先。Drive10/19暗号化V5バックアップは存在するが復号/独立restore未検証。10/23-24ローカルバックアップ2件は同一VPSのみで確認。Drive新書込403 STOP、03:30切替未予約、BUY OFF。
+最初に **1. `docs/HANDOFF_LATEST.md` → 2. 指定先`docs/LIVE_HANDOFF_20261024_2210_COMPACT.md`全文 → 3. 本ファイル**だけ読み、古いhandoff/PROJECT_HISTORY/長いworkflowは大量参照しない。トーク容量とツール呼出を抑え、1回1作業。Termiusは短い貼付コード1つ。必要な変更はlive SHAで、GitHubの短縮引き継ぎ更新。
 
-**注意：** GitHubのforward-window timerは07:00〜23:55 JST限定で、03:30に発火しません。以前の「深夜5分刻み起動」想定は誤り。設置済ConoHa unitの一致のみ事前確認。01:20 catchupと07:00 morningへの影響は依然別gate。
+**最優先方針**：既存ConoHa原本収集を止めず、`railway.public.v2_*`13系統→`boat_data_stage.*`への一方向段階複製／差分同期。既存`boat_data.*`の13個非更新VIEWを使うV5 read-only実データbacktest・購入なしshadow研究はstage完成を待たず先行。正式な時点証拠がない過去値は実ROI/Forward実証に混ぜない。V5用venues stage24行だけあり、残12物理table未作成、原本物理切替0/13。旧データは既に複数保管先にあり、毎回探し直さない。Google Drive現行外部復元は未証明、Drive403新書込STOP、BUY OFF。
 
-**補完タイマー調整案：** 現GitHubは01:20/02:20/03:20の3回。収集night23:00が最大90分で00:30目安、補完run最大30分。提案は00:45/01:30/02:15 JSTで、03:30 shadow読取切替まで約45分バッファ。`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`に提案設定を置いたが**本番VPSへ未設置**。PENDING・flock競合なら切替HOLD。ライブ設置前に実ConoHa installed timerと直近run read-only照合。forward5分timerは07..23だけ。
+**時間の重要な訂正**：5分forward公式展示/オッズタイマーはGitHub定義で07:00〜23:55 JST限定、03:30には起動しない。夜間23:00収集後の結果補完は現行GitHub01:20/02:20/03:20。**ユーザー希望の早期化候補00:45/01:30/02:15**（既存提案`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`）はまだConoHaへ未設置。03:30〜04:00は将来shadow**readerだけ**切替候補であり、本番自動切替未予約。
 
-**Next ONE task:** ユーザー意向：既存原本collectorが稼働中、オッズ/展示/気象は既に収集されるため、日中source→stage複製・夜間03:30に最終差分→V5の**readerだけshadow切替**し、元writerは並行維持する。5分間隔timer/01:20 catchup終了は直前チェック。結果等は事後補完可、当時取り損ねた動的スナップショットまで復元保証なし。まずGitHubの既存V5 scorer/inference/backtest入口とVIEW read-only契約を狭く確認し、今すぐpaper-only real-data pilotを開発。物理stage12未作成/本番writer切替は別gate、03:30タイマー未予約、BUY OFF、Drive403 STOP。
+**Next ONE task**：ConoHaに実設置されている結果補完timer/23時night service・過去journal・競合状態をまずread-only監査し、結果補完を00:45/01:30/02:15へ安全に変えるコード/rollback手順を準備。同時にGitHub既存V5 scorer＋VIEWからの小規模read-only 2025-07以降backtestを実装。勝手なtimer変更・systemd停止・stage CREATE/COPY・03:30予約・BUYは禁止。すでにユーザー回答済みの保存先/希望を質問し直さない。
