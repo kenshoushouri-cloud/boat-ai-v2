@@ -27,6 +27,11 @@
 ## 深夜の無人切替
 - ユーザーは夜中に手動不可、収集の短時間停止・後日補完を許容。提案窓 **将来の03:30〜04:00 JST**、01:20 catchup完了と07:00 morningまでの復旧を前提。**今夜2026-10-25の本番切替は予約していない／NO-GO。**
 - 独立バックアップ復元、全writer/child job、最後の一貫した全PK insert/update/delete差分、スタート/ストップ/復元・rollback自動訓練と別の切替承認が必須。公式K/結果は過去補完可。後取得の瞬間オッズ/気象/展示初回時刻は元のbefore-decision証明と混同しない。
+## 2026-10-24 19:30 JST：ステージ統合24テストPASS、DBプレビューはdriver欠如で未確認
+- ユーザーTermius画面：修正後のstage関連17テスト、storage契約7テスト、**計24/24 PASS**（19:06時点29件の一部と重複。29+24を固有テスト数とは数えない）。`V5_STAGE_TESTS_PASS`。
+- 続く実DB `--all` は `STOP: psycopg not installed in runner environment`。**DBのプレビューが実行されていない**。ライブラリ新規導入や既存サービス停止不要。
+- GitHub `deploy/conoha/v5_online_stage_batch_copy.py`を修正：`--all` のみ `psycopg`未導入時は既存`psql`で`railway`の12固定ソース/ステージのカタログだけREAD ONLY/Rollback取得。単一表`--copy`は引き続きpsycopgと独立復元・明示証拠が必要で、何も自動実行しない。`tests/test_v5_psql_stage_preview.py`4件を追加。**新4件と実psqlプレビューは未実行**。
+- 本番13 VIEW維持、stage venues 1/13、live physical 0/13 NO-GO。03:30未予約、Drive403停止、BUY OFF。
 
 ## Next ONE task
-**GitHub新コードをConoHaの/tmpに隔離して、新stage名へ変更した旧5+6件と新runtime6件＋storage契約テストを短時間合成回帰し、同時に`v5_online_stage_batch_copy.py --all`を`railway`のread-onlyで一度だけ検査する**。失敗したら修正。次の本業は許可済み隔離staging DDL（source default/sequenceコピー防止）と本物の低負荷batch COPY実装、既存完全PK差分追込＋夜間自動復帰。今はDB/collector/timer/Driveを変更せず、BUY OFF。
+**ConoHa /tmp隔離で新psql fallbackのオフラインテスト4件 → 続けて`v5_online_stage_batch_copy.py --all`をpostgresユーザーでREAD ONLY実行する1操作**。12表のStage有無とPKを確認して低負荷隔離stage bootstrap設計へ進む。インストール/DB DDL/DML/collector STOP/BUYは禁止。
