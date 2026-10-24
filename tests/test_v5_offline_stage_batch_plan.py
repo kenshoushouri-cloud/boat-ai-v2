@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from v5.offline_stage_batch_plan import TARGETS, plan
+from boat_shared_storage_contract import RELATIONS
 
 
 def fixed_manifest():
@@ -13,10 +14,11 @@ def fixed_manifest():
         "safety": {"cutover_ready": False},
         "tables": [],
     }
+    views = {r.legacy: r.canonical for r in RELATIONS}
     for src in TARGETS:
         base["tables"].append({
             "legacy_relation": src,
-            "canonical_relation": "boat_data." + src.removeprefix("public.v2_"),
+            "canonical_relation": views[src],
             "full_writer_reader_and_ddl_coverage_certified": False,
             "ongoing_change_capture_validated": False,
         })
