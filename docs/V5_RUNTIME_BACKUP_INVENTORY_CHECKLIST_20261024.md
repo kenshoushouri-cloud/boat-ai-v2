@@ -43,4 +43,6 @@
 
 **10/24 11:15 確認**：Git管理外collector直下は2ディレクトリ（`__pycache__`、`refund_evidence`）＋9ファイル（`backfill_20261017.py`、`backfill_20261017.py.bak_20261019`、`collect_refund_evidence.py`、`daily_v5_safe.sh`、`db_pg.py`、`refund_boats_parser.py`、`refund_pending_20250701_20261005.txt`、`refund_targets_20250701_20261005.txt`、`repair_month_all_pg.py`）。存在のみ確認。Git管理外のファイルが実稼働に必須の可能性があるため削除厳禁。
 
-**Next ONE task：** collector直下のサイズ・権限・所有者だけread-onlyで調査し、バックアップ範囲を絞る。秘密値・内容表示や深い再帰走査をしない。
+**10/24 11:19 read-onlyメタデータ**：直下9ファイル計114031 B（約111KiB）、全root:root。`daily_v5_safe.sh`637B/750、`collect_refund_evidence.py`1672B/750、その他7ファイル644。`refund_evidence` 700、`__pycache__` 755。dir自身の4096Bは配下容量ではない。実内容・稼働参照・バックアップ未確認。
+
+**Next ONE task：** collector直下2ディレクトリの実容量を低優先度・タイムアウト付きread-onlyで調べる。
