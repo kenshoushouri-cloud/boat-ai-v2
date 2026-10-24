@@ -1,0 +1,233 @@
+name: Research archive read-through contract
+
+on:
+  pull_request:
+    paths:
+      - 'research_archive_readthrough.py'
+      - 'research_archive_export_pg.py'
+      - 'research_archive_pilot_readiness_pg.py'
+      - 'analyze_final_ab_features_pg.py'
+      - 'docs/V4_REALTIME_ARCHIVE_READTHROUGH_CONTRACT_20260915.md'
+      - '.github/workflows/research-archive-readthrough.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile research helpers and first consumer
+        run: |
+          python -m py_compile research_archive_readthrough.py
+          python -m py_compile research_archive_export_pg.py
+          python -m py_compile research_archive_pilot_readiness_pg.py
+          python -m py_compile analyze_final_ab_features_pg.py
+
+      - name: Read-through, digest, archive integrity, exporter, and pilot guard smoke test
+        run: |
+          python - <<'PY'
+          from datetime import date
+          import gzip
+          import hashlib
+          import json
+          from pathlib import Path
+          import tempfile
+
+          from research_archive_readthrough import (
+              ArchiveIntegrityError,
+              EvidenceQuery,
+              JsonlGzipPartitionSource,
+              MissingEvidenceError,
+              ReadThroughStore,
+              assert_equivalent,
+              canonical_rows_digest,
+          )
+          from research_archive_export_pg import ExportSpec, _select_sql, canonical_line
+          from research_archive_pilot_readiness_pg import candidate_months, month_bounds
+
+          class MemorySource:
+              def __init__(self, name, covered, rows):
+                  self._name = name
+                  self._covered = covered
+                  self._rows = rows
+              @property
+              def name(self):
+                  return self._name
+              def covers(self, query):
+                  return self._covered
+              def fetch(self, query):
+                  return list(self._rows)
+
+          q = EvidenceQuery(
+              table='v2_realtime_odds_snapshots',
+              start_date='2026-07-01',
+              end_date='2026-07-31',
+              labels=('historical',),
+          )
+          rows = [
+              {'race_id':'202607010101','snapshot_label':'historical','ticket':'1-2-3','odds':'10.5'},
+              {'race_id':'202607010101','snapshot_label':'historical','ticket':'1-3-2','odds':'12.0'},
+          ]
+
+          store = ReadThroughStore(
+              MemorySource('online', False, []),
+              MemorySource('archive', True, rows),
+          )
+          batch = store.fetch(q)
+          assert batch.source_name == 'archive'
+          assert tuple(batch.rows) == tuple(rows)
+
+          count1, sha1 = canonical_rows_digest(
+              rows,
+              key_fields=('race_id','snapshot_label','ticket'),
+          )
+          count2, sha2 = canonical_rows_digest(
+              list(reversed(rows)),
+              key_fields=('race_id','snapshot_label','ticket'),
+          )
+          assert count1 == count2 == 2
+          assert sha1 == sha2
+          assert_equivalent(
+              rows,
+              list(reversed(rows)),
+              key_fields=('race_id','snapshot_label','ticket'),
+          )
+
+          missing = ReadThroughStore(
+              MemorySource('online', False, []),
+              MemorySource('archive', False, []),
+          )
+          try:
+              missing.fetch(q)
+          except MissingEvidenceError:
+              pass
+          else:
+              raise AssertionError('missing evidence must fail closed')
+
+          weather_spec = ExportSpec(
+              table='v2_realtime_weather_snapshots',
+              start_date=date(2026, 7, 1),
+              end_date=date(2026, 7, 31),
+              label='historical',
+              output_dir=Path('/tmp/archive-smoke'),
+          )
+          weather_spec.validate(today=date(2026, 9, 15))
+          weather_sql, weather_params = _select_sql(weather_spec)
+          assert 'v2_realtime_weather_snapshots' in weather_sql
+          assert 'race_date >= %s' in weather_sql
+          assert 'race_date <= %s' in weather_sql
+          assert 'snapshot_label = %s' in weather_sql
+          assert weather_params == [date(2026, 7, 1), date(2026, 7, 31), 'historical']
+
+          odds_spec = ExportSpec(
+              table='v2_odds_trifecta',
+              start_date=date(2026, 7, 1),
+              end_date=date(2026, 7, 31),
+              label=None,
+              output_dir=Path('/tmp/archive-smoke'),
+          )
+          odds_spec.validate(today=date(2026, 9, 15))
+          odds_sql, odds_params = _select_sql(odds_spec)
+          assert 'v2_odds_trifecta' in odds_sql
+          assert 'race_id >= %s' in odds_sql
+          assert 'race_id < %s' in odds_sql
+          assert 'race_date' not in odds_sql
+          assert odds_params == ['20260701', '20260801']
+
+          try:
+              ExportSpec(
+                  table='v2_realtime_weather_snapshots',
+                  start_date=date(2026, 9, 10),
+                  end_date=date(2026, 9, 10),
+                  label='historical',
+                  output_dir=Path('/tmp/archive-smoke'),
+              ).validate(today=date(2026, 9, 15))
+          except ValueError:
+              pass
+          else:
+              raise AssertionError('too-recent archive slice must fail closed')
+
+          try:
+              ExportSpec(
+                  table='v2_odds_trifecta',
+                  start_date=date(2026, 7, 1),
+                  end_date=date(2026, 7, 31),
+                  label='historical',
+                  output_dir=Path('/tmp/archive-smoke'),
+              ).validate(today=date(2026, 9, 15))
+          except ValueError:
+              pass
+          else:
+              raise AssertionError('unsupported label filter must fail closed')
+
+          assert canonical_line({'b': 2, 'a': 1}) == canonical_line({'a': 1, 'b': 2})
+
+          # Pilot readiness must choose only whole months old enough for safe research.
+          assert month_bounds(2026, 7) == (date(2026, 7, 1), date(2026, 7, 31))
+          pilot_months = candidate_months(today=date(2026, 9, 15), lookback_months=4, min_age_days=30)
+          assert (date(2026, 7, 1), date(2026, 7, 31)) in pilot_months
+          assert (date(2026, 8, 1), date(2026, 8, 31)) not in pilot_months
+
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td)
+              archive = root / 'weather.jsonl.gz'
+              archived_rows = [
+                  {'race_id':'202607010101','snapshot_label':'historical','weather':'晴'},
+                  {'race_id':'202607020202','snapshot_label':'historical','weather':'曇り'},
+              ]
+              payload = b''.join(canonical_line(r) for r in archived_rows)
+              with archive.open('wb') as raw:
+                  with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=0) as gz:
+                      gz.write(payload)
+              archive_bytes = archive.read_bytes()
+              manifest = {
+                  'archive_contract_version': 1,
+                  'table': 'v2_realtime_weather_snapshots',
+                  'start_date': '2026-07-01',
+                  'end_date': '2026-07-31',
+                  'label': 'historical',
+                  'schema': [
+                      {'column_name':'race_id','data_type':'text','udt_name':'text'},
+                      {'column_name':'snapshot_label','data_type':'text','udt_name':'text'},
+                      {'column_name':'weather','data_type':'text','udt_name':'text'},
+                  ],
+                  'row_count': 2,
+                  'canonical_payload_bytes': len(payload),
+                  'canonical_payload_sha256': hashlib.sha256(payload).hexdigest(),
+                  'archive_file': archive.name,
+                  'archive_file_sha256': hashlib.sha256(archive_bytes).hexdigest(),
+                  'readback_verified': True,
+                  'source_rows_deleted': False,
+              }
+              manifest_path = root / 'weather.manifest.json'
+              manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+              source = JsonlGzipPartitionSource(manifest_path)
+              aq = EvidenceQuery(
+                  table='v2_realtime_weather_snapshots',
+                  start_date='2026-07-01',
+                  end_date='2026-07-31',
+                  labels=('historical',),
+              )
+              assert source.covers(aq)
+              assert source.fetch(aq) == archived_rows
+
+              archive.write_bytes(archive_bytes + b'tamper')
+              try:
+                  source.fetch(aq)
+              except ArchiveIntegrityError:
+                  pass
+              else:
+                  raise AssertionError('tampered archive must fail closed')
+
+          print('RESEARCH_ARCHIVE_READTHROUGH_SMOKE=PASS')
+          PY
