@@ -74,7 +74,7 @@ echo "=== LOCAL BACKUP/DISK FILES (NO RESTORE) ==="
   echo 'LOCAL_BACKUP_CANDIDATES:'
   find "$OUTROOT" -maxdepth 1 -type f \
     \( -name '*railway*' -o -name '*archive*' -o -name '*boat-ai*' \) \
-    -printf '%f | %s bytes | %TY-%Tm-%Td\n' | head -35
+    -printf '%f | %s bytes | %TY-%Tm-%Td\n' | head -35 || true
   echo 'Local backups are NOT independent off-VPS restoration proof.'
 } > "$OUT/04_backup_disk_inventory.txt"
 
