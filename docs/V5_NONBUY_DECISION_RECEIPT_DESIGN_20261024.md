@@ -38,10 +38,10 @@ GitHubの調査により、**前の「記録器なし」は不正確**と判明�
 ## cutoff後取得に対する最小コード補強（2026-10-24）
 - `v5/offline_v5_freeze_bridge.py` で既存`forward_shadow_freeze._dt`を再利用。`exhibition`と`odds`の`captured_at`が`decision_cutoff_at`より後なら、数値計算・候補固定に入る前に`ValueError`で拒否。形式不正やtimezoneなしもfail-closed。既存最終締切180秒・freeze60秒条件を維持。
 - `tests/test_v5_offline_v5_freeze_bridge.py` に3つの合成回帰検査を追加：展示cutoff後拒否、オッズcutoff後拒否、cutoff同時刻での非購入・権限FALSE維持。既存6件と合わせて9テスト定義。
-- **GitHubコード保存は確認済み。オフラインのPythonテスト実行は未確認（CI自動実行結果なし）**。合格とは記載しない。
+- **10/24 16:05 JST：Termiusの隔離Pythonテストをユーザー画面で確認、合計9件 `OK` / `V5_ASOF_9_TESTS_PASS`。** CI結果ではなくConoHa上の隔離テスト実績。実データ・配信真正性やBUY/ROIを証明しない。
 - 自己申告`captured_at`とハッシュ文字列は初回観測証明に非該当。合成チェックからlive V5/BUT/ROIへの昇格禁止。`forward_shadow_freeze.py`・collector・ConoHa・DB・systemd・Drive書込は変更していない。
 
-**次の1作業：** GitHubの独立した隔離環境で`PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_v5_offline_v5_freeze_bridge.py' -v`を実行し、既存6件＋新3件の結果を確認する。加えて安全な環境で必要最小限の周辺回帰テストへ進む。モデルscopeのT1.00/T2.20矛盾が解決するまでV5本番昇格なし。
+**次の1作業：** `tests/test_v5_forward_shadow_freeze.py`の6件を隔離環境で非root・タイムアウト付き実行し、既存shadow記録器の重複防止/非購入権限が維持されることを確認。モデルscopeのT1.00/T2.20矛盾が解決するまでV5本番昇格なし。
 
 ## 候補記録の契約（まだ実装・有効化しない）
 別プロセス（購入権限なし、外部APIなし）からのみ、レース単位の`shadow`候補を受け取る。
