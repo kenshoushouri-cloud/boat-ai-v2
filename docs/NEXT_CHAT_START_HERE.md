@@ -9,4 +9,4 @@ V5は研究成果を再利用して非購入限定稼働を構築する。6艇�
 
 最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**Next ONE task**：深夜手動不可のため、将来の自動切替候補窓03:30〜04:00 JSTを設計（01:20結果補完完了後、07:00朝収集前）。**2026-10-25 03:30は本番切替未予約・NO-GO**。GitHub `deploy/conoha/v5_cutover_writer_inventory_readonly_20261024.sh`はアップロード済み、監査だけ。次は短いTermius実行でwriter/cron/PGセッションをread-only確認。自動切替は独立復元・全writer認証・自動戻しの実証と別承認後にのみsystemdタイマー有効化。stage1/13/live0/13、Drive403 STOP、BUY OFF。
+**Next ONE task**：2026-10-24 18:20 writer監査PASS：4timer active、対象serviceは瞬間的にinactive、cron該当0、DB他セッション0（全writerの認証ではない）。ユーザーは一括準備を希望し必要な準備を承認。GitHub `deploy/conoha/v5_cutover_one_command_prepare_20261024.sh`をアップロード済み。**次は1コマンドでConoHa上に保存先13関係/書込監査/容量/ローカル保全/波分け計画/03:30候補ゲートの準備レポートを生成。** DBコピー・timerインストール・切替は含まない（未達ゲートのためNO-GO）。独立復元/全writer/差分追従/自動復帰後に本番の別承認。現行stage1/13/live0/13、Drive403 STOP、BUY OFF。
