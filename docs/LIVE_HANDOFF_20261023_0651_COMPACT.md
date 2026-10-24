@@ -287,5 +287,8 @@
 - Termius：`SYSTEMD_SHA_PASS`、`SYSTEMD_ARCHIVE_GUARD_PASS`、`SYSTEMD_RESTORED_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`V5_SYSTEMD_ISOLATED_RESTORE_PASS_CLEANED`。13:38作成の7 unit `units.tar`（20,480 B・mode600・SHA256 `dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`）について同VPS隔離展開・内容一致・掃除までPASS。
 - V5本体・Git非管理collector・systemd7件のローカルTAR＆同ConoHa隔離復元はPASS。外部EnvironmentFile/有効化symlink/秘密値・VPS外独立保全・DB全復元・本番起動/予測検証は未実施。旧収集/DB/13VIEW/venues stageは維持。本番切替0/13 NO-GO。
 
+## 10/24 13:48 JST：systemd外部認証参照の定義監査 PASS
+- Termius：V5 unit実体7ファイルすべて`ENVFILE=0 INLINE_ENV=0 CREDENTIAL=0`、`V5_SYSTEMD_CONFIG_REFERENCE_AUDIT_PASS`。これはユニット本文で3種類の直接指定が無いという意味に限り、シェル/Python経由のenvやsecret依存を否定しない。
+- V5本体・collector・unit定義は同ConoHaローカルTARと隔離展開PASS。VPS外独立保全/起動リンク・2DB全復元は未完了。期限優先につき、バックアップ棚卸しをいったん区切り、**次はvenues stageの現時点差分をREAD-ONLYで再測定**する。13本番物理切替は0/13のまま、独立保全やwriter確認前の差分適用/切替は禁止。
 ## Next ONE task（次の一作業）
-**ConoHa TermiusでV5 systemd7定義のEnvironmentFile/Environment/credential設定有無のフラグのみread-only確認**。本文・環境変数値・参照パス・認証情報は画面出力しない。外部復旧依存を特定してから保全する。稼働サービス/cron/DB/VIEW変更、Drive通信・GitHub削除・BUY・切替は禁止。
+**ConoHaの`railway` DBで旧`public.v2_venues`と隔離`boat_data_stage.venues`の現時点の全キー・実データ/時刻差分の件数だけを、`REPEATABLE READ READ ONLY`、10秒制限、ROLLBACKで取得**。実際のstage COPYは再実施せず、DML/VIEW差替え/本番切替/BUYなし。GitHub cleanup Issue #582は保全完了後。独立VPS外保全未完成につき本番切替0/13 NO-GO。
