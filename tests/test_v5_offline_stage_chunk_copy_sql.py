@@ -7,7 +7,7 @@ from v5.offline_stage_chunk_copy_sql import StageShape, make_window
 def shape(**changes):
     base = dict(
         source="public.v2_realtime_entry_snapshots",
-        staged="v5_data.raw_entry_snapshots",
+        staged="boat_data_stage.entry_snapshots",
         columns=("id", "race_id", "lane", "snapshot_label"),
         pk=("id",),
         stage_is_physical=True,
@@ -27,7 +27,7 @@ class OnlineCopyGeneratorTest(unittest.TestCase):
         self.assertIn('LIMIT %s', w.select_keys_sql)
         self.assertEqual(w.select_keys_params, (200,))
         self.assertEqual(w.insert_rows_params, (200,))
-        self.assertIn('INSERT INTO "v5_data"."raw_entry_snapshots"', w.insert_rows_sql)
+        self.assertIn('INSERT INTO "boat_data_stage"."entry_snapshots"', w.insert_rows_sql)
         self.assertIn('ON CONFLICT ("id") DO NOTHING', w.insert_rows_sql)
         self.assertNotIn("nextval", w.insert_rows_sql)
         self.assertEqual(w.mode, "SQL_GENERATION_ONLY_NOT_APPLIED")
