@@ -322,6 +322,10 @@
 ## 10/24 14:38 JST：forward-window.service 状態 read-only確認
 - Termius: `boat-v5-forward-window.service` LoadState=loaded / ActiveState=inactive / SubState=dead / Result=success / ExecMainStatus=0 / MainPID=0 / ExecMainStartTimestamp=2026-10-24 14:35:01 JST / TimeoutStartUSec=4min20s。14:35のactivating後、14:38に処理完了・滞留なし。あくまでサービスの終了成否で、`--apply`の有無や実データ取得・書込は未検証。
 - `v5/conoha_realtime_window_pg.py`をGitHubから確認：デフォルトはPREVIEW/NO_HTTP_NO_WRITES、`--apply`かつ`V5_ENABLE_LIVE_COLLECTOR=YES`で収集。実際の起動モードはjournalの限定マーカーで要確認。既存収集/DB/cron/timers/VIEW変更なし、Drive書込403で停止、13系統本番切替0/13 NO-GO。
+## 10/24 14:45 JST：forward-window 実行モードログ監査
+- Termiusの14:30–14:40 journal限定集計で `APPLY_RUNS=2`, `PREVIEW_RUNS=0`, `CANDIDATE_LOGS=2`, `LAST_CANDIDATES=3`, `NO_WRITE_RUNS=0`, `COLLECTOR_SUCCESS=5`, `COLLECTOR_FAILED=0`, `COLLECTOR_TIMEOUT=0`、`V5_FORWARD_LOG_AUDIT_READ_ONLY_FINISHED`。
+- 実際にAPPLY・HTTP collector subprocessが5件code=0を返すことは確認。ただし5ユニークraceとは限らず、実際のDBスナップショットINSERT/品質、時間前証拠、BUY/ROIは未証明。GitHub `v5/conoha_realtime_window_pg.py`では `V5_FORWARD_COLLECTOR_RC=<rid>:<code>` 形式で、`SNAPSHOT_LABEL=conoha_forward_YYYYMMDD_HHMMSS`を各childへ渡す。
+- Drive書込403 RATE_LIMITにつきリトライ停止。既存DB/cron/VIEW変更なし。Stage1/13、本番0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**ConoHaで2026-10-24 14:30〜14:40 JSTのforward-window.service journalをread-only限定集計**。`MODE`、`CANDIDATES`、`NO_HTTP_NO_WRITES`、`COLLECTOR_RC`、`TIMEOUT`の件数だけ表示し、生ログ/環境変数/認証値は出さない。MODEがPREVIEWなら成功終了でもデータ取得なし。新しいcollect/BUY/DB-DML・Drive書込/サービス再起動禁止。Stage 1/13、本番0/13 NO-GO。
+**ConoHaの14:30–14:40 forward-window journalからcollector成功race_idを厳格な形式検証で抽出し、`railway` DB旧物理3表entry/exhibition/odds snapshotの当日14:30-14:39ラベル件数をrace_idのindex利用で読み取り専用集計**。ユーザーにログ全行・環境・secretは見せない。SQLはREPEATABLE READ READ ONLY/10秒上限・ROLLBACK、ログからのIDをpsql文字列パラメータとして渡す。件数0でもソース経路違いの可能性があるため即収集失敗とは決めない。新規collect/BUY/DML/VIEW変更、Drive試験禁止。本番0/13 NO-GO。
