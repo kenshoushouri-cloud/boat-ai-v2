@@ -307,5 +307,7 @@
 - Termiusで`public.v2_realtime_entry_snapshots`: physical r、`boat_data.entry_snapshots`はVIEW v、`boat_data_stage.entry_snapshots` absent=true、21列、自然キー3/3 NOT NULL、UNIQUE index2、ユーザートリガー0、関係FK0、旧source idには`nextval` defaultあり。`ENTRY_SNAPSHOT_SCHEMA_READ_ONLY_PASS`、ROLLBACK。stage作成/実COPY=0、収集停止なし。
 - stageを作るなら旧sourceのserial default/sequenceをstageに持ち込まない。少量33MBでも新外部独立バックアップ＋復元と全writer確認・別承認がまだなく、新規DDL/DMLはNO-GO。FIRST_CAPTURE_UNVERIFIEDのため予測用事前as-of証拠には使わない。
 
+## 10/24 14:25 JST：V5 Drive読み取り接続probe PASS
+- Termiusの`rclone about v5_gdrive:` はretry/通信量制限・30秒timeout下で`V5_DRIVE_READ_ONLY_PROBE_PASS`。00:08の403レート制限は今回の照会では再現せず。**書込権限・VPS外の実バックアップと復元・別Drive割当は未確認**。既存収集、DB、13VIEW/BUY無変更。切替0/13 NO-GO。
 ## Next ONE task（次の一作業）
-**DriveのV5専用rclone remote`v5_gdrive:`に対し、低頻度・再試行なしの読み取り専用接続1回のみを短時間probeし、成功/失敗のマーカーだけ出力する**。10/24 00:08にDrive API 403 RATE_LIMIT_EXCEEDED観測あり、無限再試行・Driveの一覧本文表示・アップロード禁止。Remote接続復旧を確認してから別世代への安全な独立保全を設計する。DB/collector/timers/VIEW/BUY変更なし、本番切替0/13 NO-GO。
+**V5 Drive専用の新規ランダムprefixに秘密のない極小テストファイル1個だけを低頻度で新規作成(`--immutable`)し、readback内容一致を検査**。旧V3/V4/既存データを触らず、ログに認証値・実ファイル本文を出さない。実backupの転送は暗号化/保管先分離とrestore計画後。レート制限時はSTOPし再試行ループ禁止。
