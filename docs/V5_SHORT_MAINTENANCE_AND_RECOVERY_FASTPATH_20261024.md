@@ -27,8 +27,12 @@
 - **いずれか1つでも失敗すれば旧収集を停止させない／途中なら事前に実証した切戻しを実施して旧収集を再開**。rollback不能のgate未承認状態ならスケジュール無効。原本は削除せず、欠損や過去補完もas-of証明に混入させない。
 - 2026-10-24 18:13 ユーザー要望に合わせ`deploy/conoha/v5_cutover_writer_inventory_readonly_20261024.sh`をGitHubに追加。現時点でこちらは**監査専用、停止/切替コードではない**。
 
+## 2026-10-24 一括準備コード
+- `deploy/conoha/v5_cutover_one_command_prepare_20261024.sh`をGitHubにアップロード。コマンド1回でread-only 13関係・writer/cron/PGの監査、ローカルバックアップ候補一覧、ステージの波分け、03:30夜間切替gateを**保全先`/var/backups/v5_prepare_*/`へレポート出力**。
+- 作業は新規ローカルファイル書込のみでDB/VIEW/systemdの変更・自動切替の予約・大量COPYはしない。日中のonline-copy/差分追込・独立バックアップ復元・全writer証明・自動切戻しが今後の開発工程。03:30-04:00は**候補時刻**であり今夜の予約ではない。
+
 ## 直近1作業
-**4 timer/serviceの状態と次回時刻は18:06に確認済み**。forward 18:10/以後5分ごと、night 23:00、catchup翌01:20、morning翌07:00。停止前の残課題はtimer以外のworker/cron/DB writer・未確定結果・独立復元・復旧実行方法。次は実行中writer/DB接続をコマンド行・秘密値を表示せずread-only棚卸し。 書込停止前のバックアップは同VPS保全と外部独立保全の違いを厳格に扱う。stop/start/disable/mask/kilI/write migrationはまだ行わない。
+**4timerは18:06、writer/cron/DB瞬間監査は18:20に確認済み**。forward 18:10/以後5分ごと、night 23:00、catchup翌01:20、morning翌07:00。停止前の残課題はtimer以外のworker/cron/DB writer・未確定結果・独立復元・復旧実行方法。次は実行中writer/DB接続をコマンド行・秘密値を表示せずread-only棚卸し。 書込停止前のバックアップは同VPS保全と外部独立保全の違いを厳格に扱う。stop/start/disable/mask/kilI/write migrationはまだ行わない。
 
 ## 常設禁止
 定時を過ぎたからという理由だけで停止しない。DB/COPY/DDLやサービスSTOPをread-only点検コードに混在させない。Drive新規書込連続再試行、Railway Agent/AI、V3/V4バックアップ上書き、BUY、過去データ削除禁止。コスト下限志向。
