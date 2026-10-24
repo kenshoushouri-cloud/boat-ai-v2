@@ -50,5 +50,11 @@
 - 表ごとの物理正本移管先は「V5向け候補」であり確定運用経路ではない。`v5_data.venues`と`boat_data_stage.venues`など既設の名前/重複保全を精査し、**既存のstagingを自動再作成しない**。
 - 安全化を作業の最後へ放置するのでなく、**一括で準備 → コンパクトに承認 → 旧収集継続中に低負荷分割stage → 一括差分検証 → 承認済み切替**の順で進める。
 
+## 17:55 13系統バッチgate PASS、短時間停止＋補完方針
+- Termius画面で13行、`railway`容量3479MB、`boat_data_stage.venues`は実表(r)、`boat_data.venues`はVIEW(v)、READ ONLY/ROLLBACK、`V5_13_SOURCE_BATCH_GATE_READONLY_DONE_NO_COPY`確認。見えている一部`v5_data.raw_*`はABSENT。**新V5物理targetの一括作成・COPY・本番切替はまだ実施していない**。
+- ユーザー方針：**短い計画停止はやむを得ない。停止中の欠落は元資料から回収できる種類なら後日補完**。GitHubに`docs/V5_SHORT_MAINTENANCE_AND_RECOVERY_FASTPATH_20261024.md`作成。多数表を事前オンライン低負荷stage後、最終差分の短時間のみ全関連writer/timers/child workerを限定停止。予め安全復旧・欠落補完・復元可否を確認する。
+- **ただし展示・刻々変化するオッズ・風水面などは後日同一時点の原本が再取得できない場合がある**。正確に復元できないものは`UNKNOWN_AT_DECISION`としてHOLD。後取得は`RETROSPECTIVE_BACKFILL`、本物の締切前に観測された予測証拠と混ぜない。
+- 本日の停止・既存サービス無断操作・VIEW切替・物理コピーの実行承認はまだない。現行収集を維持しつつ停止計画の確認を先行。
+
 ### Next ONE task
-**13系統一括のメタデータgate SQLをConoHaで一度だけ実行**し、コピー優先バッチのキー・容量・既存V5 target衝突を確認。次いでV5本体の既存ビュー参照アダプタを進めつつ、オンラインstage複数表の具体的実行単位/差分追従・rollback手順を確定。事前承認のない大量COPY/VIEW切替/BUY/Drive再試行は禁止。
+**次は4つの現行timer・サービス・子worker・次実行時刻をread-only棚卸し**し、停止するならいつからいつまでを安全に確保できるかと復帰手順を具体化。その間GitHubで既存研究のVIEW入力アダプタとオンラインバッチstage計画を進める。無断停止/物理COPY/VIEW切替/BUY/Drive再試行は禁止。
