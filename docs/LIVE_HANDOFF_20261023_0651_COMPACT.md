@@ -280,5 +280,8 @@
 
 ## 10/24 13:24：systemd実体パス監査PASS
 - Termius：朝/夜のserviceは同一`boat-v5-daily@.service`、timer4＋service3で**実体7ファイルすべて`/etc/systemd/system/`**。両インスタンスの`DropInPaths`含め空、timer4 enabled/service3 static。`V5_SYSTEMD_PATH_AUDIT_PASS`。設定内容・EnvironmentFile実体やenabled symlinkの保全は未実施。
+## 10/24 13:38 JST：V5 systemd unit実体7ファイルのローカル保全PASS／10月末判定
+- Termius画像：新規root-only `units.tar` を作成。20,480 bytes、mode600、tar目録7件・元ファイルとの差分0で`V5_SYSTEMD_LOCAL_BACKUP_7_PASS_RESTORE_NOT_TESTED`表示、SHA256取得（表示値`dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`）。**systemd隔離復元未実施**、external EnvironmentFile・enabled symlink・OS/secretやVPS外独立保全は未完了。
+- 10/31まで残り7日。V5/collector同VPSバックアップ＆隔離展開済みだが、共通13物理正本**本番切替0/13**（venuesの隔離stageのみ24行）、全writer差分同期/rollback未証明、V5実学習・事前as-of証拠・真正walk-forward ROI・実予測未検証。**自動購入を含む全面運用を10月末達成と約束しない**。最短目標は保全・取得/予測ゲート合格時に限る非購入限定canary、不可ならNO-GO継続。バックアップ後は物理移行・予測機能の検証へ優先順位を戻す。
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで確認済みの実体systemd unit7ファイルをroot-only新規TARに低負荷でローカル保全し、TOC・byte数・SHA256を記録**。unit本文・秘密値は画面/GitHubへ出さない。これはサービス起動や外部設定ファイル・enabled symlink全体の復元証明ではない。元service/timer、collector、DB、VIEW変更・Drive通信・GitHub整理削除禁止。本番切替0/13 NO-GO。
+**ConoHa Termiusで新規root-only systemd`units.tar`のSHA-256・安全な相対パス/7ファイルを検査し一時0700領域へ隔離展開、TAR対展開バイト一致と一時領域削除を検証**。実unitへの復元/enable/restartは行わない。旧DB/collector/timers/VIEW/venues stage変更、Drive通信・GitHub整理削除・BUY禁止。本番切替0/13 NO-GO。
