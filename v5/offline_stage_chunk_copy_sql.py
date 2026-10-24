@@ -76,6 +76,28 @@ def validate_shape(shape: StageShape) -> None:
         raise ValueError("STOP: missing/ambiguous complete ordered primary key")
 
 
+def make_key_select(shape: StageShape, after: tuple | None,
+                    limit: int) -> tuple[str, tuple]:
+    """Build the next bounded source PK query BEFORE knowing its final key."""
+    validate_shape(shape)
+    if type(limit) is not int or not 1 <= limit <= 500:
+        raise ValueError("STOP: invalid bounded copy size")
+    n = len(shape.pk)
+    if after is not None and (
+        not isinstance(after, tuple) or len(after) != n or
+        any(v is None for v in after)
+    ):
+        raise ValueError("STOP: invalid full PK cursor")
+    key_cols = ", ".join(ident(k) for k in shape.pk)
+    clause = (" WHERE (" + key_cols + ") > (" +
+              ", ".join(["%s"] * n) + ")") if after is not None else ""
+    return (
+        f"SELECT {key_cols} FROM {relation(shape.source)}{clause} "
+        f"ORDER BY {key_cols} LIMIT %s",
+        tuple(after or ()) + (limit,),
+    )
+
+
 def make_window(shape: StageShape, after: tuple | None, limit: int,
                 last_key: tuple) -> CopyWindow:
     """Caller gets 'last_key' from a source keyset SELECT in same transaction.
@@ -102,10 +124,7 @@ def make_window(shape: StageShape, after: tuple | None, limit: int,
     params = tuple(after or ())
     boundary = " WHERE " + expr + " > (" + ", ".join(["%s"]*n) + ")" if after is not None else ""
     upper = expr + " <= (" + ", ".join(["%s"]*n) + ")"
-    select_sql = (
-        f"SELECT {key_cols} FROM {src}{boundary} "
-        f"ORDER BY {key_cols} LIMIT %s"
-    )
+    select_sql, select_params = make_key_select(shape, after, limit)
     insert_predicate = (boundary + " AND " if after is not None else " WHERE ") + upper
     insert_sql = (
         f"INSERT INTO {dst} ({all_cols}) "
@@ -114,7 +133,7 @@ def make_window(shape: StageShape, after: tuple | None, limit: int,
     )
     return CopyWindow(
         select_keys_sql=select_sql,
-        select_keys_params=params+(limit,),
+        select_keys_params=select_params,
         insert_rows_sql=insert_sql,
         insert_rows_params=params+last_key,
         boundary_keys=shape.pk,
