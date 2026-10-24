@@ -25,7 +25,7 @@ class SharedStorageContractTests(unittest.TestCase):
         self.assertFalse(any(".v5_" in r.canonical for r in RELATIONS))
 
     def test_staged_venues_not_a_canonical_final_table(self):
-        self.assertEqual(STAGED_PILOTS["public.v2_venues"], "v5_data.venues")
+        self.assertEqual(STAGED_PILOTS["public.v2_venues"], "boat_data_stage.venues")
         self.assertEqual(shared_target("public.v2_venues"), "boat_data.venues")
         self.assertNotEqual(STAGED_PILOTS["public.v2_venues"], shared_target("public.v2_venues"))
 
