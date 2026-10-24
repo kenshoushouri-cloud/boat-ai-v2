@@ -387,6 +387,11 @@
 - Termius結果`20261024_13_09`、締切14:47 JST、同一`conoha_forward_20261024_143005`スナップショット、`core_rows=6`、6艇の登番/級別/モーター/艇・展示順位が出力、`odds_tickets=120`、各艇`prior_k_5=5`。6/6の`v5_gate=HOLD_UNVERIFIED_FIRST_CAPTURE_AND_MODEL`。専用READ_ONLY SQL、COMMIT（read-only tx）、`V5_REAL_SHARED_SIX_LANE_INPUT_READONLY_NO_INFERENCE_NO_BUY`、`V5_REAL_INPUT_READ_ONLY_FINISHED`。
 - これは「必要な6艇の**基礎行の構造が揃う**」だけ。模型`OfflineV5InferenceInput`が要する`base_probabilities`＋`recent_form/exhibition_rank/racer_course/opponent/venue_lane`5因子（各6値）は**このSQLからは生成されていない**。K5件数/上位率だけでは13件の前日固定学習Counter再現不可。source原本初回観測も未認証、締切14:47はdecision_cutoffではない。モデルT1.00/T2.20 scope未統一。
 - 研究資産`v5/offline_prior_day_factor_export.py`と既存`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`（単一日・非更新）を再利用。新規factor生成を発明しない。collector/DB/VIEW/systemd/Drive/BUY変更なし、stage1/13・切替0/13 NO-GO。
+## 10/24 16:30 JST：13Counter元データ単日監査
+- Termiusで2026-10-20の`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql` READ ONLY結果：`race_total=144`, `roster_6=144`, `historic_exrank_6=0`, `clean_k_course_6=132`, `results_present=144`, `model_training_source_shape_6=0`, `historical_label_timestamp_predeadline_6_not_proof=0`。正常COMMIT/read-only、`V5_COUNTER_SOURCE_AUDIT_FINISHED`。
+- 現行SQLは**展示ラベルが`historical`のものだけ**評価。0/144は当該ラベルで六艇順位・重複なしを満たしたレース0件を示すだけで、他ラベルの展示欠損とは断定不可。K clean132/144はインシデント・コース欠測等もあり、安易な埋戻し不可。学習実施/本番V5利用は禁止。
+- GitHubに`deploy/conoha/v5_exhibition_label_coverage_readonly_20261024.sql`を追加：2026-10-20を単日限定し展示snapshot labelグループ別に存在レース、6艇・6rank充足、`snapshot_at<deadline_at`時刻記録を集計。データ原本first-write証明にはならない。処理はread-only。
+- stage複製1/13、本番切替0/13 NO-GO、Drive403書込STOP、collector/DB/timer/BUY変更なし。
 
 ## Next ONE task（次の一作業）
-**研究用13Counterに必要な過去日元データがあるか、既存`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`で2026-10-20一日だけread-only棚卸し**。後で複数日を処理できる設計のための単日pilotで、手作業1日ずつの恒久運用ではない。`historical`展示が初回入手可能だった証拠と誤用禁止。全期間学習、COPY、DB更新、実予測、BUYは禁止。
+**ConoHaで上記GitHub SQLを隔離/tmpから一回だけread-only実行し、2026-10-20の展示ラベル別カバレッジを確認。** 次は結果に応じて既存exhibition研究実装へ接続。現行VIEW/DB変更・結果後の展開催再構築を予測時点の証拠に昇格させない。
