@@ -23,9 +23,9 @@
 - 読取監査 `deploy/conoha/boat_v5_night_timer_audit_readonly_20261024.sh` は実機実行済。GitHubへ安全ガード・自動ロールバック付き時刻変更スクリプト `deploy/conoha/boat_v5_catchup_early_apply_guarded_20261024.sh`（commit `99a03b805118aafbb8ec124fec0e276584342dfa`）を追加。**実VPSへの適用は未実施**、reader 03:30の自動切替も未予約。次はTermiusで同スクリプトを実行しPASS/HOLDを確認（20:00–23:59 JST限定、旧collector/BUY/DB writer非変更）。
 
 ## 2026-10-24 夜 12系統COPY最優先（ステージ専用、実機未予約）
-- ユーザーが12系統COPYを最優先するよう明示指示。GitHubに `deploy/conoha/v5_stage12_snapshot_only_20261024.py`（commit `a3aa10efe03752137d62cc51e4b8f5503d7b2fe6`）と `deploy/conoha/v5_stage12_schedule_once_20261024.sh`（commit `3fc34d2f5c7303ef2dde7bf55912fb6a31facd0a`）を追加。**ConoHa実機への予約・コピーはまだ未実施**。
+- ユーザーが12系統COPYを最優先するよう明示指示。GitHubに `deploy/conoha/v5_stage12_snapshot_only_20261024.py`（commit `2aeefbe6cd9d50266f8cd9f26b3024daa95af39f`）と `deploy/conoha/v5_stage12_schedule_once_20261024.sh`（commit `1acc18eee58e5e4060c1793b6e740599f11dc5db`）を追加。**ConoHa実機への予約・コピーはまだ未実施**。
 - user Termius rootで2026-10-24 20:00〜23:59 JSTにinstallerを1回実行すると、翌10/25 02:50 JST一度だけstage-only snapshotを実行。元13 VIEW・元public writer・既存venues24行・BUY・タイマーは変更せず、既設boat_data_stageの残12実表を小さい順に各原子トランザクションで作成・初回スナップショットCOPY・COUNT検証・完了COMMENT。再実行で既存実表を消さない、未知の既存表はHOLD。収集者がアクティブ/容量不足/時間切れ等でHOLD。最大06:10まで、元収集は無停止。**CDC/update/delete最終差分・独立復元・本番route切替は一切未実施、live0/13維持**。COPY結果は翌日実機journalと13種メタ/差分監査で必ず再確認する。
-- 実行コマンド（ユーザー向け）：`curl -fsSL https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/3fc34d2f5c7303ef2dde7bf55912fb6a31facd0a/deploy/conoha/v5_stage12_schedule_once_20261024.sh | bash`。root接続後に手動1回必要。予約結果は `PASS: V5_STAGE12_COPY_ONLY_SCHEDULED`、後日journal `journalctl -u boat-v5-stage12-copy-20261025.service --no-pager -n 80`。PASSは予約成功であって12表の実コピー完了とは異なる。
+- 実行コマンド（ユーザー向け）：`curl -fsSL https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/1acc18eee58e5e4060c1793b6e740599f11dc5db/deploy/conoha/v5_stage12_schedule_once_20261024.sh | bash`。root接続後に手動1回必要。予約結果は `PASS: V5_STAGE12_COPY_ONLY_SCHEDULED`、後日journal `journalctl -u boat-v5-stage12-copy-20261025.service --no-pager -n 80`。PASSは予約成功であって12表の実コピー完了とは異なる。
 
 ## 次の1作業
 **Termiusで上の一度きりの12系統stage COPY予約scriptを実行してPASS/HOLDを確認する。** 既にcatchup時刻前倒しは実機でPASS。翌日02:50のステージ初回COPY結果をjournalで確認、欠ける系統はHOLDの原因を調査して再実行方針を判断。その後insert/update/deleteの全差分・独立復元・本番writer routeの安全試験を別途実施。BUY/Drive書込/原本切替は禁止。
