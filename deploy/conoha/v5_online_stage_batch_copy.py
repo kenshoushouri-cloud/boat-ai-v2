@@ -16,12 +16,21 @@ import sys
 
 from boat_shared_storage_contract import RELATIONS
 from deploy.conoha.boat_shared_staging_delta_plan_offline import (
-    STAGE_GATES, blockers,
+    blockers,
 )
 from v5.offline_stage_batch_plan import TARGETS
 from v5.offline_stage_chunk_copy_sql import StageShape, make_key_select, make_window
 
 ALLOWLIST = {r.legacy: r.canonical for r in RELATIONS}
+
+COPY_GATES = (
+    'independent_offsite_backup_restore_test_proven',
+    'specific_source_and_stage_copy_scope_approved',
+    'stage_pk_schema_defaults_sequences_verified',
+    'disk_free_wal_and_statement_budget_verified',
+    'online_collection_and_final_consistent_delta_strategy_approved',
+    'documented_abort_and_stage_recovery_tested',
+)
 
 
 def _info(cur, qualified: str) -> dict | None:
@@ -122,7 +131,9 @@ def assess(source: str, old: dict | None, staged: dict | None) -> tuple[StageSha
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", choices=sorted(TARGETS), required=True)
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--source", choices=sorted(TARGETS))
+    selector.add_argument("--all", action="store_true", help="preview all 12 not-yet-copied sources")
     parser.add_argument("--copy", action="store_true",
                         help="only for separately authorized stage COPY, never cutover")
     parser.add_argument("--batch", type=int, default=200)
@@ -131,9 +142,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if not 1 <= args.batch <= 500 or not 1 <= args.max_batches <= 100:
         raise SystemExit("STOP: batch 1-500 and max-batches 1-100 only")
+    if args.all and args.copy:
+        raise SystemExit("STOP: bulk --all only supports read-only preview")
     source = args.source
-    destination, wave = TARGETS[source]
-    if wave == 0:
+    if source is not None and TARGETS[source][1] == 0:
         raise SystemExit("STOP: existing venues stage is excluded from all copies")
 
     # No DATABASE_URL needed on ConoHa: run via PostgreSQL unix peer identity.
@@ -144,6 +156,35 @@ def main(argv=None) -> int:
 
     with psycopg.connect("dbname=railway", autocommit=True,
                          options="-c application_name=v5_stage_preview_or_copy") as conn:
+        if args.all:
+            result = []
+            with conn.transaction():
+                conn.execute("SET TRANSACTION READ ONLY")
+                conn.execute("SET LOCAL statement_timeout='15s'")
+                conn.execute("SET LOCAL lock_timeout='700ms'")
+                with conn.cursor() as cur:
+                    for src,(dest,wave) in TARGETS.items():
+                        if wave == 0:
+                            continue
+                        old = _info(cur,src)
+                        staged = _info(cur,dest)
+                        _shape, issues = assess(src,old,staged)
+                        result.append({
+                            "source":src, "stage":dest,
+                            "stage_exists":staged is not None,
+                            "source_pk":list(old["pk"]) if old else [],
+                            "stage_pk":list(staged["pk"]) if staged else [],
+                            "issues":issues,
+                        })
+            print(json.dumps({
+                "mode":"PREVIEW_ALL_12_READ_ONLY",
+                "rows":result,
+                "copy_performed":False,
+                "cutover":"NO_GO",
+            }, ensure_ascii=False, indent=2))
+            print("V5_STAGE_ALL_12_PREVIEW_READ_ONLY_FINISHED")
+            return 0
+        destination, wave = TARGETS[source]
         with conn.transaction():
             conn.execute("SET TRANSACTION READ ONLY")
             conn.execute("SET LOCAL statement_timeout='6s'")
@@ -176,7 +217,7 @@ def main(argv=None) -> int:
         if not args.approval_file:
             raise ValueError("STOP: no separate copy-gate evidence file")
         evidence = json.loads(open(args.approval_file,encoding="utf-8").read())
-        missing = blockers(STAGE_GATES,evidence)
+        missing = blockers(COPY_GATES,evidence)
         if missing:
             raise ValueError("STOP: staged COPY gate unproven: "+",".join(missing))
         # Evidence booleans alone are not proof: run only after human review,
