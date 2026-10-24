@@ -1,7 +1,9 @@
-# V5現行引継入口（2026-10-24 19:06 JST）
+# V5現行引継入口（2026-10-24）
 
-**Current compact handoff:** `docs/LIVE_HANDOFF_20261024_1906_COMPACT.md`
+**Current compact handoff:** `docs/LIVE_HANDOFF_20261024_OFFSITE_RECOVERY_COMPACT.md`
 
-新チャットは本ファイル→current compact→`docs/NEXT_CHAT_START_HERE.md`だけ読む。古いhandoff/PROJECT_HISTORY/旧長いworkflowを一括読みしない。SHA/稼働状況/件数はliveで必要な箇所だけ再取得。
+新チャットは本ファイル→現行compact→`docs/NEXT_CHAT_START_HERE.md`だけを読む。過去handoffは履歴扱い。トーク容量削減のため、旧ログ・大きなworkflowを一括参照しない。
 
-最新21:11：ConoHaローカル2dump SIZE/SHA/TOC PASS、DB3482+1069MB・WAL816MB・空き67717MB。Google Drive READ ONLYで別アカウントのV5`boat-ai-v5-temp-202610`から**2026-10-19暗号化main/archival backup実在**を確認。固定`docs/V5_EXTERNAL_BACKUP_INVENTORY_20261024.md`。復号・現在世代・VPS外restore未検証。stage1/13/live0/13、Drive403 WRITE STOP、BUY OFF、03:30未予約。次は既存外部コピーの復旧性と現在世代の安全な外部保全手順確立。
+現況：ConoHaの2 DBローカルdump SHA/bytes/TOC 21:11 PASS、空き67717MB。外部Google Driveに10/19暗号化V5世代が存在（復号・独立復元・現在世代は未検証）。原本13、VIEW13、物理stage venues1/13、live切替0/13 NO-GO。Drive新書込403 STOP、BUY OFF、夜間03:30自動切替未予約。
+
+次は`tests/test_v5_offsite_encrypted_dump_verify.py`の8件オフライン合成テストを1回実行。独立バックアップ復元可能性を検証する段階へ進む。
