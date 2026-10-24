@@ -17,4 +17,6 @@ repo `kenshoushouri-cloud/boat-ai-v2`。最初に `docs/HANDOFF_LATEST.md`→指
 
 2026-10-25 08:40 JST: ConoHa Termiusでvenues source/stage各24、`VENUES_STAGE_DELTA_TRANSACTION_PASS upserted=24 deleted=0 bidirectional_equal_in_transaction=YES legacy_source_untouched=YES live_view_untouched=YES continuous_cdc=NO cutover=NO_GO BUY=OFF`、`VENUES_STAGE_ONLY_DELTA_COMMITTED_NOT_CDC_NOT_LIVE`確認。**venues stage差分反映・同一snapshot照合成功**。元public/VIEW unchanged。初回物理stage13/13、live物理切替0/13。
 
-**Next ONE task:** GitHub `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `6a7973c33bb4011bae149c28db52fa5fb3cb8faa`）の`--all` PREVIEWをConoHaで実行し、12原表・12stageの列/PK一致と初回コピー証明をread-only一括確認（no table scans/DDL/DML）。GitHubには12表のキー分割・変更行のみUPDATE・INSERT/DELETE・範囲双方向照合を行うguarded実装を追加したが、**現物DB適用・実証は未実施**。先に小さな`races`１系統を別途夜間限定で実証、問題なければ残11。原本収集維持、BUY OFF、本番切替NO-GO。
+2026-10-25 08:46 JSTユーザーTermiusで12系統すべて `DELTA_PREVIEW_METADATA_PASS`、`PREVIEW_COMPLETE families=12 current_delta_counts=NOT_MEASURED no_table_scan=YES NO_WRITES NO_CUTOVER`。原本/ステージ列・主キー・初回コピーCOMMENT一致（12/12）。これは構造チェックで、12系統の差分適用やCDC、差分0を示さない。
+
+**Next ONE task:** 小容量`races`1系統のみ、`deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `130325709be68c64d48fc578b8a6466d2a184028`）を`--table races --apply`＋`V5_STAGE12_DELTA_APPROVED=YES`で日中08:00–22:59 JSTにstage-only実行。73,896行前後で100,000行超はHOLD、時間上限120秒、1表1transaction、主キーkeysetでINSERT/UPDATE/DELETE、各range照合＋最終件数。**VPS実行は未実施**、`DELTA_TABLE_COMMITTED races`を実機で確認後に次表へ。12表一括APPLYはまだ行わない。原本・既存VIEW・collector・BUY不変更、本番切替NO-GO。
