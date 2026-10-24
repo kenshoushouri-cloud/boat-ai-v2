@@ -71,5 +71,8 @@
 - 以前から`deploy/conoha/boat_shared_staging_delta_plan_offline.py`に全主キー整列ハッシュ差分（insert/update/delete）計画コードが存在。**使い回す**。`boat_data_stage.<view>`と提案`v5_data.raw_*`の宛先不一致を修正しないまま実SQLを実行しない。
 - `v5/offline_stage_chunk_copy_sql.py`はオンライン分割COPYのためのオフラインSQL生成器、実行不可・PK/スキーマ証拠が揃わなければ拒否。`tests/test_v5_offline_stage_chunk_copy_sql.py`6件は未実行。運用RUNNER／本物のCOPYは未完了。
 
+## 2026-10-25 08:21 JST 実機catalog確認
+- 2026-10-25 08:21 JSTユーザーTermiusのPGカタログread-only検査にて13 rows、13原本=r、13既存live=VIEW(v)、13 stage=r、12表が`INITIAL_SNAPSHOT_COMMITTED`、venues=`PREVIOUS_VENUES_STAGE_PRESENT`、`ROLLBACK`と`V5_STAGE13_CATALOG_AUDIT_DONE_READ_ONLY_NO_CDC_NO_CUTOVER`を確認。初回物理snapshot13/13証明、現在差分・hash parity・CDC・独立復元・本番切替は未証明（live0/13）。
+
 ### Next ONE task
-**Next ONE task:** ConoHaで `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql` のread-only PG catalog監査を1度実施し、13原本が物理表、13 live `boat_data` がVIEW、13 stageが物理表、今回の12表の完了commentが存在することを確認する。12表COPY済なので再実行・再コピーはしない。次にUPDATE/DELETE含む差分同期・独立復元・writer/readerルート・自動rollbackを完成させ、別途全gate PASS時のみ切替。旧収集維持、BUY OFF。
+**Next ONE task:** ConoHaで `deploy/conoha/v5_stage13_delta_readiness_catalog_readonly_20261025.sql`（commit `be3e5e0db2395ba19f29d5e00c1153bd13180578`）を一度read-only実行。13系統の原表/物理stage/VIEWの型、全列順・型、PK形、FK/trigger/default hazardを13行で確認する。snapshot再コピーはせず、COPY後の追加/更新/削除差分同期を設計/検証。**V5物理本番切替・BUYは禁止**。
