@@ -303,5 +303,9 @@
 - `public.v2_realtime_entry_snapshots`: 33MB、統計推定125,870行、21列、PK(id)、UNIQUE(race_id,snapshot_label,lane)。
 - `ENTRY_STAGE_PREFLIGHT_READ_ONLY_PASS` / ROLLBACK。推定件数は実COUNTではない。前者はcore、後者はFIRST_CAPTURE_UNVERIFIEDなので予測as-of証拠に採用しない。stage次候補は**容量少・オフラインE01〜E12が整備済みのentry_snapshots（隔離研究/移行準備のみ）**。独立外部保全・実writer証明・ユーザー別承認までCOPY/DML/VIEW切替禁止。
 
+## 10/24 14:06 JST：entry_snapshots DDL前カタログ安全監査PASS
+- Termiusで`public.v2_realtime_entry_snapshots`: physical r、`boat_data.entry_snapshots`はVIEW v、`boat_data_stage.entry_snapshots` absent=true、21列、自然キー3/3 NOT NULL、UNIQUE index2、ユーザートリガー0、関係FK0、旧source idには`nextval` defaultあり。`ENTRY_SNAPSHOT_SCHEMA_READ_ONLY_PASS`、ROLLBACK。stage作成/実COPY=0、収集停止なし。
+- stageを作るなら旧sourceのserial default/sequenceをstageに持ち込まない。少量33MBでも新外部独立バックアップ＋復元と全writer確認・別承認がまだなく、新規DDL/DMLはNO-GO。FIRST_CAPTURE_UNVERIFIEDのため予測用事前as-of証拠には使わない。
+
 ## Next ONE task（次の一作業）
-**ConoHaで`public.v2_realtime_entry_snapshots`の現時点のスキーマ/主キー・自然キーNOT NULL/旧serial defaultの有無、stage不存在、トリガー/FK数をpg_catalog READ ONLYで再確認**。新stage作成/実COPYはしない。証明欠落ならSTOP、現行writer/timer/VIEW/BUY変更なし、本番切替0/13 NO-GO。
+**DriveのV5専用rclone remote`v5_gdrive:`に対し、低頻度・再試行なしの読み取り専用接続1回のみを短時間probeし、成功/失敗のマーカーだけ出力する**。10/24 00:08にDrive API 403 RATE_LIMIT_EXCEEDED観測あり、無限再試行・Driveの一覧本文表示・アップロード禁止。Remote接続復旧を確認してから別世代への安全な独立保全を設計する。DB/collector/timers/VIEW/BUY変更なし、本番切替0/13 NO-GO。
