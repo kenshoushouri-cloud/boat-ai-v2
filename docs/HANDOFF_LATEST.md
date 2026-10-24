@@ -12,4 +12,6 @@
 
 **2026-10-25 08:34 JST実機確認:** venues限定read-only差分PREVIEW成功。source=24/stage=24、INSERT=0、UPDATE=24、DELETE=0、`VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES`。24は削除や欠損ではなく行内容差。まだ実反映なし。旧収集・13 VIEW・BUY変更なし。13系統の物理初回copy13/13とPK/型一致13/13を維持。
 
-**Next ONE task:** venues差分の24更新が`updated_at`のみか他列も変わったか、負荷ごく小さいread-only分類を同runnerで確認し、stage-only applyゲートへ。次いで残12系統のCDC(INSERT/UPDATE/DELETE)差分追従。独立復元/全writer/reader証明なしでは物理本番切替NO-GO。
+2026-10-25 08:34 JST Termius実機：venues source24/stage24、read-only full outer compare INSERT=0 UPDATE=24 DELETE=0、`VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES`。更新24件は欠損24件ではない。何列が更新されたかは旧previewで未分類。
+
+**Next ONE task:** `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py` 修正版 commit `44b00fd433adb5b2608f87c7e3b423523ba2b607` を使い、venue24行だけを明示env+`--apply`で`boat_data_stage.venues`に追込・双方向同一snapshot照合する。08:00-22:59または03:00-05:59 JST限定、実VPSでまだAPPLY未実施。新コードは`INSERT .. SELECT WHERE true ON CONFLICT`でPG構文曖昧性を解消、比較を非主キー列で行い更新不要行への物理UPDATEを避ける。成功後、残12表の新規/更新/削除の差分同期を実装。旧collector・public原本・live VIEW・BUY維持、本番切替NO-GO。
