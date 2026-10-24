@@ -270,5 +270,9 @@
 - ConoHa Termius: /opt/boat-ai-v5 全体のTARが /var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar に新規作成。25,200,640 bytes, mode600。TAR目録検査PASS、SHA256=4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968。マーカー V5_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED。
 - V5本体の隔離復元、ディレクトリ外systemd設定等の保全、VPS外の独立保全/復元は未実施。現行収集/旧DB/13VIEW/venues stage維持、本番切替0/13 NO-GO。
 
+## 10/24 13:01 JST：V5本体TAR同VPS隔離復元PASS
+- ユーザーTermius画面：12:57作成の`/var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar` (25,200,640 bytes、0600、SHA256 `4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968`) からSHA照合、安全相対パス検査、0700一時領域への展開、TARと展開ファイル内容比較、一時領域削除が正常終了。マーカー`V5_ARCHIVE_PATH_GUARD_PASS`、`V5_RESTORED_ARCHIVE_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`V5_ISOLATED_RESTORE_PASS_CLEANED`確認。
+- Git非管理collectorも12:49に同VPS隔離復元PASS。DB railway/archiveローカルdumpあり。ただしV5のsystemd service/timer/drop-in・外部秘密設定・OS依存の保全と起動/機能の復元試験、2DB完全復元と相互整合、VPS外独立保全/復元は未完成。元V5/collector/DB/timers/旧VIEWを変更していない。0/13 NO-GO、BUY無効。
+
 ## Next ONE task（次の一作業）
-ConoHaでV5本体TARのSHA一致・安全な相対パスを確認した後、一時領域に隔離展開、内容比較して削除する。元のV5/collectorやDBは変更しない。Drive転送・本番切替は禁止。
+**ConoHa TermiusでV5関連systemd service/timerのunit名とenabled状態のみをread-onlyで取得**。まず一覧を確認してから実行定義の安全な採取範囲を決める。Environment/EnvironmentFile内容やExecStart引数、秘密値・ファイル本文を表示しない。systemctl restart/enable/disableやDrive通信、DB/VIEW/collector変更をしない。GitHub肥大化Issue #582のコード削除は別承認、切替0/13 NO-GO。
