@@ -309,5 +309,8 @@
 
 ## 10/24 14:25 JST：V5 Drive読み取り接続probe PASS
 - Termiusの`rclone about v5_gdrive:` はretry/通信量制限・30秒timeout下で`V5_DRIVE_READ_ONLY_PROBE_PASS`。00:08の403レート制限は今回の照会では再現せず。**書込権限・VPS外の実バックアップと復元・別Drive割当は未確認**。既存収集、DB、13VIEW/BUY無変更。切替0/13 NO-GO。
+## 10/24 14:28 JST：V5 Drive極小書込probe FAIL（原因未取得）
+- Termius画面：14:25 `rclone about v5_gdrive:` 読み取りPASS、14:28 `rclone copyto` --immutable・1回retry・低TPSの新規専用prefixへの極小テストは`V5_DRIVE_WRITE_TEST_FAILED`。stderr/stdout破棄したため根本原因・HTTP status不明。readback未到達。**Google DriveへのV5バックアップ成功と扱わない**。残存remote試験ファイル有無も未確認。
+- 直近00:08 API 403 rate limit発生履歴あり。しかし今回のFAILをrate limit断定しない。旧backup/V3/V4/ConoHa/DB/timer/13 VIEWに変更なし。切替0/13 NO-GO。
 ## Next ONE task（次の一作業）
-**V5 Drive専用の新規ランダムprefixに秘密のない極小テストファイル1個だけを低頻度で新規作成(`--immutable`)し、readback内容一致を検査**。旧V3/V4/既存データを触らず、ログに認証値・実ファイル本文を出さない。実backupの転送は暗号化/保管先分離とrestore計画後。レート制限時はSTOPし再試行ループ禁止。
+**Google Drive V5リモートに新規ランダム極小プローブを最大1回だけ再試行**、stdout/stderrをローカル0600一時ファイルに捕捉し、判定可能なHTTP codeと理由カテゴリだけ出力（元エラー文/認証値/remote名なし、終了時ログ消去）。書込成功時のみ1回readback比較。403/429はSTOPし追加retry禁止。実バックアップや既存remoteファイル更新は禁止。
