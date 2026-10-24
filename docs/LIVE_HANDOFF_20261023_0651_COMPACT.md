@@ -357,6 +357,10 @@
 - Termiusで`/opt/boat-ai-v5`と`/opt/boat-ai-collector`をdepth6・ファイル名パターン`*decision*/*predict*/*ledger*/*freeze*`のJSONL/SQLite限定で照会→一致0。`/var/lib/boat-ai-v5`と`/var/lib/boat-ai`は存在せず検索していない。`V5_DECISION_FILE_AUDIT_FINISHED`。未発見は全記録方式の不在証明ではない。現行DBやcollector無変更。
 - GitHubに新規`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`追加。既存`offline_asof_eligibility.py`・`offline_first_write_attestation.py`・`offline_day_shadow_pipeline.py`は合成用、`telegram_trial_performance.py`は読取用。別ゲートで`shadow`のみ・BUY禁止の時刻/元データreceipt/ハッシュ/重複/HOLD設計。**設計のみで記録器・scorer本番実装ではない**。
 - Google Drive V5外部バックアップ書込403制限で停止、共通stage1/13、本番切替0/13 NO-GO。旧V2判断をV5独立判断として扱わない。
+## 10/24 V5研究資産の再利用優先（重要訂正）
+- V5研究は本番構築の基盤。GitHub再監査で`v5/offline_mainline_inference.py`（1着確率）、`v5/offline_trifecta_shadow_ranking.py`（3連単120通り）、`v5/offline_v5_freeze_bridge.py`（数学→候補）、`v5/forward_shadow_freeze.py`（**既存prepare_candidate/append_onceでshadow JSONL追記可能**）、`v5/offline_day_shadow_pipeline.py`（合成一日成績）とテストあり。**「V5記録器のコードがない」は誤り**、ローカル一致ファイル0は既存記録の未確認に過ぎない。現時点でいずれも本番入力・初回観測の証明を備えない。
+- 2026-09-27 scope lock（V4由来、T2.20）とstrong-core（5 factor、T1.00）に候補仕様不一致があり、2026-10-09 freeze readiness auditに未解消と明記。独断でモデルや係数を採用しない。
+- `docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`を既存資産再利用前提で修正。重複計算器・記録器の新規作成は避ける。実データ接続と安全証拠の不足部分だけ補完。DB/collector/VIEW/systemd/BUY/Driveは無変更。本番切替0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**新設計に対するオフライン純粋関数のfail-closed入力検査＋合成ユニットテストをGitHubに追加**。実collector/DB/Drive/タイマー/BUY/通知と接続せず、全データ合成、競艇予測/成績は生成しない。
+**既存`v5/forward_shadow_freeze.py`、`v5/offline_v5_freeze_bridge.py`の研究用shadow記録契約と本番必要条件の差分だけをread-only監査**。source-first-observation、実際のV5決定時刻、凍結モデル仕様の不一致、仮想金額≠実支出を確かめて重複実装を防ぐ。承認なく本番稼働・BUY・DB・タイマー・Drive書込なし。
