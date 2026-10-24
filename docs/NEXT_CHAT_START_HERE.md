@@ -9,4 +9,4 @@ V5は研究成果を再利用して非購入限定稼働を構築する。6艇�
 
 最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**Next ONE task**：10/24 18:06 Termius検査：4 timer enabled/active、対象serviceはその瞬間inactive/dead、forward次18:10（5分ごと）、night23:00、catchup翌01:20、morning翌07:00。**停止は未実行**。次はtimer外のwriter/cron/DBセッションを秘密値を表示せずread-onlyで確認。短時間停止は最終差分時のみ、独立復元/全writer/結果完了/復帰策のgateと別承認必須。stage1/13・live0/13、Drive403 STOP、BUY OFF。
+**Next ONE task**：深夜手動不可のため、将来の自動切替候補窓03:30〜04:00 JSTを設計（01:20結果補完完了後、07:00朝収集前）。**2026-10-25 03:30は本番切替未予約・NO-GO**。GitHub `deploy/conoha/v5_cutover_writer_inventory_readonly_20261024.sh`はアップロード済み、監査だけ。次は短いTermius実行でwriter/cron/PGセッションをread-only確認。自動切替は独立復元・全writer認証・自動戻しの実証と別承認後にのみsystemdタイマー有効化。stage1/13/live0/13、Drive403 STOP、BUY OFF。
