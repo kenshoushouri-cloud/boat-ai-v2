@@ -142,7 +142,7 @@ def psql_fallback_all_preview() -> int:
         if wave == 0:
             continue
         for identifier in (src, stage):
-            if not re.fullmatch(r"[a-z_][a-z_0-9]*\\.[a-z_][a-z_0-9]*", identifier):
+            if not re.fullmatch(r"[a-z_][a-z_0-9]*[.][a-z_][a-z_0-9]*", identifier):
                 raise ValueError("STOP: unexpected source/stage identifier")
         names.append("('%s','%s')" % (src, stage))
     if len(names) != 12 or len(set(names)) != 12:
