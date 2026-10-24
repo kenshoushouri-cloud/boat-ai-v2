@@ -23,6 +23,18 @@ GitHubの調査により、**前の「記録器なし」は不正確**と判明�
 
 **採用方針：既存のV5研究・合成検証コードを再利用し、実データ時刻・証拠・本番入力アダプタと監査機能の欠落だけを補う。並列に重複したスコア計算器・shadow記録器を作らない。**
 
+## 既存コードとの差分監査（10/24）
+読取対象：`v5/forward_shadow_freeze.py`（`prepare_candidate`/`append_once`）、`v5/offline_v5_freeze_bridge.py`、対応する2件の`tests/test_v5_*.py`。**現在の記録器・スコア計算器を置換せず再利用する。**
+
+- 初回取得の原本真正性：6展示/120オッズ、自己申告`captured_at`とSHA256文字列の形状は検査される。しかし生データの初回HTTP受信完了・永続化・生バイトの独立ハッシュは証明しない。
+- as-of：bridgeは判定cutoffから`now`まで0–60秒、freezeは`now`から締切まで180秒以上を要求するが、**`captured_at <= decision_cutoff_at`は未検査**。cutoff後かつnow以前に取得された情報が合成チェックを通る余地がある。`recorded_at`は保存時刻相当であり実際の独立decision receiptとは異なる。
+- モデル固定：strong-core `MODEL_VERSION`、5 factor・T=1.00の入力ハッシュはあるが、モデルartifact/policy versionの実行時固定はない。9/27 scope lockのT=2.20系とのモデル選択不一致は未解決。
+- 金額：`hypothetical_stake_yen`は仮想投資額。実支出0・購入権限なしを独立証拠として明示する必要がある。`buy_eligible=false`は維持。
+- 記録：`append_once`は排他lock・0600・同raceの重複拒否・fsync・合成テストを備える。外部バックアップ復元・独立読み戻し・配信真正性の証拠はない。
+- 今回は静的コード監査であり、新しい自動テストは実行していない。DB、タイマー、公式collectorは変更していない。
+
+**次のONE task:** 既存処理の再利用を保ち、オフライン合成のas-of境界検査（cutoff後の展示/オッズはHOLD）をテストから小さく追加する。実配信・実予測・BUYなし。
+
 ## 候補記録の契約（まだ実装・有効化しない）
 別プロセス（購入権限なし、外部APIなし）からのみ、レース単位の`shadow`候補を受け取る。
 1. **識別**：`race_id`, `model_version`, `model_artifact_sha256`, `policy_version`, `run_id`。同一`race_id+model_version+decision_type`の複数確定記録禁止。
