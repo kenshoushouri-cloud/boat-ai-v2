@@ -13,8 +13,45 @@ archive_size=81865791
 railway_sha=4ee6a5d9c1ddf67c61b8bb82426961431c25f20f944f87b6cef5137bb294478d
 archive_sha=7301975821593cdab2fdcf30eedc8d78558537023ed7af30f03d679de19fd37e
 
+# Older backup paths may differ; use exact filename+bytes+SHA under
+# existing /var/backups only. No uploads, recreations or overwrites.
+resolve_archive_location() {
+  local file bytes digest
+  local matches=0
+  local chosen=''
+  local examined=0
+  while IFS= read -r -d '' file; do
+    examined=$((examined+1))
+    if [ "$examined" -gt 12 ]; then
+      echo 'NO_GO_ARCHIVE_TOO_MANY_CANDIDATES' >&2
+      return 2
+    fi
+    [ -r "$file" ] || continue
+    bytes=$(stat -c %s -- "$file")
+    [ "$bytes" = "$archive_size" ] || continue
+    digest=$(timeout -k 2s 100s nice -n 15 sha256sum -- "$file" |
+      awk '{print $1}')
+    if [ "$digest" = "$archive_sha" ]; then
+      chosen=$file
+      matches=$((matches+1))
+    fi
+  done < <(timeout -k 2s 12s find /var/backups -maxdepth 3 \
+      -type f -name boat_history_archive.dump -print0)
+  if [ "$matches" -ne 1 ]; then
+    echo "NO_GO_ARCHIVE_MATCHING_SHA_COUNT=$matches" >&2
+    return 2
+  fi
+  archive=$chosen
+  echo 'ARCHIVE_BACKUP_MATCHED_BY_SIZE_SHA=YES'
+}
+
 echo "=== V5 LOCAL BACKUP AND PHYSICAL STAGE CAPACITY PRECHECK ==="
 echo "INSPECTED_AT_JST=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S %Z')"
+
+if [ ! -f "$archive" ] || [ ! -r "$archive" ]; then
+  echo 'ARCHIVE_RECORDED_PATH_NOT_READABLE_SEARCHING_KNOWN_BACKUP_ROOT'
+  resolve_archive_location
+fi
 
 for kind in railway archive; do
     case "$kind" in
