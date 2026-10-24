@@ -44,7 +44,7 @@ GitHubの調査により、**前の「記録器なし」は不正確**と判明�
 5. **証拠固定**：canonical JSON bytes SHA256、追記専用のsequence・previous hash・fsync・同一race重複拒否、独立読取監査で固定内容を照合。ハッシュチェーンや自己申告時刻**単独**は取得真正性の証拠ではない。現行ConoHaとの別場所に新世代を保全し、復元試験が通るまで`INDEPENDENT_BACKUP_UNVERIFIED`。
 
 ## 実装順序と境界
-**第一段階（次の1作業）**：既存の`prepare_candidate`/`append_once`/`build_paper_shadow_freeze`と要求記録項目を読み取り専用で**差分監査**し、欠けたsource-first-observation・decision cutoff・model version整合・actual支出0のガードを列挙する。既存テストを再利用し、必要なテストだけ追加。DB接続・実HTTP・本番JSONL書込・通知・BUY・systemd変更は行わない。
+**第一段階（read-only差分監査済み）**：既存の`prepare_candidate`/`append_once`/`build_paper_shadow_freeze`と不足証拠を比較済み。**次の1作業**は合成テストから`captured_at`と`decision_cutoff_at`の厳格なas-of境界を検証する最小補強。実初回観測証明とは分離。DB・HTTP・本番JSONL書込・通知・BUY・systemd変更なし。
 
 **第二段階（別ゲート）**：研究候補モデル・重み・selectorの相互矛盾を合意済み証拠で解消し、実データの独立初回観測と`append_once`既存writerの安全性を再検証。受入れ条件、独立外部バックアップ・復元検証後にのみ新規の非購入shadow journalを許可。旧DB表上書き・既存データ削除禁止。
 
