@@ -41,4 +41,6 @@
 
 **GitHubリポジトリ肥大化の安全整理**：[Issue #582](https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/582)で追跡。read-only容量/重複の計測→現行collector/systemdの参照照合→独立バックアップ/復元後に分割PR・別承認。現時点でコード削除・履歴改変なし。
 
-**Next ONE task：** `/opt/boat-ai-collector`直下の名前と種別をread-onlyで調査（実ファイル内容や秘密値は出さない）。
+**10/24 11:15 確認**：Git管理外collector直下は2ディレクトリ（`__pycache__`、`refund_evidence`）＋9ファイル（`backfill_20261017.py`、`backfill_20261017.py.bak_20261019`、`collect_refund_evidence.py`、`daily_v5_safe.sh`、`db_pg.py`、`refund_boats_parser.py`、`refund_pending_20250701_20261005.txt`、`refund_targets_20250701_20261005.txt`、`repair_month_all_pg.py`）。存在のみ確認。Git管理外のファイルが実稼働に必須の可能性があるため削除厳禁。
+
+**Next ONE task：** collector直下のサイズ・権限・所有者だけread-onlyで調査し、バックアップ範囲を絞る。秘密値・内容表示や深い再帰走査をしない。
