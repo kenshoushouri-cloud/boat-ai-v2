@@ -319,6 +319,9 @@
 - Termius: 4 timers=active/enabled。forward-window.service=activating、midnight-catchup.service=inactive。daily@morning/night.service=inactive、daily@.service=unknown（template判定）。root/postgres関連crontab=0、cron.d一致なし。
 - STATIC検出: repair_month_all_pg.pyのhelper UPSERT候補にv2_race_entries等。v21_realtime_collector_pg.pyにはlegacy realtime6表参照・DDLあり（ヒントのみ）。forward-windowはv5.conoha_realtime_window_pg、midnightはv5.conoha_midnight_results_pg。dailyインスタンスtarget=UNRESOLVEDはshell/wrapper経由の可能性があり未証明。
 - `NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`、`V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES`、`V5_WRITER_ROUTE_AUDIT_COMMAND_PASS`。forward-windowがactivatingで長時間滞留しているか不明。収集停止/DB操作・Drive書込は未実施。Stage1/13、本番0/13 NO-GO。
+## 10/24 14:38 JST：forward-window.service 状態 read-only確認
+- Termius: `boat-v5-forward-window.service` LoadState=loaded / ActiveState=inactive / SubState=dead / Result=success / ExecMainStatus=0 / MainPID=0 / ExecMainStartTimestamp=2026-10-24 14:35:01 JST / TimeoutStartUSec=4min20s。14:35のactivating後、14:38に処理完了・滞留なし。あくまでサービスの終了成否で、`--apply`の有無や実データ取得・書込は未検証。
+- `v5/conoha_realtime_window_pg.py`をGitHubから確認：デフォルトはPREVIEW/NO_HTTP_NO_WRITES、`--apply`かつ`V5_ENABLE_LIVE_COLLECTOR=YES`で収集。実際の起動モードはjournalの限定マーカーで要確認。既存収集/DB/cron/timers/VIEW変更なし、Drive書込403で停止、13系統本番切替0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**Termiusでforward-window.serviceの実行状態・経過時間・結果コードの安全なsystemctlプロパティのみread-only取得**。ExecStart全文や環境値・journal本文は出力しない。異常滞留なら切替保留のまま対策設計。再起動/停止・DB書込・Drive再試行・BUYはしない。
+**ConoHaで2026-10-24 14:30〜14:40 JSTのforward-window.service journalをread-only限定集計**。`MODE`、`CANDIDATES`、`NO_HTTP_NO_WRITES`、`COLLECTOR_RC`、`TIMEOUT`の件数だけ表示し、生ログ/環境変数/認証値は出さない。MODEがPREVIEWなら成功終了でもデータ取得なし。新しいcollect/BUY/DB-DML・Drive書込/サービス再起動禁止。Stage 1/13、本番0/13 NO-GO。
