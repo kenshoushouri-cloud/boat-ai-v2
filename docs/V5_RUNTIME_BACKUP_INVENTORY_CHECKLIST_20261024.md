@@ -59,4 +59,6 @@
 
 **10/24 13:17 Termius**：V5 systemd関連7 unit確認。enabled timer4件（daily morning/night、forward-window、midnight-catchup）、static service3件（daily@テンプレート、forward-window、midnight-catchup）。`V5_SYSTEMD_UNIT_INVENTORY_PASS`。これはunit名/有効化状態のみで、稼働成功・定義保全は未証明。
 
-**Next ONE task：** `FragmentPath`・`DropInPaths`・`UnitFileState`のメタデータのみread-only調査。ExecStartやEnvironment値は出さない。
+**10/24 13:24 Termius**：4 enabled timers / 3 static servicesの実体7ファイルは全て`/etc/systemd/system/`、同じ`boat-v5-daily@.service`を朝夜で共有。`DropInPaths`全件空。`V5_SYSTEMD_PATH_AUDIT_PASS`。環境変数・unit本文・enabled symlinks・実保全は未調査。
+
+**Next ONE task：** 確認済みsystemd unit実体7ファイルを新規root-only TARで保全し、目録とSHA256を確認。設定外部参照や有効化リンクは後日別保全。
