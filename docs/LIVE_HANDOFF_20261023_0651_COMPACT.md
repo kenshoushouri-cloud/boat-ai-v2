@@ -326,6 +326,10 @@
 - Termiusの14:30–14:40 journal限定集計で `APPLY_RUNS=2`, `PREVIEW_RUNS=0`, `CANDIDATE_LOGS=2`, `LAST_CANDIDATES=3`, `NO_WRITE_RUNS=0`, `COLLECTOR_SUCCESS=5`, `COLLECTOR_FAILED=0`, `COLLECTOR_TIMEOUT=0`、`V5_FORWARD_LOG_AUDIT_READ_ONLY_FINISHED`。
 - 実際にAPPLY・HTTP collector subprocessが5件code=0を返すことは確認。ただし5ユニークraceとは限らず、実際のDBスナップショットINSERT/品質、時間前証拠、BUY/ROIは未証明。GitHub `v5/conoha_realtime_window_pg.py`では `V5_FORWARD_COLLECTOR_RC=<rid>:<code>` 形式で、`SNAPSHOT_LABEL=conoha_forward_YYYYMMDD_HHMMSS`を各childへ渡す。
 - Drive書込403 RATE_LIMITにつきリトライ停止。既存DB/cron/VIEW変更なし。Stage1/13、本番0/13 NO-GO。
+## 10/24 14:49 JST：V5 forward実DB snapshot保存 read-only PASS
+- Termius: 14:30〜14:40 collector RC=0ログ5件→ユニーク4レース。旧public.v2_realtime_{entry,exhibition,odds}_snapshotsでforwardラベル14:30〜14:40をread-only検索。`V5_FORWARD_DB_READ_ONLY_CHECK_PASS`、ROLLBACK。
+- `20261024_05_10` 多摩川10R: entry12/exhibition6/odds240。`20261024_09_10` **津10R**: 6/0/120。`20261024_13_09` 尼崎9R: 6/6/120。`20261024_22_09` 福岡9R: 6/0/120。計30/12/600。5回ログと4ユニークレースで再取得あり。実INSERT実行の直接証明やas-of条件/品質/学習採用は未証明。
+- Drive書込HTTP403 RATE_LIMITで追加試験禁止。共通stage1/13、本番cutover0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**ConoHaの14:30–14:40 forward-window journalからcollector成功race_idを厳格な形式検証で抽出し、`railway` DB旧物理3表entry/exhibition/odds snapshotの当日14:30-14:39ラベル件数をrace_idのindex利用で読み取り専用集計**。ユーザーにログ全行・環境・secretは見せない。SQLはREPEATABLE READ READ ONLY/10秒上限・ROLLBACK、ログからのIDをpsql文字列パラメータとして渡す。件数0でもソース経路違いの可能性があるため即収集失敗とは決めない。新規collect/BUY/DML/VIEW変更、Drive試験禁止。本番0/13 NO-GO。
+**ConoHa `railway`の上記4レースに限定し`public.v2_races.deadline_at`とforwardラベル当時の3系統`snapshot_at`を照合、締切前/以後/不明の件数のみREAD ONLY/10秒上限/ROLLBACKで確認**。展示0件を収集失敗と即断しない。DB DML/VIEW変更、Drive再試行、BUY、本番切替は禁止。
