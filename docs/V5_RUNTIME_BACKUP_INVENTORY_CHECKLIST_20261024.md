@@ -61,4 +61,6 @@
 
 **10/24 13:24 Termius**：4 enabled timers / 3 static servicesの実体7ファイルは全て`/etc/systemd/system/`、同じ`boat-v5-daily@.service`を朝夜で共有。`DropInPaths`全件空。`V5_SYSTEMD_PATH_AUDIT_PASS`。環境変数・unit本文・enabled symlinks・実保全は未調査。
 
-**Next ONE task：** 確認済みsystemd unit実体7ファイルを新規root-only TARで保全し、目録とSHA256を確認。設定外部参照や有効化リンクは後日別保全。
+**10/24 13:38**：systemd7 unit `units.tar`を新規作成（20,480 bytes、0600、TOC/元内容差分0、SHA256 `dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`）。**13:43**：SHA照合・安全パス・同VPS隔離展開/内容一致/削除PASS、`V5_SYSTEMD_ISOLATED_RESTORE_PASS_CLEANED`。外部EnvironmentFile/有効化symlink/実起動・VPS外復元は未検証。
+
+**Next ONE task：** systemdの外部EnvironmentFile/Environment/credential参照の有無のみ、安全なフラグでread-only確認。
