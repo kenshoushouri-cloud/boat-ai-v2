@@ -274,5 +274,9 @@
 - ユーザーTermius画面：12:57作成の`/var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar` (25,200,640 bytes、0600、SHA256 `4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968`) からSHA照合、安全相対パス検査、0700一時領域への展開、TARと展開ファイル内容比較、一時領域削除が正常終了。マーカー`V5_ARCHIVE_PATH_GUARD_PASS`、`V5_RESTORED_ARCHIVE_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`V5_ISOLATED_RESTORE_PASS_CLEANED`確認。
 - Git非管理collectorも12:49に同VPS隔離復元PASS。DB railway/archiveローカルdumpあり。ただしV5のsystemd service/timer/drop-in・外部秘密設定・OS依存の保全と起動/機能の復元試験、2DB完全復元と相互整合、VPS外独立保全/復元は未完成。元V5/collector/DB/timers/旧VIEWを変更していない。0/13 NO-GO、BUY無効。
 
+## 10/24 13:17 JST：V5 systemd unit名とenabled状態 read-only確認PASS
+- Termiusで7件：`boat-v5-daily@morning.timer` enabled、`boat-v5-daily@night.timer` enabled、`boat-v5-daily@.service` static、`boat-v5-forward-window.service` static、`boat-v5-forward-window.timer` enabled、`boat-v5-midnight-catchup.service` static、`boat-v5-midnight-catchup.timer` enabled。4 timer enabled、3 service static。`V5_SYSTEMD_UNIT_INVENTORY_PASS`確認。**enabledは実稼働・実際の実行成功・設定バックアップを証明しない**。
+- GitHub code/collectorの同ConoHa隔離復元PASS。systemd定義/drop-in/秘密設定やVPS外独立保全は未実施。稼働変更/再起動/DB/VIEW/venues stageなし、切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa TermiusでV5関連systemd service/timerのunit名とenabled状態のみをread-onlyで取得**。まず一覧を確認してから実行定義の安全な採取範囲を決める。Environment/EnvironmentFile内容やExecStart引数、秘密値・ファイル本文を表示しない。systemctl restart/enable/disableやDrive通信、DB/VIEW/collector変更をしない。GitHub肥大化Issue #582のコード削除は別承認、切替0/13 NO-GO。
+**ConoHa Termiusで上記V5 systemd unitのFragmentPath/DropInPaths/UnitFileStateのみread-only採取**。テンプレートserviceは実インスタンス(`@morning.service`, `@night.service`)として照会する。ExecStart/Environment/EnvironmentFileの中身・秘密値は出力しない。設定実体パスとdrop-inが確定したらroot-onlyローカル保全手順を設計する。collectors/timers/DB/VIEW変更、Drive通信・コード削除禁止。本番切替0/13 NO-GO。
