@@ -8,4 +8,6 @@ repo `kenshoushouri-cloud/boat-ai-v2`。1. `docs/HANDOFF_LATEST.md`、2. そこ�
 
 **注意：** GitHubのforward-window timerは07:00〜23:55 JST限定で、03:30に発火しません。以前の「深夜5分刻み起動」想定は誤り。設置済ConoHa unitの一致のみ事前確認。01:20 catchupと07:00 morningへの影響は依然別gate。
 
+**補完タイマー調整案：** 現GitHubは01:20/02:20/03:20の3回。収集night23:00が最大90分で00:30目安、補完run最大30分。提案は00:45/01:30/02:15 JSTで、03:30 shadow読取切替まで約45分バッファ。`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`に提案設定を置いたが**本番VPSへ未設置**。PENDING・flock競合なら切替HOLD。ライブ設置前に実ConoHa installed timerと直近run read-only照合。forward5分timerは07..23だけ。
+
 **Next ONE task:** ユーザー意向：既存原本collectorが稼働中、オッズ/展示/気象は既に収集されるため、日中source→stage複製・夜間03:30に最終差分→V5の**readerだけshadow切替**し、元writerは並行維持する。5分間隔timer/01:20 catchup終了は直前チェック。結果等は事後補完可、当時取り損ねた動的スナップショットまで復元保証なし。まずGitHubの既存V5 scorer/inference/backtest入口とVIEW read-only契約を狭く確認し、今すぐpaper-only real-data pilotを開発。物理stage12未作成/本番writer切替は別gate、03:30タイマー未予約、BUY OFF、Drive403 STOP。
