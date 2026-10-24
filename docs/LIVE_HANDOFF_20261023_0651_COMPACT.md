@@ -298,5 +298,10 @@
 - Termius read-only `pg_class`：`boat_data` VIEW13/13、`boat_data_stage.venues`だけが物理表、残り12件すべてABSENT。`SHARED_STAGE_INVENTORY_READ_ONLY_PASS`、ROLLBACK。venues stage初回コピーは1/13、本番物理切替は0/13。
 - 最優先候補は中核`entries`（旧`public.v2_race_entries`）、既存のオフラインガードがある`entry_snapshots`（旧`public.v2_realtime_entry_snapshots`）も比較。どちらもstage absent。負荷/キーと初回取得証拠が未確認のまま実COPYはしない。10/31購入なしcanaryは検証合格時のみ。
 
+## 10/24 13:55：entry系2元表の読み取り専用サイズ/キー検査PASS
+- `public.v2_race_entries`: 121MB、統計推定438,299行、38列、PK(id)、UNIQUE(race_id,lane)。
+- `public.v2_realtime_entry_snapshots`: 33MB、統計推定125,870行、21列、PK(id)、UNIQUE(race_id,snapshot_label,lane)。
+- `ENTRY_STAGE_PREFLIGHT_READ_ONLY_PASS` / ROLLBACK。推定件数は実COUNTではない。前者はcore、後者はFIRST_CAPTURE_UNVERIFIEDなので予測as-of証拠に採用しない。stage次候補は**容量少・オフラインE01〜E12が整備済みのentry_snapshots（隔離研究/移行準備のみ）**。独立外部保全・実writer証明・ユーザー別承認までCOPY/DML/VIEW切替禁止。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`public.v2_race_entries`および`public.v2_realtime_entry_snapshots`のサイズ・概算行数・列数・ユニークインデックスをカタログread-onlyで確認**。実データのCOUNTや全文スキャンはしない。比較から低負荷の次の隔離ステージング候補を選び、GitHubオフライン設計→明示承認の順。収集/DB/VIEW/timers/BUY変更なし、本番切替0/13 NO-GO。
+**ConoHaで`public.v2_realtime_entry_snapshots`の現時点のスキーマ/主キー・自然キーNOT NULL/旧serial defaultの有無、stage不存在、トリガー/FK数をpg_catalog READ ONLYで再確認**。新stage作成/実COPYはしない。証明欠落ならSTOP、現行writer/timer/VIEW/BUY変更なし、本番切替0/13 NO-GO。
