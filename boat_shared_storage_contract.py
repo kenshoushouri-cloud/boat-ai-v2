@@ -41,8 +41,8 @@ RELATIONS = (
 )
 
 # Staged prior to this contract's creation: preserve as is until a guarded,
-# schema-only move of the verified original staged table is possible.
-STAGED_PILOTS = {"public.v2_venues": "v5_data.venues"}
+# independently verified follow-on staging can be prepared. Older v5_data.venues\n# references are historical proposals, NOT this current physical pilot.
+STAGED_PILOTS = {"public.v2_venues": "boat_data_stage.venues"}
 
 # Historical data is in a SEPARATE database; explicit read-only connection
 # is required, never silently attached or bulk copied.
