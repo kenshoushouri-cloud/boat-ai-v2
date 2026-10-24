@@ -59,6 +59,10 @@
 - Termius`/var/backups/v5_prepare_wLz5IWY7`で13manifest・DB/read-only・writer監査・disk/backupの一括レポート作成成功。`PRODUCTION_CUTOVER=NO_GO`、`NIGHT_AUTOMATION=NOT_ARMED`で現行収集無変更。
 - GitHub`v5/offline_stage_batch_plan.py`: 原本固定mapに対し、既存venues stage 1件は保護、波1六件（レース/出走/結果/K/公式オッズ/展示）、波2六件（コース統計/直前出走/オッズ/気象/条件/選手条件）の純粋オフライン計画。決してDBへ接続しない。
 - `tests/test_v5_offline_stage_batch_plan.py`の5ケースを追加したがテスト実行結果は未取得。モデル前向き予測と物理コピー完成は別のgate。独立外部復元・writer/CDC差分/自動切戻しは未証明。
+## 18:50 合成テスト5/5 PASS／13表schema-key一括gate
+- `v5/offline_stage_batch_plan.py`の`tests/test_v5_offline_stage_batch_plan.py`をTermius隔離実行で5/5 `OK`。従来研究18/18と累計23/23合成PASS。移行用DB書込はまだ行っていない。
+- GitHubに`deploy/conoha/v5_stage_13_key_schema_gate_readonly_20261024.sql`追加、13ソースのPK/unique/NULL/default/sequence/FK/triggerを一括メタ読取。オンライン分割COPY時の`id`・`nextval`の誤配線・更新/削除差分の不一致を防ぐための境界。
+- 本番への一括stage作成やCOPY、後続差分＋rollbackは**未実装**、独立バックアップ復元未証明。現行収集維持、stage1/13、本番0/13、03:30 timer未予約。
 
 ### Next ONE task
-5件合成テストを既存のGitHubコードで/tmp隔離実行後、**13表オンライン段階コピー＋完全差分再同期＋自動ロールバックの具体的実装**へ進む。予測は現行VIEWから先行開発可能。Drive書込/本番切替/BUYはNO-GO。
+上記一括schema gateをConoHaでread-only実施し、PK/デフォルト/FK問題の位置を確定。結果を受けた後、複数表の実stage分割COPYと完全差分のコードを優先して構築する。既存venuesは再COPY禁止。
