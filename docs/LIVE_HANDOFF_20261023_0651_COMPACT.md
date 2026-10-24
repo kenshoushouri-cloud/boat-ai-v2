@@ -383,5 +383,10 @@
 - GitHub既存`deploy/conoha/v5_live_six_lane_input_bridge_readonly_20261023.sql`（6艇の出走/展示/オッズ120/前日以前K5/read-only）を確認。必須同一snapshot_label条件と、タイムスタンプが可変で初回証拠不十分な点に注意。新コード作成前に実データで1raceの入力構造を確認。
 - システム収集維持、Drive V5 write403 STOP、stage1/13・本番物理切替0/13 NO-GO、BUY禁止。
 
+## 10/24 16:22 JST：V5 shared live-input shape READ ONLY PASS（尼崎9R）
+- Termius結果`20261024_13_09`、締切14:47 JST、同一`conoha_forward_20261024_143005`スナップショット、`core_rows=6`、6艇の登番/級別/モーター/艇・展示順位が出力、`odds_tickets=120`、各艇`prior_k_5=5`。6/6の`v5_gate=HOLD_UNVERIFIED_FIRST_CAPTURE_AND_MODEL`。専用READ_ONLY SQL、COMMIT（read-only tx）、`V5_REAL_SHARED_SIX_LANE_INPUT_READONLY_NO_INFERENCE_NO_BUY`、`V5_REAL_INPUT_READ_ONLY_FINISHED`。
+- これは「必要な6艇の**基礎行の構造が揃う**」だけ。模型`OfflineV5InferenceInput`が要する`base_probabilities`＋`recent_form/exhibition_rank/racer_course/opponent/venue_lane`5因子（各6値）は**このSQLからは生成されていない**。K5件数/上位率だけでは13件の前日固定学習Counter再現不可。source原本初回観測も未認証、締切14:47はdecision_cutoffではない。モデルT1.00/T2.20 scope未統一。
+- 研究資産`v5/offline_prior_day_factor_export.py`と既存`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`（単一日・非更新）を再利用。新規factor生成を発明しない。collector/DB/VIEW/systemd/Drive/BUY変更なし、stage1/13・切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**既存GitHub read-only SQLをConoHaの隔離`/tmp`に取り出し、尼崎9R `20261024_13_09` 1レースに限定して6艇/同一ラベルの展示6・odds120/K5 のソース入力充足状況を読み取り専用確認**。あくまで事後のデータ形状監査（予測当時の利用可能性・初回観測証明ではない）。sourceテーブルへのDML/DDL、予測実行、BUY、collector/timer/Drive変更禁止。
+**研究用13Counterに必要な過去日元データがあるか、既存`deploy/conoha/v5_prior_day_counter_sources_coverage_readonly_20261023.sql`で2026-10-20一日だけread-only棚卸し**。後で複数日を処理できる設計のための単日pilotで、手作業1日ずつの恒久運用ではない。`historical`展示が初回入手可能だった証拠と誤用禁止。全期間学習、COPY、DB更新、実予測、BUYは禁止。
