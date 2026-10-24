@@ -63,6 +63,10 @@
 - `v5/offline_stage_batch_plan.py`の`tests/test_v5_offline_stage_batch_plan.py`をTermius隔離実行で5/5 `OK`。従来研究18/18と累計23/23合成PASS。移行用DB書込はまだ行っていない。
 - GitHubに`deploy/conoha/v5_stage_13_key_schema_gate_readonly_20261024.sql`追加、13ソースのPK/unique/NULL/default/sequence/FK/triggerを一括メタ読取。オンライン分割COPY時の`id`・`nextval`の誤配線・更新/削除差分の不一致を防ぐための境界。
 - 本番への一括stage作成やCOPY、後続差分＋rollbackは**未実装**、独立バックアップ復元未証明。現行収集維持、stage1/13、本番0/13、03:30 timer未予約。
+## 18:56 13系統のPK/sequence/fk metadata監査
+- Termius`V5_STAGE_13_KEY_SCHEMA_READ_ONLY_NO_COPY`, 13 rows, ROLLBACK。更新追従用のキーは`id`/複合`(race_id,lane)`等混在、複数の`nextval` defaultあり。`CREATE TABLE LIKE INCLUDING ALL`のdefaultを無条件共有しない。
+- 以前から`deploy/conoha/boat_shared_staging_delta_plan_offline.py`に全主キー整列ハッシュ差分（insert/update/delete）計画コードが存在。**使い回す**。`boat_data_stage.<view>`と提案`v5_data.raw_*`の宛先不一致を修正しないまま実SQLを実行しない。
+- `v5/offline_stage_chunk_copy_sql.py`はオンライン分割COPYのためのオフラインSQL生成器、実行不可・PK/スキーマ証拠が揃わなければ拒否。`tests/test_v5_offline_stage_chunk_copy_sql.py`6件は未実行。運用RUNNER／本物のCOPYは未完了。
 
 ### Next ONE task
-上記一括schema gateをConoHaでread-only実施し、PK/デフォルト/FK問題の位置を確定。結果を受けた後、複数表の実stage分割COPYと完全差分のコードを優先して構築する。既存venuesは再COPY禁止。
+新ジェネレータの合成テスト6件を1コマンドで/tmp隔離実行後、同じstage名でsourceとCOPY先を整合させ、既存delta plannerを再利用する**本物のオンラインbatch stage実装**に進む。明示gate欠如の本番DDL/DML禁止。
