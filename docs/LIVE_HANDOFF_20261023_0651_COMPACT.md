@@ -369,6 +369,10 @@
 - `v5/offline_v5_freeze_bridge.py`：既存`_dt`を再利用し、展示/オッズ`captured_at>decision_cutoff_at`をfreeze前にHOLD（ValueError）、元のscore/記録器/180秒・60秒ゲート不変更。
 - `tests/test_v5_offline_v5_freeze_bridge.py`：展示遅延/odds遅延/境界同時刻で権限FALSEの合成テスト3追加、**計9 test定義。未実行**（自動CI結果0、GitHubへ保存確認済み）。合格を主張しない。
 - 詳細`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`。source真正性未認証、モデル凍結仕様対立(T1.00 vs T2.20)、stage1/13・切替0/13 NO-GO、Drive403書込停止、BUY禁・公式収集維持。
+## 10/24 16:05 JST：V5 as-ofブリッジ9件隔離テスト全PASS
+- Termiusスクリーンショット：`Ran 9 tests in 0.006s`、`OK`、`V5_ASOF_9_TESTS_PASS`。旧6件+追加3件すべて成功、既存collector/DB/timer/BUYへの実行なし。CI statusではなくConoHa上の`/tmp`隔離Python合成実行をユーザー出力で確認。first-observation・実ROI・モデルscopeは依然未証明。
+- 次に`tests/test_v5_forward_shadow_freeze.py`既存6件（`prepare_candidate`、`append_once`、重複拒否、締切/不完全odds等）を同じ隔離条件で回帰テスト。test内の書込は`tempfile.TemporaryDirectory`のみに限定することをGitHubで読取確認。
+- Drive write403 STOP、Stage1/13・本番切替0/13 NO-GO、BUY禁止維持。
 
 ## Next ONE task（次の一作業）
-**GitHubの合成bridgeテスト9件を隔離環境で実行して実結果確認**（`PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_v5_offline_v5_freeze_bridge.py' -v`）。CI/隔離テスト実行手段がない場合は未実行を維持し、実本番・ConoHa作業に切り替えない。DB/collector/timer/Drive/BUYの変更禁止。
+**GitHub mainから`v5/forward_shadow_freeze.py`と`tests/test_v5_forward_shadow_freeze.py`のみをConoHa一時領域にgit archiveし、non-root/nice/timeoutで6件の既存合成回帰テストを実行**。実ジャーナル・実DB・collector・systemd・BUY・Driveを変更しない。成功は`Ran 6 tests`、`OK`を確認後のみ記録。
