@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - "research/historical_matched_contract_readiness_pg.py"
+      - "research/opponent_provenance_readiness_pg.py"
       - "tests/test_historical_matched_contract_readiness_pg.py"
+      - "tests/test_opponent_provenance_readiness_pg.py"
       - ".github/workflows/historical-matched-contract-readiness.yml"
   issue_comment:
     types: [created]
@@ -18,7 +20,7 @@ env:
   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
   RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
   RAILWAY_ENVIRONMENT: "production"
-  RAILWAY_DB_SERVICE: "postgres-recovery"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
 
 jobs:
   audit:
@@ -39,57 +41,82 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install -r requirements.txt pytest
+
       - name: Static safety and unit tests
         run: |
           set -euo pipefail
-          python -m py_compile research/historical_matched_contract_readiness_pg.py
+          python -m py_compile \
+            research/historical_matched_contract_readiness_pg.py \
+            research/opponent_provenance_readiness_pg.py
           python -m unittest -v tests.test_historical_matched_contract_readiness_pg
+          pytest -q tests/test_opponent_provenance_readiness_pg.py
           python - <<'PY'
           from pathlib import Path
-          p=Path("research/historical_matched_contract_readiness_pg.py").read_text(encoding="utf-8").lower()
-          assert "set transaction read only" in p
-          for token in ("v2_results","v2_result_entries","v2_odds","insert into","update v2_","delete from"):
-              assert token not in p, token
+          for name in (
+              "research/historical_matched_contract_readiness_pg.py",
+              "research/opponent_provenance_readiness_pg.py",
+          ):
+              p=Path(name).read_text(encoding="utf-8").lower()
+              assert "set transaction read only" in p
+              for token in ("v2_results","v2_result_entries","v2_odds","insert into","update v2_","delete from"):
+                  assert token not in p, (name, token)
           w=Path(".github/workflows/historical-matched-contract-readiness.yml").read_text(encoding="utf-8").lower()
-          assert "pull_request:" in w
-          assert "issue_comment:" in w
-          assert "/railway historical-matched-readiness" in w
+          assert "postgres-hobby-fullhistory-candidate-v4" in w
           assert "".join(("schedule", ":")) not in w
           assert "".join(("railway"," variable"," list")) not in w
+          assert "".join(("list","_variables")) not in w
           print("HIST_MATCHED_READINESS_STATIC=PASS")
           PY
+
       - run: npm install --global @railway/cli
-      - name: Run Production read-only readiness audit
+
+      - name: Diagnose September Opponent provenance on candidate-v4
+        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           railway run \
             --project "${RAILWAY_PROJECT_ID}" \
             --environment "${RAILWAY_ENVIRONMENT}" \
             --service "${RAILWAY_DB_SERVICE}" \
-            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-29 --output historical-matched-contract-readiness.json' \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/opponent_provenance_readiness_pg.py --start-date 2026-09-01 --end-date 2026-09-30 --output opponent-provenance-readiness.json' \
+            2>&1 | tee opponent-provenance-readiness.txt
+          grep -q '^OPP_PROV_RESULT=PASS_READ_ONLY$' opponent-provenance-readiness.txt
+
+      - name: Run full historical read-only readiness audit
+        if: github.event_name == 'issue_comment'
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/historical_matched_contract_readiness_pg.py --start-date 2025-07-01 --end-date 2026-09-30 --output historical-matched-contract-readiness.json' \
             2>&1 | tee historical-matched-contract-readiness.txt
           grep -q '^HIST_MATCHED_READINESS_RESULT=PASS_READ_ONLY$' historical-matched-contract-readiness.txt
+
       - name: Summary
         if: always()
         run: |
           {
-            echo '## Historical matched-contract input readiness'
+            echo '## Historical matched-contract readiness'
             echo
-            echo '- result-blind / outcome-free / odds-free / payout-free'
-            echo '- Production PostgreSQL read-only'
-            echo '- historical Course/Opponent remain reconstruction labels'
-            echo '- no prospective gate credit'
+            echo '- candidate-v4 / read-only / result-blind'
+            echo '- PR: lightweight September Opponent provenance diagnostic only'
+            echo '- full historical audit: explicit Issue #42 command only'
             echo
+            grep '^OPP_PROV_TOTALS=' opponent-provenance-readiness.txt || true
+            grep '^OPP_PROV_FILL_MISSING_ONLY=' opponent-provenance-readiness.txt || true
             grep '^HIST_MATCHED_READINESS_TOTAL=' historical-matched-contract-readiness.txt || true
           } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Comment Issue 42 summary
         if: always() && github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo 'Historical matched-contract readiness: 2025-07-01 .. 2026-09-29'
+            echo 'Historical matched-contract readiness: 2025-07-01 .. 2026-09-30'
             echo
             grep '^HIST_MATCHED_READINESS_TOTAL=' historical-matched-contract-readiness.txt || true
             echo
@@ -103,7 +130,9 @@ jobs:
         with:
           name: historical-matched-contract-readiness-${{ github.run_id }}
           path: |
+            opponent-provenance-readiness.json
+            opponent-provenance-readiness.txt
             historical-matched-contract-readiness.json
             historical-matched-contract-readiness.txt
-          retention-days: 90
-          if-no-files-found: error
+          retention-days: 30
+          if-no-files-found: warn
