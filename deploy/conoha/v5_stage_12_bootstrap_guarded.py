@@ -227,9 +227,6 @@ def main() -> int:
     if os.environ.get("V5_ALLOW_EMPTY_STAGE_DDL") != "YES" or not args.approval_file:
         raise ValueError("STOP: scoped stage DDL authorization missing")
     gates_verified(args.approval_file)
-    if os.geteuid() != 0 and os.geteuid() != 26:
-        # UID is deployment-specific. Prefer postgres peer auth verified by psql.
-        pass
     run = subprocess.run(
         ["psql", "-X", "-P", "pager=off", "-v", "ON_ERROR_STOP=1",
          "-d", "railway"], input=sql, text=True,
