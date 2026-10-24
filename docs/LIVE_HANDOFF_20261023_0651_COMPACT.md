@@ -349,6 +349,10 @@
 - `v22_realtime_decision_engine_pg.py`の`public.v2_realtime_decisions`は旧v22用、`decision_at`列あり。V5実予測と流用禁止。`v25_final_realtime_pipeline_pg.py`は旧v22 targeted runnerとLINE notifierを呼ぶ。
 - `v5/telegram_trial_performance.py`は外部で固定済みのV5 JSONL ledgerを`--ledger`入力で検証・集計するだけで、書込器や実績台帳ではない。V5の最終判定時刻/入力receipt格納先はGitHub確認範囲で未証明。
 - 津10R展示14:40:44／締切14:59、福岡9R展示14:40:21／締切14:55は締切10分前の**仮定**cutoffには双方入るが、真のdecision_atと初回取得証拠が未検証なので予測採用/ROI不可。公式情報取得を維持、取得間隔・timer変更なし。Drive書込403停止・共通stage1/13・本番0/13 NO-GO。
+## 10/24 15:19 JST：V5専用のDB予測記録先 inventory PASS
+- ユーザーTermius画面：ConoHa `railway`で候補名(`decision|predict|ledger|freeze|receipt`)＋schema(`v5_data/v5_research/v5_live/boat_data`)のpg_catalog照合0行。`public.v2_realtime_decisions`は実表(`r`)存在。READ ONLY/ROLLBACK、`V5_DECISION_STORAGE_READ_ONLY_PASS`。
+- 対象検索に一致する**V5名の表は見つからない**。違う名称や別DB/ローカルJSONLの可能性は未調査。旧V2の`decision_at`をV5の記録と誤認禁止。
+- GitHub `v5/ntfy_trial_performance_report.py` と `v5/telegram_trial_performance.py` は外部凍結済みV5 JSONLの**読取と試験通知のみ**。`boat-v5-forward-window.service`は公式snapshot collectorのみ、`boat-v5-midnight-catchup.service`は結果補完のみ。V5本番の独立スコアリング→freeze→予測記録器はこの範囲で証明されず。BUY OFF、独立外部バックアップDrive403、stage1/13、物理切替0/13 NO-GO。
 
 ## Next ONE task（次の一作業）
-**ConoHa `railway` DBでV5固有のdecision/ledger/freeze/prediction表の存在と種別をpg_catalogからread-only棚卸し**。旧`public.v2_realtime_decisions`は参考として種類のみ取得し、V5判定と混同しない。10秒制限・ROLLBACK、実データ読込/BUYなし。V5専用表が無ければ別DB/ファイル/ログ経路も残るため実予測が存在しないとは即断しない。
+**ConoHa上のV5独立した予測決定JSONL/ファイルが存在するか、候補ディレクトリのファイル名だけread-only・短時間で確認**。コンテンツ/secretは読まない。無い場合はV5非購入canary予測記録器の新規実装仕様をGitHubでオフライン設計し、実運用には別gateが必要。現行収集/DB/Drive/timer/VIEW/BUY変更なし。
