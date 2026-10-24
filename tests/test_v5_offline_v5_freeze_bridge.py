@@ -53,6 +53,28 @@ class V5FreezeBridgeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "future"):
             build_paper_shadow_freeze(self.case, **self.kwargs)
 
+    def test_reject_exhibition_captured_after_decision_cutoff(self):
+        # Source arrived before freeze(now), but AFTER model decision cutoff.
+        self.kwargs["exhibition"]["captured_at"] = (
+            self.now - timedelta(seconds=5)).isoformat()
+        with self.assertRaisesRegex(ValueError, "exhibition.*decision cutoff"):
+            build_paper_shadow_freeze(self.case, **self.kwargs)
+
+    def test_reject_odds_captured_after_decision_cutoff(self):
+        self.kwargs["odds"]["captured_at"] = (
+            self.now - timedelta(seconds=3)).isoformat()
+        with self.assertRaisesRegex(ValueError, "odds.*decision cutoff"):
+            build_paper_shadow_freeze(self.case, **self.kwargs)
+
+    def test_captured_exactly_at_cutoff_stays_non_buyable(self):
+        at_cutoff = self.case.decision_cutoff_at.isoformat()
+        self.kwargs["exhibition"]["captured_at"] = at_cutoff
+        self.kwargs["odds"]["captured_at"] = at_cutoff
+        record = build_paper_shadow_freeze(self.case, **self.kwargs)
+        self.assertFalse(record["original_first_observation_verified"])
+        self.assertFalse(record["forward_eligible"])
+        self.assertFalse(record["buy_eligible"])
+
     def test_reject_incomplete_odds(self):
         self.kwargs["odds"]["complete_items"] = 119
         with self.assertRaisesRegex(ValueError, "odds"):
