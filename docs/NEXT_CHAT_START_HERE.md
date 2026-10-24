@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHa railwayで`public.v2_venues`と`boat_data_stage.venues`の現時点差分をread-only集計（件数/時刻のみ）、COPY・UPDATE禁止。10/24 13:48にV5 systemd7定義すべて`ENVFILE=0 INLINE_ENV=0 CREDENTIAL=0`・`V5_SYSTEMD_CONFIG_REFERENCE_AUDIT_PASS`。実行スクリプト経由の外部設定依存は未調査。V5/collector/unit TARと同VPS隔離復元はPASS。共有本番切替0/13、独立外部保全・全writer確認・実予測未完了、NO-GO。
+**最新compact末尾の Next ONE task**：ConoHa railwayで共有`boat_data`13VIEWと`boat_data_stage`対応物理表の存在・種類だけをread-only棚卸しし、次の隔離コピー候補を選ぶ。10/24 13:50 venues差分は全24 `TIME_ONLY`/24 source_newer、会場実データ差分0・`VENUES_DELTA_READ_ONLY_PASS`。自動差分同期なし、旧writerが毎回updated_atを更新している可能性（未確証）。外部独立保全/全writer検証前は同期適用・本番切替禁止。現行収集維持、13本番切替0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
