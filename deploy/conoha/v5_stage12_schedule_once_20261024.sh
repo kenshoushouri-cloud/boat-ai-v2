@@ -7,7 +7,7 @@ umask 022
 export LC_ALL=C
 NAME="boat-v5-stage12-copy-20261025"
 TARGET="/usr/local/libexec/boat-v5-stage12-snapshot-only-20261024.py"
-URL="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/a3aa10efe03752137d62cc51e4b8f5503d7b2fe6/deploy/conoha/v5_stage12_snapshot_only_20261024.py"
+URL="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/2aeefbe6cd9d50266f8cd9f26b3024daa95af39f/deploy/conoha/v5_stage12_snapshot_only_20261024.py"
 fail() { echo "HOLD: $*" >&2; exit 2; }
 [[ "$(id -u)" == 0 ]] || fail "Run as root"
 [[ "$(TZ=Asia/Tokyo date +%F)" == "2026-10-24" ]] || fail "Scheduling restricted to 2026-10-24 JST"
