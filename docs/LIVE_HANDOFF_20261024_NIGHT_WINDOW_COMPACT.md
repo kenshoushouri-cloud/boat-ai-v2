@@ -29,5 +29,10 @@
 
 - 23:25 Termius試行で旧stage予約installerは `HOLD: System utilities unavailable`（`/usr/bin/runuser`固定パスが不適合の可能性）を返し、**予約は作成されていない**。改修コミット `56db44eaa1300315018b052fc96c9231ee09111f` は `runuser`/`flock` をPATH + sbin/binから探索。ユーザーは今夜の残り23時台に**修正版の予約コマンドを一度実行**し、`PASS: V5_STAGE12_COPY_ONLY_SCHEDULED` と次回02:50を確認する。旧installerを再実行しない。
 
+## 2026-10-24 23:34 JST 実機予約PASS（ユーザー画面）
+- Termius root実行で `TOOLS_OK: flock=/usr/bin/flock runuser=/usr/sbin/runuser`、`PASS: V5_STAGE12_COPY_ONLY_SCHEDULED (NOT YET COPIED)`、`NextElapseUSecRealtime=Sun 2026-10-25 02:50:00 JST`、`ActiveState=active` を確認。**翌02:50の実行予約は成功、まだ物理コピー実行・完成は未確認**。今夜追加コマンド不要。
+- 翌日 `journalctl -u boat-v5-stage12-copy-20261025.service --no-pager -n 80` と `boat_data_stage` 全13物理表/行数検査が次の一作業。 `STAGE12_INITIAL_COPY_PASS families=12 of_12` が現れない限り完了宣言しない。active legacy collector・時間/容量/その他gate失敗ならHOLDして現行収集継続。後続CDC/全差分・物理本番切替は別工程、BUY OFF。OS `SYSTEM RESTART REQUIRED` バナー表示中だが今夜rebootは実施しない。
+- 結果catchupの早期案は先刻実機で `PASS` 適用、次回10/25 00:45 JST確認済。前掲の未適用記述は検査時点の旧履歴であり、現況としない。
+
 ## 次の1作業
-**Termiusで上の一度きりの12系統stage COPY予約scriptを実行してPASS/HOLDを確認する。** 既にcatchup時刻前倒しは実機でPASS。翌日02:50のステージ初回COPY結果をjournalで確認、欠ける系統はHOLDの原因を調査して再実行方針を判断。その後insert/update/deleteの全差分・独立復元・本番writer routeの安全試験を別途実施。BUY/Drive書込/原本切替は禁止。
+**2026-10-25のstage12自動実行後、journalと実stage全13系統の存在・行数・完了記録をread-only照合する。** 予約済02:50 JST Active。実コピー前に追加操作を促さない。未完了・HOLDなら失敗理由と完成件数を短く報告し、旧収集を停止せず再試行方針を策定。差分追従・独立復元・本番切替は別工程、BUY/Drive書込禁止。
