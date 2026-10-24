@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：ConoHa既存`railway.dump`のSHA-256と実バイト数をread-onlyで取得。10/24 08:37にarchive dump実パス`/var/backups/boat-history-20261024-U6CRLt/boat_history_archive.dump`、81,865,791 bytes、SHA-256取得PASS。以前の`U6CRtL`は案内誤記。08:31archive隔離復元PASS、08:34テーブル名一致。VPS外保全/実データ完全一致は未証明、Google Drive API 403のため転送はしない。旧dump上書き/entry COPY/正本切替0/13・NO-GO。
+**最新compact末尾の Next ONE task**：GitHubだけで`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`を参照し、V5専用Drive外部保全のno-overwrite/実バイトSHA-256照合/独立隔離復元のfail-closed手順を検査。10/24 10:58 railway.dump 393138215bytes SHA取得PASS、08:37 archive.dump 81865791bytes SHA取得PASS。**両方とも同じVPS上のローカルdumpでありVPS外独立バックアップは未完成**。Drive API 403再接続・転送は禁止、entry COPY/切替0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
