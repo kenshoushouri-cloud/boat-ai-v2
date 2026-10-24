@@ -49,7 +49,8 @@ def log(*items):
 def remaining_seconds():
     n = now()
     end = n.replace(hour=6, minute=10, second=0, microsecond=0)
-    if not ((n.hour == 2 and n.minute >= 50) or 3 <= n.hour < 6):
+    if not ((n.hour == 2 and n.minute >= 50) or 3 <= n.hour < 6 or
+            (n.hour == 6 and n.minute < 10)):
         return 0
     return max(0, (end - n).total_seconds())
 
