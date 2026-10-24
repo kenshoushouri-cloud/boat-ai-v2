@@ -361,6 +361,10 @@
 - V5研究は本番構築の基盤。GitHub再監査で`v5/offline_mainline_inference.py`（1着確率）、`v5/offline_trifecta_shadow_ranking.py`（3連単120通り）、`v5/offline_v5_freeze_bridge.py`（数学→候補）、`v5/forward_shadow_freeze.py`（**既存prepare_candidate/append_onceでshadow JSONL追記可能**）、`v5/offline_day_shadow_pipeline.py`（合成一日成績）とテストあり。**「V5記録器のコードがない」は誤り**、ローカル一致ファイル0は既存記録の未確認に過ぎない。現時点でいずれも本番入力・初回観測の証明を備えない。
 - 2026-09-27 scope lock（V4由来、T2.20）とstrong-core（5 factor、T1.00）に候補仕様不一致があり、2026-10-09 freeze readiness auditに未解消と明記。独断でモデルや係数を採用しない。
 - `docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`を既存資産再利用前提で修正。重複計算器・記録器の新規作成は避ける。実データ接続と安全証拠の不足部分だけ補完。DB/collector/VIEW/systemd/BUY/Driveは無変更。本番切替0/13 NO-GO。
+## 10/24 V5既存予測記録器の差分監査完了
+- `forward_shadow_freeze.prepare_candidate/append_once`と`offline_v5_freeze_bridge`、対応テストをread-only確認。**再実装不要**：合成6艇1着確率→120通り→shadow固定・append-only保存の既存経路あり。
+- 重要な不足：bridgeのcutoff 0〜60秒条件・freezeの締切まで180秒条件はあるが、元データ`captured_at<=decision_cutoff_at`が**未検査**。形式SHA・自己申告時刻では独立初回観測証明にならない。仮想stakeは実支出ではない。モデル9/27 scope lock T2.20とstrong-core T1.00の不一致も維持。
+- 詳細と安全境界は`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`へ集約。コード実行・データ操作なし。ConoHa既存collector維持、stage1/13・本番0/13 NO-GO、Drive書込403 STOP、BUY禁止。
 
 ## Next ONE task（次の一作業）
-**既存`v5/forward_shadow_freeze.py`、`v5/offline_v5_freeze_bridge.py`の研究用shadow記録契約と本番必要条件の差分だけをread-only監査**。source-first-observation、実際のV5決定時刻、凍結モデル仕様の不一致、仮想金額≠実支出を確かめて重複実装を防ぐ。承認なく本番稼働・BUY・DB・タイマー・Drive書込なし。
+**既存V5コードのcutoff後取得を許さないオフライン合成ガード＋既存テストへの最小差分**。まず合成負例（`captured_at>decision_cutoff_at`かつ`captured_at<=now`）でHOLDを保証。実データ/DB/HTTP/BUY/systemd/Drive不使用、既存予測数学・shadow writerの置換禁止。
