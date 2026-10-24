@@ -278,5 +278,7 @@
 - Termiusで7件：`boat-v5-daily@morning.timer` enabled、`boat-v5-daily@night.timer` enabled、`boat-v5-daily@.service` static、`boat-v5-forward-window.service` static、`boat-v5-forward-window.timer` enabled、`boat-v5-midnight-catchup.service` static、`boat-v5-midnight-catchup.timer` enabled。4 timer enabled、3 service static。`V5_SYSTEMD_UNIT_INVENTORY_PASS`確認。**enabledは実稼働・実際の実行成功・設定バックアップを証明しない**。
 - GitHub code/collectorの同ConoHa隔離復元PASS。systemd定義/drop-in/秘密設定やVPS外独立保全は未実施。稼働変更/再起動/DB/VIEW/venues stageなし、切替0/13 NO-GO。
 
+## 10/24 13:24：systemd実体パス監査PASS
+- Termius：朝/夜のserviceは同一`boat-v5-daily@.service`、timer4＋service3で**実体7ファイルすべて`/etc/systemd/system/`**。両インスタンスの`DropInPaths`含め空、timer4 enabled/service3 static。`V5_SYSTEMD_PATH_AUDIT_PASS`。設定内容・EnvironmentFile実体やenabled symlinkの保全は未実施。
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで上記V5 systemd unitのFragmentPath/DropInPaths/UnitFileStateのみread-only採取**。テンプレートserviceは実インスタンス(`@morning.service`, `@night.service`)として照会する。ExecStart/Environment/EnvironmentFileの中身・秘密値は出力しない。設定実体パスとdrop-inが確定したらroot-onlyローカル保全手順を設計する。collectors/timers/DB/VIEW変更、Drive通信・コード削除禁止。本番切替0/13 NO-GO。
+**ConoHa Termiusで確認済みの実体systemd unit7ファイルをroot-only新規TARに低負荷でローカル保全し、TOC・byte数・SHA256を記録**。unit本文・秘密値は画面/GitHubへ出さない。これはサービス起動や外部設定ファイル・enabled symlink全体の復元証明ではない。元service/timer、collector、DB、VIEW変更・Drive通信・GitHub整理削除禁止。本番切替0/13 NO-GO。
