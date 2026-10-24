@@ -55,4 +55,6 @@
 
 **10/24 12:57 Termius**：V5配置フォルダ全体を`/var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar`に新規ローカル保存。25,200,640 bytes・mode600・TOC PASS・SHA-256 `4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968`。`V5_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED`。**秘密が含まれる可能性があるためGitHub/Driveへファイル転送禁止。復元・外部systemd保全/VPS外テスト未実施。**
 
-**Next ONE task：** V5のTARを一時領域へ安全に隔離展開・内容一致・清掃を検証。
+**10/24 13:01 Termius**：V5本体TARのSHA検査・安全相対パス検査・同ConoHa VPSの隔離展開・TARとの内容比較・一時領域削除が全PASS。`V5_ISOLATED_RESTORE_PASS_CLEANED`を確認。VPS外復元やsystemdの定義・環境設定保全、V5実行テストは**未実施**。
+
+**Next ONE task：** V5関連systemd service/timerのunit名とenabled状態のみread-only採取（定義本文や秘密値は出さない）。
