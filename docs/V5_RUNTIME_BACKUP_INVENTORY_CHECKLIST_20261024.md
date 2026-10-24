@@ -57,4 +57,6 @@
 
 **10/24 13:01 Termius**：V5本体TARのSHA検査・安全相対パス検査・同ConoHa VPSの隔離展開・TARとの内容比較・一時領域削除が全PASS。`V5_ISOLATED_RESTORE_PASS_CLEANED`を確認。VPS外復元やsystemdの定義・環境設定保全、V5実行テストは**未実施**。
 
-**Next ONE task：** V5関連systemd service/timerのunit名とenabled状態のみread-only採取（定義本文や秘密値は出さない）。
+**10/24 13:17 Termius**：V5 systemd関連7 unit確認。enabled timer4件（daily morning/night、forward-window、midnight-catchup）、static service3件（daily@テンプレート、forward-window、midnight-catchup）。`V5_SYSTEMD_UNIT_INVENTORY_PASS`。これはunit名/有効化状態のみで、稼働成功・定義保全は未証明。
+
+**Next ONE task：** `FragmentPath`・`DropInPaths`・`UnitFileState`のメタデータのみread-only調査。ExecStartやEnvironment値は出さない。
