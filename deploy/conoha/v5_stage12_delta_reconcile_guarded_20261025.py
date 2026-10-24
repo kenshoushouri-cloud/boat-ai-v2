@@ -8,8 +8,9 @@ checks. Every transaction either commits that table or rolls back the table.
 This is as-of snapshot convergence, not ongoing CDC. Re-run when needed.
 
 Run without --apply for catalog-only preview (no user table scans).
---apply requires V5_STAGE12_DELTA_APPROVED=YES and 03:00-05:45 JST.
-Start with --table races, not --all, until an actual pilot is reviewed.
+--apply requires V5_STAGE12_DELTA_APPROVED=YES. Only the single small
+--table races pilot may run 08:00-22:59 JST; other tables and --all
+remain 03:00-05:44 JST. Stage-only; no active production route changes.
 """
 from __future__ import annotations
 import argparse
@@ -204,7 +205,7 @@ def apply_page(cur, source, stage, fields, keys, rest, previous, last):
     return n_insert, n_update, n_delete
 
 
-def sync_table(conn, source_name, dest):
+def sync_table(conn, source_name, dest, daylight_pilot=False):
     source = "public." + source_name
     stage = "boat_data_stage." + dest
     report("BEGIN_DELTA", source, "=>", stage)
@@ -222,15 +223,19 @@ def sync_table(conn, source_name, dest):
                 ident("public", source_name)))
             if source_count == 0:
                 raise RuntimeError("HOLD_EMPTY_SOURCE_NO_MASS_DELETE")
+            if daylight_pilot and (dest != "races" or source_count > 100000):
+                raise RuntimeError("HOLD_DAYLIGHT_PILOT_NOT_SMALL_RACES")
             past = None
             totals = [0, 0, 0]
             windows = 0
             started = time.monotonic()
             while True:
                 n = now()
-                if not (3 <= n.hour < 6) or (
-                    n.hour == 5 and n.minute >= 45
-                ) or time.monotonic() - started > 1100:
+                daytime_now = daylight_pilot and (8 <= n.hour < 23)
+                nighttime_now = (3 <= n.hour < 6 and
+                                 not (n.hour == 5 and n.minute >= 45))
+                if (not (daytime_now or nighttime_now)
+                    or time.monotonic() - started > (120 if daylight_pilot else 1100)):
                     raise RuntimeError("HOLD_TIME_BUDGET_TRANSACTION_ROLLBACK")
                 cond, pars = bounds("s", keys, past, None)
                 q = sql.SQL("SELECT {} FROM {} AS s WHERE {} "
@@ -312,13 +317,16 @@ def main():
         raise RuntimeError("HOLD_LOCAL_POSTGRES_REQUIRED")
     selected = ROWS if args.all else tuple(
         row for row in ROWS if row[1] == args.table)
+    daylight_pilot = bool(
+        args.apply and args.table == "races" and 8 <= now().hour < 23)
     if args.apply:
         if os.environ.get("V5_STAGE12_DELTA_APPROVED") != "YES":
             raise RuntimeError("HOLD_EXPLICIT_DELTA_STAGE_APPROVAL_REQUIRED")
-        if not (3 <= now().hour < 6) or (
-            now().hour == 5 and now().minute >= 45
+        if not daylight_pilot and (
+            not (3 <= now().hour < 6) or
+            (now().hour == 5 and now().minute >= 45)
         ):
-            raise RuntimeError("HOLD_ONLY_03_00_TO_05_44_JST")
+            raise RuntimeError("HOLD_STAGE_DELTA_ONLY_NIGHT_OR_RACES_DAYLIGHT")
     with psycopg.connect(os.environ["DATABASE_URL"],
                          autocommit=True, connect_timeout=8) as conn:
         if not args.apply:
@@ -334,7 +342,7 @@ def main():
         report("APPLY_SCOPE", "stage_only", "tables=" + str(len(selected)),
                "free_gib=%.2f" % (free / (1024**3)))
         for src, dest in selected:
-            sync_table(conn, src, dest)
+            sync_table(conn, src, dest, daylight_pilot=daylight_pilot)
         report("STAGE12_DELTA_SNAPSHOT_PASS", "families=" + str(len(selected)),
                "as_of_per_table_not_CDC=YES", "cutover=NO_GO", "BUY=OFF")
 
