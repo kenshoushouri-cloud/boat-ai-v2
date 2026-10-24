@@ -290,5 +290,9 @@
 ## 10/24 13:48 JST：systemd外部認証参照の定義監査 PASS
 - Termius：V5 unit実体7ファイルすべて`ENVFILE=0 INLINE_ENV=0 CREDENTIAL=0`、`V5_SYSTEMD_CONFIG_REFERENCE_AUDIT_PASS`。これはユニット本文で3種類の直接指定が無いという意味に限り、シェル/Python経由のenvやsecret依存を否定しない。
 - V5本体・collector・unit定義は同ConoHaローカルTARと隔離展開PASS。VPS外独立保全/起動リンク・2DB全復元は未完了。期限優先につき、バックアップ棚卸しをいったん区切り、**次はvenues stageの現時点差分をREAD-ONLYで再測定**する。13本番物理切替は0/13のまま、独立保全やwriter確認前の差分適用/切替は禁止。
+## 10/24 13:50 JST：venues差分read-only再監査
+- Termius：`public.v2_venues`対`boat_data_stage.venues`、全24会場`TIME_ONLY=24`、`source_newer=24`、会場名/ID/is_active/created_at実データ差分0、追加/欠損0、`VENUES_DELTA_READ_ONLY_PASS`、read-only+ROLLBACK。旧原本の`updated_at`が全24件でstageより進む。自動同期は未実施；旧writerによる定期UPSERTでタイムスタンプのみ進んだ可能性があり、無条件に全件同期しない。
+- GitHub変更とConoHaのDB変更は区別、ConoHaに新たな更新・COPYなし。13共有本番物理切替0/13、外部独立保全/全writer証明・実予測/ROI未完了、NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHaの`railway` DBで旧`public.v2_venues`と隔離`boat_data_stage.venues`の現時点の全キー・実データ/時刻差分の件数だけを、`REPEATABLE READ READ ONLY`、10秒制限、ROLLBACKで取得**。実際のstage COPYは再実施せず、DML/VIEW差替え/本番切替/BUYなし。GitHub cleanup Issue #582は保全完了後。独立VPS外保全未完成につき本番切替0/13 NO-GO。
+**ConoHaの`railway`で`boat_data` VIEW13件と`boat_data_stage`の対応する物理テーブルの存在・種類だけをread-onlyで一覧**。対象を総覧して次の隔離ステージング候補を選び、先にGitHub側オフライン安全検査・コピー計画を用意する。大テーブルの全件COUNT、実COPY/UPDATE、VIEW差替え、タイマー変更、BUYは禁止。
