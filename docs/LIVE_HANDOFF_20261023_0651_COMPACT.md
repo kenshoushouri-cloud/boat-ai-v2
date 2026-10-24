@@ -236,5 +236,9 @@
 - 新規`docs/V5_RUNTIME_BACKUP_INVENTORY_CHECKLIST_20261024.md`：R01〜R12の実稼働コード/HEAD・管理外差分、Python/PG/OS依存、systemd unit/timer/drop-in、cron/collector、秘密はキー名だけ、DB復旧要件、永続的ローカル状態、外部での実バイトSHA256と隔離起動/復元までを網羅。GitHub保存・readback、8静的確認PASS。
 - **ConoHa現地監査・V5本体コピー・Drive接続・外部バックアップ・実復元は未実施**。existing railway/archiveローカルdumpのみ保全、collector/DB/VIEW/venues stage変更なし。本番正本切替0/13・NO-GO。
 
+## 10/24 11:09 JST：Git管理外collectorと肥大化整理予約
+- ConoHa Termius：`/opt/boat-ai-v5`存在/Git YES/HEAD `504b61138e3aaae547688194652e7022c196bfc4`、`/opt/boat-ai-collector`存在/Git NO。collectorはGitHubだけでは復元できず、先に本体とともに別保全する必要。checklist R01/R02を部分確認済みに更新。
+- ユーザー要望のGitHub容量整理はIssue [#582](https://github.com/kenshoushouri-cloud/boat-ai-v2/issues/582)でread-only計測→稼働参照確認→保全後PR/別承認の順に追跡。**削除・履歴書換えは未実施**。旧DB/13VIEW/collector/timers/venues stage24行は未変更。entry stage absent、本番切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`/opt/boat-ai-v5`と`/opt/boat-ai-collector`の存在、Git管理の有無、HEAD SHAだけを1つの読み取り専用コマンドで確認**。git fetch/pull、環境変数やリモートURLの表示、深い再帰走査、systemd/cron/DB変更は禁止。結果確認後に次の1作業を決定する。V5外部保全/実COPY/切替/BUYは別承認・NO-GO。
+**ConoHa Termiusで`/opt/boat-ai-collector`直下エントリの種別と名前だけread-only確認**。内容・設定値/秘密値・remote URLは表示しない。deep scan、Git fetch/pull、実backup、DB/cron/collector変更、Drive API、コード削除禁止。Issue #582の整理は本体保全・復元後に別承認。
