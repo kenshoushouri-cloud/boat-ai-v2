@@ -47,4 +47,6 @@
 
 **10/24 11:21 Termius**：`refund_evidence/`=2.2M、`__pycache__/`=24Kを低優先度・15秒のread-only `du`で確認。成功マーカー`COLLECTOR_DIR_SIZE_READ_ONLY_PASS`。dirの内容は未確認。9ファイル114031Bを加えた全体は数MiB、初回保全ではどちらのdirも保持。
 
-**Next ONE task：** Git管理外collector全体をConoHa内の新規root-only tarに保全し、TOC・SHA256を確認。実復元とVPS外保全は別工程。
+**10/24 11:28 Termius**：Git管理外collector全体を`/var/backups/boat-collector-20261024-7Tn5rg/collector.tar`に新規コピー（2,283,520 bytes、mode600、TOC PASS、SHA-256 `823a46ee4820e66373abaec7d6e099c3e1d99ae019488691e03d6fbd2a4d7d62`）。既存collector停止なし。**隔離復元/VPS外保全/V5本体全体は未完了**。
+
+**Next ONE task：** collector tarを隔離領域に展開し内容バイト一致と後片付けを検査。
