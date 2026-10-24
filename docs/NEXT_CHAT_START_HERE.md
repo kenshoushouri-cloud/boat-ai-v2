@@ -9,4 +9,4 @@ V5は研究成果を再利用して非購入限定稼働を構築する。6艇�
 
 最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**Next ONE task**：17:55 共有13系統一括catalog gate PASS（13 rows、DB3479MB、venues stage=r、live VIEW=v）。ユーザー提案の**収集短時間停止→不足は後日取得可能な種類だけ補完**を高速移行計画に採用。停止/切替は**未実行・個別承認別**、真の直前オッズ等は再生不可の恐れ/当時原本として偽装禁止。`docs/V5_SHORT_MAINTENANCE_AND_RECOVERY_FASTPATH_20261024.md`と固定保存先`docs/V5_DATA_LOCATION_AND_CONSOLIDATION_BOARD_20261024.md`参照。次は既存`deploy/conoha/v5_active_writer_routes_readonly_20261022.py`等で4timer・次回起動・workerを短時間read-only棚卸し。stage1/13・live0/13、Drive403 STOP、BUY OFF。
+**Next ONE task**：10/24 18:06 Termius検査：4 timer enabled/active、対象serviceはその瞬間inactive/dead、forward次18:10（5分ごと）、night23:00、catchup翌01:20、morning翌07:00。**停止は未実行**。次はtimer外のwriter/cron/DBセッションを秘密値を表示せずread-onlyで確認。短時間停止は最終差分時のみ、独立復元/全writer/結果完了/復帰策のgateと別承認必須。stage1/13・live0/13、Drive403 STOP、BUY OFF。
