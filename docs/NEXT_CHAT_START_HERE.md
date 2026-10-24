@@ -1,20 +1,12 @@
-# 新チャット貼り付け案内（2026-10-23 19:52 JST）
+# 新チャット開始用短縮案内（2026-10-24 17:10 JST）
 
 @GitHub
 
-新競艇AI開発プロジェクトNo.2 続き。Repository: kenshoushouri-cloud/boat-ai-v2
+新競艇AI開発プロジェクトNo.2の続き。Repo `kenshoushouri-cloud/boat-ai-v2`。
+まず`docs/HANDOFF_LATEST.md` → その指定先`docs/LIVE_HANDOFF_20261024_1710_COMPACT.md` → このファイル、の3点だけを確認。52KBに肥大化した旧handoff・過去史は一括取得せず、必要な特定事実のみ参照。SHA/run/件数/容量は固定値と見なさない。
 
-最初に3点だけ：1. docs/HANDOFF_LATEST.md、2. そこが指定する最新compact handoff全文、3. docs/NEXT_CHAT_START_HERE.md。古いhandoff/PROJECT_HISTORY/長いチャットは大量参照禁止。
+V5は研究成果を再利用して非購入限定稼働を構築する。6艇確率/120券PL/非購入shadow記録/日次合成評価の隔離テスト18/18 PASS。ただし実ROI、真のfirst-capture、モデルT1.00 vs T2.20不一致は未解消。ConoHaの共有13VIEWは維持、stage venues初回1/13、物理切替0/13 NO-GO。Drive403 write STOP、既存collector/タイマー継続、BUYは禁止。
 
-10/23 19:52実績（ConoHa Termius画面で確認）：
-- オフライン：共有13系統8/8 PASS、venues個別7/7 PASS。
-- ConoHa `railway`の新世代ローカルdump375MBを作成し、venues24行の隔離限定復元に成功。一時DB残存0。DB全体/別DB履歴復元や外部独立保全の完了ではない。
-- **承認を得て`boat_data_stage.venues`を新規作成し、旧`public.v2_venues`から24行初回物理複製済み。** 19:50 COMMIT、双方向全列差分0。19:51再監査も24/24/24・差分0、19:52 read-only INSERT0/UPDATE0/DELETE0/SAME24。これは一時点の一致のみ。**stageを再作成・二重複製しないこと。**
-- `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
-- 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
+最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**最新compact末尾の Next ONE task**：16:30単日read-only検査で2026-10-20 144R中、出走6=144、公式結果144、clean K/courses6=132、**`historical`展示六艇順位=0→完全13Counter材料0**（他labelの展示不存在は未証明）。新設`deploy/conoha/v5_exhibition_label_coverage_readonly_20261024.sql`はhistorical/final_ab/learning_all/conoha_forward/その他の展示六艇・順位を単日集計、read-only。**次の1作業：そのSQLをConoHa /tmp隔離実行してラベル別カバレッジ確認。** 同日データ原本first-observation未証明、stage1/13/切替0/13 NO-GO、Drive403 STOP、BUY禁。
-
-GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
-
-一度に1作業、必要最小のツール、短い日本語報告。ConoHa操作が要る場合はTermiusコマンド1個ずつ、GitHub更新とDB実行を厳密に区別。低CPU/RAM/通信・無断追加課金なし、Railway Agent/AI禁止。
+**Next ONE task**：ConoHaの`boat_history_archive`の展示/snapshot/beforeinfo関係の存在・表種類・概算サイズをpg_catalogのみで読み取り専用確認。データ行・全期間スキャン・COPY・移管・復元・実予測・Drive書込・BUYなし。Termiusに短い貼付可能なコマンド1個だけ提示、結果画面を受けて次へ。作業1件ずつ、料金・CPU/RAM/通信最低限、Railway Agent/AI禁止。
