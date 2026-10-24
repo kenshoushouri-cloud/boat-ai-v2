@@ -248,5 +248,10 @@
 - Termius：Git非管理`/opt/boat-ai-collector`直下9ファイル合計114031 B（約111KiB）、全root:root。shell`daily_v5_safe.sh`637 B/750、`collect_refund_evidence.py`1672 B/750、その他7ファイル644。`refund_evidence/`700、`__pycache__/`755、各dirエントリ4096 Bは**配下全容量ではない**。証拠フォルダ内容/容量は未確認・削除禁止。
 - 旧収集、DB、VIEW13件、venues stage24行、entry stage未作成に変更なし。V5本体・collector全体のバックアップやDrive保全は未実施。GitHub整理Issue #582も計測・削除なし。切替0/13 NO-GO。
 
+## 10/24 11:21 JST：Git管理外collector 2ディレクトリ実使用量検査
+- ConoHa Termius画像：低優先度・15秒timeout付き`du -sh`で`/opt/boat-ai-collector/refund_evidence`=**2.2M**、`__pycache__`=**24K**。`COLLECTOR_DIR_SIZE_READ_ONLY_PASS`確認。直下9ファイル114031Bと合わせ全体は数MiB程度（`du`の丸めのため精密合計ではない）。
+- `refund_evidence`はmode700/root:rootで、証拠や秘匿情報があり得るため**フォルダごと保持**。`__pycache__`も初回保全では除外しない。Git管理外、システム実稼働参照/保全ファイル作成は未実施。GitHub整理Issue #582は削除未実施。
+- ローカルDB dump 2件保持、collector/timers/旧DB/13 VIEW/venues stage24行変更なし、entry stage absent、切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで`refund_evidence/`と`__pycache__/`の実使用ディスク量だけを低優先度・15秒制限のread-only `du`で確認**。ファイル名や内容は出さず、タイムアウト時はSTOP、強制再試行しない。collector保全範囲を判断する。既存collector/cron/DB変更、バックアップ転送や上書き、Drive API、GitHub削除、切替・BUYは禁止。
+**ConoHa TermiusでGit管理外`/opt/boat-ai-collector`全体を新規一意ディレクトリにroot-only(0600)の`tar`バックアップとして低優先度・時間制限付きで作成し、アーカイブ読み取り検査とSHA-256を確認**。現行collectorを変更/停止せず、既存のDB dumpやバックアップを上書きしない。秘密を含む可能性があるためGitHubやDriveへアップロードしない。実コピー/隔離復元の確認は別作業とし、成功してもVPS外独立保全PASSとはしない。旧DB/cron/13VIEW/venues stage/entry/BUYは変更禁止、切替0/13 NO-GO。
