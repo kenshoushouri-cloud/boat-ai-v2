@@ -21,6 +21,11 @@
 - `tests/test_v5_offsite_encrypted_dump_verify.py`：8件の合成テスト、**実行未確認**。
 - `docs/V5_INDEPENDENT_RESTORE_EXECUTION_RUNBOOK_20261024.md`：独立復元の具体手順。Driveの旧世代データや秘密鍵の内容はChatGPT/GitHubに出さない。現在10/23-24のデータを別名で外部保存するにはDrive 403の解消・no-overwrite・別承認が必要。
 - 実装済みだが永続実行前の`deploy/conoha/v5_stage_12_bootstrap_guarded.py`、`deploy/conoha/v5_online_stage_batch_copy.py`、`deploy/conoha/boat_shared_staging_delta_plan_offline.py`を再利用。12表を空で一括生成するSQLはリハーサルPASS済み。オンラインCOPY/DELETE含む最終差分・自動切戻し未完了。
+## 2026-10-24 22:07 JST：合成テストと優先順位変更
+- User Termius`tests/test_v5_offsite_encrypted_dump_verify.py`: **8/8 PASS**（`Ran 8 tests` / `OK`）。暗号化本物のファイル受信/復号/復元は未実施。独立復元NO-GO維持。
+- ユーザーの方針：データを共通`boat_data_stage`へ複製し、**既存収集を動かし続けながらV5をpaper-only並行稼働**、同期による欠損は後追いで補完し、整理データによるbacktestと直前入力の実戦評価を優先する。ChatGPT設計`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`。
+- **区別**：ユーザー言う「複製元の稼働」は現在の`railway.public.v2_*`原本側writer/collector継続のことであり、停止済みV3/V4の別collectorを再起動する意味ではない。二重に外部サイトへ取りにいかない。source → stage一方向copy/sync＋V5読むだけ。段階コピー中の更新/削除は完全PK再照合で追込。後日公式結果は補完可だが変動オッズ/展示初回観測は事前証明扱いしない。
+- 実Stage状態は21:11でvenues1/13、残り12 ABSENT、物理本番切替0/13。独立復元・全writer/完全差分/rollback未完了、今夜03:30未予約・BUY OFF。既存13 VIEWはread-only researchに今すぐ使用可能。**元DB writer停止・本番VIEW切替は不要のV5 shadow開始と、将来の物理原本切替を分ける。**
 
 ## Next ONE task
-新しい**8件のoffsite暗号化ファイル検証コード合成テストをオフライン/tmpで一度実行**（ConoHa上ではファイルや秘密鍵を触らず、DB/Driveアクセスも行わない）。同時に独立復元に必要な秘密鍵管理と「別環境」準備を明確にし、現行10/23-24世代をno-overwriteで外部保全する次の安全工程を進める。データ収集は止めず、永続12stage DDL／大量COPY／本番VIEW切替／03:30タイマー／BUYは禁止のまま。
+**V5の既存inference/scorer/backtest入口と`boat_data.*` VIEW読み取り契約をGitHubで狭く特定し、少量real-data read-only pilot の具体コードを作成する。** 戻り値と入出力の時間証拠を検証、当時初観測の証明不能ならpaper-only`HOLD`。並行して`boat_data_stage`残り12表の低負荷物理作成＋chunk copy＋full-key update/delete delta＋復帰機構は安全ゲートに従い開発する。Drive403新規書込/BUY/本番物理切替/03:30予約禁止。
