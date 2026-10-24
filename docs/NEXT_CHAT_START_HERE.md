@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：15:19 ConoHa`railway`のV5 decision/predict/ledger/freeze/receipt名称+V5 schemasの候補は0件、旧`public.v2_realtime_decisions`は実表(`r`)。READ ONLY/ROLLBACK。GitHubのV5試験成績/NTFYは凍結済みJSONLの読取で、公式forward collectorは予測を実行しない。V5独立予測記録は未認証。次はConoHa上のV5予測decision/ledger JSONLなど**ファイル名だけ**を対象パスで短時間read-only確認。旧v2のdecisionをV5として流用禁止。Drive403書込停止、stage1/13、切替0/13 NO-GO、BUY OFF。
+**最新compact末尾の Next ONE task**：15:23 V5ローカル候補ファイル名検査：`/opt/boat-ai-v5`・`/opt/boat-ai-collector`深さ6・特定JSONL/SQLite名に一致0、var/lib候補は存在しない。全形式不在の証明ではない。GitHubに`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`（独立V5予測時刻/初回取得証拠/HOLD/非購入shadowの契約）作成、まだ本番writerではない。次は**合成・DB非接続のfail-closed記録入力検査とテスト**をGitHubへ追加し、段階的にV5予測判定本体につなぐ。Drive write403 STOP、stage1/13、本番0/13 NO-GO、BUY禁止。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
