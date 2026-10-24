@@ -377,6 +377,11 @@
 - Termiusスクリーンショット：`Ran 6 tests in 0.009s`、`OK`、`V5_SHADOW_6_TESTS_PASS`を確認。前回のas-of bridge9件と合わせ**異なる合成検査15/15 PASS**。今回はローカル隔離`/tmp`の6件、DB/既存collector/タイマー/BUY/Drive変更なし。
 - 次の対象は`tests/test_v5_offline_day_real_modules.py`の**3件**。既存`offline_mainline_inference`→`offline_trifecta_shadow_ranking`→`offline_trifecta_cash_ledger`→`offline_trifecta_cash_bridge`→`offline_day_shadow_pipeline`を合成データで接続。K/払戻/VOIDはfictional、実ROIなし。
 - stage1/13、本番切替0/13 NO-GO。モデルscope(T1.00/T2.20)と初回取得証拠・V5実予測の保証なし。Drive write403 STOP。
+## 10/24 16:16 JST：V5研究コードの1日数学連携3件全PASS
+- ユーザーTermiusスクリーンショットで `Ran 3 tests in 0.007s`、`OK`、`V5_DAY_INTEGRATION_3_TESTS_PASS`を確認。既存`tests/test_v5_offline_day_real_modules.py`全3件、合成の2race・VOIDを含む日次統合が正常。as-of bridge9件＋shadow記録6件＋日次統合3件＝**18/18 PASS（異なる合成試験）**。
+- 既存V5の予測演算と3連単・非購入候補・日次合成評価は再利用できる。ただしモデル凍結仕様T1.00/T2.20未統一、実データfirst-capture・予測入出力接続/実ROI/返還原本は未検証。
+- GitHub既存`deploy/conoha/v5_live_six_lane_input_bridge_readonly_20261023.sql`（6艇の出走/展示/オッズ120/前日以前K5/read-only）を確認。必須同一snapshot_label条件と、タイムスタンプが可変で初回証拠不十分な点に注意。新コード作成前に実データで1raceの入力構造を確認。
+- システム収集維持、Drive V5 write403 STOP、stage1/13・本番物理切替0/13 NO-GO、BUY禁止。
 
 ## Next ONE task（次の一作業）
-**ConoHaの`/tmp`隔離環境（non-root/nice/timeout）で`tests/test_v5_offline_day_real_modules.py`の3件だけ実行**。GitHub mainから必要な7ファイルのみ`git archive`。collector/DB/timer/Drive/BUY変更禁止。実結果`Ran 3 tests`/`OK`確認まで未検証。
+**既存GitHub read-only SQLをConoHaの隔離`/tmp`に取り出し、尼崎9R `20261024_13_09` 1レースに限定して6艇/同一ラベルの展示6・odds120/K5 のソース入力充足状況を読み取り専用確認**。あくまで事後のデータ形状監査（予測当時の利用可能性・初回観測証明ではない）。sourceテーブルへのDML/DDL、予測実行、BUY、collector/timer/Drive変更禁止。
