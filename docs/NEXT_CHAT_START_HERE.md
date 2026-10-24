@@ -13,7 +13,7 @@
 - `boat_data.venues`は従来どおりVIEW。残り12表も同様に非更新VIEW。**本番共通物理正本への切替は0/13、初回隔離複製のみ1/13。** 現行collectorはlegacyのまま、削除・VIEW切替・writer変更・BUY・cron変更なし。
 - 自動差分同期・CDC・深夜切替予約・外部独立バックアップ・全writer認証・V5実予測/ROIは未実施/HOLD。
 
-**最新compact末尾の Next ONE task**：14:35 Termius read-only writer audit PASS。4 V5 timers active/enabled、forward-window.service=activating、midnight inactive、daily morning/night inactive、関連root/postgres cron=0。legacy writer/DDLの静的ヒントあり、`NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`。次は`boat-v5-forward-window.service`のActiveState/SubState/Result/ExecMainStartTimestamp/ExecMainStatus/MainPIDをsystemctl showでread-only採取し滞留か確認。Drive 403 RATE_LIMITで追加write probe停止、独立外部保全未済、stage1/13、切替0/13 NO-GO。
+**最新compact末尾の Next ONE task**：10/24 14:38 V5 forward-window.service=inactive/dead、Result=success、ExecMainStatus=0、MainPID=0（14:35:01 JST開始）で滞留なし。ただしGitHub実装では`--apply`なしはPREVIEW・HTTP/書込なし。次はTermiusで14:30〜14:40のjournalからMODE/CANDIDATES/COLLECTOR_RC/NO_HTTP_NO_WRITES/TIMEOUTマーカー件数のみread-only集計。実ログ・secret表示やサービス再起動はしない。Drive追加書込STOP。Stage1/13、本番0/13 NO-GO。
 
 GitHubには差分計画専用Python（17件テスト定義・ConoHa隔離実行17/17 PASS）とマニフェストのstage複製済み記録を追加済み。`repair_month_all_pg.py`の`ensure_venues`は起動時24会場を`venue_id` UNIQUEキーでUPSERTし`updated_at`更新。PKは`venue_code`で両方の整合性が必要。`shared_venues_v1`は非更新VIEWに向くため有効化禁止。差分反映fail-closed専用24件は21:17実行PASS、累計8+7+17+24=56/56合成検査PASS。実DB同期/ロールバックは未実証。本番同期SQL/DML・CDCは未実装。再複製禁止。
 
