@@ -34,6 +34,10 @@ ConoHa Termius screenshot 10/24 **17:10 JST** ran `deploy/conoha/v5_exhibition_l
 - Four timers `boat-v5-daily@morning`, `boat-v5-daily@night`, `boat-v5-forward-window`, `boat-v5-midnight-catchup` enabled/active. At inspection their paired services were inactive/dead, MainPID=ControlPID=0; **not permanently stopped**.
 - Next forward 2026-10-24 18:10 JST (5min cadence, last18:05:01), night 23:00, midnight-catchup 2026-10-25 01:20, morning 07:00. There is no automatic safe window just because 23:00 daily run finishes; must check pending official result/K and child workers, cron & DB activity before any stop.
 - NO timers or services stopped. Stage1/13, live0/13, independent backup/restore still not proven, Drive403 write STOP, BUY OFF.
+## 2026-10-24 18:13 JST：夜間自動切替方針
+- ユーザーは深夜にTermius操作不可、夜間は完全自動切替希望。GitHub `deploy/conoha/v5_cutover_writer_inventory_readonly_20261024.sh`をアップロード済み（書込経路・cron・プロセス名・PG接続状態のread-only監査。実切替コードではない）。
+- 将来の候補時刻 **03:30〜04:00 JST**（01:20 catchup完了確認以降、07:00朝収集前）。**2026-10-25 03:30の本番切替は予約していない・NO-GO**。まだstage1/13、live0/13、独立外部復元・全writer認証・自動切戻し検証未達。
+- 詳細 `docs/V5_SHORT_MAINTENANCE_AND_RECOVERY_FASTPATH_20261024.md`。予定時刻だけで自動STOPしない。今後systemd one-shot/timer+fail-closedゲート＋自動復帰を実装・試験・事前別承認してからfuture windowに有効化する。
 
 ## Next ONE task
-**Read-only identify other running writer processes/cron and PostgreSQL sessions without displaying SQL/commands/env/secrets**. Combine existing GitHub static route audit with short systemd/PG process name checks. Use one bounded Termius command, no stop/disable/DB writes. Then draft exact staged batch/short-stop/resume plan and V5 VIEW adapter independent of physical cutover.
+GitHubに上げたread-only writer audit shellをConoHaで短いTermiusコードから実行、writer/cron/PG接続状況を確認。その後、既存収集稼働中のonline stageと安全な無人切替・復帰手順を実装。即時の収集停止/DDL/COPY/BUY/Drive書込禁止。
