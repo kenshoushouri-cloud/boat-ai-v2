@@ -353,6 +353,10 @@
 - ユーザーTermius画面：ConoHa `railway`で候補名(`decision|predict|ledger|freeze|receipt`)＋schema(`v5_data/v5_research/v5_live/boat_data`)のpg_catalog照合0行。`public.v2_realtime_decisions`は実表(`r`)存在。READ ONLY/ROLLBACK、`V5_DECISION_STORAGE_READ_ONLY_PASS`。
 - 対象検索に一致する**V5名の表は見つからない**。違う名称や別DB/ローカルJSONLの可能性は未調査。旧V2の`decision_at`をV5の記録と誤認禁止。
 - GitHub `v5/ntfy_trial_performance_report.py` と `v5/telegram_trial_performance.py` は外部凍結済みV5 JSONLの**読取と試験通知のみ**。`boat-v5-forward-window.service`は公式snapshot collectorのみ、`boat-v5-midnight-catchup.service`は結果補完のみ。V5本番の独立スコアリング→freeze→予測記録器はこの範囲で証明されず。BUY OFF、独立外部バックアップDrive403、stage1/13、物理切替0/13 NO-GO。
+## 10/24 15:23 JST：V5独立判定記録先のローカル候補監査・設計
+- Termiusで`/opt/boat-ai-v5`と`/opt/boat-ai-collector`をdepth6・ファイル名パターン`*decision*/*predict*/*ledger*/*freeze*`のJSONL/SQLite限定で照会→一致0。`/var/lib/boat-ai-v5`と`/var/lib/boat-ai`は存在せず検索していない。`V5_DECISION_FILE_AUDIT_FINISHED`。未発見は全記録方式の不在証明ではない。現行DBやcollector無変更。
+- GitHubに新規`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`追加。既存`offline_asof_eligibility.py`・`offline_first_write_attestation.py`・`offline_day_shadow_pipeline.py`は合成用、`telegram_trial_performance.py`は読取用。別ゲートで`shadow`のみ・BUY禁止の時刻/元データreceipt/ハッシュ/重複/HOLD設計。**設計のみで記録器・scorer本番実装ではない**。
+- Google Drive V5外部バックアップ書込403制限で停止、共通stage1/13、本番切替0/13 NO-GO。旧V2判断をV5独立判断として扱わない。
 
 ## Next ONE task（次の一作業）
-**ConoHa上のV5独立した予測決定JSONL/ファイルが存在するか、候補ディレクトリのファイル名だけread-only・短時間で確認**。コンテンツ/secretは読まない。無い場合はV5非購入canary予測記録器の新規実装仕様をGitHubでオフライン設計し、実運用には別gateが必要。現行収集/DB/Drive/timer/VIEW/BUY変更なし。
+**新設計に対するオフライン純粋関数のfail-closed入力検査＋合成ユニットテストをGitHubに追加**。実collector/DB/Drive/タイマー/BUY/通知と接続せず、全データ合成、競艇予測/成績は生成しない。
