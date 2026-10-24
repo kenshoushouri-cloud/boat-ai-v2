@@ -283,5 +283,9 @@
 ## 10/24 13:38 JST：V5 systemd unit実体7ファイルのローカル保全PASS／10月末判定
 - Termius画像：新規root-only `units.tar` を作成。20,480 bytes、mode600、tar目録7件・元ファイルとの差分0で`V5_SYSTEMD_LOCAL_BACKUP_7_PASS_RESTORE_NOT_TESTED`表示、SHA256取得（表示値`dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`）。**systemd隔離復元未実施**、external EnvironmentFile・enabled symlink・OS/secretやVPS外独立保全は未完了。
 - 10/31まで残り7日。V5/collector同VPSバックアップ＆隔離展開済みだが、共通13物理正本**本番切替0/13**（venuesの隔離stageのみ24行）、全writer差分同期/rollback未証明、V5実学習・事前as-of証拠・真正walk-forward ROI・実予測未検証。**自動購入を含む全面運用を10月末達成と約束しない**。最短目標は保全・取得/予測ゲート合格時に限る非購入限定canary、不可ならNO-GO継続。バックアップ後は物理移行・予測機能の検証へ優先順位を戻す。
+## 10/24 13:43 JST：V5 systemd TAR同VPS隔離復元PASS
+- Termius：`SYSTEMD_SHA_PASS`、`SYSTEMD_ARCHIVE_GUARD_PASS`、`SYSTEMD_RESTORED_CONTENT_MATCH_PASS`、`ISOLATED_DIR_REMOVED`、`V5_SYSTEMD_ISOLATED_RESTORE_PASS_CLEANED`。13:38作成の7 unit `units.tar`（20,480 B・mode600・SHA256 `dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`）について同VPS隔離展開・内容一致・掃除までPASS。
+- V5本体・Git非管理collector・systemd7件のローカルTAR＆同ConoHa隔離復元はPASS。外部EnvironmentFile/有効化symlink/秘密値・VPS外独立保全・DB全復元・本番起動/予測検証は未実施。旧収集/DB/13VIEW/venues stageは維持。本番切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa Termiusで新規root-only systemd`units.tar`のSHA-256・安全な相対パス/7ファイルを検査し一時0700領域へ隔離展開、TAR対展開バイト一致と一時領域削除を検証**。実unitへの復元/enable/restartは行わない。旧DB/collector/timers/VIEW/venues stage変更、Drive通信・GitHub整理削除・BUY禁止。本番切替0/13 NO-GO。
+**ConoHa TermiusでV5 systemd7定義のEnvironmentFile/Environment/credential設定有無のフラグのみread-only確認**。本文・環境変数値・参照パス・認証情報は画面出力しない。外部復旧依存を特定してから保全する。稼働サービス/cron/DB/VIEW変更、Drive通信・GitHub削除・BUY・切替は禁止。
