@@ -365,6 +365,10 @@
 - `forward_shadow_freeze.prepare_candidate/append_once`と`offline_v5_freeze_bridge`、対応テストをread-only確認。**再実装不要**：合成6艇1着確率→120通り→shadow固定・append-only保存の既存経路あり。
 - 重要な不足：bridgeのcutoff 0〜60秒条件・freezeの締切まで180秒条件はあるが、元データ`captured_at<=decision_cutoff_at`が**未検査**。形式SHA・自己申告時刻では独立初回観測証明にならない。仮想stakeは実支出ではない。モデル9/27 scope lock T2.20とstrong-core T1.00の不一致も維持。
 - 詳細と安全境界は`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`へ集約。コード実行・データ操作なし。ConoHa既存collector維持、stage1/13・本番0/13 NO-GO、Drive書込403 STOP、BUY禁止。
+## 10/24 V5 offline freeze as-of minimal guard committed
+- `v5/offline_v5_freeze_bridge.py`：既存`_dt`を再利用し、展示/オッズ`captured_at>decision_cutoff_at`をfreeze前にHOLD（ValueError）、元のscore/記録器/180秒・60秒ゲート不変更。
+- `tests/test_v5_offline_v5_freeze_bridge.py`：展示遅延/odds遅延/境界同時刻で権限FALSEの合成テスト3追加、**計9 test定義。未実行**（自動CI結果0、GitHubへ保存確認済み）。合格を主張しない。
+- 詳細`docs/V5_NONBUY_DECISION_RECEIPT_DESIGN_20261024.md`。source真正性未認証、モデル凍結仕様対立(T1.00 vs T2.20)、stage1/13・切替0/13 NO-GO、Drive403書込停止、BUY禁・公式収集維持。
 
 ## Next ONE task（次の一作業）
-**既存V5コードのcutoff後取得を許さないオフライン合成ガード＋既存テストへの最小差分**。まず合成負例（`captured_at>decision_cutoff_at`かつ`captured_at<=now`）でHOLDを保証。実データ/DB/HTTP/BUY/systemd/Drive不使用、既存予測数学・shadow writerの置換禁止。
+**GitHubの合成bridgeテスト9件を隔離環境で実行して実結果確認**（`PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_v5_offline_v5_freeze_bridge.py' -v`）。CI/隔離テスト実行手段がない場合は未実行を維持し、実本番・ConoHa作業に切り替えない。DB/collector/timer/Drive/BUYの変更禁止。
