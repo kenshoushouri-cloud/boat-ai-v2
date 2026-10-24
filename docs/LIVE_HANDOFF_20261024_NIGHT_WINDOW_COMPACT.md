@@ -34,5 +34,10 @@
 - 翌日 `journalctl -u boat-v5-stage12-copy-20261025.service --no-pager -n 80` と `boat_data_stage` 全13物理表/行数検査が次の一作業。 `STAGE12_INITIAL_COPY_PASS families=12 of_12` が現れない限り完了宣言しない。active legacy collector・時間/容量/その他gate失敗ならHOLDして現行収集継続。後続CDC/全差分・物理本番切替は別工程、BUY OFF。OS `SYSTEM RESTART REQUIRED` バナー表示中だが今夜rebootは実施しない。
 - 結果catchupの早期案は先刻実機で `PASS` 適用、次回10/25 00:45 JST確認済。前掲の未適用記述は検査時点の旧履歴であり、現況としない。
 
+## 2026-10-25 08:16 JST 実コピー全12系統PASS（この節が旧未コピー記録に優先）
+- User Termius journal 4画面より `STAGE12_PLAN already_done=0 todo=12 venues_protected=24`、02:50:09〜02:53:42 JST、12件の `COPY_COMMITTED`、`STAGE12_INITIAL_COPY_PASS families=12 of_12 live_routes_unchanged=YES final_delta=NOT_DONE cutover=NO_GO BUY=OFF`、systemd `Deactivated successfully / Finished` を確認。12系統計13,129,507行（各COPY瞬間）。
+- 各表行数: races=73896, results=73896, entry_snapshots=128742, race_condition_snapshots=27569, racer_condition_snapshots=164406, racer_course_stats_snapshots=291518, entries=443376, exhibition_snapshots=487410, weather_snapshots=87065, racer_results=431472, odds_snapshots=2515990, trifecta_odds=8404167。先行venue stage24件も維持（目標13の初回物理stage完了）。各表は個別transaction内でINSERT/COUNT一致。**現在までの更新/削除差分同期・内容ハッシュ双方向照合・独立外部復元・本番reader/writer切替は未実施。** live physical 0/13、原本と既存collector変更なし、BUY OFF。旧文の「stage1/13」「COPY未実施」「予約のみ」は時点の古い情報。
+- 次の最小read-only検査用 `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql`（commit `a9f171a9abfd5a80e435934a3c295e2d263c5274`）をGitHubへ追加。PGカタログのみで13物理stage＋12完了COMMENT＋13原表＋13 live VIEWを確認。**この検査はまだConoHa未実行**。コピー再実行禁止（既存stage保護）。
+
 ## 次の1作業
-**2026-10-25のstage12自動実行後、journalと実stage全13系統の存在・行数・完了記録をread-only照合する。** 予約済02:50 JST Active。実コピー前に追加操作を促さない。未完了・HOLDなら失敗理由と完成件数を短く報告し、旧収集を停止せず再試行方針を策定。差分追従・独立復元・本番切替は別工程、BUY/Drive書込禁止。
+**Next ONE task:** ConoHaで `deploy/conoha/v5_stage_13_snapshot_proof_readonly_20261025.sql` のread-only PG catalog監査を1度実施し、13原本が物理表、13 live `boat_data` がVIEW、13 stageが物理表、今回の12表の完了commentが存在することを確認する。12表COPY済なので再実行・再コピーはしない。次にUPDATE/DELETE含む差分同期・独立復元・writer/readerルート・自動rollbackを完成させ、別途全gate PASS時のみ切替。旧収集維持、BUY OFF。
