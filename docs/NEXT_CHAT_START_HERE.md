@@ -9,4 +9,4 @@ V5は研究成果を再利用して非購入限定稼働を構築する。6艇�
 
 最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**Next ONE task**：ConoHaの`boat_history_archive`の展示/snapshot/beforeinfo関係の存在・表種類・概算サイズをpg_catalogのみで読み取り専用確認。データ行・全期間スキャン・COPY・移管・復元・実予測・Drive書込・BUYなし。Termiusに短い貼付可能なコマンド1個だけ提示、結果画面を受けて次へ。作業1件ずつ、料金・CPU/RAM/通信最低限、Railway Agent/AI禁止。
+**Next ONE task**：10/24 17:26 `boat_history_archive` catalog read-onlyでレース条件snapshot118MB・選手条件snapshot117MBのみ発見、展示系名は見つからず。GitHub新設`deploy/conoha/v5_exhibition_6_dates_coverage_readonly_20261024.sql`で2025-07/10、2026-01/04/07/10代表日を`railway` DB読取専用6行集計し、既存展示ラベルの再利用可能期間を調査。時刻ラベルだけでは初回実取得の証拠にならない。DB・collector・BUY・Drive変更なし。
