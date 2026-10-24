@@ -47,5 +47,9 @@
 - 2026-10-25 08:25 JSTのユーザーConoHa画面で13/13の`relation_shapes`・`copy_column_shape`・`pk_shape`=PASS、PK `id`/`race_id`/複合`race_id,lane`/`venue_code`、source user_triggers=0、source FK_in/out=0、複数表にserial defaultあり。`ROLLBACK`、`V5_STAGE13_DELTA_CATALOG_READONLY_DONE_NO_TABLE_SCAN_NO_WRITES`で正常終了。これはメタデータ一致の証拠であって差分=0/CDCではない。
 - GitHubへvenues小規模のINSERT/UPDATE/DELETE guarded delta pilotを追加。実VPSへは未適用。既定PREVIEWではvenue24行のINSERT/UPDATE/DELETE差分件数をread-onlyで算出し、PGのREPEATABLE READでstageのみ整合するAPPLYは別gate。恒久的CDCとは別。
 
+## 2026-10-25 08:34 JST venues差分実測
+- 2026-10-25 08:34 JST Termius実機：venues source24/stage24、read-only full outer compare INSERT=0 UPDATE=24 DELETE=0、`VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES`。更新24件は欠損24件ではない。何列が更新されたかは旧previewで未分類。
+- 24会場のみ安全に追込する既存コードをPGのUPSERT構文と差分分類改善のため改修（`44b00fd433adb5b2608f87c7e3b423523ba2b607`）。実VPSでのstage書込はまだ行っていない。
+
 ## 次の1作業
-**Next ONE task:** 24行の`venues`限定stage差分runner `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py`（commit `ecebc0673428b290d857209a2eee4b64deb52d97`）をTermiusで`--apply`なしPREVIEW実行、実schemaとPK・源/先24行・trigger/FKを確認する。GitHub追加のみで未実機実行・未テスト。実stage APPLYは別承認＆03:00–05:59 JSTゲート、対象表以外や原本/VIEWは変更しない。pilot後13系統upsert/delete全差分と独立復元を準備。BUY OFF、writer/read route本番切替NO-GO。
+**Next ONE task:** `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py` 修正版 commit `44b00fd433adb5b2608f87c7e3b423523ba2b607` を使い、venue24行だけを明示env+`--apply`で`boat_data_stage.venues`に追込・双方向同一snapshot照合する。08:00-22:59または03:00-05:59 JST限定、実VPSでまだAPPLY未実施。新コードは`INSERT .. SELECT WHERE true ON CONFLICT`でPG構文曖昧性を解消、比較を非主キー列で行い更新不要行への物理UPDATEを避ける。成功後、残12表の新規/更新/削除の差分同期を実装。旧collector・public原本・live VIEW・BUY維持、本番切替NO-GO。
