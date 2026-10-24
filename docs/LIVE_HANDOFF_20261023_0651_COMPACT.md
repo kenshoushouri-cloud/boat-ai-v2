@@ -232,5 +232,9 @@
 - GitHub新規ファイルをreadbackし9静的項目PASS。**実転送・API再接続・ConoHa実操作・本番正本変更・V5本体ファイル保全・VPS外復元は一切未実施**。既存VPS内のrailway dump 393138215B/限定復元とarchive dump 81865791B/同VPS隔離復元が現在の検査上限。
 - legacy collector/timers、共有VIEW13、venues stage24件保全、entry stage未作成。物理本番切替0/13、BUY無効、NO-GO継続。
 
+## 10/24：GitHubのみ V5本体バックアップ棚卸しチェックリスト作成
+- 新規`docs/V5_RUNTIME_BACKUP_INVENTORY_CHECKLIST_20261024.md`：R01〜R12の実稼働コード/HEAD・管理外差分、Python/PG/OS依存、systemd unit/timer/drop-in、cron/collector、秘密はキー名だけ、DB復旧要件、永続的ローカル状態、外部での実バイトSHA256と隔離起動/復元までを網羅。GitHub保存・readback、8静的確認PASS。
+- **ConoHa現地監査・V5本体コピー・Drive接続・外部バックアップ・実復元は未実施**。existing railway/archiveローカルdumpのみ保全、collector/DB/VIEW/venues stage変更なし。本番正本切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**GitHubのみでV5本体バックアップ対象（デプロイコミット、実ファイル、依存/起動定義、systemd units/timers、必要な環境変数の名前・再設定手順、秘密情報の安全保管先）に関する証拠採取用チェックリストを用意する**。機密値をGitHubへ記録せず、ConoHa現地調査は次の別作業。Google Drive API再試行/転送・実backup・entry COPY・現行収集/cron停止・VIEW切替・BUYは未承認で禁止。本番切替0/13 NO-GO。
+**ConoHa Termiusで`/opt/boat-ai-v5`と`/opt/boat-ai-collector`の存在、Git管理の有無、HEAD SHAだけを1つの読み取り専用コマンドで確認**。git fetch/pull、環境変数やリモートURLの表示、深い再帰走査、systemd/cron/DB変更は禁止。結果確認後に次の1作業を決定する。V5外部保全/実COPY/切替/BUYは別承認・NO-GO。
