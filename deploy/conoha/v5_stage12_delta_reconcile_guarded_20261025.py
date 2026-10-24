@@ -157,13 +157,13 @@ def apply_page(cur, source, stage, fields, keys, rest, previous, last):
     set_cols = sql.SQL(",").join(
         sql.SQL("{}={}").format(sql.Identifier(n), col("s", n))
         for n in rest)
-    before = sql.SQL(",").join(col("d", n) for n in rest)
-    after = sql.SQL(",").join(col("s", n) for n in rest)
+    # JSON/JSONB columns must be comparable; PostgreSQL plain json has no
+    # built-in row equality operator. Compare canonical to_jsonb records.
     # Only physically UPDATE changed rows (not 8.4m unchanged odds records).
     q_update = sql.SQL(
         "UPDATE {} AS d SET {} FROM {} AS s "
-        "WHERE {} AND {} AND ROW({}) IS DISTINCT FROM ROW({})"
-    ).format(dst, set_cols, src, join, cond_s, before, after)
+        "WHERE {} AND {} AND to_jsonb(d) IS DISTINCT FROM to_jsonb(s)"
+    ).format(dst, set_cols, src, join, cond_s)
     cur.execute(q_update, par_s)
     n_update = cur.rowcount
 
@@ -188,8 +188,8 @@ def apply_page(cur, source, stage, fields, keys, rest, previous, last):
     q_missing = sql.SQL(
         "SELECT EXISTS(SELECT 1 FROM {} AS s "
         "LEFT JOIN {} AS d ON {} WHERE {} "
-        "AND ({} IS NULL OR ROW({}) IS DISTINCT FROM ROW({})) LIMIT 1)"
-    ).format(src, dst, join, cond_s, col("d", keys[0]), after, before)
+        "AND ({} IS NULL OR to_jsonb(s) IS DISTINCT FROM to_jsonb(d)) LIMIT 1)"
+    ).format(src, dst, join, cond_s, col("d", keys[0]))
     cur.execute(q_missing, par_s)
     has_missing_or_changed = cur.fetchone()[0]
 
