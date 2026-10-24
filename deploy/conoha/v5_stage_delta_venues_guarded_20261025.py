@@ -105,6 +105,24 @@ def validate(cur):
     show("VENUES_SOURCE_AND_STAGE_VERIFIED", "rows=24")
 
 
+def preview_delta(cur):
+    cur.execute(
+        "SELECT "
+        "count(*) FILTER (WHERE s.venue_code IS NOT NULL AND t.venue_code IS NULL), "
+        "count(*) FILTER (WHERE s.venue_code IS NULL AND t.venue_code IS NOT NULL), "
+        "count(*) FILTER (WHERE s.venue_code IS NOT NULL AND t.venue_code IS NOT NULL "
+        "AND to_jsonb(s) IS DISTINCT FROM to_jsonb(t)) "
+        "FROM public.v2_venues s FULL OUTER JOIN boat_data_stage.venues t "
+        "USING (venue_code)"
+    )
+    inserted, deleted, updated = cur.fetchone()
+    show("VENUES_STAGE_DELTA_PREVIEW_READONLY",
+         "insert=" + str(inserted), "update=" + str(updated),
+         "delete=" + str(deleted), "total_delta=" + str(inserted + updated + deleted),
+         "snapshot_consistent=YES", "NO_DB_WRITES", "NO_CUTOVER")
+    return inserted, updated, deleted
+
+
 def sync(cur):
     # One transaction-level snapshot ensures all three operations see the same
     # source even if its legacy writer continues running.
@@ -176,9 +194,9 @@ def main():
             if options.apply:
                 sync(cur)
             else:
+                preview_delta(cur)
                 show("VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES",
                      "on_apply=source_to_stage_insert_update_delete",
-                     "current_delta_counts=NOT_MEASURED",
                      "cutover=NO_GO", "BUY=OFF")
         if options.apply:
             conn.commit()
