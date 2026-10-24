@@ -78,5 +78,9 @@
 - 2026-10-25 08:40 JST: ConoHa Termiusでvenues source/stage各24、`VENUES_STAGE_DELTA_TRANSACTION_PASS upserted=24 deleted=0 bidirectional_equal_in_transaction=YES legacy_source_untouched=YES live_view_untouched=YES continuous_cdc=NO cutover=NO_GO BUY=OFF`、`VENUES_STAGE_ONLY_DELTA_COMMITTED_NOT_CDC_NOT_LIVE`確認。**venues stage差分反映・同一snapshot照合成功**。元public/VIEW unchanged。初回物理stage13/13、live物理切替0/13。
 - 12表向けキー範囲stage同期コードはGitHub登録済み、実同期は未実施。13全体の更新差分完了とは呼ばない。
 
+## 2026-10-25 08:51 races stage差分反映
+- 2026-10-25 08:51:38 JSTユーザーのConoHa画面で `races` stage差分反映が成功。`DELTA_VERIFIED races source_rows=74064 stage_rows=74064 insert_update_delete=[168, 0, 0] bounded_windows=19`、`DELTA_TABLE_COMMITTED races`、`STAGE12_DELTA_SNAPSHOT_PASS families=1`、旧原本/VIEW不変更・BUY OFF・CDC=NOを確認。初回コピー13/13、stage差分反映2/13（venues+races）、本番物理切替0/13。
+- 残11差分の03:05一度限りステージ専用予約installer準備済み。現時点VPS未予約。旧原本維持。
+
 ### Next ONE task
-**Next ONE task:** GitHub `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `6a7973c33bb4011bae149c28db52fa5fb3cb8faa`）の`--all` PREVIEWをConoHaで実行し、12原表・12stageの列/PK一致と初回コピー証明をread-only一括確認（no table scans/DDL/DML）。GitHubには12表のキー分割・変更行のみUPDATE・INSERT/DELETE・範囲双方向照合を行うguarded実装を追加したが、**現物DB適用・実証は未実施**。先に小さな`races`１系統を別途夜間限定で実証、問題なければ残11。原本収集維持、BUY OFF、本番切替NO-GO。
+**Next ONE task:** 2026-10-25 JST中にTermius rootから `deploy/conoha/v5_stage11_delta_schedule_once_20261025.sh`（commit `227d3c30c3921bccb5957abb7933468a7e5bc23f`）を1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED` / `Next=2026-10-26 03:05 JST`を確認する。**実VPSへの予約は未適用、残11の差分は未反映**。予約成功後10/26深夜に残11系統をsource size昇順・表ごとのrepeatable-readトランザクションで同期・INSERT/UPDATE/DELETE/Pk/内容照合。失敗時その表のみrollback、旧collector・13 live VIEW・public原本は変えない。完了は翌日journalで系統ごとに確認し、CDC/独立復元/route切替は引き続きNO-GO、BUY OFF。
