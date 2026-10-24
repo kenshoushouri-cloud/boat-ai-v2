@@ -11,6 +11,7 @@ a live replica, a final equality proof, or production cutover.
 from __future__ import annotations
 import os
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -64,6 +65,19 @@ def relation(schema, name):
     return sql.Identifier(schema, name)
 
 
+def check_known_collectors_idle():
+    # No stop/restart: refuse to compete with still-running scheduled collectors.
+    for unit in ("boat-v5-daily@night.service",
+                 "boat-v5-midnight-catchup.service",
+                 "boat-v5-forward-window.service",
+                 "boat-v5-daily@morning.service"):
+        result = subprocess.run(
+            ["systemctl", "show", unit, "--property=ActiveState", "--value"],
+            capture_output=True, text=True, timeout=5, check=True)
+        if result.stdout.strip() != "inactive":
+            raise RuntimeError("HOLD: collector not idle: " + unit)
+
+
 def assert_runtime(conn):
     if os.environ.get("V5_STAGE12_COPY_APPROVED") != "YES":
         raise RuntimeError("HOLD: explicit STAGING-ONLY flag absent")
@@ -84,6 +98,7 @@ def assert_runtime(conn):
         raise RuntimeError("HOLD: venues stage no longer physical")
     if scalar(conn, "SELECT count(*) FROM boat_data_stage.venues") != 24:
         raise RuntimeError("HOLD: preserved venues stage expected 24 rows")
+    check_known_collectors_idle()
     if not scalar(conn, "SELECT pg_try_advisory_lock(%s)", (LOCK,)):
         raise RuntimeError("HOLD: another V5 stage copy is running")
     for src, dst in SOURCES:
@@ -133,6 +148,7 @@ def copy_one(conn, source, dest):
     remain = remaining_seconds()
     if remain < 180:
         raise RuntimeError("HOLD: not enough time before 06:10 stop")
+    check_known_collectors_idle()
     size = disk_guard(conn, source)
     timeout = int(min(1800, remain - 90))
     if timeout < 90:
