@@ -57,7 +57,7 @@
 
 ## 2026-10-25 08:46 JST 12系統差分準備検査実機PASS
 - 2026-10-25 08:46 JSTユーザーTermiusで12系統すべて `DELTA_PREVIEW_METADATA_PASS`、`PREVIEW_COMPLETE families=12 current_delta_counts=NOT_MEASURED no_table_scan=YES NO_WRITES NO_CUTOVER`。原本/ステージ列・主キー・初回コピーCOMMENT一致（12/12）。これは構造チェックで、12系統の差分適用やCDC、差分0を示さない。
-- 新規12表ガードrunnerを`races`に限り日中小規模実APPLY可へ修正（`130325709be68c64d48fc578b8a6466d2a184028`）。実DB変更未実施。
+- 新規12表ガードrunnerを`races`に限り日中小規模実APPLY可へ修正（`cb4b7482695e3ceefb9efebdc104a8b387fe0d6c`）。実DB変更未実施。`json`型列に等価演算子が無い場合のSQL失敗を防ぐため、変更行比較を`to_jsonb`双方向比較へ修正（`cb4b7482695e3ceefb9efebdc104a8b387fe0d6c`）。
 
 ## 次の1作業
-**Next ONE task:** 小容量`races`1系統のみ、`deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `130325709be68c64d48fc578b8a6466d2a184028`）を`--table races --apply`＋`V5_STAGE12_DELTA_APPROVED=YES`で日中08:00–22:59 JSTにstage-only実行。73,896行前後で100,000行超はHOLD、時間上限120秒、1表1transaction、主キーkeysetでINSERT/UPDATE/DELETE、各range照合＋最終件数。**VPS実行は未実施**、`DELTA_TABLE_COMMITTED races`を実機で確認後に次表へ。12表一括APPLYはまだ行わない。原本・既存VIEW・collector・BUY不変更、本番切替NO-GO。
+**Next ONE task:** 小容量`races`1系統のみ、`deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `cb4b7482695e3ceefb9efebdc104a8b387fe0d6c`）を`--table races --apply`＋`V5_STAGE12_DELTA_APPROVED=YES`で日中08:00–22:59 JSTにstage-only実行。73,896行前後で100,000行超はHOLD、時間上限120秒、1表1transaction、主キーkeysetでINSERT/UPDATE/DELETE、各range照合＋最終件数。**VPS実行は未実施**、`DELTA_TABLE_COMMITTED races`を実機で確認後に次表へ。12表一括APPLYはまだ行わない。原本・既存VIEW・collector・BUY不変更、本番切替NO-GO。
