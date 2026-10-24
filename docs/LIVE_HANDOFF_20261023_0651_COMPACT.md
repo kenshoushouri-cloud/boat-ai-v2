@@ -315,5 +315,10 @@
 ## 10/24 14:31 JST：V5専用Google Drive書込probe 403 RATE_LIMITで停止
 - Termius：`V5_DRIVE_WRITE_FAILED`, `RCLONE_EXIT_CODE=1`, `HTTP_STATUS=403`, `ERROR_CLASS=RATE_LIMIT`, `V5_DRIVE_DIAGNOSTIC_FINISHED`。同日14:25読取about PASSだが、書込は14:28/14:31連続失敗・readback未到達。HTTP 403/分類から**API書込レート制限が強く疑われる**。消費クォータや解除時刻は未確定。**本日このremoteへの追加書込probe/大容量転送/強制リトライ禁止**。旧V3/V4と本番データの削除・変更なし、外部バックアップ達成ではない。
 - 外部新世代が保全できない間はConoHaでの事前保全/同VPS復元PASS済みを維持し、DB新stage COPYや本番切替は不可。代わりに収集writer/read routingをread-only監査して実切替の準備を進める。
+## 10/24 14:35 JST：V5 writer経路read-only監査PASS（認証ではない）
+- Termius: 4 timers=active/enabled。forward-window.service=activating、midnight-catchup.service=inactive。daily@morning/night.service=inactive、daily@.service=unknown（template判定）。root/postgres関連crontab=0、cron.d一致なし。
+- STATIC検出: repair_month_all_pg.pyのhelper UPSERT候補にv2_race_entries等。v21_realtime_collector_pg.pyにはlegacy realtime6表参照・DDLあり（ヒントのみ）。forward-windowはv5.conoha_realtime_window_pg、midnightはv5.conoha_midnight_results_pg。dailyインスタンスtarget=UNRESOLVEDはshell/wrapper経由の可能性があり未証明。
+- `NO_RUNTIME_WRITE_PATH_CERTIFICATION_YET`、`V5_ACTIVE_WRITER_ROUTES_READONLY_COMPLETE_NO_DB_WRITES`、`V5_WRITER_ROUTE_AUDIT_COMMAND_PASS`。forward-windowがactivatingで長時間滞留しているか不明。収集停止/DB操作・Drive書込は未実施。Stage1/13、本番0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**GitHub現行スクリプト `deploy/conoha/v5_active_writer_routes_readonly_20261022.py` をConoHa上のV5 HEADから一時ファイルとして読み出し、no DB/no writeでActiveState・unit/cron名・SOURCE参照/書込みヒントを安全に取得**。スクリプト未存在ならSTOP。DB/schema/VIEW/collector/timers/BUY変更なし。独立バックアップと全writer実証前にステージングCOPY禁止、共有物理本番切替0/13 NO-GO。
+**Termiusでforward-window.serviceの実行状態・経過時間・結果コードの安全なsystemctlプロパティのみread-only取得**。ExecStart全文や環境値・journal本文は出力しない。異常滞留なら切替保留のまま対策設計。再起動/停止・DB書込・Drive再試行・BUYはしない。
