@@ -8,4 +8,6 @@
 
 2026-10-25 08:21 JSTユーザーTermiusのPGカタログread-only検査にて13 rows、13原本=r、13既存live=VIEW(v)、13 stage=r、12表が`INITIAL_SNAPSHOT_COMMITTED`、venues=`PREVIOUS_VENUES_STAGE_PRESENT`、`ROLLBACK`と`V5_STAGE13_CATALOG_AUDIT_DONE_READ_ONLY_NO_CDC_NO_CUTOVER`を確認。初回物理snapshot13/13証明、現在差分・hash parity・CDC・独立復元・本番切替は未証明（live0/13）。
 
-**Next ONE task:** ConoHaで `deploy/conoha/v5_stage13_delta_readiness_catalog_readonly_20261025.sql`（commit `be3e5e0db2395ba19f29d5e00c1153bd13180578`）を一度read-only実行。13系統の原表/物理stage/VIEWの型、全列順・型、PK形、FK/trigger/default hazardを13行で確認する。snapshot再コピーはせず、COPY後の追加/更新/削除差分同期を設計/検証。**V5物理本番切替・BUYは禁止**。
+2026-10-25 08:25 JSTのユーザーConoHa画面で13/13の`relation_shapes`・`copy_column_shape`・`pk_shape`=PASS、PK `id`/`race_id`/複合`race_id,lane`/`venue_code`、source user_triggers=0、source FK_in/out=0、複数表にserial defaultあり。`ROLLBACK`、`V5_STAGE13_DELTA_CATALOG_READONLY_DONE_NO_TABLE_SCAN_NO_WRITES`で正常終了。これはメタデータ一致の証拠であって差分=0/CDCではない。
+
+**Next ONE task:** 24行の`venues`限定stage差分runner `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py`（commit `39c17fa530d06e33b8ac1ea695e2a25cce32bee3`）をTermiusで`--apply`なしPREVIEW実行、実schemaとPK・源/先24行・trigger/FKを確認する。GitHub追加のみで未実機実行・未テスト。実stage APPLYは別承認＆03:00–05:59 JSTゲート、対象表以外や原本/VIEWは変更しない。pilot後13系統upsert/delete全差分と独立復元を準備。BUY OFF、writer/read route本番切替NO-GO。
