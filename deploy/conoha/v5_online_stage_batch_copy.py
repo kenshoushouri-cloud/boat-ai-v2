@@ -19,7 +19,7 @@ from deploy.conoha.boat_shared_staging_delta_plan_offline import (
     STAGE_GATES, blockers,
 )
 from v5.offline_stage_batch_plan import TARGETS
-from v5.offline_stage_chunk_copy_sql import StageShape, make_window
+from v5.offline_stage_chunk_copy_sql import StageShape, make_key_select, make_window
 
 ALLOWLIST = {r.legacy: r.canonical for r in RELATIONS}
 
@@ -189,13 +189,10 @@ def main(argv=None) -> int:
                 conn.execute("SET LOCAL statement_timeout='6s'")
                 conn.execute("SET LOCAL lock_timeout='700ms'")
                 with conn.cursor() as cur:
-                    # A placeholder key is only for building the SELECT;
-                    # real watermark comes from source within this transaction.
-                    placeholders = tuple(0 for _ in shape.pk)
-                    preview_sql = make_window(shape, after, args.batch,
-                                              placeholders if after is None else after)
-                    cur.execute(preview_sql.select_keys_sql,
-                                preview_sql.select_keys_params)
+                    # Read up to 500 ordered source PKs first. Only then
+                    # generate its bounded INSERT using the real last key.
+                    sql, params = make_key_select(shape, after, args.batch)
+                    cur.execute(sql, params)
                     keys = cur.fetchall()
                     if not keys:
                         print("V5_STAGE_COPY_REACHED_CURRENT_SOURCE_END")
