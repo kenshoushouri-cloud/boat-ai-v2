@@ -51,4 +51,6 @@
 
 **10/24 12:49 Termius**：collector.tarのSHA照合・安全パス検査・同VPS一時領域の隔離展開・TARとの内容一致・一時領域削除がすべてPASS。成功マーカー`COLLECTOR_ISOLATED_RESTORE_PASS_CLEANED`。VPS外復元・V5本体保全は未完了。
 
-**Next ONE task：** `/opt/boat-ai-v5`の容量と変更/未追跡Gitファイルの**件数のみ**read-only取得し、本体保全対象の規模を見積もる。
+**10/24 12:54 Termius**：`/opt/boat-ai-v5`はディスク使用量27M、Git statusの変更エントリ0・未追跡エントリ0、`V5_INVENTORY_READ_ONLY_PASS`確認。11:09のHEADは`504b61138e3aaae547688194652e7022c196bfc4`。ignoredファイル/secret設定や実稼働構成はまだ未調査、GitがcleanでもV5全体復元できるとは限らない。
+
+**Next ONE task：** 実ルート`/opt/boat-ai-v5`を新規root-onlyのローカルTARに保全し、TOC・bytes・SHA256を確認。実復元/VPS外保全は別作業。
