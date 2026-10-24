@@ -9,4 +9,4 @@ V5は研究成果を再利用して非購入限定稼働を構築する。6艇�
 
 最新2026-10-24 17:10 Termius read-only：10/20展示の`historical`は0、`conoha_forward`28レース×6艇完全/計168行（時刻ラベル締切前だが原本証拠ではない）、別の`conoha_timeout_probe`1レース×6艇（研究/運用自動採用しない）。10/20全144R、完全出走144、公式結果144、clean K course132、厳格なhistorical学習候補0。重複レースの可能性があるため28+1を全体のuniqueとは断定しない。
 
-**Next ONE task**：18:35一括準備の初回実行はrootのprivate /tmp SQLをpostgresが開けず`Permission denied`、13manifest確認のみPASS。GitHub `deploy/conoha/v5_cutover_one_command_prepare_20261024.sh`をstdin redirectに修正済み。次はTermiusで`git fetch`→`bash -n`→修正版を1回実行し、`V5_PREPARE_ONE_COMMAND_COMPLETE`を確認。部分`/var/backups/v5_prepare_*`は無断削除しない。現行収集維持、03:30切替未予約、stage1/13・live0/13 NO-GO、Drive403 STOP、BUY OFF。
+**Next ONE task**：2026-10-24 18:41 修正版一括準備PASS：13 manifest/DB read-only/writer audit全PASS、`PREPARATION_REPORT=/var/backups/v5_prepare_wLz5IWY7`、source unchanged、切替NO_GO・夜間timer未予約。GitHub `v5/offline_stage_batch_plan.py`（既存venues保護+wave1 6表+wave2 6表）と合成安全性テスト5件`tests/test_v5_offline_stage_batch_plan.py`追加、**未実行**。次はTermius /tmp隔離のテスト5件＋ソースmanifest整合確認。以後複数表の分割stage+update/delete catchupを実装する。stage1/13/live0/13、Drive403 STOP、BUY OFF。
