@@ -26,6 +26,10 @@
 - ユーザーの方針：データを共通`boat_data_stage`へ複製し、**既存収集を動かし続けながらV5をpaper-only並行稼働**、同期による欠損は後追いで補完し、整理データによるbacktestと直前入力の実戦評価を優先する。ChatGPT設計`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`。
 - **区別**：ユーザー言う「複製元の稼働」は現在の`railway.public.v2_*`原本側writer/collector継続のことであり、停止済みV3/V4の別collectorを再起動する意味ではない。二重に外部サイトへ取りにいかない。source → stage一方向copy/sync＋V5読むだけ。段階コピー中の更新/削除は完全PK再照合で追込。後日公式結果は補完可だが変動オッズ/展示初回観測は事前証明扱いしない。
 - 実Stage状態は21:11でvenues1/13、残り12 ABSENT、物理本番切替0/13。独立復元・全writer/完全差分/rollback未完了、今夜03:30未予約・BUY OFF。既存13 VIEWはread-only researchに今すぐ使用可能。**元DB writer停止・本番VIEW切替は不要のV5 shadow開始と、将来の物理原本切替を分ける。**
+## 2026-10-24 夜間切替へのユーザー指摘に基づく修正
+- 直前オッズ/展示/気象は旧原本collectorが既に稼働していれば原則継続収集。夜間03:30には通常レースがないため露出が小さいが、5分間隔forward timerや01:20 catchup等は常に考慮。
+- **第1段階は物理原本や収集writerを切り替えず、V5 shadowの読み取り参照先だけ複製stageへ**。日中にCOPYして夜間に完全PK差分と鮮度を検査し、問題があれば既存VIEW読取に戻す。これなら既存収集を止める理由が少ない。第2段階のwriter移転は別承認・独立復元等が必要。
+- そのため外部バックアップ試験に全開発をブロックされず、VIEWに基づくV5の前向き非購入研究/少量バックテストを並行開発する。`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`の節参照。夜間cutoverはまだ実装・予約なし。
 
 ## Next ONE task
-**V5の既存inference/scorer/backtest入口と`boat_data.*` VIEW読み取り契約をGitHubで狭く特定し、少量real-data read-only pilot の具体コードを作成する。** 戻り値と入出力の時間証拠を検証、当時初観測の証明不能ならpaper-only`HOLD`。並行して`boat_data_stage`残り12表の低負荷物理作成＋chunk copy＋full-key update/delete delta＋復帰機構は安全ゲートに従い開発する。Drive403新規書込/BUY/本番物理切替/03:30予約禁止。
+既存V5 scorer/inferenceが`boat_data.*` VIEWを**read-onlyでそのまま消費して非購入の実データbacktest/pilotを開始できるかを確認**し、必要なアダプタをGitHubで実装。stage物理COPY/reader switchの自動ゲートも開発するが未準備でのタイマー登録禁止。
