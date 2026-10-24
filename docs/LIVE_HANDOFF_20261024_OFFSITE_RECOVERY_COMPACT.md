@@ -30,6 +30,10 @@
 - 直前オッズ/展示/気象は旧原本collectorが既に稼働していれば原則継続収集。夜間03:30には通常レースがないため露出が小さいが、5分間隔forward timerや01:20 catchup等は常に考慮。
 - **第1段階は物理原本や収集writerを切り替えず、V5 shadowの読み取り参照先だけ複製stageへ**。日中にCOPYして夜間に完全PK差分と鮮度を検査し、問題があれば既存VIEW読取に戻す。これなら既存収集を止める理由が少ない。第2段階のwriter移転は別承認・独立復元等が必要。
 - そのため外部バックアップ試験に全開発をブロックされず、VIEWに基づくV5の前向き非購入研究/少量バックテストを並行開発する。`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`の節参照。夜間cutoverはまだ実装・予約なし。
+## 2026-10-24：forward-windowタイマーの深夜起動に関する訂正
+- 実GitHub source `deploy/conoha/boat-v5-forward-window.timer`: `OnCalendar=*-*-* 07..23:0/5:00 Asia/Tokyo`、`Persistent=false`。5分刻みの直前レース情報（exhibition/odds）収集は07:00〜23:55 JSTだけに設定。**03:30には発火しない。** 直前collector`v5/conoha_realtime_window_pg.py`は当日締切9〜24分前(オプションlate-retry5〜24分)かつ展示6艇/オッズ120券未満だけ候補にする。
+- 先の「5分タイマーは03:30に起動し得る」は**誤り**。修正済`docs/V5_DUAL_RUN_SHADOW_SYNC_PLAN_20261024.md`。実VPS unitの一致をread-only確認すれば、それ以上タイマーを変更する必要はない。01:20 catchup、その他不明writer、07:00 morningが終了/待機しているかのgateは別。
+- **夜間の実切替はなお未スケジュール**。stage1/13、live0/13、Drive403 STOP/BUY OFF。
 
 ## Next ONE task
 既存V5 scorer/inferenceが`boat_data.*` VIEWを**read-onlyでそのまま消費して非購入の実データbacktest/pilotを開始できるかを確認**し、必要なアダプタをGitHubで実装。stage物理COPY/reader switchの自動ゲートも開発するが未準備でのタイマー登録禁止。
