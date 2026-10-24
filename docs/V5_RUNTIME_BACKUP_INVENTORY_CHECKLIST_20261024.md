@@ -53,4 +53,6 @@
 
 **10/24 12:54 Termius**：`/opt/boat-ai-v5`はディスク使用量27M、Git statusの変更エントリ0・未追跡エントリ0、`V5_INVENTORY_READ_ONLY_PASS`確認。11:09のHEADは`504b61138e3aaae547688194652e7022c196bfc4`。ignoredファイル/secret設定や実稼働構成はまだ未調査、GitがcleanでもV5全体復元できるとは限らない。
 
-**Next ONE task：** 実ルート`/opt/boat-ai-v5`を新規root-onlyのローカルTARに保全し、TOC・bytes・SHA256を確認。実復元/VPS外保全は別作業。
+**10/24 12:57 Termius**：V5配置フォルダ全体を`/var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar`に新規ローカル保存。25,200,640 bytes・mode600・TOC PASS・SHA-256 `4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968`。`V5_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED`。**秘密が含まれる可能性があるためGitHub/Driveへファイル転送禁止。復元・外部systemd保全/VPS外テスト未実施。**
+
+**Next ONE task：** V5のTARを一時領域へ安全に隔離展開・内容一致・清掃を検証。
