@@ -1,0 +1,48 @@
+name: V4 strict-prior-ST contract validation
+
+on:
+  pull_request:
+    paths:
+      - 'research/v4_strict_prior_st_contract.py'
+      - 'research/v4_strict_prior_st_replay_pg.py'
+      - 'tests/test_v4_strict_prior_st.py'
+      - 'docs/V4_STRICT_PRIOR_ST_PREREG_20260927.md'
+      - '.github/workflows/v4-strict-prior-st-validation.yml'
+      - '.github/workflows/v4-strict-prior-st-one-shot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate frozen contract and replay implementation
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m py_compile research/v4_strict_prior_st_contract.py research/v4_strict_prior_st_replay_pg.py tests/test_v4_strict_prior_st.py
+          pytest -q tests/test_v4_strict_prior_st.py
+          python - <<'PY'
+          from research.v4_strict_prior_st_contract import contract_metadata
+          m=contract_metadata()
+          assert m["variants"] == ["control","strict_prior_st"]
+          assert m["same_day_results_allowed"] is False
+          assert m["threshold_search"] is False
+          assert m["coefficient_retune"] is False
+          assert m["odds_used"] is False
+          assert m["production_change"] is False
+          assert m["purchase_action"] is False
+          print("V4_STRICT_PRIOR_ST_CONTRACT=PASS")
+          PY
