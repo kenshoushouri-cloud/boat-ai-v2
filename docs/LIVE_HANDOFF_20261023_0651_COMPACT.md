@@ -222,5 +222,10 @@
 - `SIZE_BYTES=81865791`、SHA-256=`7301975821593cdab2fdcf30eedc8d78558537023ed7af30f03d679de19fd37e`、`ARCHIVE_SHA256_READ_ONLY_PASS`確認。読み取り専用の全バイトハッシュであり、**VPS外複製/復元成功ではない**。08:31同VPS一時DB全体復元・削除、08:34TOC/live3表一致は確認済み。実データ全件一致は未検証。
 - Drive API 403でGoogle Drive転送なし。旧バックアップ上書き/現行収集停止なし。stage venues24行保護、entry stage未作成、物理正本切替0/13 NO-GO。
 
+## 10/24 10:58 JST：railway local dumpハッシュ取得PASS
+- Termius画像：`/var/backups/boat-railway-20261023-ORfLpY/railway.dump`は393138215 bytes、SHA-256=`4ee6a5d9c1ddf67c61b8bb82426961431c25f20f944f87b6cef5137bb294478d`、`RAILWAY_SHA256_READ_ONLY_PASS`で終了。archiveの81865791 bytes/SHA-256も08:37に確認済み。
+- 詳細は新規`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`（2件の完全SHA、パス、独立保全ゲート）。**ローカル同一VPS内のみ**で、V5専用Google Drive保存先・実転送・外部復元・railway全体復元は未完了。Google Drive API 403制限歴があり勝手な再試行・転送を行わない。
+- collector/timer稼働維持、旧表保護、venues stage24行を再コピーしない、entry stage未作成、共有VIEW13、切替0/13・NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa既存`railway.dump`（10/23作成）のSHA-256と実バイト数をREAD ONLY取得**。パスは`/var/backups/boat-railway-20261023-*/railway.dump`から一致数=1を確認して選択し、既存バックアップを上書き・変更しない。二つのローカルdumpのハッシュ基準が揃ってからVPS外独立新世代の保全手順を設計する。Drive API再試行/DB変更/entry COPY/collector停止/VIEW切替/BUY禁止。NO-GO。
+**GitHubのみで`docs/CONOHA_LOCAL_BACKUPS_20261024_CHECKSUMS.md`を基準としたV5外部バックアップのフェイルクローズ設計を点検**。新世代専用パス・既存V3/V4データの上書き禁止・外部から再取得した実バイトSHA-256と隔離復元の検査条件を固める。ConoHa上でのDB/collector/cron/バックアップ変更やGoogle Drive API再接続・実アップロードは別承認まで実施しない。外部独立保全/全writer監査/実同期未完成につき本番切替0/13 NO-GO。
