@@ -32,6 +32,11 @@
 - 続く実DB `--all` は `STOP: psycopg not installed in runner environment`。**DBのプレビューが実行されていない**。ライブラリ新規導入や既存サービス停止不要。
 - GitHub `deploy/conoha/v5_online_stage_batch_copy.py`を修正：`--all` のみ `psycopg`未導入時は既存`psql`で`railway`の12固定ソース/ステージのカタログだけREAD ONLY/Rollback取得。単一表`--copy`は引き続きpsycopgと独立復元・明示証拠が必要で、何も自動実行しない。`tests/test_v5_psql_stage_preview.py`4件を追加。**新4件と実psqlプレビューは未実行**。
 - 本番13 VIEW維持、stage venues 1/13、live physical 0/13 NO-GO。03:30未予約、Drive403停止、BUY OFF。
+## 2026-10-24 19:38 JST：psql fallback及び12ステージ状態監査PASS
+- ユーザーTermiusスクリーンショット：`tests/test_v5_psql_stage_preview.py`の4件`Ran 4 tests`/`OK`。psycopg未導入でも既存psql READ ONLYを使う`--all`が`12 rows`、`ROLLBACK`、`V5_STAGE_ALL_12_PREVIEW_READ_ONLY_FINISHED`、`STAGE_CANDIDATES=12 COPY_PERFORMED=NO CUTOVER=NO_GO`で正常終了。
+- 全12 source `public.v2_*` はrelkind=r、全12 `boat_data_stage.*` は`ABSENT`、PKは`id`、`race_id`、`race_id,lane`混在。既存venues `boat_data_stage.venues`は保持、stage1/13、live cutover0/13 NO-GO。
+- GitHub `deploy/conoha/v5_stage_12_bootstrap_plan_readonly_20261024.sql`を追加。12テーブルのsource PK/default/generated/FK/trigger/サイズと、共有`nextval`を避けた`CREATE TABLE ... LIKE INCLUDING CONSTRAINTS INCLUDING INDEXES`候補をREAD ONLYで一括出力する。**未実行**。実際のDDL実行は別途独立復元/明示承認のgate後。
+- 差分追従、局所チャンクCOPY、切戻しは未完了。Drive403 STOP、BUY OFF。03:30無人切替未予約。
 
 ## Next ONE task
-**ConoHa /tmp隔離で新psql fallbackのオフラインテスト4件 → 続けて`v5_online_stage_batch_copy.py --all`をpostgresユーザーでREAD ONLY実行する1操作**。12表のStage有無とPKを確認して低負荷隔離stage bootstrap設計へ進む。インストール/DB DDL/DML/collector STOP/BUYは禁止。
+**既存SQLの12表空ステージ作成計画をConoHa READ ONLYで1回だけ検証**（`deploy/conoha/v5_stage_12_bootstrap_plan_readonly_20261024.sql`）。確認後、独立バックアップ復元・実表DDLの安全条件を踏まえて12物理stage一括作成スクリプトを仕上げる。実コピー/DDL/VIEW切替/collector STOPはまだしない。チャットごとに保存先探索を繰り返さない。
