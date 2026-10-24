@@ -14,4 +14,6 @@
 
 2026-10-25 08:34 JST Termius実機：venues source24/stage24、read-only full outer compare INSERT=0 UPDATE=24 DELETE=0、`VENUES_STAGE_DELTA_PREVIEW_PASS_NO_WRITES`。更新24件は欠損24件ではない。何列が更新されたかは旧previewで未分類。
 
-**Next ONE task:** `deploy/conoha/v5_stage_delta_venues_guarded_20261025.py` 修正版 commit `44b00fd433adb5b2608f87c7e3b423523ba2b607` を使い、venue24行だけを明示env+`--apply`で`boat_data_stage.venues`に追込・双方向同一snapshot照合する。08:00-22:59または03:00-05:59 JST限定、実VPSでまだAPPLY未実施。新コードは`INSERT .. SELECT WHERE true ON CONFLICT`でPG構文曖昧性を解消、比較を非主キー列で行い更新不要行への物理UPDATEを避ける。成功後、残12表の新規/更新/削除の差分同期を実装。旧collector・public原本・live VIEW・BUY維持、本番切替NO-GO。
+2026-10-25 08:40 JST: ConoHa Termiusでvenues source/stage各24、`VENUES_STAGE_DELTA_TRANSACTION_PASS upserted=24 deleted=0 bidirectional_equal_in_transaction=YES legacy_source_untouched=YES live_view_untouched=YES continuous_cdc=NO cutover=NO_GO BUY=OFF`、`VENUES_STAGE_ONLY_DELTA_COMMITTED_NOT_CDC_NOT_LIVE`確認。**venues stage差分反映・同一snapshot照合成功**。元public/VIEW unchanged。初回物理stage13/13、live物理切替0/13。
+
+**Next ONE task:** GitHub `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `6a7973c33bb4011bae149c28db52fa5fb3cb8faa`）の`--all` PREVIEWをConoHaで実行し、12原表・12stageの列/PK一致と初回コピー証明をread-only一括確認（no table scans/DDL/DML）。GitHubには12表のキー分割・変更行のみUPDATE・INSERT/DELETE・範囲双方向照合を行うguarded実装を追加したが、**現物DB適用・実証は未実施**。先に小さな`races`１系統を別途夜間限定で実証、問題なければ残11。原本収集維持、BUY OFF、本番切替NO-GO。
