@@ -51,6 +51,7 @@ class EmptyStageBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"gate missing"):
                 bootstrap.gates_verified(str(path))
             bad.update({k:True for k in bootstrap.MANDATORY_EVIDENCE})
+            path.write_text(json.dumps(bad))
             bootstrap.gates_verified(str(path))
             bad["approval_marker"]="V5_CUTOVER_ALLOWED"
             path.write_text(json.dumps(bad))
