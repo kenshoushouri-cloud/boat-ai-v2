@@ -294,5 +294,9 @@
 - Termius：`public.v2_venues`対`boat_data_stage.venues`、全24会場`TIME_ONLY=24`、`source_newer=24`、会場名/ID/is_active/created_at実データ差分0、追加/欠損0、`VENUES_DELTA_READ_ONLY_PASS`、read-only+ROLLBACK。旧原本の`updated_at`が全24件でstageより進む。自動同期は未実施；旧writerによる定期UPSERTでタイムスタンプのみ進んだ可能性があり、無条件に全件同期しない。
 - GitHub変更とConoHaのDB変更は区別、ConoHaに新たな更新・COPYなし。13共有本番物理切替0/13、外部独立保全/全writer証明・実予測/ROI未完了、NO-GO。
 
+## 10/24 13:52 JST：共有13VIEWと隔離stageの実体監査
+- Termius read-only `pg_class`：`boat_data` VIEW13/13、`boat_data_stage.venues`だけが物理表、残り12件すべてABSENT。`SHARED_STAGE_INVENTORY_READ_ONLY_PASS`、ROLLBACK。venues stage初回コピーは1/13、本番物理切替は0/13。
+- 最優先候補は中核`entries`（旧`public.v2_race_entries`）、既存のオフラインガードがある`entry_snapshots`（旧`public.v2_realtime_entry_snapshots`）も比較。どちらもstage absent。負荷/キーと初回取得証拠が未確認のまま実COPYはしない。10/31購入なしcanaryは検証合格時のみ。
+
 ## Next ONE task（次の一作業）
-**ConoHaの`railway`で`boat_data` VIEW13件と`boat_data_stage`の対応する物理テーブルの存在・種類だけをread-onlyで一覧**。対象を総覧して次の隔離ステージング候補を選び、先にGitHub側オフライン安全検査・コピー計画を用意する。大テーブルの全件COUNT、実COPY/UPDATE、VIEW差替え、タイマー変更、BUYは禁止。
+**ConoHa Termiusで`public.v2_race_entries`および`public.v2_realtime_entry_snapshots`のサイズ・概算行数・列数・ユニークインデックスをカタログread-onlyで確認**。実データのCOUNTや全文スキャンはしない。比較から低負荷の次の隔離ステージング候補を選び、GitHubオフライン設計→明示承認の順。収集/DB/VIEW/timers/BUY変更なし、本番切替0/13 NO-GO。
