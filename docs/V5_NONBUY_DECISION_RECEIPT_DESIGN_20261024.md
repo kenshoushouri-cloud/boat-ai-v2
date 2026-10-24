@@ -11,6 +11,18 @@
 - `v5/telegram_trial_performance.py`, `v5/ntfy_trial_performance_report.py` は**外部で固定済みの検証可能V5 JSONL ledgerの読取/集計**のみ。予測を生成しない。
 - `v5/conoha_realtime_window_pg.py` は公式直前情報の取得器であり、予測決定器ではない。現行タイマー/collector変更なし。
 
+## 2026-10-24 再利用優先監査（先に既存実装を保護）
+GitHubの調査により、**前の「記録器なし」は不正確**と判明。インストール先に一致する保存済みファイルがないことと、記録機能のコードがないことは別。
+- `v5/offline_mainline_inference.py`：研究用の6艇1着確率計算（現実データ使用の正当性未認証）
+- `v5/offline_trifecta_shadow_ranking.py`：3連単120通りのPlackett-Luce仮定によるshadow順位付け
+- `v5/offline_v5_freeze_bridge.py`：研究用スコア→paper-shadow freezeの接続（`build_paper_shadow_freeze`）
+- `v5/forward_shadow_freeze.py`：**既存の**`prepare_candidate`（締切・6艇展示・120点オッズ・ハッシュ形状検査）と、`append_once`（0600、排他ロック、race重複拒否、fsync）を用いたローカルshadow記録器。ネットワークや購入動作なし。**元配信の最初の観測真正性・買い目収益率を保証しない**。
+- `v5/offline_day_shadow_pipeline.py`：合成1日単位の集計。既存テスト例`tests/test_v5_offline_day_real_modules.py`。
+- 研究段階の正式なV5候補仕様は**未統一**。2026-09-27の`docs/V5_RESEARCH_SCOPE_LOCK_20260927.md`（旧V4系基準、T=2.20）とstrong-core`offline_mainline_inference.py`（5 factor、T=1.00）には差異がある。`docs/V5_FREEZE_READINESS_AUDIT_20261009.md`も未解決のscope conflictとして明記。どちらかを黙って本番採用しない。
+- 既存`forward_shadow_freeze.py`の`stake_per_ticket_yen`は**仮想金額**であり、実支出0と明示しなければならない。設計内の`stake_yen=0`と混同禁止。
+
+**採用方針：既存のV5研究・合成検証コードを再利用し、実データ時刻・証拠・本番入力アダプタと監査機能の欠落だけを補う。並列に重複したスコア計算器・shadow記録器を作らない。**
+
 ## 候補記録の契約（まだ実装・有効化しない）
 別プロセス（購入権限なし、外部APIなし）からのみ、レース単位の`shadow`候補を受け取る。
 1. **識別**：`race_id`, `model_version`, `model_artifact_sha256`, `policy_version`, `run_id`。同一`race_id+model_version+decision_type`の複数確定記録禁止。
@@ -20,9 +32,9 @@
 5. **証拠固定**：canonical JSON bytes SHA256、追記専用のsequence・previous hash・fsync・同一race重複拒否、独立読取監査で固定内容を照合。ハッシュチェーンや自己申告時刻**単独**は取得真正性の証拠ではない。現行ConoHaとの別場所に新世代を保全し、復元試験が通るまで`INDEPENDENT_BACKUP_UNVERIFIED`。
 
 ## 実装順序と境界
-**第一段階（次の1作業）**：上記入力契約を検証する「純粋関数」のオフライン仕様テストを追加する。DB接続、実HTTP、実レースの予測、JSONL実書込、通知、BUY、systemd変更を含めない。日時順・モデルハッシュ・入力取得証拠・欠損・再生/重複・違法な`actual`/購入フラグがfail closedになることを検証する。
+**第一段階（次の1作業）**：既存の`prepare_candidate`/`append_once`/`build_paper_shadow_freeze`と要求記録項目を読み取り専用で**差分監査**し、欠けたsource-first-observation・decision cutoff・model version整合・actual支出0のガードを列挙する。既存テストを再利用し、必要なテストだけ追加。DB接続・実HTTP・本番JSONL書込・通知・BUY・systemd変更は行わない。
 
-**第二段階（別ゲート）**：実データの独立初回観測と監査可能writerの証明、V5 scorerの固定、受入れ条件、独立外部バックアップ・復元検証後に、非購入shadowの**新規ファイル**に限る記録器を導入。旧DB表上書き・既存データ削除禁止。
+**第二段階（別ゲート）**：研究候補モデル・重み・selectorの相互矛盾を合意済み証拠で解消し、実データの独立初回観測と`append_once`既存writerの安全性を再検証。受入れ条件、独立外部バックアップ・復元検証後にのみ新規の非購入shadow journalを許可。旧DB表上書き・既存データ削除禁止。
 
 **第三段階**：shadow予測と実結果/払戻/返還の公式原本を独立照合。外部検証できる凍結receiptが無ければ性能・利益率は`未検証`。実購入は別承認まで禁止。
 
