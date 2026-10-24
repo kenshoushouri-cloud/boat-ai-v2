@@ -74,5 +74,9 @@
 ## 2026-10-25 08:21 JST 実機catalog確認
 - 2026-10-25 08:21 JSTユーザーTermiusのPGカタログread-only検査にて13 rows、13原本=r、13既存live=VIEW(v)、13 stage=r、12表が`INITIAL_SNAPSHOT_COMMITTED`、venues=`PREVIOUS_VENUES_STAGE_PRESENT`、`ROLLBACK`と`V5_STAGE13_CATALOG_AUDIT_DONE_READ_ONLY_NO_CDC_NO_CUTOVER`を確認。初回物理snapshot13/13証明、現在差分・hash parity・CDC・独立復元・本番切替は未証明（live0/13）。
 
+## 2026-10-25 08:40 JST venues stage一致
+- 2026-10-25 08:40 JST: ConoHa Termiusでvenues source/stage各24、`VENUES_STAGE_DELTA_TRANSACTION_PASS upserted=24 deleted=0 bidirectional_equal_in_transaction=YES legacy_source_untouched=YES live_view_untouched=YES continuous_cdc=NO cutover=NO_GO BUY=OFF`、`VENUES_STAGE_ONLY_DELTA_COMMITTED_NOT_CDC_NOT_LIVE`確認。**venues stage差分反映・同一snapshot照合成功**。元public/VIEW unchanged。初回物理stage13/13、live物理切替0/13。
+- 12表向けキー範囲stage同期コードはGitHub登録済み、実同期は未実施。13全体の更新差分完了とは呼ばない。
+
 ### Next ONE task
-**Next ONE task:** ConoHaで `deploy/conoha/v5_stage13_delta_readiness_catalog_readonly_20261025.sql`（commit `be3e5e0db2395ba19f29d5e00c1153bd13180578`）を一度read-only実行。13系統の原表/物理stage/VIEWの型、全列順・型、PK形、FK/trigger/default hazardを13行で確認する。snapshot再コピーはせず、COPY後の追加/更新/削除差分同期を設計/検証。**V5物理本番切替・BUYは禁止**。
+**Next ONE task:** GitHub `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`（commit `6a7973c33bb4011bae149c28db52fa5fb3cb8faa`）の`--all` PREVIEWをConoHaで実行し、12原表・12stageの列/PK一致と初回コピー証明をread-only一括確認（no table scans/DDL/DML）。GitHubには12表のキー分割・変更行のみUPDATE・INSERT/DELETE・範囲双方向照合を行うguarded実装を追加したが、**現物DB適用・実証は未実施**。先に小さな`races`１系統を別途夜間限定で実証、問題なければ残11。原本収集維持、BUY OFF、本番切替NO-GO。
