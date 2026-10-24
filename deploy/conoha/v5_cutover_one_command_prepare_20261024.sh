@@ -50,9 +50,11 @@ print('FIXED_SOURCE_MANIFEST=13_UNIQUE_PASS')
 PY
 
 echo "=== DB SOURCE/CANDIDATE READ ONLY ==="
+# Root opens private (0700 dir, 0600 file) SQL as stdin before runuser.
+# Do NOT chmod the temporary dir or SQL world-readable.
 timeout -k 2s 45s runuser -u postgres -- \
  psql -X -P pager=off -v ON_ERROR_STOP=1 -d railway \
- -f "$TEMP/source_gate.sql" > "$OUT/02_db_gate.txt"
+ < "$TEMP/source_gate.sql" > "$OUT/02_db_gate.txt"
 grep -q 'V5_13_SOURCE_BATCH_GATE_READONLY_DONE_NO_COPY' "$OUT/02_db_gate.txt" || {
   echo 'NO_GO_DB_GATE_INCOMPLETE'
   exit 2
