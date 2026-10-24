@@ -253,5 +253,9 @@
 - `refund_evidence`はmode700/root:rootで、証拠や秘匿情報があり得るため**フォルダごと保持**。`__pycache__`も初回保全では除外しない。Git管理外、システム実稼働参照/保全ファイル作成は未実施。GitHub整理Issue #582は削除未実施。
 - ローカルDB dump 2件保持、collector/timers/旧DB/13 VIEW/venues stage24行変更なし、entry stage absent、切替0/13 NO-GO。
 
+## 10/24 11:28 JST：Git非管理collector ローカルTAR作成・TOC/ハッシュPASS
+- ConoHa Termius：新規`/var/backups/boat-collector-20261024-7Tn5rg/collector.tar` 2,283,520bytes / mode600（umask077）。`tar -tf` PASS、SHA-256=`823a46ee4820e66373abaec7d6e099c3e1d99ae019488691e03d6fbd2a4d7d62`。`COLLECTOR_LOCAL_BACKUP_TOC_PASS_RESTORE_NOT_TESTED`表示。収集root`/opt/boat-ai-collector`を低優先度/最大60秒でTARコピー、既存ローカルDB dumpに触れず。
+- **隔離展開・全内容の復元検査・VPS外独立保全・V5 Git管理本体/設定保全は未実施**。refund_evidenceは敏感な情報を含む可能性あり、秘密内容のGitHub/Google Drive転送は禁止。現行collector/timers、旧原本/VIEW13、venues stage24件維持、本番切替0/13 NO-GO。
+
 ## Next ONE task（次の一作業）
-**ConoHa TermiusでGit管理外`/opt/boat-ai-collector`全体を新規一意ディレクトリにroot-only(0600)の`tar`バックアップとして低優先度・時間制限付きで作成し、アーカイブ読み取り検査とSHA-256を確認**。現行collectorを変更/停止せず、既存のDB dumpやバックアップを上書きしない。秘密を含む可能性があるためGitHubやDriveへアップロードしない。実コピー/隔離復元の確認は別作業とし、成功してもVPS外独立保全PASSとはしない。旧DB/cron/13VIEW/venues stage/entry/BUYは変更禁止、切替0/13 NO-GO。
+**ConoHaでこのcollector.tarのSHA-256を基準と照合し、安全な相対パス・通常ファイル/ディレクトリのみであることを検査してから、新規0700の一時領域へ低優先度・時間制限付きで隔離展開。アーカイブ内の各ファイルと隔離展開した実バイトを比較し、検査後一時領域を確実に削除**。元collectorの変更/停止なし。既存dump上書き、Drive API、GitHubコード削除、VIEW切替、BUY禁止。実VPS外復元ではない。NO-GO継続。
