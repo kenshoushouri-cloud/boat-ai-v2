@@ -18,5 +18,8 @@
 - `deploy/conoha/boat-v5-midnight-catchup.timer`：現在GitHubは**01:20／02:20／03:20 JST**の3回。serviceの最大実行1800秒(30分)、共通flockで同時稼働制御。`boat-v5-daily@night`23:00開始、最大90分=最悪00:30頃まで。早期案**00:45／01:30／02:15 JST**を`deploy/conoha/boat-v5-midnight-catchup.timer.proposed-early-20261024`へ保存済、**ConoHa実環境へは未適用**。
 - 03:30〜04:00 JSTは未来の**V5 reader-only shadow切替の候補窓**。01:20等補完/PENDING/子プロセス/PG writer/差分が確定していることを自動gateで確認し、異常ならHOLDして旧VIEW読取継続。**今夜2026-10-25 03:30は未予約・未設置**。OS再起動要求あり、許可なくrebootしない。タイマー前倒しもinstalled unitと実行ログ・未確定状況をread-only確認してから別途適用。
 
+## 2026-10-24 GitHub実施（実VPS未実行）
+- ConoHa installed timer/serviceと直近48hログを確認するread-onlyスクリプト `deploy/conoha/boat_v5_night_timer_audit_readonly_20261024.sh` をGitHub mainへ追加（commit `ec612f977306c3005490db13d3a88ebcde8526ab`）。systemctl/journalctlだけで変更機能なし。**実VPSでの実行結果は未取得**、timerの前倒し・切替は未適用。次の実作業はこのスクリプトのVPS実行結果の安全判定。
+
 ## 次の1作業
 **ConoHaのinstalled forward + catchup + nightタイマーと直近ログを短いread-onlyコードで1回だけ照合し、前倒し補完が本当に安全か確認する。** 既にGitHubの設定は判明しており同じ資料探索を繰り返さない。その後、00:45/01:30/02:15への変更を必要なら承認範囲で適用。V5研究は既存VIEWをread-onlyで先行、stage物理コピー・reader切替実行は未準備なので誤って本番実行しない。BUY/Drive書込/本番原本writer切替は引き続き禁止。
