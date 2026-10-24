@@ -1,0 +1,20 @@
+# PROPOSAL ONLY. NOT INSTALLED. Do not copy to /etc/systemd/system automatically.
+# Move result catchup earlier without touching existing collectors or BUY.
+# 23:00 night collector can run for up to 90 min; earliest 00:45 allows 15 min buffer.
+# One catchup may run up to 30 min; final 02:15 should finish by ~02:45.
+# Race result PENDING, failed lock, or a still-running worker => do not promote
+# the 03:30 V5 shadow-reader switch. Always verify installed schedule and logs.
+[Unit]
+Description=V5 official result catch-up, earlier 00:45/01:30/02:15 JST (PROPOSED)
+
+[Timer]
+OnCalendar=*-*-* 00:45:00 Asia/Tokyo
+OnCalendar=*-*-* 01:30:00 Asia/Tokyo
+OnCalendar=*-*-* 02:15:00 Asia/Tokyo
+Unit=boat-v5-midnight-catchup.service
+Persistent=false
+AccuracySec=1min
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
