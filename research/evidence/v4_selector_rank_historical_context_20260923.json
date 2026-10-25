@@ -1,0 +1,122 @@
+{
+  "contract": "v4_selector_rank_historical_context_v1",
+  "created_at_jst": "2026-09-23T11:55:00+09:00",
+  "purpose": "HYPOTHESIS_GENERATION_ONLY_FOR_FUTURE_FORWARD_DIAGNOSTIC",
+  "source": {
+    "repository": "kenshoushouri-cloud/boat-ai-v2",
+    "pr_number": 376,
+    "workflow_run_id": 35806246724,
+    "artifact_id": 10727519397,
+    "artifact_zip_sha256": "426822606000248437d7d7daa8a625937e7e34d4526cd37c500032d0b10e6771",
+    "oos_json_sha256": "5860a7a10bd384a64b1022f58bc301d22b6519f9aa311b4ff7e8870a918ae0a0",
+    "recent_json_sha256": "4ce9a11356cb63dc410e41ce5f71c459977516ff77a8ce3518cd1a3c8872f2e9",
+    "selection_was_frozen_pre_result": true,
+    "formal_points": 2
+  },
+  "fixed_oos": {
+    "period": {
+      "start_date": "2026-07-01",
+      "end_date": "2026-08-15"
+    },
+    "days": 46,
+    "races": 276,
+    "by_daily_rank_roi_percent": {
+      "1": 62.935,
+      "2": 80.000,
+      "3": 94.674,
+      "4": 39.130,
+      "5": 93.370,
+      "6": 64.891
+    },
+    "rank_1_3": {
+      "races": 138,
+      "hits": 29,
+      "roi_percent": 79.203,
+      "profit_yen": -5740
+    },
+    "rank_4_6": {
+      "races": 138,
+      "hits": 23,
+      "roi_percent": 65.797,
+      "profit_yen": -9440
+    },
+    "roi_difference_1_3_minus_4_6_pp": 13.406,
+    "day_cluster_bootstrap_20000_seed_20260923_roi_difference_95pct": [
+      -20.072,
+      47.320
+    ],
+    "bootstrap_positive_share_percent": 77.845
+  },
+  "recent_timing_safe": {
+    "period": {
+      "start_date": "2026-09-11",
+      "end_date": "2026-09-22"
+    },
+    "days": 10,
+    "races": 60,
+    "by_daily_rank_roi_percent": {
+      "1": 53.500,
+      "2": 30.500,
+      "3": 79.000,
+      "4": 82.000,
+      "5": 0.000,
+      "6": 27.000
+    },
+    "rank_1_3": {
+      "races": 30,
+      "hits": 6,
+      "roi_percent": 54.333,
+      "profit_yen": -2740
+    },
+    "rank_4_6": {
+      "races": 30,
+      "hits": 2,
+      "roi_percent": 36.333,
+      "profit_yen": -3820
+    },
+    "roi_difference_1_3_minus_4_6_pp": 18.000,
+    "day_cluster_bootstrap_20000_seed_20260923_roi_difference_95pct": [
+      -43.500,
+      77.167
+    ],
+    "bootstrap_positive_share_percent": 72.175
+  },
+  "race_score_context": {
+    "fixed_oos_score_quartile_thresholds": {
+      "q25": 0.908003694359344,
+      "q50": 0.9259776536312849,
+      "q75": 0.9457892660667833
+    },
+    "fixed_oos_formal_2pt_roi_percent_by_quartile": {
+      "Q1": 65.290,
+      "Q2": 99.412,
+      "Q3": 51.071,
+      "Q4": 74.928
+    },
+    "recent_formal_2pt_roi_percent_using_fixed_oos_thresholds": {
+      "Q1": 22.500,
+      "Q2": 11.316,
+      "Q3": 107.308,
+      "Q4": 52.500
+    },
+    "monotonic_relation_observed": false,
+    "absolute_race_score_gate_supported": false
+  },
+  "interpretation": {
+    "rank_1_3_directionally_better_in_both_windows": true,
+    "rank_half_uncertainty_excludes_zero": false,
+    "historical_evidence_supports_candidate_count_change": false,
+    "historical_evidence_supports_threshold_change": false,
+    "historical_evidence_supports_race_score_gate": false,
+    "next_test": "FREEZE_FORWARD_SELECTOR_RANK_DIAGNOSTICS_WITH_FORMAL_2_POINTS_UNCHANGED"
+  },
+  "safety": {
+    "production_change": false,
+    "formal_points_changed": false,
+    "candidate_count_changed": false,
+    "threshold_changed": false,
+    "rerank": false,
+    "result_after_reconstruction": false,
+    "purchase_action": false
+  }
+}
