@@ -1,0 +1,33 @@
+name: V4 unused-entry inventory contract validation
+on:
+  pull_request:
+    paths:
+      - 'research/v4_unused_entry_inventory_pg.py'
+      - 'docs/V4_UNUSED_ENTRY_INVENTORY_20260927.md'
+      - '.github/workflows/v4-unused-entry-inventory-*.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax
+        run: python -m py_compile research/v4_unused_entry_inventory_pg.py
+      - name: Validate result-blind boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('research/v4_unused_entry_inventory_pg.py').read_text(encoding='utf-8').lower()
+          for token in ('set transaction read only','v2_race_entries','information_schema','result=pass_read_only'):
+              assert token in t, token
+          forbidden=('v2_'+'results','v2_'+'result_entries','v2_'+'odds','v2_'+'payout','send_'+'line','insert into','update v2_','delete from','create table','alter table','drop table')
+          for token in forbidden:
+              assert token not in t, token
+          print('V4_UNUSED_ENTRY_RESULT_BLIND=PASS')
+          PY
