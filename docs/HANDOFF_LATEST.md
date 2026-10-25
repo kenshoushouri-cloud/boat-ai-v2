@@ -64,5 +64,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 ## 2026-10-26 07:56 JST realtime forward window
 - 2026-10-26 07:56 JST Termius実機：V5 read-only shadow timer=active（次08:00）、07:45/07:50/07:55のログ正常。07:45に元VIEW 138R、07:50と07:55に144R。次の6レースは全てentries=6/racers=6、exhibition=0/odds=0で`WAIT_INPUT`、`structurally_ready=0`。直近締切=08:35（21_01）、次08:47（10_01）。**正常入力監視＝予測モデル稼働ではない**。GitHub`boat-v5-forward-window.timer`は07..23の5分刻み、`v5/conoha_realtime_window_pg.py`は締切9〜24分前のみ処理、毎回最大2Rを公式サイト取得する。08:35の最初の取得候補は予定上08:15頃なので、07:55の展示/oddsゼロだけで障害とは判断できない。収集タイマーがlive稼働した証拠は別途必要。
 
+## 2026-10-26 08:37 JST 初R直前のforward収集状況
+- Termius画面 08:30:19 `20261026_21_01`（**芦屋**1R、08:35締切）が出走6/選手6/展示6/三連単オッズ120で`INPUT_SHAPE_PASS_NOT_MODEL`。08:35以降は締切超過なのでshadow対象から消えるのは正常。
+- `20261026_10_01`（**三国**1R、08:47締切）は08:30/08:35に出走6/選手6/オッズ120だが**展示0**で`WAIT_INPUT`。会場コード21=芦屋、10=三国、11=びわこ。先行アシスタント会場名誤記を訂正。
+- 08:15〜08:35の`boat-v5-forward-window.service`で`V5_FORWARD_COLLECTOR_RC=0`と`Finished`を実機確認。これはsubprocess正常終了で**展示6行保存の保証ではない**。既存`v21_realtime_collector_pg_safe.py`は`V5_FORWARD_BEFOREINFO_PENDING`と`DATA_QUALITY_WARNING exhibition_status`や`exh_rows`を別に記録する。今は三国1Rについてその詳細理由を確認するのが最優先。
+- GitHub forward runner `v5/conoha_realtime_window_pg.py`の標準windowは締切9〜24分前。08:35実行が08:47締切に対する最後の標準5分トライとなり得る。コード内に手動`--late-retry`(5〜9分前)はあるが、何も見ずに二重GET/改timer/再起動を行わない。08:47を過ぎた情報を締切前スナップショットとして保存しない。V5本予測・BUY・物理writer切替は依然未実施。
+
 ## Next ONE task
-**Next ONE task:** 08:15〜08:25の既存`boat-v5-forward-window.service`ログに `V5_FORWARD_TARGET` / `V5_FORWARD_COLLECTOR_RC` / `V5_FORWARD_WINDOW_CANDIDATES`が出るか、次の5分shadowに08:35締切レースのexhibition/oddsが出るかREAD ONLYで確認する。明確なタイミング内でも0なら既存forward収集経路の安全診断を優先し、08:35の未取得スナップショットを事後取得で捏造しない。旧収集を止めない、二重GET/再起動/物理V5切替/購入はしない。モデル本体は未稼働、stage当日鮮度未同一。
+Termiusで既存forward.serviceの08:25〜08:37の詳細ログをREAD ONLYで表示し、`20261026_10_01`の `V5_FORWARD_BEFOREINFO_PENDING`, `DATA_QUALITY_WARNING exhibition_status=`, `exh_rows=`, `saved_exhibition_rows`を確認。結果から「公式の展示未掲載/パーサ失敗/DB保存失敗」を分類し、未取得なら予測HOLDを維持。既存タイマー/collectorを触らない。
