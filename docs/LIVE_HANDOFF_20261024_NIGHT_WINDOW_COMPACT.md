@@ -94,5 +94,10 @@
 - 既存morning/forward.timer=active、forward 07:05/07:10終了。07:10以降morning収集はDEADLINEログが継続しており、morning完了は未証明。今日の最初のRを取りこぼさないよう先に監視。
 - **V5モデルの実データスコア・3連単予測はまだ未稼働。** 入力監視PASSを予測稼働と誤認しない。合成offline strong-coreにはリアルDB 5-factor fit adapterが不足。公式時刻の前向き凍結証明も未確立。BUY OFF/実物理切替0/13、収集停止や再起動なし。
 
+## 2026-10-26 13項目欠損と高評価選手の扱い（最新）
+- 本来公式未集計の一部値がNULLでも高評価選手の実力を下げない。13項目全項目必須一律除外を採用しない。一方、`ENTRY_STATS_PARSE_FAILED`や13項目一括NULL・根拠不明NULLは研究投入保留、勝手に0埋め禁止。
+- GitHubにpure `v5/entry_quality_policy.py`と合成テスト`tests/test_v5_entry_quality_policy.py`追加。公式未集計の**証拠**を要求して、スコア値はそのまま、信頼度・可否を別にする。全状態BUY OFF。**テストは追加済み・実行は未検証**。本番collector/5分監視/timerは未変更。詳細`docs/V5_ENTRY_MISSINGNESS_POLICY_20261026.md`。
+- 07:34 JSTの朝収集200/288 success108 no_race92 failed0・`ActiveState=activating`が直近証拠。07:32のDB調査は丸亀(15)8艇で一括stats NULL疑い、他会場に平均ST単独NULLあり。公式未集計か解析失敗かはHTML現物未確認。モデル実推論は未稼働。
+
 ## 次の1作業
-morning collector の`ActiveState`/`Result`/`ExecMainStatus`と`Finished`を実VPSでREAD ONLY検査し、当日race全体が揃うか観測。既存collectorを再起動せず、V5 real input/forecast adapter実装へ移る。
+朝収集が完走したかREAD ONLY確認→丸亀の1Rだけ公式ページを限定解析し8艇のNULL原因を分類。既存collectorを再起動しない。別の実行環境でunit testsを実施後に新policyをV5 model adapterへ繋ぎ、BUY OFF。V5 stage本番writer切替は復元/全ルートgateまでNO-GO。
