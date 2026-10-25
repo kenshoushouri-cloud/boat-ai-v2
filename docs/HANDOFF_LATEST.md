@@ -58,5 +58,8 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - ユーザー判断：「13項目全部必須にはせず、高評価選手は正規の一部未集計でも能力スコアを下げない」。決定に従い `v5/entry_quality_policy.py`（commit `20c80b7a53cb289ae142adbfc8eda59333fc50ae`）をGitHub追加。6艇・登録番号・13項目を検証し、元の実力評価値を変えず、公式未集計の証拠/出所不明NULL/明示パーサ失敗/13項目一括欠損を分離。全状態 `buy_eligible=False`。正規の欠損は研究候補、原因不明/解析失敗はHOLD。
 - 合成回帰テスト `tests/test_v5_entry_quality_policy.py`（commit `104ecd12943c9cd9a12e5a353099b94d00953138`）をGitHub追加。**テスト実行は未確認**（実行環境からGitHub rawの取得ができず）。本番のparser, daily collector, stage writer, shadow timerは変更していない。V5モデル実データ推論は依然未証明。仕様 `docs/V5_ENTRY_MISSINGNESS_POLICY_20261026.md`。
 
+## 2026-10-26 07:52 JST 朝収集完了
+- 2026-10-26 07:52 JST、ユーザーのConoHa Termiusで morning.service の朝07:00開始処理が **07:45:54 JST 正常完了**：`progress race/result: 288/288 success=144 no_race=144 failed=0`, `Finished boat-v5-daily@morning.service`, `ActiveState=inactive Result=success ExecMainStatus=0`。`no_race` はHTMLにレース出走表が無い等でスキップした数であり、144中止を意味しない。丸亀（15）の `ENTRY_STATS_PARSE_FAILED` 8艇程度は朝処理全体の成功と別のデータ品質課題として残る。今日のV5 5分読取専用shadowは07:12にActive確認済、07:45以降の稼働状況は未確認。現在もV5実モデル推論/予測保存は未確認、stage writer完全切替0/13、BUY OFF。
+
 ## Next ONE task
-既存朝の288/288完走をTermiusでREAD ONLY確認後、丸亀の8艇に対して公式HTML/未集計欄を1レース最小限で診断し、品質分類の根拠を付ける。それまでcollectorとread-only shadow timerは維持し、GitHubの新policyを本番collectorへ未検証のまま差し込まない。テストは実行できる環境で `python -m unittest tests.test_v5_entry_quality_policy -v` を実施。正規欠測の許容と信頼度補正は2025-07以降の時系列バックテスト後に決定。V5本番writer/BUY切替NO-GO。
+**Next ONE task:** Termiusで既存 `boat-v5-shadow-live-readonly.service` の07:45以降のログをread-only検査し、288タスク完走後の `V5_LIVE_ORIGINAL_TODAY_RACES`, 6艇entry数、展示/odds待機状況を確認する。旧collectionタイマー維持、二重HTTP GET/朝再実行/再起動禁止。丸亀の8艇の成績項目は公式未集計かparser誤認か、別に限定診断する。V5の実データ強化型予測への接続は安全なas-of feature gateが整うまで未稼働。物理stage writer切替とBUYは独立復元/経路証明が済むまでNO-GO。
