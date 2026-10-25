@@ -89,5 +89,10 @@
 - 10/26にGitHub `docs/V5_FAST_START_NO_FULL_DAY_PAUSE_20261026.md` と `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` を追加。実ConoHa未実行。新しい外部復元試験はまだない。
 - V5初回stage 13/13、10/26 03:16時点の各表差分追込13/13（継続CDCなし）、live物理切替0/13。旧原表/13VIEWそのまま、BUY OFF。
 
+## 2026-10-26 07:12 JST (当日V5 shadow稼働実機PASS)
+- V5既存VIEW read-only 5分入力監視は起動成功。Termiusに `PASS: V5_SHADOW_INPUT_READONLY_STARTED_WITH_LIVE_VIEWS`、`V5_SHADOW_READONLY_PASS sampled=5 structurally_ready=0`、次07:15/ActiveState=active。原本今日48Rまで取得、前向き5Rは出走6/6、展示0/6、オッズ0/120で未使用。07:12の締切最短は10:42。
+- 既存morning/forward.timer=active、forward 07:05/07:10終了。07:10以降morning収集はDEADLINEログが継続しており、morning完了は未証明。今日の最初のRを取りこぼさないよう先に監視。
+- **V5モデルの実データスコア・3連単予測はまだ未稼働。** 入力監視PASSを予測稼働と誤認しない。合成offline strong-coreにはリアルDB 5-factor fit adapterが不足。公式時刻の前向き凍結証明も未確立。BUY OFF/実物理切替0/13、収集停止や再起動なし。
+
 ## 次の1作業
-**Next ONE task:** 前掲freshnessのSQLをread-onlyでConoHa一度実行、当日stage鮮度を確認し、V5非購入shadowのモデル/入力ルートを稼働試験。writer移設は全経路監査・最新オフサイト独立復元・rollbackまでNO-GO。再コピー/旧収集停止は禁止。
+morning collector の`ActiveState`/`Result`/`ExecMainStatus`と`Finished`を実VPSでREAD ONLY検査し、当日race全体が揃うか観測。既存collectorを再起動せず、V5 real input/forecast adapter実装へ移る。
