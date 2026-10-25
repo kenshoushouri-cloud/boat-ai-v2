@@ -70,5 +70,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 08:15〜08:35の`boat-v5-forward-window.service`で`V5_FORWARD_COLLECTOR_RC=0`と`Finished`を実機確認。これはsubprocess正常終了で**展示6行保存の保証ではない**。既存`v21_realtime_collector_pg_safe.py`は`V5_FORWARD_BEFOREINFO_PENDING`と`DATA_QUALITY_WARNING exhibition_status`や`exh_rows`を別に記録する。今は三国1Rについてその詳細理由を確認するのが最優先。
 - GitHub forward runner `v5/conoha_realtime_window_pg.py`の標準windowは締切9〜24分前。08:35実行が08:47締切に対する最後の標準5分トライとなり得る。コード内に手動`--late-retry`(5〜9分前)はあるが、何も見ずに二重GET/改timer/再起動を行わない。08:47を過ぎた情報を締切前スナップショットとして保存しない。V5本予測・BUY・物理writer切替は依然未実施。
 
+## 2026-10-26 08:41 JST 三国1R展示6艇成功／芦屋2R待機
+- ユーザーTermiusログ：08:30:30 `20261026_10_01`（三国1R・08:47締切）は`DATA_QUALITY_WARNING exhibition_status=official_absent valid_time_count=0 source=primary_structured_rows_no_times`、08:30:40`before=ok exh_rows=0 odds=120`。`V5_FORWARD_COLLECTOR_RC=0`は保存内容PASSを意味しない。
+- 同じ三国1Rが08:35:31に`before=ok exh_rows=6 odds=120 source=official_odds3t`、08:35:32に`saved_exhibition_rows: 6`、`V5_FORWARD_COLLECTOR_RC=0`を確認。**公式の掲載が遅れていただけの可能性が高く、この1Rは展示保存まで成功**。モデルの推論可否・取得時刻の再検証は別途必要。
+- 08:40:28 `20261026_21_02`（芦屋2R・09:01締切）は`official_absent valid_time_count=0`、08:40:38 `exh_rows=0 odds=120`、`saved_exhibition_rows: 0`。この時点では公式未掲載であり、次回既存forward収集で回復する可能性がある。欠測を0で埋めず、予測HOLD。
+- V5監視は共通LIVE VIEWを読み、stage物理writer切替は未実施。旧collector・forward timerを触らない。BUY OFF。
+
 ## Next ONE task
-Termiusで既存forward.serviceの08:25〜08:37の詳細ログをREAD ONLYで表示し、`20261026_10_01`の `V5_FORWARD_BEFOREINFO_PENDING`, `DATA_QUALITY_WARNING exhibition_status=`, `exh_rows=`, `saved_exhibition_rows`を確認。結果から「公式の展示未掲載/パーサ失敗/DB保存失敗」を分類し、未取得なら予測HOLDを維持。既存タイマー/collectorを触らない。
+Termiusで`journalctl -u boat-v5-shadow-live-readonly.service --since "2026-10-26 08:35" --no-pager | grep -E '20261026_10_01|20261026_21_02|V5_SHADOW_READONLY_PASS|HOLD' | tail -25`をread-only実行し、08:40/08:45のV5 VIEWで三国1Rが展示6+オッズ120となったか、芦屋2Rの展示が追加されたか確認。収集停止/二重取得/再起動/手動backfill禁止。次の段階は実V5モデルへのpredecision品質adapter（研究のみ）を別途検証し、BUY OFF維持。
