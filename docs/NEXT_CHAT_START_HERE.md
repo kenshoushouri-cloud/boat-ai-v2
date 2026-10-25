@@ -21,4 +21,6 @@ repo `kenshoushouri-cloud/boat-ai-v2`。最初に `docs/HANDOFF_LATEST.md`→指
 
 2026-10-25 08:51:38 JSTユーザーのConoHa画面で `races` stage差分反映が成功。`DELTA_VERIFIED races source_rows=74064 stage_rows=74064 insert_update_delete=[168, 0, 0] bounded_windows=19`、`DELTA_TABLE_COMMITTED races`、`STAGE12_DELTA_SNAPSHOT_PASS families=1`、旧原本/VIEW不変更・BUY OFF・CDC=NOを確認。初回コピー13/13、stage差分反映2/13（venues+races）、本番物理切替0/13。
 
-**Next ONE task:** 2026-10-25 JST中にTermius rootから `deploy/conoha/v5_stage11_delta_schedule_once_20261025.sh`（commit `227d3c30c3921bccb5957abb7933468a7e5bc23f`）を1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED` / `Next=2026-10-26 03:05 JST`を確認する。**実VPSへの予約は未適用、残11の差分は未反映**。予約成功後10/26深夜に残11系統をsource size昇順・表ごとのrepeatable-readトランザクションで同期・INSERT/UPDATE/DELETE/Pk/内容照合。失敗時その表のみrollback、旧collector・13 live VIEW・public原本は変えない。完了は翌日journalで系統ごとに確認し、CDC/独立復元/route切替は引き続きNO-GO、BUY OFF。
+2026-10-25 09:02 JST、ユーザーのConoHa Termius画面で `PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Mon 2026-10-26 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO` を確認。**予約は成功したが11系統の実差分同期は未実行**。初回snapshot13/13、差分同期済2/13（venues+races）、V5本番物理切替0/13。
+
+**Next ONE task:** 2026-10-26 03:05 JSTの一度限りのstage11差分自動実行が終わった後、ConoHaで `journalctl -u boat-v5-stage11-delta-20261026.service --no-pager -n 100` を読み、`DELTA_TABLE_COMMITTED` の系統数・`STAGE12_DELTA_HOLD` の有無を確認。途中失敗なら表ごとのatomic rollback、既にCOMMITした表は保持。今すぐの再実行/別予約/再コピーは禁止。BUY OFF・旧collectorとpublic原本・13 VIEWは保護、本番切替NO-GO、連続CDC/独立復元・自動切戻し未証明。
