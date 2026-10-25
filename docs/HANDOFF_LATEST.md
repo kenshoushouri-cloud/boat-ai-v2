@@ -28,5 +28,7 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 5分read-only input監視の稼働成功と**V5強化型の実データ予測計算の稼働**は別。既存の`offline_mainline_inference.py`は5因子を呼出元から受け取る合成安全HOLDモデルで、実DB feature adapter＋prior-day fit asof証明のrunnerは未確認。従って予測稼働やROI証明を断言しない。
 - カーネル更新後の再起動警告が出ているが、今の収集中は再起動禁止。旧collectorの継続、BUY OFF、本番物理切替0/13。
 
+- 2026-10-26 07:18 JST Termius実機: morning.service `ActiveState=activating`, `Result=success`, `ExecMainStatus=0`（**ジョブ未完了**）。07:16:25 `progress race/result: 100/288 success=64 no_race=36 failed=0`。GitHub `repair_month_all_pg.py`による `no_race` は公式出走表HTMLが無い/「データがありません」等でスキップした件数で、**取得成功でも必ずしも確定的な開催中止でもない**。完了ログまでは288件完了と言わない。収集停止・重複再実行は禁止。
+
 ## Next ONE task
 Termiusでmorning collector の`ActiveState`,`Result`,`ExecMainStatus`をread-only確認し、07:00以降の`Finished`/件数を監査。今日の入力不足なら既存collectorの障害原因を調べる（再度HTTP取得を二重起動しない）。その上でV5モデル実DBから必要な5因子をas-ofで作るadapterを設計し、1Rだけ非購入スコアリング→forward journalを実証。実予測モデルが入力未充足ならHOLD維持。
