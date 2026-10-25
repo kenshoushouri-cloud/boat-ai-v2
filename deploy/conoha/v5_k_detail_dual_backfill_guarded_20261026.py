@@ -60,6 +60,12 @@ def guard_relations(cur):
         if one(cur, "SELECT relkind FROM pg_class WHERE oid=to_regclass(%s)",
                (name,)) != kind:
             raise RuntimeError("HOLD_RELATION_SHAPE_CHANGED")
+    if one(cur, "SELECT to_regclass('v5_data.raw_racer_results')") is not None:
+        raise RuntimeError("HOLD_PHYSICAL_K_ROUTE_EXISTS")
+    live_def = one(cur,
+        "SELECT pg_get_viewdef(to_regclass('boat_data.racer_results'), true)")
+    if not isinstance(live_def, str) or "v2_result_entries" not in live_def:
+        raise RuntimeError("HOLD_LIVE_K_VIEW_NO_LONGER_LEGACY")
     cur.execute(
         "SELECT attname,atttypid::text,atttypmod,attnotnull,"
         "attcollation::text,attidentity,attgenerated "
@@ -231,6 +237,8 @@ def main():
     args = p.parse_args()
     if os.environ.get("DATABASE_URL") != "postgresql:///railway":
         raise RuntimeError("HOLD_LOCAL_PG_URL_REQUIRED")
+    if os.environ.get("V5_DAILY_WRITE_ROUTE_PROFILE", "legacy") != "legacy":
+        raise RuntimeError("HOLD_LEGACY_K_WRITER_ROUTE_CHANGED")
     if args.apply:
         require_current_offsite_recovery(args.recovery_manifest)
         n = datetime.now(JST)
@@ -246,7 +254,11 @@ def main():
     with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=8,
                          autocommit=False) as conn:
         with conn.cursor() as cur:
-            cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            if args.apply:
+                cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            else:
+                cur.execute(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             cur.execute("SET LOCAL statement_timeout='120000ms'")
             cur.execute("SET LOCAL lock_timeout='1200ms'")
             cur.execute("SET LOCAL work_mem='8MB'")
