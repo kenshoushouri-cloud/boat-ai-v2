@@ -12,8 +12,11 @@
 4. **新writer準備：** 独立シーケンス/default/IDENTITY、GRANT、VIEW依存、更新/復旧/二重書込防止のゲート未合格。
 5. **自動復旧：** reader-only shadowの実稼働・障害時自動切戻し・非購入canaryの実証未完。
 
+## 2026-10-26 06:17 JST 前日4系統の実機確認
+- 2026-10-26 06:17 JST Termius実機：前日10/25の `races`168/168・`results`168/168・`entries`1008/1008 は全列・キー同一snapshot PASS。不足/余剰/異値0。`racer_results` は原本0/ステージ0で `HOLD_GAP_OR_NO_SOURCE`。**転送漏れとは言えないが、公式K-file詳細6艇の原本収集不足の可能性**。ソース `v5/conoha_midnight_results_pg.py` は通常のレース単位 `v2_results` のみ補完し、6艇詳細 `v2_result_entries` は別 `save_k_day_results_pg.py` がK-fileから保存（明示CONFIRM要）。`v5_data_views_v1.sql`にも10/7以降のK詳細欠損の既知注記。勝手にKデータ補完/外部取得を実行しない。
+
 ## 今すぐ進める一作業（旧経路に手を触れない）
-- `deploy/conoha/v5_previous_day_core_row_parity_readonly_20261026.sql` で**直前JST日の4系統（races/results/entries/racer_results）**について一つの `REPEATABLE READ READ ONLY` snapshot内で全行JSON正規化・不足/余剰/内容不一致を検査。これは限定範囲の読取検査であり4/13の試験だけ。全13同期完了や本番切替GOと解釈しない。
+- **Next ONE task:** GitHub登録済 `deploy/conoha/v5_k_result_entries_recent_gap_readonly_20261026.sql`（commit `c95e87cc8b12dadec7f24605f905448030216372`）をConoHaでREAD ONLY実行し、直近15日(前日まで)の詳細着順について原本・stageの6艇充足、最新race_id、日別欠損を確認する。**実VPSでの検査未実行**。欠損が原本起因ならK補完の実施可否を安全gateで別途設計。旧収集・stage13表維持、連続CDC/オフサイト独立復元/物理切替は未証明、BUY OFF。
 - 既存 `deploy/conoha/v5_active_writer_routes_readonly_20261022.py` は実VPSの役割別参照/書込ヒント調査に再利用可。staticのヒントはwriter網羅証明でない。
 - オフサイト実復元は `docs/V5_INDEPENDENT_RESTORE_EXECUTION_RUNBOOK_20261024.md` に従う。秘密鍵はGitHub/チャット/スクショに出さない。有料契約、再起動、既存Drive原本上書き不要。
 
