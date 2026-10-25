@@ -15,7 +15,7 @@ V4で公式Kや結果補完を続けて毎回V5へ再コピーするのは廃止
 
 計画 `docs/V5_FAST_START_NO_FULL_DAY_PAUSE_20261026.md`。
 読み取り専用のstage鮮度検査 `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql`（commit `2dbd7b7bf390756160a10c9b18c6c0ce88ca1c7c`）はGitHub登録済み、**実ConoHaで未実行**。
-K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`、実書込許可は未成立。
+K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存guarded K writerに`--stage-only`（commit `672460c735b830b85ac2f52db88592db57591119`）を追加し旧原本に書かずV5 stageへ直接補完する準備ができた。**現DBでは未テスト/未実行、最新世代の独立復元が未成立なので実書込許可なし**。
 
 ## Next ONE task
 ConoHaで上記READ ONLY鮮度検査を1回実行し、今日の原本とstageのレースID集合／13参照型を把握。その後V5の**非購入read-only入力・スコア**実運転を先行する。物理writer切替は全writer棚卸し・新鮮なオフサイト独立復元・完全差分追込・即時rollbackが証明されるまでGOにしない。旧原本削除、1日停止、二重外部収集、自動購入は禁止。
