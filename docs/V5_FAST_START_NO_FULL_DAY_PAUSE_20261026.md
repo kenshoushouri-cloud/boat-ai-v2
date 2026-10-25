@@ -20,3 +20,7 @@
 6. 深夜の短い管理窓で全writer停止/最終差分/等価性照合/切替/監視/即時切戻しを実施。条件不一致なら元のcollectorを再開、全日欠損を発生させない。
 
 **現状：AのV5本番予測サービスが起動している証拠はまだない。Bの正式物理writer切替は0/13。BUY OFF。**
+
+## 実装追加（2026-10-26）
+- `deploy/conoha/v5_k_detail_dual_backfill_guarded_20261026.py` に `--stage-only` を追加（commit `672460c735b830b85ac2f52db88592db57591119`）。新しいモードでは書込先を `boat_data_stage.racer_results` のみに限定し、原本 `public.v2_result_entries` と `public.v2_results` を変更しない。書込後は公式Kの全race_id×lane×rawとステージ行を同一トランザクション内で照合、異常ならrollback。
+- このモードはGitHubに実装しただけで、実DBへの補完・コンテナ/VPSでの実行テストはまだ実施していない。既定はread-only preview。`--apply --stage-only` は直近世代バックアップの独立復元の管理証拠や明示env等のゲートを依然必須とする。K補完実行コマンドは現段階で発行しない。
