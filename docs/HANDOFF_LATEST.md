@@ -42,5 +42,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 朝収集はなおactive(07:29時点)。**現在のcollectorを停止/重複再実行/途中でコード差替えしない**。リアルタイム情報を保護。モデルは丸亀で欠損特徴量を適当な0として入力せずHOLD。
 - 次の最小作業：`journalctl`で朝収集の完走288/288とfailedを確認。後に丸亀のみパーサdiagnostic read-only（必要なら公式サイト1R最小アクセス）→過去に取得済みの情報を優先した補修方針を設計。Stage物理writer切替と購入はまだNO-GO。
 
+## 2026-10-26 07:34 JST 朝収集200/288とrookie/未集計仮説
+- ユーザー実機ログ: 07:32:02進捗200/288、success108、no_race92、failed0。07:34時点`ActiveState=activating`、朝収集は続行中。
+- ユーザー指摘: ルーキー・出走経験が少ない選手の平均ST/当地成績が公式表で「-」の未集計となる可能性。ただし丸亀の警告には登録番号4524など長年の既存選手も含まれる。公式ボートレースの4524は103期A1級で新人ではない。
+- 現行`repair_month_all_pg.py`の`_parse_entry_stat_block`はavg STのNoneは許容する一方、全国/当地勝率・連対率・モーター/ボート番号と率のNoneを不許可としており、「-」含有で13値窓全体を失敗し、13特徴を一括NULLにする可能性。**仮説でありHTMLを未確認**。選手番号自体はDB欠損0。未集計は0として代入しない。予測には不足情報はunknown/HOLDとして扱う。
+- 現行朝collector稼働中はコード更新・重複取得/再起動をしない。完走後、丸亀の1レース1艇を最小限のread-onlyパーサdiagnosticで診断する。
+
 ## Next ONE task
 朝morning収集が完走したかread-onlyで再確認（`systemctl show boat-v5-daily@morning.service -p ActiveState -p Result -p ExecMainStatus` と `journalctl -u boat-v5-daily@morning.service --since '2026-10-26 07:00' --no-pager | grep -Ei 'progress|Finished|Failed|ENTRY_STATS_PARSE_FAILED' | tail -25`）。解析欠損8艇を除外してV5非購入READ ONLYを継続。収集中のcollectorには触れず、その後丸亀のHTML parser限定調査。
