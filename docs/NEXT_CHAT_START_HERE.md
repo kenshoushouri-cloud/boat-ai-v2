@@ -1,14 +1,12 @@
-# 新チャット起点（2026-10-26 V5早期稼働）
+# 新チャット起点（2026-10-26、V5優先）
 
 @GitHub
 @Railway
 
-Repository: `kenshoushouri-cloud/boat-ai-v2`。最新優先 `docs/HANDOFF_LATEST.md`、そこが指すcompact、当文書だけ参照。長い履歴は再読しない。
+Repository `kenshoushouri-cloud/boat-ai-v2`。最初に `docs/HANDOFF_LATEST.md` → 指定compact → 本ファイルのみ参照。過去の長文ログは必要箇所だけ。
 
-13系統のstage初回物理コピー完了（10/25）、表別差分同期13/13（10/26 03:16まで、継続CDCではない）。元 `public.v2_*`、13現行 `boat_data` VIEW、V5物理 `boat_data_stage` の三つを区別。正式writer cutover 0/13。K詳細8日=1295実施レース（中止13除外）×6艇、まだ補完DB書込なし。
+ConoHaの旧 `public.v2_*` にcollectorが書込中、13 `boat_data` VIEWは旧原本参照、V5 stage13物理表の初回+表別差分追込済み（10/26 03:16の時点、CDCなし）。正式writer cutover0/13、BUY OFF。V5 LIVE VIEW読み取り専用5分shadow monitorが起動したが、実V5予測計算はまだ未稼働。旧collectorは停止不可、odds/展示/気象の再現不可能な時点観測を保護。独立バックアップ復元gateも未完。
 
-**方針:** V5非購入read-only/shadowを今すぐ優先、以後K結果補完はV5物理stageを正本として直接反映できるwriterへ移す。V4→V5の繰り返しコピーは終了させる。1日収集休止はせず、変動オッズ/展示/気象を守る。短い管理窓にのみwriter切替。旧原本・タイマー停止/削除やBUY禁止。
+10/26朝 collectorは07:34時点200/288実行中、failed=0、丸亀8艇で選手成績解析の13値一括NULL疑い。13項目全部必須は不採用、**正当な未集計は高評価選手を減点せず**、解析失敗と出所不明はHOLD。pure policy `v5/entry_quality_policy.py` と synthetic tests追加済み（実行未検証）。稼働中コードには未反映。`docs/V5_ENTRY_MISSINGNESS_POLICY_20261026.md`参照。
 
-当日03:16以後のstageは新しいデータを追従していない可能性。最新オフサイト世代の復元試験・全writer監査・切戻しは未合格。`docs/V5_FAST_START_NO_FULL_DAY_PAUSE_20261026.md`参照。
-
-**Next ONE task:** `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` をConoHaでREAD ONLY実行。今日の原本とstageの鮮度を確認し、V5のpaper shadow入力/モデルの実運転を進める。運用コスト最小、Railway Agent/AIなし。
+**Next ONE task:** 朝収集288/288終了をTermius READ ONLY確認→丸亀1RのHTML解析で未集計かパーサ失敗か区別。自動買いOFF、新しいcore policyのテスト実行後にV5実データadapterへ統合、今はcollectorの書換え・複製GET・原本削除・V5物理writer切替禁止。
