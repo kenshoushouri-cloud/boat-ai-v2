@@ -54,5 +54,9 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - **モデル必須特徴が未取得/不正値、締切前snapshotの出所と時刻不明、6艇の識別不一致**は購入HOLD。モデルが任意特徴として正式対応している「公式未集計」に限って紙上予測可。最適化前の代替値・後日取得の混入は禁止。
 - 次は朝collector完走後に丸亀失敗艇の公式HTMLを最小限に調べ、「公式未集計」か「HTML解析失敗」かを分離。既存collector起動中の修正・重複GETは禁止。
 
+## 2026-10-26 欠損の扱いのV5実装（BUY OFF）
+- ユーザー判断：「13項目全部必須にはせず、高評価選手は正規の一部未集計でも能力スコアを下げない」。決定に従い `v5/entry_quality_policy.py`（commit `20c80b7a53cb289ae142adbfc8eda59333fc50ae`）をGitHub追加。6艇・登録番号・13項目を検証し、元の実力評価値を変えず、公式未集計の証拠/出所不明NULL/明示パーサ失敗/13項目一括欠損を分離。全状態 `buy_eligible=False`。正規の欠損は研究候補、原因不明/解析失敗はHOLD。
+- 合成回帰テスト `tests/test_v5_entry_quality_policy.py`（commit `104ecd12943c9cd9a12e5a353099b94d00953138`）をGitHub追加。**テスト実行は未確認**（実行環境からGitHub rawの取得ができず）。本番のparser, daily collector, stage writer, shadow timerは変更していない。V5モデル実データ推論は依然未証明。仕様 `docs/V5_ENTRY_MISSINGNESS_POLICY_20261026.md`。
+
 ## Next ONE task
-朝morning収集が完走したかread-onlyで再確認（`systemctl show boat-v5-daily@morning.service -p ActiveState -p Result -p ExecMainStatus` と `journalctl -u boat-v5-daily@morning.service --since '2026-10-26 07:00' --no-pager | grep -Ei 'progress|Finished|Failed|ENTRY_STATS_PARSE_FAILED' | tail -25`）。解析欠損8艇を除外してV5非購入READ ONLYを継続。収集中のcollectorには触れず、その後丸亀のHTML parser限定調査。
+既存朝の288/288完走をTermiusでREAD ONLY確認後、丸亀の8艇に対して公式HTML/未集計欄を1レース最小限で診断し、品質分類の根拠を付ける。それまでcollectorとread-only shadow timerは維持し、GitHubの新policyを本番collectorへ未検証のまま差し込まない。テストは実行できる環境で `python -m unittest tests.test_v5_entry_quality_policy -v` を実施。正規欠測の許容と信頼度補正は2025-07以降の時系列バックテスト後に決定。V5本番writer/BUY切替NO-GO。
