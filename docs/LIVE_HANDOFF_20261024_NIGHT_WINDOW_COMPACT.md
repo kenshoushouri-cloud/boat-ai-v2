@@ -79,5 +79,8 @@
 - 2026-10-26 06:24 JST ユーザーTermiusの15日K詳細監査で原本とstageの最新race_idは双方 `20261020_23_12`。10/11–14,10/18–20の7日間は日別全レース6艇分が両方で一致、10/15–17および10/21–25の8日間は両方とも選手別K詳細0行（計1,308既知レース、6艇想定7,848行相当）。`coverage_diff=0`で移設漏れではなく旧原本へのK結果取込未完。10/25のraces/results/entriesの全列照合はPASS、racer_resultsは原本0/先0のためHOLD。既存夜間collectorは3連単の通常確定結果のみ、公式K詳細保存は別job。
 - 8日を対象とした一括・読取のみ・最大8公式HTTP取得のguarded K parser previewを追加した。原本/ステージへのK補完未実施。
 
+## 2026-10-26 06:32 JST 公式K8日preview実機結果
+- 2026-10-26 06:32 JST ユーザーの公式K-file8日preview結果：8/8 HTTP200、6日(10/15,16,17,22,23,24)はDB既知race_idとKの解析race_idが全一致、全レース6艇、parser失敗0・重複0 → 984レース=5,904艇の書込前品質PASS（**まだDB補完・stage再追込は未実施**）。残2日：10/21 DB156 vs K144（12 race_id不足）、10/25 DB168 vs K167（1不足）。DB原本には近15日中8日で詳細行が存在せず、旧コピー漏れではない。差の13race_idが開催中止/欠測/公式K未掲載なのか未確定。データ登録を強行しない。
+
 ## 次の1作業
-**Next ONE task:** GitHub登録済み `deploy/conoha/v5_k_missing8_official_preview_readonly_20261026.py`（commit `f666e14fcb7384ce37e30cb143999964a8f38021`）をConoHaで1回明示実行。既知欠損8日(10/15–17,10/21–25)について公式K `.lzh` を順次最大8 HTTP GET・3秒間隔で取得し、既存audit parserでrace_id集合・全レース6艇・解析失敗/重複をDB既知レースと照合。**現物では未実行、DB READ ONLY・K補完INSERT/UPDATEなし**。取得/解析がPASSの日のみ、別途新鮮な独立backup gateを通した保存方式を検討。旧collector不変、stage初回13/13・差分13/13（10/26 03:16時点）、本番切替0/13、BUY OFF。
+**Next ONE task:** GitHubに `deploy/conoha/v5_k_two_day_missing_ids_readonly_20261026.py`（commit `00aaf7226ed70415dba1d4cefa74d6efd025dd3e`）を追加、**VPS未実行**。10/21・10/25だけ公式Kを最大2 HTTP GETして、DB側にのみある13 race_idと`v2_results.result_status`、ticket/payoutをREAD ONLY表示し、未開催等とK欠落を分類する。許可済み解析6日分は再取得/自動保存せず、バックアップの独立復元gate未合格でDB書込禁止。既存収集稼働継続、stage13/13各表10/26 03:16時点までの差分反映、連続CDC未実装、実物理切替0/13、BUY OFF。
