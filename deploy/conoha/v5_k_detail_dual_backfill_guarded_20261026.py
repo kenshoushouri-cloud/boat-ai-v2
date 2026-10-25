@@ -160,6 +160,17 @@ def require_current_offsite_recovery(manifest_path):
     age = datetime.now(timezone.utc) - checked.astimezone(timezone.utc)
     if age < timedelta(0) or age > timedelta(hours=72):
         raise RuntimeError("HOLD_RESTORE_EVIDENCE_STALE")
+    backup_at = evidence.get("backup_completed_utc", "")
+    try:
+        backup = datetime.fromisoformat(backup_at.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        raise RuntimeError("HOLD_BACKUP_DATE_INVALID")
+    if backup.tzinfo is None:
+        raise RuntimeError("HOLD_BACKUP_DATE_NO_TIMEZONE")
+    backup = backup.astimezone(timezone.utc)
+    if (backup < datetime(2026, 10, 25, 15, tzinfo=timezone.utc)
+            or backup > checked.astimezone(timezone.utc)):
+        raise RuntimeError("HOLD_BACKUP_NOT_NEW_ENOUGH_OR_AFTER_RESTORE")
     # A manifest is an administrative record, NOT cryptographic proof.
     # The operator must verify it corresponds to an actual separate DB restore.
 
@@ -207,22 +218,22 @@ def verify_same_rows(cur, date, required_rows):
         "NOT EXISTS (SELECT race_id,lane,racer_number,racer_name,"
         "finish_position,finish_status,motor_no,boat_no,exhibition_time,"
         "start_course,start_timing,start_status,is_flying,is_late,"
-        "race_time,source,raw FROM public.v2_result_entries "
+        "race_time,source,raw,fetched_at,updated_at FROM public.v2_result_entries "
         "WHERE race_id LIKE %s "
         "EXCEPT ALL SELECT race_id,lane,racer_number,racer_name,"
         "finish_position,finish_status,motor_no,boat_no,exhibition_time,"
         "start_course,start_timing,start_status,is_flying,is_late,"
-        "race_time,source,raw FROM boat_data_stage.racer_results "
+        "race_time,source,raw,fetched_at,updated_at FROM boat_data_stage.racer_results "
         "WHERE race_id LIKE %s), "
         "NOT EXISTS (SELECT race_id,lane,racer_number,racer_name,"
         "finish_position,finish_status,motor_no,boat_no,exhibition_time,"
         "start_course,start_timing,start_status,is_flying,is_late,"
-        "race_time,source,raw FROM boat_data_stage.racer_results "
+        "race_time,source,raw,fetched_at,updated_at FROM boat_data_stage.racer_results "
         "WHERE race_id LIKE %s "
         "EXCEPT ALL SELECT race_id,lane,racer_number,racer_name,"
         "finish_position,finish_status,motor_no,boat_no,exhibition_time,"
         "start_course,start_timing,start_status,is_flying,is_late,"
-        "race_time,source,raw FROM public.v2_result_entries "
+        "race_time,source,raw,fetched_at,updated_at FROM public.v2_result_entries "
         "WHERE race_id LIKE %s)",
         (like, like, like, like))
     if cur.fetchone() != (True, True):
