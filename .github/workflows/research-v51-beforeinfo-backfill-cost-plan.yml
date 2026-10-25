@@ -1,0 +1,40 @@
+name: V5.1 beforeinfo backfill cost plan
+on:
+  pull_request:
+    paths:
+      - "research/v51_beforeinfo_backfill_cost_plan_pg.py"
+      - "tests/test_v51_beforeinfo_backfill_cost_plan_pg.py"
+      - ".github/workflows/research-v51-beforeinfo-backfill-cost-plan.yml"
+permissions:
+  contents: read
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -r requirements.txt pytest
+      - run: pytest -q tests/test_v51_beforeinfo_backfill_cost_plan_pg.py
+      - run: npm install --global @railway/cli
+      - name: Count exact HTTP target set without HTTP
+        run: |
+          set -euo pipefail
+          railway run --project "${RAILWAY_PROJECT_ID}" --environment "${RAILWAY_ENVIRONMENT}" --service "${RAILWAY_DB_SERVICE}" bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on"; export PYTHONPATH=.; exec python -u research/v51_beforeinfo_backfill_cost_plan_pg.py' | tee v51-beforeinfo-backfill-cost-plan.txt
+          grep -q '^V51_BF_PLAN_HTTP_PERFORMED=0 DB_WRITE=0 RESULT_READ=0$' v51-beforeinfo-backfill-cost-plan.txt
+          grep -q '^V51_BF_PLAN_RESULT=PASS_READ_ONLY$' v51-beforeinfo-backfill-cost-plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v51-beforeinfo-backfill-cost-plan-${{ github.run_id }}
+          path: |
+            v51-beforeinfo-backfill-cost-plan.json
+            v51-beforeinfo-backfill-cost-plan.txt
+          retention-days: 14
