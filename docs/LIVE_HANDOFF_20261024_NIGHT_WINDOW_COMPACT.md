@@ -99,5 +99,8 @@
 - GitHubにpure `v5/entry_quality_policy.py`と合成テスト`tests/test_v5_entry_quality_policy.py`追加。公式未集計の**証拠**を要求して、スコア値はそのまま、信頼度・可否を別にする。全状態BUY OFF。**テストは追加済み・実行は未検証**。本番collector/5分監視/timerは未変更。詳細`docs/V5_ENTRY_MISSINGNESS_POLICY_20261026.md`。
 - 07:34 JSTの朝収集200/288 success108 no_race92 failed0・`ActiveState=activating`が直近証拠。07:32のDB調査は丸亀(15)8艇で一括stats NULL疑い、他会場に平均ST単独NULLあり。公式未集計か解析失敗かはHTML現物未確認。モデル実推論は未稼働。
 
+## 2026-10-26 07:52 JST 朝収集288件完走
+- 2026-10-26 07:52 JST、ユーザーのConoHa Termiusで morning.service の朝07:00開始処理が **07:45:54 JST 正常完了**：`progress race/result: 288/288 success=144 no_race=144 failed=0`, `Finished boat-v5-daily@morning.service`, `ActiveState=inactive Result=success ExecMainStatus=0`。`no_race` はHTMLにレース出走表が無い等でスキップした数であり、144中止を意味しない。丸亀（15）の `ENTRY_STATS_PARSE_FAILED` 8艇程度は朝処理全体の成功と別のデータ品質課題として残る。今日のV5 5分読取専用shadowは07:12にActive確認済、07:45以降の稼働状況は未確認。現在もV5実モデル推論/予測保存は未確認、stage writer完全切替0/13、BUY OFF。
+
 ## 次の1作業
-朝収集が完走したかREAD ONLY確認→丸亀の1Rだけ公式ページを限定解析し8艇のNULL原因を分類。既存collectorを再起動しない。別の実行環境でunit testsを実施後に新policyをV5 model adapterへ繋ぎ、BUY OFF。V5 stage本番writer切替は復元/全ルートgateまでNO-GO。
+**Next ONE task:** Termiusで既存 `boat-v5-shadow-live-readonly.service` の07:45以降のログをread-only検査し、288タスク完走後の `V5_LIVE_ORIGINAL_TODAY_RACES`, 6艇entry数、展示/odds待機状況を確認する。旧collectionタイマー維持、二重HTTP GET/朝再実行/再起動禁止。丸亀の8艇の成績項目は公式未集計かparser誤認か、別に限定診断する。V5の実データ強化型予測への接続は安全なas-of feature gateが整うまで未稼働。物理stage writer切替とBUYは独立復元/経路証明が済むまでNO-GO。
