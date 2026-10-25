@@ -1,0 +1,63 @@
+name: Hobby retention read-only audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/hobby_retention_readonly_audit.py'
+      - '.github/workflows/hobby-retention-readonly-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hobby-retention-readonly-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-recovery"
+  PGOPTIONS: "-c default_transaction_read_only=on -c temp_file_limit=65536"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          npm install --global @railway/cli
+
+      - name: Require Railway token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}"
+
+      - name: Run read-only Hobby retention sizing audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway run             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_DB_SERVICE}"             bash -lc '
+              set -euo pipefail
+              test -n "${DATABASE_PUBLIC_URL:-}"
+              export DATABASE_URL="$DATABASE_PUBLIC_URL"
+              export PGOPTIONS="-c default_transaction_read_only=on -c temp_file_limit=65536"
+              exec python -u .github/scripts/hobby_retention_readonly_audit.py
+            '
