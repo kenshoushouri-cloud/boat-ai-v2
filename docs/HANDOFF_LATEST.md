@@ -36,5 +36,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 追加したread-only SQL `deploy/conoha/v5_morning_entry_stats_null_audit_readonly_20261026.sql`（commit `f67160d201de90eab7bd19bde6eaa5a55e111509`）で会場別当日のmotor/boat/avgST等NULLを確認可能。**実VPS未実行**。DB操作・コード修正・収集再実行はしていない。
 - 明確な次のゲートは現在の朝収集288タスク完走を証明→各場NULL統計の実機確認→丸亀(15)の parser 問題の範囲を限定→不完全入力なら予測HOLD。旧collector, shadow input monitor, BUY OFFを維持、DB物理V5切替NO-GO。
 
+## 2026-10-26 07:32 JST ENTRY_STATS_DB_NULL実機監査
+- 9会場（01,04,05,06,08,09,10,11,15）各12R・72艇、合計648艇の `boat_data.entries` READ ONLY as-of監査が完了。選手番号欠損0。全国勝率・当地勝率・モーター番号・ボート番号は丸亀(15)のみ各8行欠損。他8会場の同項目は欠損0。丸亀72艇のうち8艇が`probable_stats_parse_gaps=8`、丸亀平均ST欠損10。全9会場平均ST欠損18（01=3、05=1、10=2、11=2、15=10）、平均ST単独NULLと構造解析不能を区別。
+- ユーザーの画面07:29の`ENTRY_STATS_PARSE_FAILED`は丸亀の複数艇。実際の`repair_month_all_pg.py`は`_parse_entry_stat_block`の解析失敗で全13成績値NULL fallback。原因はまだ未特定（L行欠落・13数値窓不整合等候補）。公式ページの現時点のHTML構造を検証するまで本番パーサを修正しない。
+- 朝収集はなおactive(07:29時点)。**現在のcollectorを停止/重複再実行/途中でコード差替えしない**。リアルタイム情報を保護。モデルは丸亀で欠損特徴量を適当な0として入力せずHOLD。
+- 次の最小作業：`journalctl`で朝収集の完走288/288とfailedを確認。後に丸亀のみパーサdiagnostic read-only（必要なら公式サイト1R最小アクセス）→過去に取得済みの情報を優先した補修方針を設計。Stage物理writer切替と購入はまだNO-GO。
+
 ## Next ONE task
-Termiusでmorning collector の`ActiveState`,`Result`,`ExecMainStatus`をread-only確認し、07:00以降の`Finished`/件数を監査。今日の入力不足なら既存collectorの障害原因を調べる（再度HTTP取得を二重起動しない）。その上でV5モデル実DBから必要な5因子をas-ofで作るadapterを設計し、1Rだけ非購入スコアリング→forward journalを実証。実予測モデルが入力未充足ならHOLD維持。
+朝morning収集が完走したかread-onlyで再確認（`systemctl show boat-v5-daily@morning.service -p ActiveState -p Result -p ExecMainStatus` と `journalctl -u boat-v5-daily@morning.service --since '2026-10-26 07:00' --no-pager | grep -Ei 'progress|Finished|Failed|ENTRY_STATS_PARSE_FAILED' | tail -25`）。解析欠損8艇を除外してV5非購入READ ONLYを継続。収集中のcollectorには触れず、その後丸亀のHTML parser限定調査。
