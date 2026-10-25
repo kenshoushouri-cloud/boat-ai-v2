@@ -30,5 +30,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 
 - 2026-10-26 07:18 JST Termius実機: morning.service `ActiveState=activating`, `Result=success`, `ExecMainStatus=0`（**ジョブ未完了**）。07:16:25 `progress race/result: 100/288 success=64 no_race=36 failed=0`。GitHub `repair_month_all_pg.py`による `no_race` は公式出走表HTMLが無い/「データがありません」等でスキップした件数で、**取得成功でも必ずしも確定的な開催中止でもない**。完了ログまでは288件完了と言わない。収集停止・重複再実行は禁止。
 
+## 2026-10-26 07:29 JST 朝の収集継続＋ENTRY_STATS解析警告
+- ユーザーTermiusの `boat-v5-daily@morning.service` は `ActiveState=activating`（未完走）。`Result=success ExecMainStatus=0` が表示されたが、これは実行完了の証明ではない。`progress race/result: 100/288 success=64 no_race=36 failed=0` は07:16:25時点の古い最後の進捗行。07:27〜07:29に `ENTRY_STATS_PARSE_FAILED` が複数行発生（20261026_15_01,04,06,07,09,12、複数艇）。
+- GitHub `repair_month_all_pg.py` 調査済：`_parse_entry_stat_block` がNoneだと `avg_st,national/local win/place, motor/boat number and rates` など13項目を**NULL fallback**し、船番・登録番号等の出走情報は保存継続。したがって`failed=0`でも特徴量欠損の可能性あり。今日の予測では不足項目を適当な0や過去成績で埋めない。
+- 追加したread-only SQL `deploy/conoha/v5_morning_entry_stats_null_audit_readonly_20261026.sql`（commit `f67160d201de90eab7bd19bde6eaa5a55e111509`）で会場別当日のmotor/boat/avgST等NULLを確認可能。**実VPS未実行**。DB操作・コード修正・収集再実行はしていない。
+- 明確な次のゲートは現在の朝収集288タスク完走を証明→各場NULL統計の実機確認→丸亀(15)の parser 問題の範囲を限定→不完全入力なら予測HOLD。旧collector, shadow input monitor, BUY OFFを維持、DB物理V5切替NO-GO。
+
 ## Next ONE task
 Termiusでmorning collector の`ActiveState`,`Result`,`ExecMainStatus`をread-only確認し、07:00以降の`Finished`/件数を監査。今日の入力不足なら既存collectorの障害原因を調べる（再度HTTP取得を二重起動しない）。その上でV5モデル実DBから必要な5因子をas-ofで作るadapterを設計し、1Rだけ非購入スコアリング→forward journalを実証。実予測モデルが入力未充足ならHOLD維持。
