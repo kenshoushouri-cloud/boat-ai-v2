@@ -22,4 +22,6 @@
 
 2026-10-25 09:02 JST、ユーザーのConoHa Termius画面で `PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Mon 2026-10-26 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO` を確認。**予約は成功したが11系統の実差分同期は未実行**。初回snapshot13/13、差分同期済2/13（venues+races）、V5本番物理切替0/13。
 
-**Next ONE task:** 2026-10-26 03:05 JSTの一度限りのstage11差分自動実行が終わった後、ConoHaで `journalctl -u boat-v5-stage11-delta-20261026.service --no-pager -n 100` を読み、`DELTA_TABLE_COMMITTED` の系統数・`STAGE12_DELTA_HOLD` の有無を確認。途中失敗なら表ごとのatomic rollback、既にCOMMITした表は保持。今すぐの再実行/別予約/再コピーは禁止。BUY OFF・旧collectorとpublic原本・13 VIEWは保護、本番切替NO-GO、連続CDC/独立復元・自動切戻し未証明。
+2026-10-26 06:07 JSTのTermius画面（03:05:01–03:16:49 JST 実行ログ）で `STAGE12_DELTA_SNAPSHOT_PASS families=11 as_of_per_table_not_CDC=YES` とsystemd `Finished`、11系統各 `DELTA_VERIFIED`→`DELTA_TABLE_COMMITTED` を確認。新規追加は計44,536行（results168, entry_snapshots1938, race_condition323, racer_condition1938, racer_course_stats0, entries1008, exhibition918, weather323, racer_results0, odds_snapshots37920, trifecta_odds0）、更新/削除はいずれも0。初回物理stage13/13、差分反映13/13（venues、races＋11）、本番物理切替0/13。各表の実行時点で整合、連続CDC/最終共通時点の完全同一性を保証しない。旧collector・原本・13 VIEW不変更、BUY OFF。
+
+**Next ONE task:** 13系統の初回コピーと差分追込は完了済みなので再コピー禁止。まず独立したバックアップ実復元（VPS外の復元テスト）と原本writer・reader全経路の監査、更新/削除を含む同一スナップショット最終整合・切戻し試験の不足gateを整理してread-onlyで確認する。合格まではstage→本番切替・旧収集停止・自動購入は禁止。既存stageは保持し、旧システム収集継続、Railwayコスト最小。
