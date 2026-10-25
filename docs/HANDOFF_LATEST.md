@@ -17,5 +17,10 @@ V4で公式Kや結果補完を続けて毎回V5へ再コピーするのは廃止
 読み取り専用のstage鮮度検査 `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql`（commit `2dbd7b7bf390756160a10c9b18c6c0ce88ca1c7c`）はGitHub登録済み、**実ConoHaで未実行**。
 K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存guarded K writerに`--stage-only`（commit `672460c735b830b85ac2f52db88592db57591119`）を追加し旧原本に書かずV5 stageへ直接補完する準備ができた。**現DBでは未テスト/未実行、最新世代の独立復元が未成立なので実書込許可なし**。
 
+## 2026-10-26 07:01 JST V5 race-day fast start
+- ユーザーの実機SQL：共通13VIEW（原本参照）+stage13物理表は存在PASS、当日`boat_data.races`8件と`boat_data_stage.races`0件でstageが明確にstale。原本の当日データ収集は進行中。
+- レース開始前のV5稼働要求あり。writer本番切替/1日収集停止は厳禁。既存`boat-v5-forward-window.timer`のGitHub既定は07..23の5分刻み、実VPSのactive/journalは未確認。
+- 既存live VIEWを読むだけのV5非購入paper入力 watcher `deploy/conoha/v5_shadow_live_input_readonly_20261026.py`（commit `4756ce1d3043ba48efdc17c889431f4bd86ac720`）追加。同作業を一度実行→5分おきのread-only timerを**明示インストールするための**`deploy/conoha/v5_shadow_live_input_schedule_guarded_20261026.sh`（commit `84f6f47bcf49b59ca101aa114c2954bd4b1f1c12`）追加。VPSにはいずれもまだ実行/設置していない。リアルV5モデル予測の稼働は証明されていない。
+
 ## Next ONE task
-ConoHaで上記READ ONLY鮮度検査を1回実行し、今日の原本とstageのレースID集合／13参照型を把握。その後V5の**非購入read-only入力・スコア**実運転を先行する。物理writer切替は全writer棚卸し・新鮮なオフサイト独立復元・完全差分追込・即時rollbackが証明されるまでGOにしない。旧原本削除、1日停止、二重外部収集、自動購入は禁止。
+Termiusで既存morning/forwardタイマーのlive active+journalを確認。正常であればread-only shadow watcherをインストールし、`V5_SHADOW_READONLY_PASS`と`V5_SHADOW_INPUT_READONLY_STARTED_WITH_LIVE_VIEWS`を実機確認。これは**V5入力監視開始のみ**で予測エンジン本番稼働ではない。次に実DB入力を既存V5推論パイプラインへ接続する。元collector・原本・VIEW/ステージwriter・BUY不変更。
