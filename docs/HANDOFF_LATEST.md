@@ -48,5 +48,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 現行`repair_month_all_pg.py`の`_parse_entry_stat_block`はavg STのNoneは許容する一方、全国/当地勝率・連対率・モーター/ボート番号と率のNoneを不許可としており、「-」含有で13値窓全体を失敗し、13特徴を一括NULLにする可能性。**仮説でありHTMLを未確認**。選手番号自体はDB欠損0。未集計は0として代入しない。予測には不足情報はunknown/HOLDとして扱う。
 - 現行朝collector稼働中はコード更新・重複取得/再起動をしない。完走後、丸亀の1レース1艇を最小限のread-onlyパーサdiagnosticで診断する。
 
+## 2026-10-26 V5 13項目NULL判定方針（購入は引き続きOFF）
+- **13項目全必須を全レース一律条件にしない**。ルーキー・当地未経験・新モーター等の公式未集計値は正規のunknownとして保持、値0で偽装せず、予測対象除外の是非は当該モデルで「欠測フラグあり/なし」など前向き履歴バックテスト後に決める。
+- **現行パーサの一括NULL fallback（`ENTRY_STATS_PARSE_FAILED`）は品質障害**であり、該当艇の出走レースはモデルの必須特徴が復旧するまで予想の本番判定・購入をHOLD。該当場の全12Rを機械的に除外せず、race_id+lane単位で判定する。
+- **モデル必須特徴が未取得/不正値、締切前snapshotの出所と時刻不明、6艇の識別不一致**は購入HOLD。モデルが任意特徴として正式対応している「公式未集計」に限って紙上予測可。最適化前の代替値・後日取得の混入は禁止。
+- 次は朝collector完走後に丸亀失敗艇の公式HTMLを最小限に調べ、「公式未集計」か「HTML解析失敗」かを分離。既存collector起動中の修正・重複GETは禁止。
+
 ## Next ONE task
 朝morning収集が完走したかread-onlyで再確認（`systemctl show boat-v5-daily@morning.service -p ActiveState -p Result -p ExecMainStatus` と `journalctl -u boat-v5-daily@morning.service --since '2026-10-26 07:00' --no-pager | grep -Ei 'progress|Finished|Failed|ENTRY_STATS_PARSE_FAILED' | tail -25`）。解析欠損8艇を除外してV5非購入READ ONLYを継続。収集中のcollectorには触れず、その後丸亀のHTML parser限定調査。
