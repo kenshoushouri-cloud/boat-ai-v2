@@ -22,5 +22,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - レース開始前のV5稼働要求あり。writer本番切替/1日収集停止は厳禁。既存`boat-v5-forward-window.timer`のGitHub既定は07..23の5分刻み、実VPSのactive/journalは未確認。
 - 既存live VIEWを読むだけのV5非購入paper入力 watcher `deploy/conoha/v5_shadow_live_input_readonly_20261026.py`（commit `4756ce1d3043ba48efdc17c889431f4bd86ac720`）追加。同作業を一度実行→5分おきのread-only timerを**明示インストールするための**`deploy/conoha/v5_shadow_live_input_schedule_guarded_20261026.sh`（commit `84f6f47bcf49b59ca101aa114c2954bd4b1f1c12`）追加。VPSにはいずれもまだ実行/設置していない。リアルV5モデル予測の稼働は証明されていない。
 
+## 2026-10-26 07:12 JST V5 shadow input実機起動確認
+- ユーザーTermiusで`V5_SHADOW_READONLY_PASS sampled=5 structurally_ready=0 LIVE_SOURCE_ONLY=YES NO_MODEL_SCORING=YES NO_BUY=YES NO_DB_WRITES=YES`、`PASS: V5_SHADOW_INPUT_READONLY_STARTED_WITH_LIVE_VIEWS`、新しい`boat-v5-shadow-live-readonly.timer` ACTIVE、次回07:15 JSTを確認。ConoHa既存morning/forward timerもactive、forward 07:05/07:10 finished successfully。
+- 07:12までに当日原本races48行。次のモデル候補5レースはentries/選手ID6/6だが、展示6/6及びodds120/120は全て0（未取得時点）、最も早い保存済み締切10:42。07:10台のmorning収集は`daily_v5_safe.sh DEADLINE`を連続出力しており、完了証明はまだない。ユーザー認識の「約8:30初R」の取りこぼしがないか朝収集完了後に調べる。
+- 5分read-only input監視の稼働成功と**V5強化型の実データ予測計算の稼働**は別。既存の`offline_mainline_inference.py`は5因子を呼出元から受け取る合成安全HOLDモデルで、実DB feature adapter＋prior-day fit asof証明のrunnerは未確認。従って予測稼働やROI証明を断言しない。
+- カーネル更新後の再起動警告が出ているが、今の収集中は再起動禁止。旧collectorの継続、BUY OFF、本番物理切替0/13。
+
 ## Next ONE task
-Termiusで既存morning/forwardタイマーのlive active+journalを確認。正常であればread-only shadow watcherをインストールし、`V5_SHADOW_READONLY_PASS`と`V5_SHADOW_INPUT_READONLY_STARTED_WITH_LIVE_VIEWS`を実機確認。これは**V5入力監視開始のみ**で予測エンジン本番稼働ではない。次に実DB入力を既存V5推論パイプラインへ接続する。元collector・原本・VIEW/ステージwriter・BUY不変更。
+Termiusでmorning collector の`ActiveState`,`Result`,`ExecMainStatus`をread-only確認し、07:00以降の`Finished`/件数を監査。今日の入力不足なら既存collectorの障害原因を調べる（再度HTTP取得を二重起動しない）。その上でV5モデル実DBから必要な5因子をas-ofで作るadapterを設計し、1Rだけ非購入スコアリング→forward journalを実証。実予測モデルが入力未充足ならHOLD維持。
