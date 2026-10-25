@@ -82,5 +82,12 @@
 ## 2026-10-26 06:32 JST 公式K8日preview実機結果
 - 2026-10-26 06:32 JST ユーザーの公式K-file8日preview結果：8/8 HTTP200、6日(10/15,16,17,22,23,24)はDB既知race_idとKの解析race_idが全一致、全レース6艇、parser失敗0・重複0 → 984レース=5,904艇の書込前品質PASS（**まだDB補完・stage再追込は未実施**）。残2日：10/21 DB156 vs K144（12 race_id不足）、10/25 DB168 vs K167（1不足）。DB原本には近15日中8日で詳細行が存在せず、旧コピー漏れではない。差の13race_idが開催中止/欠測/公式K未掲載なのか未確定。データ登録を強行しない。
 
+## 2026-10-26 V5早期稼働優先への判断（最新）
+- K8日分は1,295実施レース、7,770艇行相当を解析可能。K欠番13レースは全てキャンセル確認済み：10/21江戸川全12R、10/25若松12R。**まだDB補完は未実施**。
+- 方針をV4補完→V5再コピーから転換。V5のread-only/shadow評価を先行稼働し、今後のK補完/新規writerはV5所有stageへ直接書込する正式ルートを整備。予測scorerは本番実行未証明で、単なるDB VIEW監査を「V5予測稼働」と誤記しない。
+- 1日のcollector停止は不可：締切前変動オッズ/展示/気象の当時の取得履歴を再現できないことがある。旧collectorは移行前に止めず、切替は短い管理窓+rollback検証。収集二重化禁止。
+- 10/26にGitHub `docs/V5_FAST_START_NO_FULL_DAY_PAUSE_20261026.md` と `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` を追加。実ConoHa未実行。新しい外部復元試験はまだない。
+- V5初回stage 13/13、10/26 03:16時点の各表差分追込13/13（継続CDCなし）、live物理切替0/13。旧原表/13VIEWそのまま、BUY OFF。
+
 ## 次の1作業
-**Next ONE task:** GitHubに `deploy/conoha/v5_k_two_day_missing_ids_readonly_20261026.py`（commit `00aaf7226ed70415dba1d4cefa74d6efd025dd3e`）を追加、**VPS未実行**。10/21・10/25だけ公式Kを最大2 HTTP GETして、DB側にのみある13 race_idと`v2_results.result_status`、ticket/payoutをREAD ONLY表示し、未開催等とK欠落を分類する。許可済み解析6日分は再取得/自動保存せず、バックアップの独立復元gate未合格でDB書込禁止。既存収集稼働継続、stage13/13各表10/26 03:16時点までの差分反映、連続CDC未実装、実物理切替0/13、BUY OFF。
+**Next ONE task:** 前掲freshnessのSQLをread-onlyでConoHa一度実行、当日stage鮮度を確認し、V5非購入shadowのモデル/入力ルートを稼働試験。writer移設は全経路監査・最新オフサイト独立復元・rollbackまでNO-GO。再コピー/旧収集停止は禁止。
