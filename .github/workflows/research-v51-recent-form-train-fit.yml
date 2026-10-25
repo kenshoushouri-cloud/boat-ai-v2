@@ -1,0 +1,67 @@
+name: V5.1 Recent Form TRAIN fit
+
+on:
+  pull_request:
+    paths:
+      - "research/v51_recent_form_train_fit_pg.py"
+      - "tests/test_v51_recent_form_train_fit_pg.py"
+      - ".github/workflows/research-v51-recent-form-train-fit.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  RAILWAY_PROJECT_ID: "268a5b17-0712-440a-884d-27f7fa887a2d"
+  RAILWAY_ENVIRONMENT: "production"
+  RAILWAY_DB_SERVICE: "postgres-hobby-fullhistory-candidate-v4"
+
+jobs:
+  fit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest
+      - name: Static TRAIN-only safety
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_v51_recent_form_train_fit_pg.py
+          python -m py_compile research/v51_recent_form_train_fit_pg.py
+          python - <<'PY'
+          from pathlib import Path
+          w=Path(".github/workflows/research-v51-recent-form-train-fit.yml").read_text(encoding="utf-8").lower()
+          assert "postgres-hobby-fullhistory-candidate-v4" in w
+          assert "".join(("railway"," variable"," list")) not in w
+          assert "".join(("list","_variables")) not in w
+          assert "".join(("schedule", ":")) not in w
+          print("V51_RF_TRAIN_FIT_STATIC=PASS")
+          PY
+      - run: npm install --global @railway/cli
+      - name: Fit frozen grid on TRAIN only
+        run: |
+          set -euo pipefail
+          railway run \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_DB_SERVICE}" \
+            bash -lc 'test -n "${DATABASE_PUBLIC_URL:-}"; export DATABASE_URL="$DATABASE_PUBLIC_URL"; export PGOPTIONS="-c default_transaction_read_only=on -c max_parallel_workers_per_gather=0"; export PYTHONPATH=.; exec python -u research/v51_recent_form_train_fit_pg.py' \
+            2>&1 | tee v51-recent-form-train-fit.txt
+          grep -q '^V51_RF_TRAIN_FIT_VALIDATION_READ=0 OOS_READ=0$' v51-recent-form-train-fit.txt
+          grep -q '^V51_RF_TRAIN_FIT_ODDS_READ=0 PAYOUT_READ=0 DB_WRITE=0$' v51-recent-form-train-fit.txt
+          grep -q '^V51_RF_TRAIN_FIT_PREOUTCOME_POPULATION=26801$' v51-recent-form-train-fit.txt
+          grep -q '^V51_RF_TRAIN_FIT_RESULT=PASS_TRAIN_ONLY_FROZEN$' v51-recent-form-train-fit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v51-recent-form-train-fit-${{ github.run_id }}
+          path: |
+            v51-recent-form-train-fit.json
+            v51-recent-form-train-fit.txt
+          retention-days: 14
+          if-no-files-found: error
