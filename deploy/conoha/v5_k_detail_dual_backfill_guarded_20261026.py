@@ -240,10 +240,44 @@ def verify_same_rows(cur, date, required_rows):
         raise RuntimeError("HOLD_BIDIRECTIONAL_DETAIL_PARITY_FAILED")
 
 
+def verify_stage_day_against_official(cur, date, races):
+    """V5-only repair: every source K lane must equal one stored stage lane.
+
+    The legacy K-detail table remains empty for these dates by design.
+    Single-transaction SQL/Python verification, no full historical table scan.
+    """
+    expected = {
+        (str(r["race_id"]), int(e["lane"])): dict(e)
+        for r in races for e in r["entries"]
+    }
+    like = date.replace("-", "") + "_%"
+    cur.execute(
+        "SELECT race_id,lane,raw,source FROM boat_data_stage.racer_results "
+        "WHERE race_id LIKE %s ORDER BY race_id,lane", (like,)
+    )
+    actual = cur.fetchall()
+    if len(actual) != len(expected):
+        raise RuntimeError("HOLD_STAGE_K_ROW_COUNT_INCORRECT")
+    for rid, lane, raw, source in actual:
+        key = (str(rid), int(lane))
+        if key not in expected:
+            raise RuntimeError("HOLD_STAGE_UNEXPECTED_K_LANE")
+        if source != "official_k_file" or raw != expected[key]:
+            raise RuntimeError("HOLD_STAGE_K_CONTENT_MISMATCH")
+    source_count = one(
+        cur, "SELECT count(*) FROM public.v2_result_entries "
+             "WHERE race_id LIKE %s", (like,)
+    )
+    if source_count != 0:
+        raise RuntimeError("HOLD_LEGACY_K_WAS_MODIFIED")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--date", choices=sorted(EXPECTED_RACES), required=True)
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--stage-only", action="store_true",
+                   help="write ONLY boat_data_stage.racer_results; never public")
     p.add_argument("--recovery-manifest")
     args = p.parse_args()
     if os.environ.get("DATABASE_URL") != "postgresql:///railway":
@@ -287,17 +321,24 @@ def main():
                 conn.rollback()
                 log("K_DETAIL_PREVIEW_PASS_NO_DB_WRITES_NO_ROUTE_CHANGES")
                 return
-            # Source and stage are modified atomically; neither old v2_results
-            # nor the active VIEWs are ever modified.
+            # Target choice must be explicit. The preferred new V5 workflow
+            # writes only to its physical stage. Legacy source K rows stay zero.
             values = list(build_values(races))
             if len(values) != day_gate.expected_lanes:
                 raise RuntimeError("HOLD_EXPECTED_LANE_COUNT_CHANGED")
-            for table in (SOURCE, STAGE):
-                insert_details(cur, values, table)
-            verify_same_rows(cur, args.date, day_gate.expected_lanes)
+            if args.stage_only:
+                insert_details(cur, values, STAGE)
+                verify_stage_day_against_official(cur, args.date, races)
+            else:
+                for table in (SOURCE, STAGE):
+                    insert_details(cur, values, table)
+                verify_same_rows(cur, args.date, day_gate.expected_lanes)
         conn.commit()
-    log("K_DETAIL_DUAL_TARGET_COMMIT", "date="+args.date,
+    log("K_DETAIL_STAGE_ONLY_COMMIT" if args.stage_only
+        else "K_DETAIL_DUAL_TARGET_COMMIT",
+        "date="+args.date,
         "rows_per_table="+str(day_gate.expected_lanes),
+        "legacy_k_details_untouched="+("YES" if args.stage_only else "NO"),
         "summary_results_unchanged=YES", "cutover=NO_GO", "BUY=OFF")
 
 
