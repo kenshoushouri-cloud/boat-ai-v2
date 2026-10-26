@@ -35,3 +35,6 @@
 ## Next ONE task
 - Run/inspect EXPLAIN-only stage `races` 2025-07 plan while live data capture remains untouched. This is a catalog/planner task and does NOT require waiting for scheduled delta.
 - Keep existing stage11 2026-10-27 03:05 JST timer unchanged; after it actually finishes, inspect service journal read-only before real row-level month checks; no duplicate sync, production cutover, BUY or backup changes.
+
+## 2026-10-26 19:44 JST latest
+Screenshot confirmed `boat_data_stage.races` 2025-07 EXPLAIN-only query used valid `races_race_date_idx` Index Only Scan; estimated ~5293, not real count. New read-only 5s capped monthly count SQL July 2025 through Oct 2026 in `deploy/conoha/v5_shared_stage_races_monthly_readonly_20261026.sql`, commit `4bbdd9a6769fb965e0c1c38d8f1ea9dded97d1bd`, NOT YET EXECUTED. It checks only physical common stage races, not old public source. Before 03:05 delta, counts are provisional, and other 12-family monthly validation remains pending. Current next task is execute/check this bounded provisional count if desired; no additional timer, BUY, backtest or production cutover.
