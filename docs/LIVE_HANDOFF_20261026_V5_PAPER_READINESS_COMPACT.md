@@ -50,6 +50,11 @@
 - No real race-model scoring/profit backtest, no immutable original as-of evidence, no real-data BUY authorization proven; old legacy `racer_no` shown blank (NULL vs empty string not yet distinguished), `racer_number` populated for all six.
 - No production DB/collector/timer changes associated with these synthetic tests.
 
+## 2026-10-26 18:47 JST — 13-field non-NULL inspection on one real race (user screenshot)
+- In ConoHa `railway` DB, `boat_data.entries`, `race_id='20261026_10_01'`, confirmed 6 rows: lane1/4189, 2/4872, 3/3441, 4/4442, 5/4113, 6/4273. `racer_no IS NULL` **SQL_NULL** for all 6; `racer_number` populated.
+- `13 - num_nonnulls(avg_st,national_win_rate,national_place2_rate,national_place3_rate,local_win_rate,local_place2_rate,local_place3_rate,motor_no,motor_place2_rate,motor_place3_rate,boat_no,boat_place2_rate,boat_place3_rate)` = 0 for each lane (6 × 13 = 78 non-NULL cells).
+- Confirmed only **presence/non-NULL**, NOT actual value range, 13-field statistical validity, original race/deadline capture, or model score. DB transaction `BEGIN READ ONLY`, `statement_timeout=5s`, `ROLLBACK` succeeded; no writes or timer changes.
+
 ## Next ONE task
-- In a **READ ONLY** transaction limited to `race_id='20261026_10_01'` and 5-second statement_timeout, inspect 6 rows' `racer_no` actual SQL NULL vs empty and per-lane missing field names over all 13 statistical columns; don't conflate previously checked basic 3 fields with full completeness.
-- 2026-10-27 03:05 JST one-time stage11 sync still untouched; afterward check service journal read-only. No V5 live cutover, no BUY, no backup work, no Railway access.
+- READ ONLY max 5 seconds, six rows only: inspect numeric ranges/invalid motor & boat number formats and negative/out-of-range stats in the same `race_id`. No values adjusted and NO promotion to real prediction even if ranges pass.
+- 2026-10-27 03:05 JST one-time stage11 sync remains untouched; after it runs check its service journal read-only. BUY=OFF, backups deferred, Railway unused.
