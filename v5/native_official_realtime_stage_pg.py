@@ -140,6 +140,10 @@ def prepare_rows(race, entries, before_html, odds_html, before_at, odds_at,
     rc, pcs = parser.parse_beforeinfo_extra(before_html, entries)
     if len(pcs) != 6 or {x.get("lane") for x in pcs} != set(range(1,7)):
         raise RuntimeError("HOLD_RACER_CONDITIONS_NOT_SIX")
+    by_lane = {x["lane"]:x for x in entries}
+    if any(c.get("racer_number") != by_lane[c["lane"]].get("racer_number")
+           for c in pcs):
+        raise RuntimeError("HOLD_RACER_CONDITION_ID_MISMATCH")
     rid = race["race_id"]
     label = "v5_native_" + before_at.strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:12]
     day, venue, number = race_parts(rid)
@@ -241,6 +245,14 @@ def save_canary(race, rows):
                                WHERE race_id=%s""",(race["race_id"],))
                 if cur.fetchone()[0] != 6:
                     raise RuntimeError("HOLD_STAGE_CORE_ENTRIES_NOT_PRESENT")
+                cur.execute("""SELECT deadline_at::timestamptz
+                               FROM boat_data_stage.races WHERE race_id=%s""",
+                            (race["race_id"],))
+                cutoff = cur.fetchone()
+                expected_cutoff = datetime.fromisoformat(race["deadline_at"])
+                if not cutoff or cutoff[0] is None or abs(
+                        (cutoff[0] - expected_cutoff).total_seconds()) > 1:
+                    raise RuntimeError("HOLD_STAGE_CORE_DEADLINE_MISMATCH")
                 for table, batch in rows.items():
                     dst = f"{STAGE}.{table}"
                     cur.execute("SELECT relkind FROM pg_class WHERE oid=to_regclass(%s)",(dst,))
