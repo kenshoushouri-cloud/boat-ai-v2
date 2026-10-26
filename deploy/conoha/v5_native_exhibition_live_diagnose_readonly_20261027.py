@@ -9,8 +9,6 @@ Do not infer missing exhibition times or backfill any actual snapshots.
 """
 import argparse
 import re
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from psycopg import connect
 from bs4 import BeautifulSoup
 from historical_beforeinfo_parser_v3 import (
@@ -19,7 +17,6 @@ from historical_beforeinfo_parser_v3 import (
 )
 from v5.native_official_realtime_stage_pg import official_page, race_parts
 
-JST = ZoneInfo("Asia/Tokyo")
 def candidates():
     with connect("postgresql:///railway", connect_timeout=5,
                  autocommit=True) as conn:
@@ -59,7 +56,7 @@ def summarize(rid):
             td_counts[lane] = len(cells)
             # Only time-shaped values in the structured lane's own cells.
             hits = [f"{i}:{v}" for i,v in enumerate(cells)
-                    if re.fullmatch(r"[67]\\.\\d{2}", v)]
+                    if re.fullmatch(r"[67][.][0-9]{2}", v)]
             candidates_by_lane[lane] = hits[:4]
         lines = [
             f"RACE={rid} observation={observed.isoformat()} hash8={digest[:8]}",
@@ -82,7 +79,7 @@ def summarize(rid):
             lines.append("VERDICT=OFFICIAL_STRUCTURED_SIX_LANES_VISIBLE_NO_WRITES")
         else:
             lines.append("VERDICT=OFFICIAL_PARTIAL_OR_UNVERIFIED_NO_WRITES")
-        print("\\n".join(lines), flush=True)
+        print(*lines, sep=chr(10), flush=True)
     except Exception as exc:
         print("DIAGNOSTIC_HOLD "+rid+" "+type(exc).__name__+":"+
               str(exc).splitlines()[0][:150], flush=True)
