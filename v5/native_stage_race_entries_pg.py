@@ -127,6 +127,7 @@ def blocked_by_stage_delta() -> None:
 def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]:
     """Single transaction, insert-only, identity parity check, no old writes."""
     from psycopg import connect, sql
+    from psycopg.types.json import Jsonb
     from v5.direct_shared_primary_routes import canary_target
     if os.environ.get("DATABASE_URL") != "postgresql:///railway":
         raise RuntimeError("HOLD_CONOHA_LOCAL_PG_ONLY")
@@ -197,18 +198,23 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                     )
                     inserted[family] = 0
                     for row in rows:
-                        cur.execute(query, [row.get(k) for k in cols])
+                        params = [Jsonb(row[k]) if isinstance(row.get(k), (dict, list))
+                                  else row.get(k) for k in cols]
+                        cur.execute(query, params)
                         inserted[family] += cur.rowcount
                 cur.execute("""SELECT lane, racer_number FROM boat_data_stage.entries
                                WHERE race_id=%s ORDER BY lane""", (race["race_id"],))
                 saved = cur.fetchall()
                 if saved != [(e["lane"], e["racer_number"]) for e in sorted(entries, key=lambda e:e["lane"])]:
                     raise RuntimeError("HOLD_STAGE_SIX_ENTRY_PARITY_ROLLBACK")
-                cur.execute("""SELECT deadline_at FROM boat_data_stage.races WHERE race_id=%s""",
-                            (race["race_id"],))
+                cur.execute("""SELECT deadline_at::timestamptz FROM boat_data_stage.races
+                               WHERE race_id=%s""", (race["race_id"],))
                 actual_deadline = cur.fetchone()
                 if not actual_deadline or actual_deadline[0] is None:
                     raise RuntimeError("HOLD_STAGE_RACE_DEADLINE_MISSING")
+                expected_deadline = datetime.fromisoformat(race["deadline_at"])
+                if abs((actual_deadline[0] - expected_deadline).total_seconds()) > 1:
+                    raise RuntimeError("HOLD_STAGE_RACE_DEADLINE_MISMATCH_ROLLBACK")
                 # Presence + lane/racer identity checked; do not certify all content
                 # or snapshot capture time here.
                 return inserted["races"], inserted["entries"]
