@@ -15,6 +15,7 @@ import math
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Mapping
 
@@ -23,7 +24,7 @@ from v5.entry_quality_policy import LaneInput, STATS, inspect_race
 _RACE_RE = re.compile(r"(20\d{6})_(0[1-9]|1\d|2[0-4])_(0[1-9]|1[0-2])\Z")
 _REQUIRED_ENTRY = frozenset(("race_id", "lane", "racer_no", "racer_number", *STATS))
 _REQUIRED_RACE = frozenset(("race_id", "race_date", "deadline_at"))
-_NUMERIC = frozenset(STATS) - {"motor_no", "boat_no"}
+JST = ZoneInfo("Asia/Tokyo")
 
 
 @dataclass(frozen=True)
@@ -104,7 +105,7 @@ def inspect_offline_view_rows(
     if (type(day) is not date or day != decoded_day or day < date(2025, 7, 1)
             or type(deadline) is not datetime or deadline.tzinfo is None
             or deadline.utcoffset() is None
-            or deadline.date() != decoded_day):
+            or deadline.astimezone(JST).date() != decoded_day):
         return OfflineViewDiagnostic("RACE_METADATA_SHAPE_HOLD", race_id)
     if type(entries) not in (list, tuple) or len(entries) != 6:
         return OfflineViewDiagnostic("SIX_ENTRY_SHAPE_HOLD", race_id)
