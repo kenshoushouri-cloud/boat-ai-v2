@@ -33,6 +33,7 @@ raw="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/$ref"
 for path in \
  v5/native_official_realtime_stage_pg.py \
  v5/native_realtime_due_runner.py \
+ v5/native_results_catchup_stage.py \
  tests/test_v5_native_official_realtime_stage_pg.py \
  tests/test_v5_native_transition_20261027.py; do
   curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 8 --max-time 15 \
