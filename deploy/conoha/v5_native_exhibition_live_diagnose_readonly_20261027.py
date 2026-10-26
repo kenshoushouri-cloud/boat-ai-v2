@@ -74,7 +74,7 @@ def summarize(rid):
             lines.append("VERDICT=POSSIBLE_EXHIBITION_PARSER_MISMATCH_NO_WRITES")
         elif evidence.get("status")=="official_absent":
             lines.append("VERDICT=NO_TIME_SHAPED_EVIDENCE_IN_STRUCTURED_LANES_NO_WRITES")
-        elif evidence.get("status")=="complete" and
+        elif (evidence.get("status")=="complete" and
               evidence.get("source")=="primary_structured_rows"):
             lines.append("VERDICT=OFFICIAL_STRUCTURED_SIX_LANES_VISIBLE_NO_WRITES")
         else:
