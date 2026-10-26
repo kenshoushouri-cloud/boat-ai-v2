@@ -3,7 +3,7 @@
 # Does not connect PG or official site, execute collectors, alter systemd or BUY.
 set -euo pipefail
 umask 077
-REF="dcd04325f594d56c4226ce7abbb12260f803a9b8"
+REF="431655ae77ab592b0a4aecba781a1b3f56ad61e4"
 BASE="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/${REF}"
 work="$(mktemp -d /tmp/v5-native-stage-test.XXXXXXXX)"
 trap 'rm -rf -- "$work"' EXIT
