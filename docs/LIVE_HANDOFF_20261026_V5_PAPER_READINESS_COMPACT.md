@@ -25,3 +25,8 @@
 - No other writes, parallel sync, BUY, cutover, or 13-family full scans before this checkpoint.
 
 - User 20:51 JST ran `systemctl show` for tomorrow's service: `Result=success`, `ExecMainStatus=0`, `ActiveState=inactive`, but journal since Oct 27 03:00 has `-- No entries --` because run is not yet due. This is **not** evidence it ran or succeeded. No systemd or DB change made.
+
+## 2026-10-26 parallel-collection proposal (design only)
+- User proposes independent parallel collection: V5 PRIMARY directly writes to physical shared V5 tables; old collector SECONDARY continues separately in legacy tables for temporary shortage recovery, then stop old after validation. This is preferable to nightly copy as live-data source, but NO cutover has occurred. Full plan: `docs/V5_DIRECT_PRIMARY_LEGACY_FALLBACK_PARALLEL_DESIGN_20261026.md` (commit `6198f1d6c9de91aa1627c1e6b112c114192eae0f`).
+- Code confirmed: `v5/conoha_realtime_window_pg.py` launches old `v21_realtime_collector_pg_safe.py`, `v5_daily_table_routes.py` and `v5_realtime_table_routes.py` default to legacy and map V5 opt-in to candidate `v5_data.raw_*`, NOT confirmed actual physical `boat_data_stage.*`. All writer/read/DDL routes, locks and 5min timeliness need true isolation before safely switching. Do NOT simply change env flags or prematurely stop old processes.
+- Next still ONE safe task: original 5s read-only Oct 26 `public.v2_race_entries` vs stage mismatch check; then audit actual writer timers and design direct V5 stage collector. Never backdate late odds/exhibition as predecision.
