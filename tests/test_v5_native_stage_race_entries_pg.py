@@ -85,8 +85,11 @@ class NativeCoreContractTests(unittest.TestCase):
                 module.apply_one({}, [], datetime.now(JST))
 
     def test_stage_delta_pending_blocks(self):
-        with patch.object(module, "datetime") as clock:
-            clock.now.return_value = datetime(2026, 10, 26, 22, 25, tzinfo=JST)
+        class FrozenTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 10, 26, 22, 25, tzinfo=JST)
+        with patch.object(module, "datetime", FrozenTime):
             with self.assertRaisesRegex(RuntimeError, "DELTA_PENDING"):
                 module.blocked_by_stage_delta()
 
