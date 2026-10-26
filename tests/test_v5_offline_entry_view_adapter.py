@@ -146,6 +146,52 @@ class OfflineViewEntryAdapterTest(unittest.TestCase):
         verdict = self.check_never_authorizes(inspect_offline_view_rows(race, rows))
         self.assertEqual(verdict.reason, "VIEW_SHAPE_ONLY_ORIGINAL_ASOF_UNVERIFIED_HOLD")
 
+    def test_empty_legacy_identity_is_not_a_false_conflict(self):
+        race, rows = example()
+        for i, row in enumerate(rows):
+            row["racer_no"] = None if i % 2 == 0 else ""
+            row["racer_name"] = None
+        outcome = self.check_never_authorizes(
+            inspect_offline_view_rows(race, rows))
+        self.assertEqual(
+            outcome.reason,
+            "VIEW_SHAPE_ONLY_ORIGINAL_ASOF_UNVERIFIED_HOLD",
+        )
+        self.assertTrue(outcome.metadata_shape_consistent)
+        self.assertEqual(outcome.legacy_identity_absent_lanes, 6)
+        self.assertEqual(outcome.checked_lanes, 6)
+
+    def test_malformed_nonempty_legacy_number_still_holds(self):
+        for bad in ("xyz", "4189?", " 4001", "00000", 4001, False):
+            with self.subTest(legacy=bad):
+                race, rows = example()
+                rows[0]["racer_no"] = bad
+                outcome = self.check_never_authorizes(
+                    inspect_offline_view_rows(race, rows))
+                self.assertEqual(
+                    outcome.reason, "ENTRY_TYPE_OR_IDENTITY_HOLD")
+
+    def test_missing_or_invalid_integer_identity_still_holds(self):
+        for invalid in (None, "", "4001", True, -1, 10000):
+            with self.subTest(number=invalid):
+                race, rows = example()
+                rows[0]["racer_no"] = None
+                rows[0]["racer_number"] = invalid
+                outcome = self.check_never_authorizes(
+                    inspect_offline_view_rows(race, rows))
+                self.assertEqual(
+                    outcome.reason, "ENTRY_TYPE_OR_IDENTITY_HOLD")
+
+    def test_duplicate_canonical_identity_still_holds_when_legacy_absent(self):
+        race, rows = example()
+        for row in rows:
+            row["racer_no"] = None
+        rows[1]["racer_number"] = rows[0]["racer_number"]
+        outcome = self.check_never_authorizes(
+            inspect_offline_view_rows(race, rows))
+        self.assertEqual(outcome.reason, "ENTRY_QUALITY_HOLD")
+        self.assertEqual(outcome.entry_quality_status, "SIX_LANE_IDENTITY_HOLD")
+
 
 if __name__ == "__main__":
     unittest.main()
