@@ -126,9 +126,8 @@ def blocked_by_stage_delta() -> None:
 
 def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]:
     """Single transaction, insert-only, identity parity check, no old writes."""
-    from psycopg import connect, sql
-    from psycopg.types.json import Jsonb
-    from v5.direct_shared_primary_routes import canary_target
+    # Fail closed using stdlib-only checks BEFORE importing optional DB libraries.
+    # This keeps offline guard tests runnable with the system python3.
     if os.environ.get("DATABASE_URL") != "postgresql:///railway":
         raise RuntimeError("HOLD_CONOHA_LOCAL_PG_ONLY")
     if os.environ.get("V5_NATIVE_CORE_STAGE_WRITE_APPROVED") != "YES":
@@ -137,6 +136,10 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
            for x in ("BUY_ENABLED", "AUTO_BUY", "ENABLE_PURCHASE")):
         raise RuntimeError("HOLD_BUY_FLAG_PRESENT")
     blocked_by_stage_delta()
+    # Only a cleared and explicitly approved canary may load the DB stack.
+    from psycopg import connect, sql
+    from psycopg.types.json import Jsonb
+    from v5.direct_shared_primary_routes import canary_target
     # Both names are fixed; do not accept SQL identifiers from env or HTML.
     with connect(os.environ["DATABASE_URL"], connect_timeout=5) as conn:
         with conn.transaction():
