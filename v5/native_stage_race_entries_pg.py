@@ -26,7 +26,7 @@ ALLOWED_COLUMNS = {
               "venue_name", "race_no", "race_name", "deadline_time",
               "deadline_at", "status", "data_quality_score",
               "missing_count", "created_at", "updated_at"),
-    "entries": ("race_id", "lane", "course", "racer_number", "racer_name",
+    "entries": ("id", "race_id", "lane", "course", "racer_number", "racer_name",
                 "racer_class", "racer_class_text", "branch", "origin",
                 "f_count", "l_count", "avg_st", "national_win_rate",
                 "national_place2_rate", "national_place3_rate",
@@ -46,6 +46,22 @@ def race_parts(race_id: str) -> tuple[str, str, int]:
         raise ValueError("HOLD_INVALID_RACE_ID")
     day, venue, number = race_id.split("_")
     return f"{day[:4]}-{day[4:6]}-{day[6:]}", venue, int(number)
+
+
+def independent_stage_entry_id(race_id: str, lane: int) -> int:
+    """Deterministic V5-only negative bigint ID (does not use legacy sequence).
+
+    Date*100000 + venue*1000 + race_number*10 + lane is injective
+    for YYYYMMDD / venue 01..24 / race 01..12 / lane 1..6.
+    Native V5 IDs are strictly negative, distinct from old positive IDs.
+    """
+    day, venue, race_no = race_parts(race_id)
+    if type(lane) is not int or lane not in range(1, 7):
+        raise ValueError("HOLD_INVALID_STAGE_ENTRY_LANE")
+    ordinal = int(day.replace("-", "")) * 100000 + int(venue) * 1000 + race_no * 10 + lane
+    if ordinal <= 0 or ordinal >= 2 ** 63:
+        raise ValueError("HOLD_INVALID_STAGE_ENTRY_ID_RANGE")
+    return -ordinal
 
 
 def validate_entries(race_id: str, entries: list[dict[str, Any]]) -> None:
@@ -84,6 +100,7 @@ def official_payload(race_id: str, html: str, captured: datetime):
         "missing_count": 0, "created_at": now_iso, "updated_at": now_iso,
     }
     for entry in entries:
+        entry["id"] = independent_stage_entry_id(race_id, entry["lane"])
         entry["created_at"] = now_iso
         entry["updated_at"] = now_iso
     return race, entries
@@ -211,6 +228,18 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                     key_sets = {tuple(rec[0]) for rec in cur.fetchall()}
                     if KEYS[family] not in key_sets:
                         raise RuntimeError("HOLD_STAGE_CONFLICT_KEY_MISSING_" + family)
+                    if family == "entries":
+                        if ("id",) not in key_sets:
+                            raise RuntimeError("HOLD_STAGE_ENTRY_ID_UNIQUE_KEY_MISSING")
+                        cur.execute("""SELECT atttypid='pg_catalog.int8'::regtype,
+                                              attnotnull
+                          FROM pg_attribute
+                          WHERE attrelid=to_regclass(%s)
+                          AND attname='id' AND attnum>0 AND NOT attisdropped""",
+                                    (dst,))
+                        id_shape = cur.fetchone()
+                        if id_shape != (True, True):
+                            raise RuntimeError("HOLD_STAGE_ENTRY_ID_NOT_BIGINT_REQUIRED")
                     actual = canary_target(
                         source, env=os.environ, verified_physical=True,
                         verified_schema_and_keys=True, independent_native_writer=True,
@@ -220,6 +249,18 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                         raise RuntimeError("HOLD_UNEXPECTED_STAGE_DESTINATION")
                 if datetime.now(JST) >= datetime.fromisoformat(race["deadline_at"]) - timedelta(seconds=180):
                     raise RuntimeError("HOLD_DEADLINE_EXPIRED_DURING_VALIDATION")
+                # Reserved negative V5-only IDs cannot accidentally map to
+                # an unrelated stage race/lane. Do not touch legacy sequences.
+                for entry in entries:
+                    expected_id = independent_stage_entry_id(
+                        race["race_id"], entry["lane"])
+                    if entry.get("id") != expected_id:
+                        raise RuntimeError("HOLD_STAGE_ENTRY_ID_NOT_NATIVE_NAMESPACE")
+                    cur.execute("""SELECT race_id,lane FROM boat_data_stage.entries
+                                   WHERE id=%s""", (expected_id,))
+                    current = cur.fetchone()
+                    if current and current != (race["race_id"], entry["lane"]):
+                        raise RuntimeError("HOLD_STAGE_NEGATIVE_ID_COLLISION")
                 inserted = {}
                 for family, rows in (("races", [race]), ("entries", entries)):
                     cols = ALLOWED_COLUMNS[family]
