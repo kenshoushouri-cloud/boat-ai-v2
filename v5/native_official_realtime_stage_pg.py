@@ -37,34 +37,56 @@ REQUIRED = {"V5_NATIVE_REALTIME_STAGE_APPROVED": "YES",
             "CONFIRM_V5_SHARED_PRIMARY_CANARY": "YES",
             "CONFIRM_LEGACY_WRITES_SEPARATELY": "YES"}
 COLUMN_SETS = {
-    "entry_snapshots": ("race_id","race_date","venue_id","venue_code","race_no",
+    "entry_snapshots": ("id","race_id","race_date","venue_id","venue_code","race_no",
       "snapshot_label","snapshot_at","source","lane","racer_number","racer_name",
       "racer_class","original_course","exhibition_course","is_course_changed",
       "motor_no","boat_no","tilt","raw","updated_at"),
-    "exhibition_snapshots": ("race_id","race_date","venue_id","venue_code","race_no",
+    "exhibition_snapshots": ("id","race_id","race_date","venue_id","venue_code","race_no",
       "snapshot_label","snapshot_at","source","lane","exhibition_course",
       "exhibition_time","exhibition_time_rank","exhibition_time_diff",
       "start_timing","start_timing_rank","start_timing_diff","tilt",
       "original_tilt","tilt_change","raw","updated_at"),
-    "odds_snapshots": ("race_id","race_date","venue_id","venue_code","race_no",
+    "odds_snapshots": ("id","race_id","race_date","venue_id","venue_code","race_no",
       "snapshot_label","snapshot_at","source","ticket","odds","market_rank",
       "prev_odds","odds_delta","odds_delta_pct","prev_market_rank",
       "market_rank_delta","is_favorite","is_odds_too_low","is_odds_drift",
-      "is_odds_steam","raw","updated_at"),
-    "weather_snapshots": ("race_id","race_date","venue_id","venue_code","race_no",
+      "is_odds_steam","raw","captured_at","created_at","updated_at"),
+    "weather_snapshots": ("id","race_id","race_date","venue_id","venue_code","race_no",
       "snapshot_label","snapshot_at","source","weather","temperature_c",
       "water_temperature_c","wind_speed_m","wind_direction","wave_height_cm",
       "raw","updated_at"),
-    "race_condition_snapshots": ("race_id","race_date","venue_id","venue_code",
+    "race_condition_snapshots": ("id","race_id","race_date","venue_id","venue_code",
       "race_no","snapshot_label","snapshot_at","source","is_stabilizer_used",
       "is_fixed_entry","race_distance_m","has_new_propeller",
       "parts_replacement_count","raw","updated_at"),
-    "racer_condition_snapshots": ("race_id","race_date","venue_id","venue_code",
+    "racer_condition_snapshots": ("id","race_id","race_date","venue_id","venue_code",
       "race_no","snapshot_label","snapshot_at","source","lane",
       "racer_number","weight_kg","adjustment_weight_kg","is_new_propeller",
       "parts_replacements","previous_race_no","previous_course","previous_st",
       "previous_finish","raw","updated_at"),
 }
+
+
+def native_snapshot_id(family: str, row: dict) -> int:
+    """Deterministic negative bigint in V5 stage namespace.
+
+    The digest covers table family + all unique natural key fields, including
+    the official capture label. The DB gate separately forbids ID collisions.
+    No legacy sequence or table is touched.
+    """
+    if family not in SNAPSHOT_KEYS:
+        raise ValueError("HOLD_UNRECOGNIZED_SNAPSHOT_TABLE")
+    key = (family,) + tuple(str(row[k]) for k in SNAPSHOT_KEYS[family])
+    digest = sha256("\\x1f".join(key).encode("utf-8")).digest()
+    n = int.from_bytes(digest[:8], "big") & ((1 << 63) - 1)
+    return -max(n, 1)
+
+
+def stage_required_unmapped(catalog, columns):
+    """Fail before DML if a NOT NULL field has no default and isn't mapped."""
+    return [rec[0] for rec in catalog
+            if rec[1] and not rec[2] and not rec[3] and not rec[4]
+            and rec[0] not in columns]
 
 
 def ready_to_apply() -> None:
@@ -224,6 +246,12 @@ def prepare_rows(race, entries, before_html, odds_html, before_at, odds_at,
                 "race_condition_snapshots":1,"racer_condition_snapshots":6}
     if {k:len(v) for k,v in rows.items()} != expected:
         raise RuntimeError("HOLD_INCOMPLETE_REALTIME_PAYLOAD")
+    for family, batch in rows.items():
+        for row in batch:
+            row["id"] = native_snapshot_id(family, row)
+            if family == "odds_snapshots":
+                row["captured_at"] = odds_at.isoformat()
+                row["created_at"] = odds_at.isoformat()
     return rows
 
 
@@ -262,13 +290,34 @@ def save_canary(race, rows):
                     record = cur.fetchone()
                     if not record or record[0] not in ("r","p"):
                         raise RuntimeError("HOLD_STAGE_NOT_PHYSICAL_" + table)
-                    cur.execute("""SELECT attname FROM pg_attribute
+                    cur.execute("""SELECT attname,attnotnull,atthasdef,
+                                              attidentity,attgenerated
+                        FROM pg_attribute
                         WHERE attrelid=to_regclass(%s) AND attnum>0
                         AND NOT attisdropped""",(dst,))
-                    allowed_cols = {x[0] for x in cur.fetchall()}
+                    catalog = cur.fetchall()
+                    allowed_cols = {x[0] for x in catalog}
                     columns = COLUMN_SETS[table]
                     if not set(columns) <= allowed_cols:
                         raise RuntimeError("HOLD_STAGE_MISSING_COLUMNS_" + table)
+                    unmapped = stage_required_unmapped(catalog,columns)
+                    if unmapped:
+                        raise RuntimeError("HOLD_STAGE_UNMAPPED_REQUIRED_" + table + "_" +
+                                           ",".join(unmapped[:5]))
+                    cur.execute("""SELECT atttypid='pg_catalog.int8'::regtype,
+                                              attnotnull
+                        FROM pg_attribute WHERE attrelid=to_regclass(%s)
+                          AND attname='id' AND attnum>0 AND NOT attisdropped""",(dst,))
+                    if cur.fetchone() != (True,True):
+                        raise RuntimeError("HOLD_STAGE_ID_NOT_REQUIRED_BIGINT_" + table)
+                    ids = [row["id"] for row in batch]
+                    if len(set(ids)) != len(ids) or any(n >= 0 for n in ids):
+                        raise RuntimeError("HOLD_NATIVE_STAGE_ID_COLLISION_IN_BATCH_" + table)
+                    for n in ids:
+                        cur.execute(sql.SQL("SELECT 1 FROM {} WHERE id=%s LIMIT 1").format(
+                            sql.Identifier(STAGE,table)), (n,))
+                        if cur.fetchone():
+                            raise RuntimeError("HOLD_STAGE_NEGATIVE_ID_ALREADY_USED_" + table)
                     keys=SNAPSHOT_KEYS[table]
                     cur.execute("""SELECT array_agg(a.attname ORDER BY x.ord)
                       FROM pg_index i
