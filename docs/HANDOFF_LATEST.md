@@ -118,5 +118,12 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 2026-10-26 10:39 JST ユーザーTermiusにてstage11一回限り復旧タイマー予約のPASSを実機確認：`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`UNIT=boat-v5-stage11-delta-20261027-recovery.timer`、`NEXT=Tue 2026-10-27 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO`。データ差分同期はまだ実行されていない。元の停止済みタイマーの再起動・重複予約は絶対にしない。
 - バックアップ準備：既存Driveバックアップは過去の10/19世代のみ確認履歴、ConoHa同VPSの10/23 railwayと10/24 history dumpは最新10/26データの独立保全を証明しない。Google Driveコネクタの2アカウントをREAD ONLYで`boat-ai-v5`/`main_current_202610`/`dump`検索したが、新しい暗号化バックアップファイルを特定できなかった（検索結果ゼロ≠不在の証明）。既存Pythonインベントリに`/var/backups`と既知の2dumpフォルダを追加したread-only `deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`（commit `b43a725e4dcc20fb460fe200aa001645910fc01c`）をGitHub作成、実機未実行。秘密・ダンプ本文・DBに触れない。BUY OFF。
 
+## 2026-10-26 10:44 JST ConoHaバックアップ保存先監査（read-only実機結果）
+- ユーザーTermiusで`deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`実施。`V5_BACKUP_PATH_AUDIT_COMPLETE_NO_WRITES_NO_BUY`、各ツール`pg_dump/pg_restore/psql/age/rclone/sha256sum=ON_PATH`、rclone.conf存在のみ確認（内容/秘密未読）。
+- `railway_dump_20261023`ディレクトリ=SCANNED_METADATA_ONLY、`plain_pg_dump_files=1 bytes=393138215`。既存10/23 SHA基準とファイルサイズ一致（ハッシュ再検証していない）。
+- `history_dump_20261024`は`NOT_ACCESSIBLE_OR_ABSENT`、過去GitHub指定`/var/backups/boat-history-20261024-U6CRLt`が見つからなかった。**履歴dump自体の削除や紛失とは未確定**。別の場所や名前の可能性をread-onlyで調査する必要あり。実ディレクトリ`/var/backups`の直下には該当拡張子ファイル0だが、監査スクリプトは下位を再帰走査しない。
+- `/root/boat-v5-backups`直下に古いplain dump×6 合計261703682bytes（最終mtime 2026-10-21T15:20:15Z）、`/root`直下plain dump×1 3380606bytes。`ROOT_FILESYSTEM_FREE_BYTES=67011411968`（約62.41GiB）。既存local dumpを消したり移動・上書きしていない。
+- `CURRENT_BACKUP_COVERAGE_NOT_VERIFIED`、`INDEPENDENT_RESTORE_NOT_TESTED`、`NIGHT_CUTOVER_GATE=NO_GO`。これは**2026-10-26最新のV4+V5+履歴を復元できるバックアップではない**。10/27 03:05 stage11復旧timerはすでにActiveでPASS、手を触れない。BUY OFF、旧writer維持。
+
 ## Next ONE task
-**Next ONE task:** Termiusでコミット固定の`deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`をrootの`python3`でread-only実行し、既存dumpフォルダ・age/rclone/pg_restore/空き容量などメタデータのみ確認。旧dump削除・Drive upload/rclone変更/DB変更/タイマー追加はしない。夜間stage11実行後は必ず`journalctl -u boat-v5-stage11-delta-20261027-recovery.service --no-pager -n 100`で11系統コミット結果を確認し、結果が確認されるまで本番切替・V4削除はNO-GO。
+Termius rootのread-only `find /var/backups -maxdepth 2`を用いて`boat-history-*`ディレクトリと`boat_history_archive.dump`ファイルの所在・サイズ・mtimeだけ再確認。ファイルが見つからなければ`/var/backups`以外の既存候補を別の一作業で調査。既存dumpのSHA/中身取得・Google Driveへの大量GET・新規dump作成・旧ファイル削除・timer操作はまだしない。
