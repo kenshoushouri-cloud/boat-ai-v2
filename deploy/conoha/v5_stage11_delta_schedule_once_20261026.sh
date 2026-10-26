@@ -21,7 +21,7 @@ find_bin(){
   return 1
 }
 [[ "$(id -u)" == "0" ]] || hold "Run as root in Termius."
-[[ "$(TZ=Asia/Tokyo date +%F)" == "2026-10-26" ]] || hold "Use on 2026-10-25 JST only."
+[[ "$(TZ=Asia/Tokyo date +%F)" == "2026-10-26" ]] || hold "Use on 2026-10-26 JST only."
 HOUR=$(TZ=Asia/Tokyo date +%H)
 [[ "$HOUR" =~ ^[0-9][0-9]$ ]] || hold "Unrecognized JST clock."
 ((10#$HOUR >= 8 && 10#$HOUR <= 23)) || hold "Schedule only 08:00-23:59 JST."
