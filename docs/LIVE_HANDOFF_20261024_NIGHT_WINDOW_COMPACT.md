@@ -114,5 +114,9 @@
 ## 2026-10-26 10:30 JST timer false HOLD
 - 10/26 10:30 JST stage11 night timer: 11表metadata preview PASS/no writes、実際のNEXT=Tue 2026-10-27 03:05:00 JST。しかし元scheduler末尾が誤って26日03:05を検証したため`HOLD: Unexpected next start, timer stopped`。同期未実施。GitHub元schedulerの誤判定修正 commit `b619fc7727e223b32ba2fe41a615a825433b16d5`。**元schedulerを再実行しない**。既存timer restart または一時unit GC後の別名再予約を安全に分岐する`deploy/conoha/v5_stage11_delta_timer_recover_guarded_20261026.sh` commit `2f53818294e85b5a0674a248f04dfaaf6f3585cb`追加、未実行。既存collector・VIEW不変、BUY OFF、V4削除・stage正式切替禁止。
 
+## 2026-10-26 10:39 JST 予約復旧＋バックアップ次工程
+- 2026-10-26 10:39 JST ユーザーTermiusにてstage11一回限り復旧タイマー予約のPASSを実機確認：`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`UNIT=boat-v5-stage11-delta-20261027-recovery.timer`、`NEXT=Tue 2026-10-27 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO`。データ差分同期はまだ実行されていない。元の停止済みタイマーの再起動・重複予約は絶対にしない。
+- バックアップ準備：既存Driveバックアップは過去の10/19世代のみ確認履歴、ConoHa同VPSの10/23 railwayと10/24 history dumpは最新10/26データの独立保全を証明しない。Google Driveコネクタの2アカウントをREAD ONLYで`boat-ai-v5`/`main_current_202610`/`dump`検索したが、新しい暗号化バックアップファイルを特定できなかった（検索結果ゼロ≠不在の証明）。既存Pythonインベントリに`/var/backups`と既知の2dumpフォルダを追加したread-only `deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`（commit `b43a725e4dcc20fb460fe200aa001645910fc01c`）をGitHub作成、実機未実行。秘密・ダンプ本文・DBに触れない。BUY OFF。
+
 ## 次の1作業
-**Next ONE task:** ユーザーTermiusでcommit固定のstage11 timer recovery scriptを一度実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Tue 2026-10-27 03:05:00 JST`、UNITを確認。HOLDなら停止し原因をread-onlyで確認。
+**Next ONE task:** Termiusでコミット固定の`deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`をrootの`python3`でread-only実行し、既存dumpフォルダ・age/rclone/pg_restore/空き容量などメタデータのみ確認。旧dump削除・Drive upload/rclone変更/DB変更/タイマー追加はしない。夜間stage11実行後は必ず`journalctl -u boat-v5-stage11-delta-20261027-recovery.service --no-pager -n 100`で11系統コミット結果を確認し、結果が確認されるまで本番切替・V4削除はNO-GO。
