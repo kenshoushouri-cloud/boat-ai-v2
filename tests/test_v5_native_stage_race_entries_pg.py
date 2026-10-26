@@ -86,6 +86,30 @@ class NativeCoreContractTests(unittest.TestCase):
         self.assertEqual(len(six), 6)
         self.assertTrue(all(row["created_at"] == fake_time.isoformat()
                             for row in six))
+        self.assertEqual(
+            [row["id"] for row in six],
+            [module.independent_stage_entry_id("20261027_01_01", n)
+             for n in range(1,7)])
+        self.assertTrue(all(row["id"] < 0 for row in six))
+
+    def test_stage_entry_ids_are_stable_and_unique_across_races(self):
+        examples = [
+            "20261027_01_01", "20261027_02_01",
+            "20261027_01_02", "20261028_01_01",
+            "20261027_24_12"
+        ]
+        ids = [module.independent_stage_entry_id(rid, lane)
+               for rid in examples for lane in range(1, 7)]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(all(n < 0 and n > -(2**63) for n in ids))
+        self.assertEqual(
+            module.independent_stage_entry_id("20261027_01_01", 1),
+            module.independent_stage_entry_id("20261027_01_01", 1))
+
+    def test_stage_entry_id_rejects_non_lane_values(self):
+        for lane in (0, 7, None, 1.0):
+            with self.subTest(lane=lane), self.assertRaises(ValueError):
+                module.independent_stage_entry_id("20261027_01_01", lane)
 
     def test_unmapped_notnull_requires_explicit_hold(self):
         cat = [
