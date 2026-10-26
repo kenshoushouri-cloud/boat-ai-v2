@@ -31,8 +31,9 @@
 
 ## GitHub-only real VIEW shape adapter, 10/26 evening
 - `v5/offline_entry_view_adapter.py` (commit `e05a821a758122adfd2a985e04fcd7d9e2af8df8`): pure input mappings->strict six-entry diagnostic, catches mismatched `racer_no text` and `racer_number int`, parses motor/boat IDs only when digit text, requires timezone-aware JST deadline and same-day race_id, rejects missing/unknown numbers, **all paths hard-HOLD for real selection/forward/BUY**. No DB read/write or feature scoring, no first-seen evidence claim.
-- `tests/test_v5_offline_entry_view_adapter.py` (commit `ad8e8a1b3297ae0392929b69bef83fd50f4fe476`): 13 synthetic cases for malformed values, identity, cutoff/timezones, invalid/missing, and immutable HOLD flags. **NOT YET RUN**; do not claim PASS.
+- `tests/test_v5_offline_entry_view_adapter.py` (commit `ad8e8a1b3297ae0392929b69bef83fd50f4fe476`): 13 synthetic cases for malformed values, identity, cutoff/timezones, invalid/missing, and immutable HOLD flags. **2026-10-26 18:23 JST ConoHa screenshot confirmed 13/13 PASS**: `Ran 13 tests in 0.006s`, `OK`, `V5_VIEW_ADAPTER_TEST_PASS DB=NO DB_WRITES=NO LIVE_COLLECTOR=UNTOUCHED BUY=OFF` (synthetic-only, no actual DB rows or model scoring).
 - `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` (commit `547b83fd7e6dd7ad793f2754e72fe6a29f4bb6c5`): pinned 3-file temp-folder unittest test-runner. No DB, service, timers or BUY.
 
 ## Next ONE task
-Run/inspect synthetic-only adapter unittest, then after 10/27 03:05 JST check `boat-v5-stage11-delta-20261027-recovery.service` logs read-only. No unscheduled sync, cutover, BUY or backup work.
+- With no service/timer changes, obtain only a bounded read-only diagnostic on `boat_data.entries` for known `race_id=20261026_10_01` (six row count / lane distinct / racer identity / NULL counts), using a transaction READ ONLY with a short statement_timeout; avoid reading whole history. Do not promote any `boat_data` VIEW data as original pre-deadline evidence.
+- After 2026-10-27 03:05 JST, read-only confirm scheduled stage11 delta service journal. DO NOT force, reschedule or restart. No cutover, BUY, Railway or backup work.
