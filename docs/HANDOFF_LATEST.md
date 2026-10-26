@@ -9,7 +9,7 @@
 - バックアップ新規構築/Google Drive認証/重複整理/削除は**運用安定後へ保留**。既存の復旧資産は残す。
 - 既存collector継続、odds/展示/気象のレース前取得保護。BUY=OFF。V5 live writer切替=NO_GO。収集中の再起動/収集停止/二重起動なし。
 - 10/26 17:17 JST、stage11一回限り同期タイマー `boat-v5-stage11-delta-20261027-recovery.timer` = active、予定 **2026-10-27 03:05 JST**。再予約/タイマー変更禁止。実行結果未確認。
-- GitHub synthetic-only paper quality bridgeと回帰テストは登録済み（詳細はcompact）。**実データ推論/ROI/バックテスト成功の証明ではなく、テスト未実行**。
+- GitHub synthetic-only paper quality bridgeと回帰テストは登録済み（詳細はcompact）。**synthetic-only品質単体テスト18件PASS。実データ推論/ROI/バックテスト成功の証明ではない**。
 
 ## Next ONE task
-10/27 03:05以降、ConoHaのread-only service journalから11種類の夜間stage差分同期の成否を確認。失敗時も無検証の再実行・cutover禁止。同期完了前はGitHub側のみの合成テスト等を継続。
+10/26のVIEWスキーマ確認が終わり、純粋な実データ形状アダプタと13件のテストをGitHubへ追加した。次にConoHaで**一時フォルダー内の合成テストのみ**実行し結果を確認。10/27 03:05以降は予定済みstage11差分同期の結果をread-onlyで確認。現行writer/collector/タイマーは操作しない。
