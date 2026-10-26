@@ -125,5 +125,12 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - `/root/boat-v5-backups`直下に古いplain dump×6 合計261703682bytes（最終mtime 2026-10-21T15:20:15Z）、`/root`直下plain dump×1 3380606bytes。`ROOT_FILESYSTEM_FREE_BYTES=67011411968`（約62.41GiB）。既存local dumpを消したり移動・上書きしていない。
 - `CURRENT_BACKUP_COVERAGE_NOT_VERIFIED`、`INDEPENDENT_RESTORE_NOT_TESTED`、`NIGHT_CUTOVER_GATE=NO_GO`。これは**2026-10-26最新のV4+V5+履歴を復元できるバックアップではない**。10/27 03:05 stage11復旧timerはすでにActiveでPASS、手を触れない。BUY OFF、旧writer維持。
 
+## 2026-10-26 10:48 JST バックアップのDrive B集約方針・保存先作成済み
+- ユーザー指示：「ConoHaに保存したバックアップは全部Google Driveへ移し、ConoHaのバックアップ常駐容量をなくす」。**Google Drive移動前に独立検証し、V4原本や稼働DB自体は移動しない**。ConoHaのV5実DB/収集は継続し、将来のバックアップはPG dump→age暗号化→rclone（ストリーミングで余計なローカルdumpを増やさない）を目標にする。停止・cutover・BUYは別。
+- 10:48 Termiusのfindで`/var/backups/boat-history-20261024-U6CRLt/boat_history_archive.dump`が**実際に存在**、81,865,791 bytes。前10:44のPythonに出た`NOT_ACCESSIBLE_OR_ABSENT`は実機の別read-only証拠と矛盾するため、存在の否定には使わない。既知`railway.dump`393,138,215 bytes（10/23）、`/root/boat-v5-backups`6 dump計261,703,682 bytes、`/root`直下1 dump 3,380,606 bytesが候補。多重保存・重要度・サイズを実際の移送前に再調査する。
+- Google Drive（既存2接続中 **B**、10/19既存V5フォルダ`boat-ai-v5-temp-202610`を直接metadata確認可能な接続）で**本番専用の新規フォルダ作成成功**：`boat-ai-v5-production-backups-20261026`、folder ID `1WJ8MQUN1P1wFGHOi-lws-PaMeIXXFSID`。既存V3/V4/10/19ファイルは一切未変更。Google DriveのV5用B folderは作成できたが、**ConoHa`v5_gdrive:`の接続がBと一致する証拠はまだ無い**。10/24にAPI 403の実績がある。
+- 安全なread-only＋最小API（DriveルートフォルダのIDとquotaのみ）`deploy/conoha/v5_drive_offload_preflight_20261026.py`（commit `474e8ef3ece1254183c75a0a218bc87f59c26e03`）をGitHub追加。root内と既知`/var/backups/boat-*`のバックアップ拡張子のメタデータだけ棚卸しし、`rclone lsjson v5_gdrive:`で**専用folder ID一致**および`rclone about`で空き容量を検証。秘密・DB/dump中身は未読、リモートファイル書込/削除なし（OAuthトークン更新が発生する可能性はある）。
+- **ConoHaからのバックアップ転送/削除は未実行、最新DB dumpはまだ作成していない**。age復号鍵/公開recipient・Drive接続同一性・Drive容量とAPI安定・暗号化no-overwrite転送/再取得した復号後SHA/隔離復元が全部未完。切替NO-GO、V4削除禁止、BUY OFF、10/27 03:05のstage11 sync timerは変更なし。
+
 ## Next ONE task
-Termius rootのread-only `find /var/backups -maxdepth 2`を用いて`boat-history-*`ディレクトリと`boat_history_archive.dump`ファイルの所在・サイズ・mtimeだけ再確認。ファイルが見つからなければ`/var/backups`以外の既存候補を別の一作業で調査。既存dumpのSHA/中身取得・Google Driveへの大量GET・新規dump作成・旧ファイル削除・timer操作はまだしない。
+Termius rootでcommit固定の`v5_drive_offload_preflight_20261026.py --expected-folder-id 1WJ8MQUN1P1wFGHOi-lws-PaMeIXXFSID`を一度実行（小さなDrive読み取り2リクエストまで、失敗ならSTOP）。`REMOTE_IDENTITY=V5_FOLDER_ID_MATCHED_ACCOUNT_B`、`REMOTE_AVAILABLE_BYTES`、`BACKUP_FILE_CANDIDATES`を確認。失敗なら接続先/認証・403を修正するまで転送しない。暗号鍵の所在/復号できる手順が確認できた後に別世代のencrypted no-overwrite offloadを設計する。GDriveへ移動成功と独立復元が合格するまでConoHaの既存バックアップを削除しない。
