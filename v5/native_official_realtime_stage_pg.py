@@ -221,6 +221,8 @@ def prepare_rows(race, entries, before_html, odds_html, before_at, odds_at,
 
 
 def save_canary(race, rows):
+    # Prevent direct callers from bypassing command-line approval gates.
+    ready_to_apply()
     from psycopg import connect, sql
     from psycopg.types.json import Jsonb
     if set(rows) != set(COLUMN_SETS):
@@ -252,18 +254,29 @@ def save_canary(race, rows):
                     columns = COLUMN_SETS[table]
                     if not set(columns) <= allowed_cols:
                         raise RuntimeError("HOLD_STAGE_MISSING_COLUMNS_" + table)
-                    # Full evidence of DB schemas/keys and independent writer is
-                    # required before authorization, not only env flags.
+                    keys=SNAPSHOT_KEYS[table]
+                    cur.execute("""SELECT array_agg(a.attname ORDER BY x.ord)
+                      FROM pg_index i
+                      JOIN LATERAL unnest(i.indkey) WITH ORDINALITY x(num,ord)
+                        ON x.ord <= i.indnkeyatts
+                      JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=x.num
+                      WHERE i.indrelid=to_regclass(%s)
+                        AND i.indisvalid AND i.indisunique
+                        AND i.indpred IS NULL AND i.indexprs IS NULL
+                      GROUP BY i.indexrelid""",(dst,))
+                    defined_keys={tuple(z[0]) for z in cur.fetchall()}
+                    if keys not in defined_keys:
+                        raise RuntimeError("HOLD_STAGE_UNIQUE_KEY_MISSING_" + table)
+                    # Runtime catalog and per-table key certification required.
                     actual = canary_target(
                         "public.v2_realtime_" + table,
                         env=os.environ, verified_physical=True,
-                        verified_schema_and_keys=False,
+                        verified_schema_and_keys=True,
                         independent_native_writer=True,
                         legacy_destination_isolated=True,
                         live_buy_disabled=True)
                     if actual != dst:
                         raise RuntimeError("HOLD_STAGE_ROUTE_MISMATCH")
-                    keys=SNAPSHOT_KEYS[table]
                     q=sql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) DO NOTHING").format(
                         sql.Identifier(STAGE,table),
                         sql.SQL(",").join(map(sql.Identifier,columns)),
