@@ -45,45 +45,9 @@ SELECT (SELECT count(*) FROM boat_data_stage.races
 ROLLBACK;
 SQL
 )"
-# Older psql releases may emit BEGIN/SET/ROLLBACK command tags even with -t.
-# Extract only one strictly numeric three-column SELECT result; fail closed
-# on missing/ambiguous proof, not on benign transaction status messages.
-row="$(printf '%s\n' "$raw_proof" | grep -E '^[0-9]+\|[0-9]+\|[0-9]+
-work="$(mktemp -d /tmp/v5-core-upgrade.XXXXXXXX)"
-trap 'rm -rf -- "$work"' EXIT
-mkdir -p "$work/release/tests"
-cp -a "$BASE_RELEASE/." "$work/release/"
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 8 --max-time 15 \
-  "$RAW/v5/native_stage_race_entries_pg.py" -o "$work/release/v5/native_stage_race_entries_pg.py"
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 8 --max-time 15 \
-  "$RAW/tests/test_v5_native_stage_race_entries_pg.py" -o "$work/release/tests/test_v5_native_stage_race_entries_pg.py"
-echo "=== RUN CORE FIX UNIT TESTS AGAINST UPGRADE CANDIDATE, NO DB/HTTP ==="
-(
- cd "$work/release"
- env -u DATABASE_URL -u V5_NATIVE_CORE_STAGE_WRITE_APPROVED \
-     -u V5_SHARED_PRIMARY_MODE -u CONFIRM_V5_SHARED_PRIMARY_CANARY \
-     -u V5_STAGE_DELTA_JOURNAL_VERIFIED \
-     PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$work/release" \
-     python3 -m unittest discover -s tests -p test_v5_native_stage_race_entries_pg.py -v
-)
-echo "V5_NATIVE_CORE_UPGRADE_CANDIDATE_OFFLINE_PASS"
-if [[ "$MODE" == "--check" ]]; then
- echo "V5_NATIVE_CORE_RELEASE_UPGRADE_CHECK_PASS_NO_FILES_CHANGED"; exit 0
-fi
-[[ "${V5_NATIVE_CORE_RELEASE_UPGRADE_APPROVED:-NO}" == "YES" ]] || { echo "HOLD_EXPLICIT_UPGRADE_APPROVAL"; exit 2; }
-for n in core-morning core-night realtime results; do
-  unit="boat-v5-native-$n.timer"
-  state="$(systemctl is-active "$unit" 2>/dev/null || true)"
-  [[ "$state" != "active" && "$state" != "activating" ]] || { echo "HOLD_TIMER_STARTED_DURING_CHECK_$unit"; exit 2; }
-done
-[[ "$(readlink -f "$ROOT/current")" == "$BASE_RELEASE" ]] || { echo "HOLD_SYMLINK_CHANGED_DURING_CHECK"; exit 2; }
-install -d -m 0755 "$ROOT/releases"
-mv "$work/release" "$NEW_RELEASE"
-ln -s "$NEW_RELEASE" "$ROOT/.next-corefix-$$"
-mv -Tf "$ROOT/.next-corefix-$$" "$ROOT/current"
-echo "V5_NATIVE_CORE_RELEASE_UPGRADED_SOURCE_ONLY_NATIVE_TIMERS_STILL_DISABLED"
-echo "OLD_COLLECTION_UNCHANGED_NO_BUY_NO_DATA_DELETE"
- || true)"
+# psql may display transaction command tags; extract numeric 3-field SELECT only.
+# Reject missing, duplicate, or unequal proof records.
+row="$(printf '%s\n' "$raw_proof" | grep -E '^[0-9]+[|][0-9]+[|][0-9]+$' || true)"
 echo "V5_NATIVE_CORE_PROOF=$row"
 [[ "$row" == "1|6|6" ]] || { echo "HOLD_V5_CORE_NEW_INSERT_NOT_CONFIRMED"; exit 2; }
 work="$(mktemp -d /tmp/v5-core-upgrade.XXXXXXXX)"
