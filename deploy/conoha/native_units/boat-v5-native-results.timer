@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule V5 native results (00:55) AFTER guarded canary proof
+
+[Timer]
+OnCalendar=*-*-* 00:55:00 Asia/Tokyo
+Unit=boat-v5-native-results.service
+Persistent=false
+AccuracySec=30s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
