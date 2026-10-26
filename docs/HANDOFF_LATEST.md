@@ -1,8 +1,8 @@
-# V5 latest — 2026-10-26 20:27 JST
-Current compact: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
-Reference scope: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`
+# V5 current pointer — 2026-10-26 20:30 JST
+Active compact: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
+Plan: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`
+Read these only, plus `docs/NEXT_CHAT_START_HERE.md` for a new chat. No old handoff mass reads.
 
-Priority: 13 V5 shared physical `boat_data_stage.*` families 2025-07 onward; consistent schema, monthly internal QA, then independent source/as-of proof, then real V5 backtest. Old sources are NOT presumed correct.
-2025-07 to 2025-11: stage `races` ↔ `entries` month-by-month ID-set, 6 lanes, 6 racer identities passed. 2025-09/10/11 20:27 JST terminal result: 4272/4152/3948 races, 25632/24912/23688 entries, four hold counters all zero; `ROLLBACK`. Stage internal integrity only, source not verified. Stage `races` race/day checks pass for 16 months, other families remain incomplete.
-**Next ONE task:** run 3 months `2025-12 3` (Dec 2025–Feb 2026) using `deploy/conoha/v5_shared_stage_races_entries_monthly_batch_readonly_20261026.sh` at tested commit `e7195fb9f933cb7b9a9840e03f35c4b7e7a51e80`. One stage-only READ ONLY DB query per month, 5s timeout; stop on errors, no retry bursts.
-Existing ConoHa stage11 sync timer 2026-10-27 03:05 JST preserved, no duplicate. Protect data collectors. BUY=OFF, no cutover or destructive changes. Backup expansion deferred. ConoHa local PG database is named `railway`, not active Railway cloud. For new chat read only compact/current and `docs/NEXT_CHAT_START_HERE.md`; no historical bulk reads.
+**Next ONE task:** run tested GitHub script `deploy/conoha/v5_shared_stage_races_entries_monthly_batch_readonly_20261026.sh` pinned commit `e7195fb9f933cb7b9a9840e03f35c4b7e7a51e80` with `2026-03 3` (Mar–May 2026). This is stage-only, 3 serial 5s READ ONLY monthly SQL, no changes. Stop on timeout.
+2025-07 through 2026-02: 8 months of shared stage races ↔ entries internal 6-lane/race-ID structural QA PASS, source/capture truth UNVERIFIED.
+Preserve existing ConoHa 2026-10-27 03:05 JST stage11 delta timer (success NOT YET CHECKED). Protect live 5-min collectors, BUY OFF, no cutover, Railway cloud unused, backups deferred, no destructive work.
