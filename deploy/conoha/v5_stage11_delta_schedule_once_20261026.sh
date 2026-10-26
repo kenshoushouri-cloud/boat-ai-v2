@@ -82,7 +82,7 @@ if [[ "$(systemctl show "$NAME.timer" -p ActiveState --value 2>/dev/null)" != ac
   hold "Scheduled stage-only job timer not active"
 fi
 NEXT=$(systemctl show "$NAME.timer" -p NextElapseUSecRealtime --value)
-if [[ "$NEXT" != *"2026-10-26 03:05:00"* ]]; then
+if [[ "$NEXT" != *"2026-10-27 03:05:00 JST"* ]]; then
   systemctl stop "$NAME.timer" >/dev/null 2>&1 || true
   hold "Unexpected next start, timer stopped: $NEXT"
 fi
