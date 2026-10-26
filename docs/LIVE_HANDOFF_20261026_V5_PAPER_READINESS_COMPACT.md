@@ -39,6 +39,12 @@
 - IMPORTANT: all six rows fail `racer_no text` vs `racer_number integer` canonical identity comparison, but the reason is **unproven**; may be schema semantics or formatting, not necessarily data corruption. DO NOT change data, loosen guard or declare six-player identity valid. Existing pure adapter must HOLD until verified.
 - The first Bash `-c` query with `!~` failed history expansion; the corrected single-quoted HEREDOC SQL succeeded.
 
+## 2026-10-26 18:35 JST — six actual racer identities (user screenshot)
+- Read-only six rows for `race_id=20261026_10_01`: 1=4189,2=4872,3=3441,4=4442,5=4113,6=4273 in `racer_number` (integer); legacy `racer_no` displayed blank in all rows; `racer_name` also displayed blank. **psql blank display alone cannot distinguish SQL NULL from empty string.** Data not corrupted on this evidence; six distinct canonical candidates exist but independent source provenance and deadline-asof still unverified. Do not fill `racer_name` with guessed names.
+- GitHub-only update `v5/offline_entry_view_adapter.py` commit `830563fcbafa5534d89e5433cb31418a5e7e7856`: treat NULL or empty legacy alias as absent, keep canonical `racer_number` int shape validation and all real scoring/forward/BUY hard HOLD, track `legacy_identity_absent_lanes`. Malformed present legacy values, mismatching numbers, invalid integer, duplicate racer/lanes remain HOLD.
+- `tests/test_v5_offline_entry_view_adapter.py` commit `61d5d2a4918b9ea10526af87dd817f92817beb48`: added four tests (17 tests total) for sparse legacy, malformed/missing canonical, conflicts. Existing historic 13/13 PASS applies **only to old code**, new 17 tests NOT RUN yet.
+- Pinned `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` updated commit `3e234cf0415f89d5d7d2ffbdae4ff9060d640309`; fetches three Python files from immutable test commit and runs pure synthetic 17-case unittest in /tmp. Never deploy into running collector/DB.
+
 ## Next ONE task
-- READ ONLY, 5s timeout, fetch **only six lanes'** `lane, racer_no, racer_number, racer_name` for `race_id='20261026_10_01'`; inspect formatting/meaning of competing identity fields. No personal credential/secret data. No table writes or model deployment.
-- 2026-10-27 03:05 JST stage11 scheduled sync stays untouched; check journal read-only after it runs. BUY=OFF; backup work deferred, Railway unused.
+- Run/inspect the new **17-case synthetic-only** test on ConoHa; optional separately run a six-row read-only query to differentiate legacy `racer_no IS NULL` vs `racer_no=''`. Do not claim success until user screenshot shows stdout `OK` and `V5_VIEW_ADAPTER_SPARSE_IDENTITY_TEST_PASS`.
+- 2026-10-27 03:05 JST one-time stage11 sync untouched; afterward read-only check journal. No production cutover, no BUY, no backups, no Railway.
