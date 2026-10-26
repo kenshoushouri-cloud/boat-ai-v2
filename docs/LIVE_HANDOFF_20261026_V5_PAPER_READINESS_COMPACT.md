@@ -55,6 +55,10 @@
 - `13 - num_nonnulls(avg_st,national_win_rate,national_place2_rate,national_place3_rate,local_win_rate,local_place2_rate,local_place3_rate,motor_no,motor_place2_rate,motor_place3_rate,boat_no,boat_place2_rate,boat_place3_rate)` = 0 for each lane (6 × 13 = 78 non-NULL cells).
 - Confirmed only **presence/non-NULL**, NOT actual value range, 13-field statistical validity, original race/deadline capture, or model score. DB transaction `BEGIN READ ONLY`, `statement_timeout=5s`, `ROLLBACK` succeeded; no writes or timer changes.
 
+## 2026-10-26 18:50 JST — read-only range query timed out
+- User's ConoHa screenshot: the six-entry 13-field non-NULL result from 18:47 stands. Next SQL for numeric ranges/equipment format against `boat_data.entries` returned `ERROR: canceling statement due to statement timeout` after `BEGIN READ ONLY; SET LOCAL statement_timeout='5s'`. No range/format results; cannot claim PASS or bad values. `psql -v ON_ERROR_STOP=1` returned to shell, aborted read-only transaction is closed. No DB writes.
+- Avoid repeating this heavy VIEW query or increasing timeout while active live collectors run. Identify an efficient bounded physical-stage approach only after planned stage11 synchronization, and verify source/time provenance before using historical odds/exhibition.
+- No change to 03:05 stage11 one-time timer, legacy collection, BUY=OFF, backups deferred, Railway unused.
+
 ## Next ONE task
-- READ ONLY max 5 seconds, six rows only: inspect numeric ranges/invalid motor & boat number formats and negative/out-of-range stats in the same `race_id`. No values adjusted and NO promotion to real prediction even if ranges pass.
-- 2026-10-27 03:05 JST one-time stage11 sync remains untouched; after it runs check its service journal read-only. BUY=OFF, backups deferred, Railway unused.
+- **Do not run further live VIEW inspection tonight**. After 2026-10-27 03:05 JST scheduled stage11 execution, inspect service journal read-only and verify synchronization verdict first. Then design narrowly bounded numeric validation against physical data if timing and indexing make it safe. No forced sync or cutover.
