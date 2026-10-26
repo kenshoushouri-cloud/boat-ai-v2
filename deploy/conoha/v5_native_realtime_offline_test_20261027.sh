@@ -3,7 +3,7 @@
 # OFFLINE: no database, HTTP collector, systemd/timer edits, BUY.
 set -euo pipefail
 umask 077
-REF="a1f7c469516d278dd5555b4ecb46bacce3bd322c"
+REF="09dbb8658f1d7ff6d1065cc0386737863b332219"
 BASE="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/${REF}"
 work="$(mktemp -d /tmp/v5-direct-realtime.XXXXXXXX)"
 trap 'rm -rf -- "$work"' EXIT
