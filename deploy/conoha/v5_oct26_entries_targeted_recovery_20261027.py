@@ -33,6 +33,7 @@ def run(*, apply: bool = False) -> dict:
     with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=5) as conn:
         with conn.transaction():
             with conn.cursor() as cur:
+                cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                 cur.execute("SET LOCAL statement_timeout='8000ms'")
                 cur.execute("SET LOCAL lock_timeout='750ms'")
                 cur.execute("SET LOCAL work_mem='4MB'")
@@ -71,12 +72,13 @@ def run(*, apply: bool = False) -> dict:
                 ), validity AS (
                   SELECT m.race_id, count(s.race_id) AS n,
                          count(DISTINCT s.lane) AS lanes,
-                         count(DISTINCT s.racer_number) AS racers
+                         count(DISTINCT s.racer_number) AS racers,
+                         min(s.lane) AS min_lane, max(s.lane) AS max_lane
                   FROM missing m LEFT JOIN public.v2_race_entries s
                     ON s.race_id=m.race_id
                   GROUP BY m.race_id
                 ) SELECT count(*) AS missing_races,
-                         count(*) FILTER (WHERE n=6 AND lanes=6 AND racers=6) AS valid,
+                         count(*) FILTER (WHERE n=6 AND lanes=6 AND racers=6 AND min_lane=1 AND max_lane=6) AS valid,
                          coalesce(sum(n),0) AS rows
                     FROM validity""")
                 missing, valid, source_rows = cur.fetchone()
