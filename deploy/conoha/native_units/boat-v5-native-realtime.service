@@ -19,7 +19,7 @@ CPUQuota=50%
 MemoryMax=750M
 TimeoutStartSec=720
 Nice=10
-ExecStart=/usr/bin/flock -n /var/lib/boat-v5-native/collector.lock /opt/boat-ai-v5-venv/bin/python -m v5.native_realtime_due_runner --apply --max-races 24
+ExecStart=/usr/bin/flock -n /var/lib/boat-v5-native/realtime.lock /opt/boat-ai-v5-venv/bin/python -m v5.native_realtime_due_runner --apply --max-races 24
 
 [Install]
 WantedBy=multi-user.target
