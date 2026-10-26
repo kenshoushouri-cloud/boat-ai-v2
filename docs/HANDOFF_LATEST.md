@@ -1,4 +1,4 @@
-# V5 current compact pointer — 2026-10-26 22:24 JST
+# V5 current compact pointer — 2026-10-26 23:36 JST
 Active handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
 Design: `docs/V5_DIRECT_PRIMARY_LEGACY_FALLBACK_PARALLEL_DESIGN_20261026.md`
 New chat: read this + active handoff + `docs/NEXT_CHAT_START_HERE.md`; avoid old handoff bulk.
@@ -14,6 +14,7 @@ User urgent target: V5 official PRIMARY writes ONLY to physical `boat_data_stage
 
 **New GitHub-only code:** `v5/native_stage_race_entries_pg.py` @ `dcd04325f594d56c4226ce7abbb12260f803a9b8`: independent official HTTP (shares tested legacy *parser functions only*), single-race stage physical `races`+ `entries` INSERT-only writer, default preview, gated apply; ConoHa original 23:14 run had 3 psycopg import-order errors; fixed version at `431655ae77ab592b0a4aecba781a1b3f56ad61e4` PASSED 14/14 offline tests at 23:31 JST per user screenshot. No DB/official site in unit tests. Stage delta write collision guard blocks live apply before 10/27 06:00, requires completed journal verification. No direct realtime odds/exhibition/weather V5 code yet. No installed V5 native service/timer.
 
-**Next ONE task:** ConoHa run single next-day live OFFICIAL racelist PREVIEW (read-only/no stage write) using `deploy/conoha/v5_native_core_single_official_preview_20261026.sh` @ commit `b6c9a15a772c8bfd95abcc1315416994de6b275e`; metadata source public only for selecting one 2026-10-27 race, then independent V5 official HTTPS fetch and parser validation. If no next-day row, HOLD, not failure. Then proceed to native realtime odds/exhibition/weather and stage write canary after nighttime recovery check; no unsafe switch.
+**23:36 JST:** user's single official-race preview stopped at `HOLD_NO_FUTURE_RACE_IN_LEGACY_METADATA_NO_HTTP_NO_WRITES`; next-day race IDs were absent from `public.v2_races`, thus ZERO official HTTP requests. No evidence official site lacks races. This was an incorrect old-data prerequisite for V5 independence.
+**Next ONE task:** user run GitHub-pinned `deploy/conoha/v5_direct_official_index_preview_20261026.sh` @ `14a811a92ea3e835e58b2e4e1372debf24bbe33b`. It performs nine offline parser tests and then one official day-index request plus at most 3 single-race official racelist attempts, using `v5/native_official_index_preview.py` @ `fee96ead0c46031eb699e5058c35e75067802c7e`, no legacy PostgreSQL queries, DB writes, timers or BUY. **Tests/live preview not yet run on ConoHa.** If official venue links or racelist not available, HOLD without fallback to legacy. Proceed with independent realtime writer after proof; pending Oct27 03:05 sync remains unchanged.
 
 Never prematurely cancel 03:05 stage sync, stop legacy, enable old `v5_data.raw_*` route flags, or BUY. CPU/RAM/WAL cost discipline; backups deferred, no deletion.
