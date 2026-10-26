@@ -37,3 +37,14 @@ Aの`boat-ai-v2-key-recovery`はrootで存在確認済みだが子ファイル�
 - 10/27 03:05 JST`boat-v5-stage11-delta-20261027-recovery.timer`が予約済み。元の停止済みタイマーは起動禁止、収集は従来のまま、BUY OFF、writer cutover NO-GO。
 
 **Next ONE task:** Termiusの進行中`v5_drive_offload_preflight_20261026.py`の終了出力（`PREFLIGHT`または`HOLD`）のみ確認し、remoteのアカウント同一性と空き容量を確定する。転送・削除はそれ以後の独立ゲート。
+
+## 2026-10-26 拡張：.dump以外の保全実体が存在（GitHub基準証拠）
+ConoHaの前回インベントリの9件／740088294 bytesは既知のバックアップ拡張子のみ。以下の既知TAR3件は**その9件に含まれていない**（内容は未再確認）。
+- `/var/backups/boat-collector-20261024-7Tn5rg/collector.tar`: 2283520 bytes, SHA256 `823a46ee4820e66373abaec7d6e099c3e1d99ae019488691e03d6fbd2a4d7d62`
+- `/var/backups/boat-v5-20261024-Dip2iAH2/v5-runtime.tar`: 25200640 bytes, SHA256 `4f1b2c6cd497e0300b34bad2e08aa570b5eeab09b472bf0be846f89d8c954968`
+- `/var/backups/boat-v5-systemd-20261024-Qwz5OloV/units.tar`: 20480 bytes, SHA256 `dc2b54596477a6440f51596d76a84285ea3cf203522355cc1eb4393b224936fb`
+合計27,504,640 bytes別途。9件と加えると**確認候補だけで767,592,934 bytes**（重複/他拡張子/必須設定の有無は未検証）。TARには重要な機密が含まれる可能性があるため、平文のDrive転送は禁止。
+
+GitHubに`deploy/conoha/v5_backup_integrity_baseline_readonly_20261026.py`（commit `1d4f80a6f76e6cd415624bd274875bf70980bf46`）を追加。基準SHA/サイズが既知の`railway.dump`, `boat_history_archive.dump`, 上記TAR3件の**5件についてローカル読み取り専用照合**する。合計502,508,646 bytes；旧研究用7件を勝手に不要・削除可と判断しない。照合が通っても、最新DB backup/Google Drive転送・リモートSHA・別VPS復元を意味しない。
+
+**今回の重複候補A/Bの暗号化済み同名ファイルについては、依然としてDrive取得バイトのSHAが不明のため削除なし。** 復旧鍵はA/Bいずれも保護する。
