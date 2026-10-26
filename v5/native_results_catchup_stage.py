@@ -141,7 +141,7 @@ def save_one(parsed):
                           for col in FIELDS if col!="race_id"))
                 cur.execute(query,[parsed.get(field) for field in FIELDS])
                 changed=cur.rowcount
-                cur.execute("""SELECT result_status,trifecta_ticket,trifecta_payout_yen
+                cur.execute("""SELECT result_status,trifecta_ticket,trifecta_payout_yen::integer
                                FROM boat_data_stage.results WHERE race_id=%s""",(rid,))
                 saved=cur.fetchone()
                 if not saved:
