@@ -23,7 +23,7 @@ provenance, NOT forced destructive copying/merging of every historic archive.
    candidate race/date/snapshot timestamp fields, original stage origin
    marker. Report `HOLD_*` rows, do not modify. This only certifies
    *structural* parity; not whether each month is populated.
-2. **Stage-only index/date preflight then period coverage, after planned night sync:** first read-only catalog SQL `deploy/conoha/v5_shared_stage_13_index_preflight_readonly_20261026.sql` to identify safe leading keys; no monthly scan yet. Only for `boat_data_stage.*` physical tables, no legacy source scans. Then:
+2. **Stage-only index/date preflight then period coverage, after planned night sync:** stage-only index/date catalog preflight `deploy/conoha/v5_shared_stage_13_index_preflight_readonly_20261026.sql` completed at 19:32 JST (13 rows, no monthly scan). Still verify exact query plans and month coverage. Only for `boat_data_stage.*` physical tables, no legacy source scans. Then:
    2025-07 through current month inclusive. On staged physical data only,
    batch one family/month (or index-range) with bounded statement time,
    read-only, low work_mem; do not do a full 13-way join. Count row totals,
@@ -73,3 +73,7 @@ provenance, NOT forced destructive copying/merging of every historic archive.
 - Old data consulted **only** for an identified gap that cannot be resolved within the staged common set, with explicit provenance and no broad cleanup. External official source verification preferred for suspected wrong records.
 - Report `AVAILABLE / VERIFIED / NULL_MISSING / SEMANTIC_MISMATCH / SOURCE_UNPROVEN / MONTH_NOT_CAPTURED` per shared family and period. V5 backtest uses VERIFIED independently eligible time-safe subset only; other rows HOLD.
 - A 13/13 catalog match confirms current columns and keys, **not** 2025-07 to current coverage, 13-value correctness, or original as-of captures.
+
+## Verified stage index preflight — 2026-10-26 19:32 JST
+- User screenshot: 13 rows, ROLLBACK, read-only completion marker. Visible metadata sizes: trifecta_odds 1826 MB, odds_snapshots 779 MB, racer_results 256 MB, weather_snapshots 191 MB, racer_course_stats_snapshots 89 MB, races 19 MB, results 32 MB, venues 48 KB. Upper three rows (entries/entry_snapshots/exhibition_snapshots) not fully visible, so need actual evidence before assigning their scan methods.
+- Daytime multi-GB full scans are forbidden. After stage11, prefer indexed bounded monthly scan starting with races/race_date, then independently verify each other family. Even if 13 family schemas/indexes match, copied old values cannot be assumed true.
