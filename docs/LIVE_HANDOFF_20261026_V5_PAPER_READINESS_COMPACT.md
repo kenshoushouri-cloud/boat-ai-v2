@@ -27,4 +27,12 @@
 - `information_schema.columns` on ConoHa `railway` for `boat_data.entries` and `boat_data.races` showed **metadata only**; terminal output used pager and paused at `:` before all races columns were visible. No row data and no DB write.
 - `entries` has `race_id text`, `lane integer`, **both** `racer_no text` and `racer_number integer` (identity cross-check needed), 13 stat names used by `v5.entry_quality_policy.STATS` including `motor_no text`, `boat_no text` (type-safe conversion mandatory), `recent_form jsonb`, `raw jsonb`, `created_at`/`updated_at` timestamptz. Those timestamps must **never** be treated as immutable original first observation or deadline-before proof.
 - Visible beginning of `races`: `race_id text`, `race_date date`, `venue_code text`, `venue_name text`, `race_no integer`, `race_title text`. Rest of columns **not yet seen**. No claim of a cutoff field until full read-only metadata result.
-- Next ONE task: at `:` press `q` to leave pager, then run just `races` metadata with `psql -P pager=off`, no table scan/write. Only after exact columns verified design a metadata-gated adapter; no real-model promotion, stage cutover or BUY.
+- 10/26 18:15追加のユーザースクリーンショット: `boat_data.races`は16列。`deadline_at timestamptz`, `race_date date`, `status text`, `data_quality_score integer`, `missing_count integer`, `deadline_time text`; `created_at` / `updated_at`は初観測証明に使えない。SQLはmetadataのみ・DB変更なし。
+
+## GitHub-only real VIEW shape adapter, 10/26 evening
+- `v5/offline_entry_view_adapter.py` (commit `e05a821a758122adfd2a985e04fcd7d9e2af8df8`): pure input mappings->strict six-entry diagnostic, catches mismatched `racer_no text` and `racer_number int`, parses motor/boat IDs only when digit text, requires timezone-aware JST deadline and same-day race_id, rejects missing/unknown numbers, **all paths hard-HOLD for real selection/forward/BUY**. No DB read/write or feature scoring, no first-seen evidence claim.
+- `tests/test_v5_offline_entry_view_adapter.py` (commit `ad8e8a1b3297ae0392929b69bef83fd50f4fe476`): 13 synthetic cases for malformed values, identity, cutoff/timezones, invalid/missing, and immutable HOLD flags. **NOT YET RUN**; do not claim PASS.
+- `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` (commit `547b83fd7e6dd7ad793f2754e72fe6a29f4bb6c5`): pinned 3-file temp-folder unittest test-runner. No DB, service, timers or BUY.
+
+## Next ONE task
+Run/inspect synthetic-only adapter unittest, then after 10/27 03:05 JST check `boat-v5-stage11-delta-20261027-recovery.service` logs read-only. No unscheduled sync, cutover, BUY or backup work.
