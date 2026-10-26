@@ -133,6 +133,17 @@ def blocked_by_stage_delta() -> None:
         raise RuntimeError("HOLD_STAGE_DELTA_JOURNAL_NOT_VERIFIED")
 
 
+def unmapped_required_columns(catalog: list[tuple], family: str) -> list[str]:
+    """No implicit DEFAULT is assumed for stage tables cloned via LIKE."""
+    if family not in ALLOWED_COLUMNS:
+        raise ValueError("HOLD_UNEXPECTED_STAGE_FAMILY")
+    return [
+        rec[0] for rec in catalog
+        if rec[1] and not rec[2] and not rec[3] and not rec[4]
+        and rec[0] not in ALLOWED_COLUMNS[family]
+    ]
+
+
 def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]:
     """Single transaction, insert-only, identity parity check, no old writes."""
     # Fail closed using stdlib-only checks BEFORE importing optional DB libraries.
@@ -182,11 +193,7 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                         raise RuntimeError("HOLD_STAGE_COLUMNS_MISSING_" + family)
                     # CREATE TABLE ... LIKE may copy NOT NULL yet omit DEFAULT.
                     # Check every other mandatory column BEFORE the first INSERT.
-                    mandatory_unmapped = [
-                        rec[0] for rec in catalog
-                        if rec[1] and not rec[2] and not rec[3] and not rec[4]
-                        and rec[0] not in ALLOWED_COLUMNS[family]
-                    ]
+                    mandatory_unmapped = unmapped_required_columns(catalog, family)
                     if mandatory_unmapped:
                         raise RuntimeError(
                             "HOLD_STAGE_UNMAPPED_NOT_NULL_" + family + "_" +
