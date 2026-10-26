@@ -28,5 +28,10 @@
 - ConoHa screenshot: 13 rows, ROLLBACK, V5_SHARED_13_INDEX_PREFLIGHT_COMPLETE_READ_ONLY_CATALOG_ONLY_NO_MONTHLY_SCAN_BUY_OFF. Lower visible rows: race_id-leading index candidate for trifecta_odds (1826 MB), odds_snapshots (779 MB), racer_results (256 MB), weather_snapshots (191 MB), race_condition_snapshots (60 MB), racer_condition_snapshots (72 MB); date-leading candidate for racer_course_stats_snapshots (89 MB), races (19 MB), results (32 MB); venues (48 KB) master. Top rows for entries/entry_snapshots/exhibition_snapshots cut off in screenshot; do not infer classifications.
 - Candidate indexes are not proved execution plans, period-by-period data coverage, value correctness, or original pre-deadline capture. Shared stage can contain inaccurate old copies.
 
+## 2026-10-26 evening GitHub-only preparation
+- Added `deploy/conoha/v5_shared_stage_races_202507_plan_only_20261026.sql` at commit `4df5cf0c2c9977f7715c425fcc163a4c37364b08`. READ ONLY 4s + lock 500ms; catalogs `boat_data_stage.races` index definitions and `EXPLAIN (ANALYZE FALSE)` one month, 2025-07. **No count query execution, no table scan, no writes**; no claim of monthly coverage. NOT YET EXECUTED.
+- This checks whether the planner intends index/heap scan. Even if it shows index usage, actual runtime and month data quality remain unverified. If Seq Scan appears, HOLD and redesign, do not force month scan.
+
 ## Next ONE task
-- Do not add another sync. After already scheduled 2026-10-27 03:05 JST stage11 run, inspect read-only service journal and sync verdict. Then first plan bounded indexed per-month coverage checks on physical shared stage (begin races/race_date, after verifying exact index and explain plan), expand to 13-family matrix carefully at night. No legacy cleanup, DB writes, cutover, BUY or backup work.
+- Run/inspect EXPLAIN-only stage `races` 2025-07 plan while live data capture remains untouched. This is a catalog/planner task and does NOT require waiting for scheduled delta.
+- Keep existing stage11 2026-10-27 03:05 JST timer unchanged; after it actually finishes, inspect service journal read-only before real row-level month checks; no duplicate sync, production cutover, BUY or backup changes.
