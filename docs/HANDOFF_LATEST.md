@@ -149,5 +149,11 @@ Drive B new V5-only production root has 2 new subfolders confirmed by connector 
 - 文字列手入力を避けて`/var/backups/boat-history-20261024-*/boat_history_archive.dump`に厳密に一致するファイルだけを1件選び、stat/元SHA256`73019758...`をread-only検証する`deploy/conoha/v5_history_backup_locate_hash_readonly_20261026.py` commit `f8fcb5d3a669e002035481811958b24c85ec8a29`をGitHub追加。**実機ではまだ未実行**。
 - 10/27 03:05 JST stage11 11表の復旧タイマー予約は維持する。legacy collector・VIEW・BUY OFF・cutover NO-GO、V4原本/バックアップの削除禁止。
 
+## 2026-10-26 11:27 JST backup integrity + Google Drive BLOCKER
+- 実機Termius：別スクリプトのsingle bounded discoveryが`HISTORY_CANDIDATES=1`,`HISTORY_DISCOVERED_DIR=boat-history-20261024-U6CRtL`,`HISTORY_LOCAL_SHA256=PASS_BASELINE_20261024`。前の固定名`U6CRLt`が誤り。既存メインDB・collector.tar・v5-runtime.tar・units.tarも前11:18個別SHA MATCH4件。この2回の個別検査を合わせて**5/5のローカル旧世代SHA照合PASS**、ただし同一VPS内で10/23-24保存したファイルだけ、現行10/26の最新復旧点ではない。
+- ConoHa`v5_gdrive:`は現行 preflightで`HOLD=RCLONE_DRIVE_ROOT_QUERY_FAILED_OR_RATE_LIMIT`。10/24には`403 RATE_LIMIT_EXCEEDED defaultPerMinutePerProject`が実測済み、今回のAPIエラーも同一か未診断。新規Driveへの転送なし、Drive Bアカウント同一性/容量/復元不能・未検証。旧Google Drive A/B復旧鍵や重複候補は削除禁止。
+- Drive APIを全く使用せず、rootローカルrclone.iniの存在・タイプ・root-folder-ID有無・custom-client-ID有無・OAuth tokenの存在フラグのみ秘密値非表示で確認する`deploy/conoha/v5_rclone_local_config_safediag_20261026.py`、commit `6fe2916cc8c772679b76a538303e8ef9e832fcac`をGitHub追加。**Termius未実行**。rclone既定API clientのrate-limit、異なるGoogle Drive accountとの同一性は依然未証明。
+- 10/27 03:05 JSTのstage11 delta復旧タイマーは変更禁止、旧writer/V4収集維持、BUY OFF、本番writer切替NO-GO。旧バックアップはクラウド復旧検証前に一件も消さない。
+
 ## Next ONE task
-**Next ONE task:** Termiusでpin固定の`v5_history_backup_locate_hash_readonly_20261026.py`を一度だけ`nice -n 15 python3 -`で実行し、`HISTORY_CANDIDATES=1`、`HISTORY_DISCOVERED_DIR`と`HISTORY_LOCAL_SHA256=PASS_BASELINE_20261024`を確認。PASSなら既存5件は各々ローカルSHA基準一致（最新バックアップではない）。HOLDならファイル再取得や削除はせず原因をread-only確認。Drive remote HOLDはまだ再試行しない。
+Termius rootでcommit固定の`v5_rclone_local_config_safediag_20261026.py`を一度だけ`python3 -`で実行、remoteごとの`TYPE/ROOT_ID_SET/CUSTOM_CLIENT_ID_SET/OAUTH_REFRESH_FIELD`と`VERDICT`だけ共有。Drive API/ネットワーク呼び出しなし。診断結果に基づきリモートidentity+quota APIの限定再検査方針を決めるが、いまのHOLDのままアップロード・旧dump削除・timer変更しない。
