@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 import os
 import uuid
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 from v5.native_stage_race_entries_pg import (
     JST, race_parts, official_fetch, official_payload,
@@ -101,9 +101,12 @@ def official_page(kind: str, rid: str):
         })
         result.raise_for_status()
         resolved = urlsplit(result.url)
+        expected_params = {"rno": [str(number)], "jcd": [venue],
+                           "hd": [day.replace("-", "")]}
         if (resolved.scheme != "https" or resolved.netloc != "www.boatrace.jp"
-                or resolved.path != f"/owpc/pc/race/{kind}"):
-            raise RuntimeError("HOLD_OFFICIAL_REDIRECT_MISMATCH")
+                or resolved.path != f"/owpc/pc/race/{kind}"
+                or resolved.fragment or parse_qs(resolved.query) != expected_params):
+            raise RuntimeError("HOLD_OFFICIAL_REDIRECT_OR_RACE_MISMATCH")
         if not result.content or len(result.content) > 2_000_000:
             raise RuntimeError("HOLD_MISSING_OR_OVERSIZE_OFFICIAL_PAGE")
         observed = datetime.now(JST)
