@@ -8,7 +8,7 @@ MODE="${1:---check}"
   { echo "HOLD_ONLY_CHECK_OR_INSTALL_ONLY"; exit 2; }
 [[ "$(id -u)" == "0" ]] || { echo "HOLD_ROOT_REQUIRED"; exit 2; }
 REPO="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2"
-PIN="0bf54530e8b42df68552093722e71bdbacfa52e3"
+PIN="b00b04e9f4f6087742956ad5c179d3e176e8c8e7"
 BASE="/opt/boat-ai-v5-native"
 RELEASE="$BASE/releases/$PIN"
 UNITS=(boat-v5-native-core-morning boat-v5-native-core-night
