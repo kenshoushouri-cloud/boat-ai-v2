@@ -1,0 +1,25 @@
+[Unit]
+Description=V5 independent OFFICIAL physical-stage realtime; BUY OFF
+After=postgresql.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+WorkingDirectory=/opt/boat-ai-v5
+Environment=PYTHONPATH=/opt/boat-ai-v5-native/current:/opt/boat-ai-v5
+Environment=DATABASE_URL=postgresql:///railway
+EnvironmentFile=-/etc/boat-ai-v5-native/canary.env
+StateDirectory=boat-v5-native
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+CPUQuota=50%
+MemoryMax=750M
+TimeoutStartSec=720
+Nice=10
+ExecStart=/usr/bin/flock -n /var/lib/boat-v5-native/collector.lock /opt/boat-ai-v5-venv/bin/python -m v5.native_realtime_due_runner --apply --max-races 24
+
+[Install]
+WantedBy=multi-user.target
