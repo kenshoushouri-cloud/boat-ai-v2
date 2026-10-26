@@ -65,6 +65,42 @@ class NativeCoreContractTests(unittest.TestCase):
         self.assertEqual(module.KEYS["entries"], ("race_id", "lane"))
         self.assertEqual(module.LOCK, 2026102503)
 
+    def test_created_at_is_explicit_for_both_stage_core_tables(self):
+        self.assertIn("created_at", module.ALLOWED_COLUMNS["races"])
+        self.assertIn("created_at", module.ALLOWED_COLUMNS["entries"])
+        fake_time = datetime(2026, 10, 27, 6, 21, tzinfo=JST)
+        from types import SimpleNamespace
+        import sys
+        parser = SimpleNamespace(
+            _looks_no_race=lambda html: False,
+            parse_deadline_time=lambda html, number: "15:22",
+            make_deadline_at=lambda day, deadline: "2026-10-27T15:22:00+09:00",
+            parse_entries=lambda html, rid: entries(rid),
+            parse_race_name=lambda html: "1R",
+            VENUE_NAMES={"01": "桐生"},
+        )
+        with patch.dict(sys.modules, {"repair_month_all_pg": parser}):
+            race, six = module.official_payload(
+                "20261027_01_01", "<html/>", fake_time)
+        self.assertEqual(race["created_at"], fake_time.isoformat())
+        self.assertEqual(len(six), 6)
+        self.assertTrue(all(row["created_at"] == fake_time.isoformat()
+                            for row in six))
+
+    def test_unmapped_notnull_requires_explicit_hold(self):
+        cat = [
+            ("race_id", True, False, "", ""),
+            ("created_at", True, False, "", ""),
+            ("unexpected_required", True, False, "", ""),
+            ("server_default", True, True, "", ""),
+            ("generated", True, False, "", "s"),
+        ]
+        self.assertEqual(
+            module.unmapped_required_columns(cat, "races"),
+            ["unexpected_required"])
+        self.assertEqual(
+            module.unmapped_required_columns(cat[:2], "races"), [])
+
     def test_apply_requires_local_database_before_any_connection(self):
         with patch.dict(os.environ, {"DATABASE_URL": "postgresql://badhost/railway"}):
             with self.assertRaisesRegex(RuntimeError, "CONOHA_LOCAL_PG_ONLY"):
