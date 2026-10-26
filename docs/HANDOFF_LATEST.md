@@ -142,5 +142,12 @@ Drive B new V5-only production root has 2 new subfolders confirmed by connector 
 - 過去の証拠SHAが残る`railway.dump` / `boat_history_archive.dump` / 上記TAR3件の計5資産（502508646 bytes）をnice低優先度・readonlyでhash/size検証する`deploy/conoha/v5_backup_integrity_baseline_readonly_20261026.py`（commit `1d4f80a6f76e6cd415624bd274875bf70980bf46`）を新規作成。**実機未実行**。これがPASSしても旧世代保護のみで、当日最新バックアップ/Drive転送/独立復元の証明ではない。
 - Drive A/Bの同名同サイズdump・復旧鍵の重複**候補**は削除禁止。Drive BのV5正式保存先はpending/verifiedの空フォルダー2個作成済み。遠隔preflightの最後の行`PREFLIGHT/HOLD`未受領につき、ConoHa`v5_gdrive:` ID照合/空き容量不明。新規転送0件、既存削除0件。2026-10-27 03:05 JST stage11 recovery timerはそのまま保持。
 
+## 2026-10-26 11:18 JST remote HOLD + history path ambiguity
+- 2026-10-26 11:18 JST Termius実機:
+- ConoHa V5 Drive preflight: backup拡張子9件/740088294 bytesの一覧は完了したが、最後が`HOLD=RCLONE_DRIVE_ROOT_QUERY_FAILED_OR_RATE_LIMIT`。rclone遠隔rootフォルダID/Drive B同一アカウント/空き容量未確認。転送不可。APIの連続再試行・Google Driveの旧資産削除禁止。
+- 5件のローカルSHA256照合：`railway_20261023 MATCH`、`collector_tar MATCH`、`v5_runtime_tar MATCH`、`systemd_tar MATCH`の4/5・420642855 bytes；`history_20261024=HOLD_MISSING_OR_INACCESSIBLE`。10:48の直接findで同名履歴dump81865791バイト存在、11:01 remote preflight内でも列挙された。**ディレクトリsuffix綴り・大文字小文字の誤記が疑われるが、原因未確定**。削除・再dump不要。
+- 文字列手入力を避けて`/var/backups/boat-history-20261024-*/boat_history_archive.dump`に厳密に一致するファイルだけを1件選び、stat/元SHA256`73019758...`をread-only検証する`deploy/conoha/v5_history_backup_locate_hash_readonly_20261026.py` commit `f8fcb5d3a669e002035481811958b24c85ec8a29`をGitHub追加。**実機ではまだ未実行**。
+- 10/27 03:05 JST stage11 11表の復旧タイマー予約は維持する。legacy collector・VIEW・BUY OFF・cutover NO-GO、V4原本/バックアップの削除禁止。
+
 ## Next ONE task
-ConoHa Termiusでcommit固定`v5_backup_integrity_baseline_readonly_20261026.py`を`nice -n 15 python3 -`で一回だけ実行し、5件の`MATCH`と`V5_LOCAL_CHECKSUM_GATE`を確認。異常ならHOLD、削除なし。その後、すでに実行済みのDrive preflightの最終`PREFLIGHT`または`HOLD`結果を確認する（remote APIを不用意に再実行しない）。remote ID/空き・age recipient/復号経路がPASSするまでアップロードもしない。
+**Next ONE task:** Termiusでpin固定の`v5_history_backup_locate_hash_readonly_20261026.py`を一度だけ`nice -n 15 python3 -`で実行し、`HISTORY_CANDIDATES=1`、`HISTORY_DISCOVERED_DIR`と`HISTORY_LOCAL_SHA256=PASS_BASELINE_20261024`を確認。PASSなら既存5件は各々ローカルSHA基準一致（最新バックアップではない）。HOLDならファイル再取得や削除はせず原因をread-only確認。Drive remote HOLDはまだ再試行しない。
