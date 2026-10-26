@@ -5,6 +5,7 @@ Delegates each race to native official HTTP+validation+atomic 6-family writer.
 Default plan is READ ONLY (no official HTTP, no writes); --apply requires
 explicit gates in v5.native_official_realtime_stage_pg. A cap is a capacity
 alarm (nonzero status), never claimed as all-race completeness.
+Requires same-day native core races in the physical stage; otherwise HOLD.
 """
 from __future__ import annotations
 import argparse
@@ -28,6 +29,14 @@ def candidates(*,max_races=16):
                 cur.execute("SET TRANSACTION READ ONLY")
                 cur.execute("SET LOCAL statement_timeout='5000ms'")
                 cur.execute("SET LOCAL lock_timeout='500ms'")
+                # A zero-row queue is not a healthy collector when no
+                # V5-native core/day data exists. Avoid silent false success.
+                cur.execute("""SELECT count(*) FROM boat_data_stage.races
+                               WHERE race_date =
+                                 (now() AT TIME ZONE 'Asia/Tokyo')::date""")
+                today_core_count=cur.fetchone()[0]
+                if today_core_count==0:
+                    raise RuntimeError("HOLD_NATIVE_TODAY_CORE_RACES_MISSING")
                 cur.execute("""
                     SELECT r.race_id
                     FROM boat_data_stage.races r
