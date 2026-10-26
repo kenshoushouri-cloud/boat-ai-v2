@@ -16,12 +16,13 @@
 ## Prediction/data-quality policy & new GitHub-only work
 - 13項目全必須の一律除外は不採用。正規の公式未集計は高評価選手の強さを減点せず、根拠付きunknownとする。NULLだけを根拠に公式未集計とみなさない。parser失敗/原因不明NULL/6艇ID不一致はHOLD。ゼロ埋め、後日情報による過去予測の再構成を禁止。
 - Existing pure `v5/entry_quality_policy.py`, `v5/offline_mainline_inference.py`; both not deployed for real live prediction.
-- 10/26 GitHubに **`v5/offline_paper_quality_bridge.py`** (commit `327217e29cd4f77da53ff3d71a80de24464e8812`) と **`tests/test_v5_offline_paper_quality_bridge.py`** (commit `191c099351fbe4f19e87db808b30217373bc7b7d`) を追加。synthetic input only / fail-closed: completeなら合成1着確率演算のみ、official-unreportedはmissing-awareモデル未検証HOLD、unknown/parse failure/ID不整合もHOLD、全経路BUY=OFF。**GitHub commit確認済、unittestは未実行、実モデルの収益性証明なし**。
+- 10/26 GitHubに **`v5/offline_paper_quality_bridge.py`** (commit `327217e29cd4f77da53ff3d71a80de24464e8812`) と **`tests/test_v5_offline_paper_quality_bridge.py`** (commit `191c099351fbe4f19e87db808b30217373bc7b7d`) を追加。synthetic input only / fail-closed: completeなら合成1着確率演算のみ、official-unreportedはmissing-awareモデル未検証HOLD、unknown/parse failure/ID不整合もHOLD、全経路BUY=OFF。**GitHub commit確認済、ConoHaでsynthetic-only 18件ALL PASS（10/26 18:06スクリーンショット）、実モデルの収益性証明なし**。
 - Backtestは2025-07以降の可能な全期間を採用し、締切前snapshot/asofの真正性・選手/モーター/気象の時期・データリークを検証してから評価。特徴量は検証前に恣意的に選別しない。
 
 ## 2026-10-26 synthetic-only test runner
 - GitHub `deploy/conoha/v5_synthetic_quality_selftest_readonly_20261026.sh` (commit `37f54c4f67f64b8632281eb1c975a0cbde126ec5`) added. Fetches exactly six known Python files pinned to commit `690ab7beab6eb02e5d9b8dcddda22fb92f33fb18` into a temporary directory and runs two stdlib unittest files. It does not access PostgreSQL, systemd, collectors, or BUY; temporary files removed after completion.
-- **Execution result not yet received; never report tests PASS without the real stdout and exit status.** No live model deployment.
+- **User's ConoHa stdout screenshot 2026-10-26 18:06 JST confirmed**: `Ran 18 tests in 0.008s`, `OK`, `V5_SYNTHETIC_UNIT_TEST_PASS DB=NO DB_WRITES=NO COLLECTOR_UNTOUCHED=YES BUY=OFF`. This proves isolated synthetic test gates only; not actual model, real-data quality or ROI. No live deployment.
 
 ## Next ONE task
-User may run the pinned synthetic-only selftest in ConoHa Termius once; inspect its pass/fail output. After 2026-10-27 03:05 JST, check one-time stage11 delta service journal read-only; don't rerun/schedule the timer. If tests fail, patch only isolated GitHub test/bridge code, without touching the live collector. Google Drive/backups remain deferred by user choice.
+- Read-only inspect `boat_data.entries` and `boat_data.races` columns (information_schema only) in ConoHa local `railway` database. Use metadata to design an explicit, fail-closed real-data adapter; no DB updates, no SQL SELECT of bulk rows, no HTTP collectors, no overwrite of running system.
+- 2026-10-27 03:05 JST scheduled one-time stage11 sync remains untouched. After execution, inspect the service journal read-only before deciding any stage view use. No cutover/BUY. Backups deferred by user.
