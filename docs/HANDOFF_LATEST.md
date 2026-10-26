@@ -12,4 +12,4 @@
 - GitHub synthetic-only paper quality bridgeと回帰テストは登録済み（詳細はcompact）。**synthetic-only品質単体テスト18件PASS。実データ推論/ROI/バックテスト成功の証明ではない**。
 
 ## Next ONE task
-10/26のVIEWスキーマ確認が終わり、純粋な実データ形状アダプタと13件のテストをGitHubへ追加した。次にConoHaで**一時フォルダー内の合成テストのみ**実行し結果を確認。10/27 03:05以降は予定済みstage11差分同期の結果をread-onlyで確認。現行writer/collector/タイマーは操作しない。
+10/26 18:35 JST、実DBの `boat_data.entries` で旧 `racer_no` と `racer_name` が6艇とも空欄表示、新 `racer_number` は6艇全件で数値が確認された。GitHub-only診断アダプタを欠落旧別名の許容（実予測/BUYは引き続きHOLD）へ修正済み、17件の合成テスト **未実行**。次は新17件を安全な一時フォルダーで実行確認。10/27 03:05 夜間同期timerは触らず結果のみ翌日確認。
