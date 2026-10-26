@@ -47,7 +47,20 @@ class NativeRealtimeStageTests(TestCase):
     def sample(self, *,exhibition=6,weather=True,odds=None,at=CAP):
         import official_odds3t_parser as p
         parser = fake_parser(exhibition,weather)
-        with patch.dict(sys.modules, {"v21_realtime_collector_pg":parser}), \
+        hist = SimpleNamespace(
+            EXHIBITION_STATUS_COMPLETE="complete",
+            EXHIBITION_STATUS_OFFICIAL_PARTIAL="official_partial",
+            EXHIBITION_STATUS_OFFICIAL_ABSENT="official_absent",
+            inspect_exhibition_time_page=lambda html:{
+                "status":"complete" if exhibition==6 else "official_partial",
+                "source":"primary_structured_rows",
+                "lanes":list(range(1,exhibition+1)),
+                "rows":parser.parse_exhibition(html),
+            },
+        )
+        with patch.dict(sys.modules, {
+                "v21_realtime_collector_pg":parser,
+                "historical_beforeinfo_parser_v3":hist}), \
              patch.object(p,"parse_official_odds3t",
                           return_value=ODDS if odds is None else odds):
             return m.prepare_rows(RACE,ENTRIES,"HTML","ODDS",at,at,
@@ -69,8 +82,43 @@ class NativeRealtimeStageTests(TestCase):
             self.sample(odds=dict(list(ODDS.items())[:119]))
 
     def test_exhibition_six_required(self):
-        with self.assertRaisesRegex(RuntimeError,"EXHIBITION_NOT_SIX"):
+        with self.assertRaisesRegex(RuntimeError,"OFFICIAL_EXHIBITION_PARTIAL"):
             self.sample(exhibition=5)
+
+    def test_verified_exhibition_lanes_preserve_boat_id_when_courses_shift(self):
+        rows=self.sample()
+        ex=rows["exhibition_snapshots"]
+        self.assertEqual({r["lane"] for r in ex},set(range(1,7)))
+        self.assertEqual({r["lane"]:r["exhibition_time"] for r in ex}[3],6.63)
+
+    def test_positional_exhibition_times_are_not_permitted(self):
+        historical = SimpleNamespace(
+            EXHIBITION_STATUS_COMPLETE="complete",
+            EXHIBITION_STATUS_OFFICIAL_PARTIAL="official_partial",
+            EXHIBITION_STATUS_OFFICIAL_ABSENT="official_absent",
+            inspect_exhibition_time_page=lambda html:{
+                "status":"complete","source":"fallback_text_times",
+                "rows":[{"lane":i,"exhibition_time":6.60}
+                        for i in range(1,7)],
+                "lanes":list(range(1,7)),
+            })
+        with patch.dict(sys.modules,{"historical_beforeinfo_parser_v3":historical}):
+            with self.assertRaisesRegex(
+                    RuntimeError,"EXHIBITION_LANES_NOT_STRUCTURALLY_VERIFIED"):
+                m.official_structured_exhibition("HTML")
+
+    def test_official_not_published_blocks_without_filling(self):
+        historical = SimpleNamespace(
+            EXHIBITION_STATUS_COMPLETE="complete",
+            EXHIBITION_STATUS_OFFICIAL_PARTIAL="official_partial",
+            EXHIBITION_STATUS_OFFICIAL_ABSENT="official_absent",
+            inspect_exhibition_time_page=lambda html:{
+                "status":"official_absent","lanes":list(range(1,7)),
+                "rows":[],"source":"primary_structured_rows_no_times",
+            })
+        with patch.dict(sys.modules,{"historical_beforeinfo_parser_v3":historical}):
+            with self.assertRaisesRegex(RuntimeError,"NOT_PUBLISHED_YET"):
+                m.official_structured_exhibition("HTML")
 
     def test_weather_completeness_required(self):
         with self.assertRaisesRegex(RuntimeError,"WEATHER_INCOMPLETE"):
