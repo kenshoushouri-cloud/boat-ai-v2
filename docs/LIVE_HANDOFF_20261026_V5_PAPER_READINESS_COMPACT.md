@@ -1,4 +1,4 @@
-# V5 concise operational status — 2026-10-26 20:41 JST
+# V5 concise operational status — 2026-10-26 20:44 JST
 ## Goal and fixed boundaries
 - V5 main system: verify/correct **13 shared physical `boat_data_stage.*` families** 2025-07 onward, unify schema/semantics, prove predeadline timestamps, then real walk-forward ROI backtest; continue research capture. Old `public.v2_*` copies are lineage only, not presumed accurate, and `boat_data.*` are legacy-backed VIEWs, not cleansed V5 tables. No old data mass scans or cleanup.
 - ConoHa local PostgreSQL database is named `railway` (NOT active Railway cloud). Keep costs/CPU/RAM/WAL low. No Railway service/Agent, no production cutover, BUY OFF.
@@ -24,7 +24,12 @@
   - 2026-06: 4,692 / 28,152
   - 2026-07: 4,932 / 29,592
   - 2026-08: 4,932 / 29,592
-- 2026-06 to 2026-08 tested at 20:41 JST: three rows complete, each races_missing_entries=0, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0; read-only ROLLBACK. **14/16 months stage races↔entries internally checked**; remaining two months and other 11 families NOT certified. Passing months have NO independent official completeness/correctness or historical predeadline capture verification.
+- 2026-06 to 2026-08 tested at 20:41 JST: three rows complete, each races_missing_entries=0, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0; read-only ROLLBACK. **15/16 months stage races↔entries internally checked PASS** (September 2026 4,656 races / 27,936 entries, all four counters zero); **October is HOLD** (4,032 stage races / 3,888 entry race IDs / 23,328 entry rows, 144 races missing all entries; other three counters zero), and other 11 families NOT certified. Passing months have NO independent official completeness/correctness or historical predeadline capture verification.
 
 ## Next ONE task
-- Run same **existing tested stage-only** script with `2026-09 2` (September–October 2026, October partial) sequentially; stop on any timeout, avoid increased load or duplicate runs. Continue small batches only after verification. Post-night-delta, check service status and refreshed shared data before final claim. Backtest only after all 13 family coverage/normalization and as-of criteria satisfied.
+- Run same **existing tested stage-only** script with the October missing-entry day/venue diagnostic, then recheck after nightly guarded delta sequentially; stop on any timeout, avoid increased load or duplicate runs. Continue small batches only after verification. Post-night-delta, check service status and refreshed shared data before final claim. Backtest only after all 13 family coverage/normalization and as-of criteria satisfied.
+
+## 2026-10-26 20:44 JST — October discrepancy, do NOT promote to PASS
+- User terminal `2026-09 2` completed both read-only queries, ROLLBACK. September: `race_rows=4656, entry_races=4656, entry_rows=27936, races_missing_entries=0, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0` => PASS internal. October: `race_rows=4032, entry_races=3888, entry_rows=23328, races_missing_entries=144, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0` => `HOLD_STAGE_RACE_ENTRY_MISMATCH`. Batch completion footer is not a PASS verdict. Stage copy lag, uncollected entries, future race dates, or other causes are possible and not yet proven.
+- **Next ONE task:** read-only index-bounded diagnostic `deploy/conoha/v5_shared_stage_oct2026_missing_entries_by_day_venue_readonly_20261026.sql` pinned `b72f215c719e4a58d189802d1b557d05b81abec3`, NOT RUN. Groups missing entry race IDs by `race_date,venue_code` and race numbers; 5s SQL + 500ms lock timeout; no source scans, writes or timer edits. Stop on timeout.
+- Existing stage11 one-time 2026-10-27 03:05 JST sync is unchanged. Check its journal/result and repeat hold check afterwards; only after proof, decide whether targeted repair in V5 shared stage is needed. Do not blind-copy unverified legacy values. 2026-10 partial, BUY OFF/cutover off.
