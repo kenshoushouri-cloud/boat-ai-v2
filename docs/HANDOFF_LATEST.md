@@ -108,5 +108,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - **この時点ではGitHubコード作成のみ**、ConoHaへinstall/schedule未実行。予約はユーザーのTermius実行後に初めて有効になる。`BUY OFF`・writer切替NO-GO・独立外部復元は未達。stageだけを夜間に追込んでも翌日のデータは再びlagするため、writer移行設計を別途要する。
 
 
+## 2026-10-26 10:30 JST stage11タイマー予約の偽HOLDと安全復旧
+- ユーザーTermiusスクショ：既存`v5_stage11_delta_schedule_once_20261026.sh`は11表の`DELTA_PREVIEW_METADATA_PASS`、`PREVIEW_COMPLETE families=11 NO_WRITES`通過後、`HOLD: Unexpected next start, timer stopped: Tue 2026-10-27 03:05:00 JST`。**データ同期未実施、予約タイマーはスクリプト自らstop済み**。
+- 原因をGitHubソースで確認：予定は27日03:05だが末尾の検証条件が`"2026-10-26 03:05:00"`を要求するコード誤り。予約時刻自体は正しい。`deploy/conoha/v5_stage11_delta_schedule_once_20261026.sh`を修正（commit `b619fc7727e223b32ba2fe41a615a825433b16d5`）。**この修正版を再実行しない**（前回のstage runnerファイルが既設で、systemdタイマーが停止済み）。
+- 既設一時timerが残っていれば、予定日時とstage-onlyコマンドを検証して`systemctl start`だけ実施し、GC済みなら別名の安全な一回限りtimerを設定する復旧専用`deploy/conoha/v5_stage11_delta_timer_recover_guarded_20261026.sh`（commit `2f53818294e85b5a0674a248f04dfaaf6f3585cb`）追加。root/10月26日日中限定、runner既存検査、旧4タイマー active検査、stageサービス非稼働、unit仕様検証と実行予定JST検証、不一致ならSTOP/HOLD。既存collector, DB, VIEW, BUYは触れない。
+- **復旧コードはGitHubに作成したのみ、Termius未実行**。実機PASSまで27日03:05の同期予約は未確定。夜間sync後も完全cutoverではない。外部バックアップ/独立復元未達。旧V4原本を削除しない。
+
 ## Next ONE task
-ユーザーTermiusでコミット固定の`v5_stage11_delta_schedule_once_20261026.sh`を1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`と`NEXT=Tue 2026-10-27 03:05:00 JST`を確認。**今の段階では夜間実行はまだ行われない**。既存収集は一切停止しない。次に独立バックアップ/復元の実行環境を整備し、03:05以後11系統の`DELTA_VERIFIED / DELTA_TABLE_COMMITTED / STAGE12_DELTA_SNAPSHOT_PASS families=11`を確認。失敗ならHOLD・手動再実行禁止。
+ユーザーTermiusで安全な復旧専用`v5_stage11_delta_timer_recover_guarded_20261026.sh`をコミット固定で1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Tue 2026-10-27 03:05:00 JST`と`UNIT=`を確認。HOLDなら出力を見て無理な強制起動をしない。BUY OFF / old collectors untouched。
