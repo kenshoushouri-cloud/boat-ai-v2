@@ -1,7 +1,7 @@
-# V5 current pointer — 2026-10-26 20:08 JST
-Current compact handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
-Next-chat guide: `docs/NEXT_CHAT_START_HERE.md`
-Storage-first scope and acceptance plan: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`
-Older handoffs are history. Recheck live SHA/DB/timer status as needed, do not copy stale values.
-
-**Next ONE task:** run **read-only July 2025 per-race six-lane QA on V5 shared stage** using `deploy/conoha/v5_shared_stage_entries_202507_lane_quality_readonly_20261026.sql` (commit `c1dbd4834ecd7d77d14336fc2faef39b12f458c1`; NOT RUN yet). Stop on 5s timeout; preserve collectors. 2026-10-27 03:05 JST scheduled stage11 delta untouched; no duplicate.
+# V5 current compact pointer — 2026-10-26 20:12 JST
+- Active handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
+- Historical common-data normalization plan: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`
+- July 2025 stage.races 5,196; stage.entries 31,176 and per-race 6-lane/unique racer structural checks all PASS (20:12 screenshot). Not source verified. 16/16 monthly stage.races internal day/race-number checks pass.
+- **Next ONE task:** execute read-only July 2025 stage.races vs stage.entries race-ID set equality SQL at `deploy/conoha/v5_shared_stage_races_entries_202507_race_id_set_readonly_20261026.sql` commit `a093c0c8fc76adf9900151bfc58fe038948208b6`, NOT RUN yet. 5-second cap, stop on timeout.
+- Stage11 guarded night sync timer due 2026-10-27 03:05 JST untouched. 13-family data completeness, original predeadline timing, ROI backtest, V5 live cutover all pending. BUY OFF. Old sources may be inaccurate and must not be blindly trusted/rewritten. No backup expansion until stable. ConoHa local PostgreSQL database named `railway`, NOT Railway cloud platform. Keep collector active, low CPU/RAM/DB load.
+- Read only latest compact and next-chat-start guide; do not bulk load old handoffs.
