@@ -1,8 +1,8 @@
 [Unit]
-Description=Schedule V5 native realtime (07:02–23:57, every five minutes) AFTER guarded canary proof
+Description=Schedule V5 native realtime (07:02..23:57 JST); disabled until proven
 
 [Timer]
-OnCalendar=*-*-* 07..23:2/5:00 Asia/Tokyo
+OnCalendar=*-*-* 07..23:02/5:00 Asia/Tokyo
 Unit=boat-v5-native-realtime.service
 Persistent=false
 AccuracySec=30s
