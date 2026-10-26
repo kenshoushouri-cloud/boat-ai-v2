@@ -1,8 +1,8 @@
-# V5 latest active handoff pointer — 2026-10-26 20:16 JST
-- Read only `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`, plus `docs/NEXT_CHAT_START_HERE.md` when starting new chat. Avoid old handoff/historical mass reads.
-- Objective: V5 common physical `boat_data_stage.*` 13-family schema/2025-07 onward monthly consistency first, then original as-of evidence, then real V5 walk-forward/ROI backtest.
-- July 2025: staged races 5196, entries 31176; 5196 races with exactly six unique lanes/racer numbers, no structural holds, 0 race-ID set missing/orphans (20:16 read-only screenshot). Only INTERNAL consistency; stage source truth/as-of unverified. All 16 stage-races monthly 12-race venue-day audits passed internally; remaining 12-family monthly validations pending.
-- **Next ONE task:** run reusable bounded stage `races`+`entries` monthly check (`2025-09 3`) at `deploy/conoha/v5_shared_stage_races_entries_monthly_batch_readonly_20261026.sh` commit `e7195fb9f933cb7b9a9840e03f35c4b7e7a51e80` (August passed 20:22 JST; Sep-Nov NOT RUN). Each month 5s timeout, stage-only, no DML. Stop on timeout.
-- 2026-10-27 03:05 JST pre-existing one-time 11-family delta timer unchanged; verify completion journal afterward; no parallel sync. Protect 5-min live odds/exhibition/weather collection, no BUY, cutover or backups while unstable. ConoHa local PG DB named `railway`, Railway cloud currently empty per user.
+# V5 latest — 2026-10-26 20:27 JST
+Current compact: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
+Reference scope: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`
 
-- August 2025 run completed read-only: 5088 races, 5088 entries races, 30528 entry rows, all missing/orphan/invalid lane/identity counts 0. Internal only/source unverified.
+Priority: 13 V5 shared physical `boat_data_stage.*` families 2025-07 onward; consistent schema, monthly internal QA, then independent source/as-of proof, then real V5 backtest. Old sources are NOT presumed correct.
+2025-07 to 2025-11: stage `races` ↔ `entries` month-by-month ID-set, 6 lanes, 6 racer identities passed. 2025-09/10/11 20:27 JST terminal result: 4272/4152/3948 races, 25632/24912/23688 entries, four hold counters all zero; `ROLLBACK`. Stage internal integrity only, source not verified. Stage `races` race/day checks pass for 16 months, other families remain incomplete.
+**Next ONE task:** run 3 months `2025-12 3` (Dec 2025–Feb 2026) using `deploy/conoha/v5_shared_stage_races_entries_monthly_batch_readonly_20261026.sh` at tested commit `e7195fb9f933cb7b9a9840e03f35c4b7e7a51e80`. One stage-only READ ONLY DB query per month, 5s timeout; stop on errors, no retry bursts.
+Existing ConoHa stage11 sync timer 2026-10-27 03:05 JST preserved, no duplicate. Protect data collectors. BUY=OFF, no cutover or destructive changes. Backup expansion deferred. ConoHa local PG database is named `railway`, not active Railway cloud. For new chat read only compact/current and `docs/NEXT_CHAT_START_HERE.md`; no historical bulk reads.
