@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 REMOTE = "v5_gdrive:"
-BACKUP_SUFFIXES = (".dump", ".dump.age", ".backup", ".sql.gz", ".tar.gz", ".tgz")
+BACKUP_SUFFIXES = (".dump", ".dump.age", ".backup", ".pgdump", ".sql.gz", ".tar.gz", ".tgz", ".zip", ".tar.zst", ".dump.zst")
 SCAN_ROOTS = (Path("/root"), Path("/root/boat-v5-backups"))
 BACKUP_DIR = Path("/var/backups")
 MAX_ENTRIES = 1200
