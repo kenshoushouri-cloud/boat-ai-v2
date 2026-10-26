@@ -1,0 +1,23 @@
+# V5 compact handoff — 2026-10-26 17:45 JST
+
+## Priority / user's latest decisions
+- V5 **早期安定稼働＋実データ予測/前向きバックテスト** を最優先。ConoHaとGitHubを使う。Railwayには現行データなし（ユーザー確認）・Railway接続は不要。
+- **Google Drive再認証・新規バックアップ構築・Drive重複整理・ConoHaの旧dump削除は、V5運用が落ち着くまで保留**。既存バックアップを削除しない。ConoHa rootは10/26 16:58時点99G中32G使用/63G空き。
+- BUY=OFF、本番writer cutover=NO_GO、V4旧原本と13 live VIEW/collectorの継続、取り返せない展示/odds/気象の事前captureを保護。OS再起動・収集中のコード置換・重複collector実行禁止。Railway Agent/AI禁止、低コスト優先。
+
+## Verified current physical/data state
+- ConoHa DB名 `railway` は**DBローカル名称**。Railwayサービス稼働の証拠ではない。
+- 旧原本`public.v2_*`、その参照先の`boat_data.*` 13 VIEW、V5 stage`boat_data_stage.*` 13物理表。正式live writer切替0/13、常時CDCなし。
+- 10/26 07:45:54 morning finished 288/288（success144, no_race144, failed0）。no_raceは不開催144の証明ではない。丸亀(15)の`ENTRY_STATS_PARSE_FAILED`による艇別13 stats一括NULL疑いは未解決。
+- 10/26 10:12 stage `races` の限定差分同期成功、全期間74208=74208行。10:18 当日144/144 race IDs一致。**残る11種類は未同期**。
+- ユーザー実機10/26 17:17: `boat-v5-stage11-delta-20261027-recovery.timer` は`ActiveState=active`、`NextElapseUSecRealtime=Tue 2026-10-27 03:05:00 JST`。当該timerは予定どおり予約済み、**再予約・変更・サーバー再起動しない**。17:40に翌日03:00からのjournalが`-- No entries --`なのは実行前なので正常。結果はまだ未確認。
+- ConoHa 5分shadow監視は少なくとも10/26朝起動実績あり、LIVE VIEW read-only/sampled input only。**V5実DB特徴量adapter・実測asof検証・3連単本番予測/ROI・自動購入は未達**。
+
+## Prediction/data-quality policy & new GitHub-only work
+- 13項目全必須の一律除外は不採用。正規の公式未集計は高評価選手の強さを減点せず、根拠付きunknownとする。NULLだけを根拠に公式未集計とみなさない。parser失敗/原因不明NULL/6艇ID不一致はHOLD。ゼロ埋め、後日情報による過去予測の再構成を禁止。
+- Existing pure `v5/entry_quality_policy.py`, `v5/offline_mainline_inference.py`; both not deployed for real live prediction.
+- 10/26 GitHubに **`v5/offline_paper_quality_bridge.py`** (commit `327217e29cd4f77da53ff3d71a80de24464e8812`) と **`tests/test_v5_offline_paper_quality_bridge.py`** (commit `191c099351fbe4f19e87db808b30217373bc7b7d`) を追加。synthetic input only / fail-closed: completeなら合成1着確率演算のみ、official-unreportedはmissing-awareモデル未検証HOLD、unknown/parse failure/ID不整合もHOLD、全経路BUY=OFF。**GitHub commit確認済、unittestは未実行、実モデルの収益性証明なし**。
+- Backtestは2025-07以降の可能な全期間を採用し、締切前snapshot/asofの真正性・選手/モーター/気象の時期・データリークを検証してから評価。特徴量は検証前に恣意的に選別しない。
+
+## Next ONE task
+10/27 03:05以降に、ユーザーがConoHaで実行したread-onlyのjournal/systemctl出力で**stage11差分同期の結果**を確認する（`boat-v5-stage11-delta-20261027-recovery.service`）。成功でもlive writer切替は許可しない。実行前の今はコード/データ移行・timerは触らず、GitHub-onlyの合成テスト／実DB adapter設計を続ける。バックアップ関連の古いNext taskはユーザー方針により保留。
