@@ -88,6 +88,41 @@ class NativeRealtimeStageTests(TestCase):
         with self.assertRaisesRegex(ValueError,"UNKNOWN_OFFICIAL"):
             m.official_page("raceresult","20261027_01_01")
 
+    def test_stage_snapshot_negative_bigint_ids_are_unique(self):
+        source = {
+            "race_id":"20261027_01_01",
+            "snapshot_label":"v5_native_20261027_093000_sample"
+        }
+        created = []
+        for family in m.SNAPSHOT_KEYS:
+            for lane in range(1,7):
+                row = {**source,"lane":lane,"ticket":f"1-2-{lane}"}
+                if family in ("weather_snapshots","race_condition_snapshots"):
+                    if lane > 1:
+                        break
+                created.append(m.native_snapshot_id(family,row))
+        self.assertEqual(len(created),len(set(created)))
+        self.assertTrue(all(isinstance(n,int) and -(2**63)<n<0
+                            for n in created))
+
+    def test_six_family_rows_have_mandatory_ids_and_odds_capture_times(self):
+        rows=self.sample()
+        for family,batch in rows.items():
+            self.assertTrue(all(row["id"]<0 for row in batch))
+        for odds in rows["odds_snapshots"]:
+            self.assertEqual(odds["created_at"],CAP.isoformat())
+            self.assertEqual(odds["captured_at"],CAP.isoformat())
+
+    def test_stage_unmapped_not_null_rejected(self):
+        catalog=[
+            ("race_id",True,False,"",""),
+            ("snapshot_label",True,False,"",""),
+            ("created_at",True,False,"",""),
+            ("server_default",True,True,"",""),
+        ]
+        cols=("race_id","snapshot_label")
+        self.assertEqual(m.stage_required_unmapped(catalog,cols),["created_at"])
+
     def test_stage_table_allowlist_six(self):
         self.assertEqual(len(m.SNAPSHOT_KEYS),6)
         self.assertEqual(set(m.SNAPSHOT_KEYS),set(m.COLUMN_SETS))
