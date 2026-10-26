@@ -25,7 +25,7 @@ ALLOWED_COLUMNS = {
     "races": ("race_id", "race_date", "venue_code", "venue_id",
               "venue_name", "race_no", "race_name", "deadline_time",
               "deadline_at", "status", "data_quality_score",
-              "missing_count", "updated_at"),
+              "missing_count", "created_at", "updated_at"),
     "entries": ("race_id", "lane", "course", "racer_number", "racer_name",
                 "racer_class", "racer_class_text", "branch", "origin",
                 "f_count", "l_count", "avg_st", "national_win_rate",
@@ -33,7 +33,7 @@ ALLOWED_COLUMNS = {
                 "local_win_rate", "local_place2_rate", "local_place3_rate",
                 "motor_no", "motor_place2_rate", "motor_place3_rate",
                 "boat_no", "boat_place2_rate", "boat_place3_rate",
-                "recent_form", "updated_at"),
+                "recent_form", "created_at", "updated_at"),
 }
 KEYS = {"races": ("race_id",), "entries": ("race_id", "lane")}
 LOCK = 2026102503  # Same advisory lock as scheduled stage delta reconciliation.
@@ -81,9 +81,10 @@ def official_payload(race_id: str, html: str, captured: datetime):
         "race_no": race_no, "race_name": parser.parse_race_name(html),
         "deadline_time": deadline_time, "deadline_at": deadline_at,
         "status": "scheduled", "data_quality_score": 0,
-        "missing_count": 0, "updated_at": now_iso,
+        "missing_count": 0, "created_at": now_iso, "updated_at": now_iso,
     }
     for entry in entries:
+        entry["created_at"] = now_iso
         entry["updated_at"] = now_iso
     return race, entries
 
@@ -170,12 +171,27 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                     if (not source_kind or source_kind[0] not in ("r", "p")
                             or not stage_kind or stage_kind[0] not in ("r", "p")):
                         raise RuntimeError("HOLD_NOT_DISTINCT_PHYSICAL_STORAGE_" + family)
-                    cur.execute("""SELECT attname FROM pg_attribute
+                    cur.execute("""SELECT attname, attnotnull, atthasdef,
+                               attidentity, attgenerated
+                        FROM pg_attribute
                         WHERE attrelid=to_regclass(%s) AND attnum>0 AND NOT attisdropped""",
                                 (dst,))
-                    columns = {r[0] for r in cur.fetchall()}
+                    catalog = cur.fetchall()
+                    columns = {r[0] for r in catalog}
                     if not set(ALLOWED_COLUMNS[family]) <= columns:
                         raise RuntimeError("HOLD_STAGE_COLUMNS_MISSING_" + family)
+                    # CREATE TABLE ... LIKE may copy NOT NULL yet omit DEFAULT.
+                    # Check every other mandatory column BEFORE the first INSERT.
+                    mandatory_unmapped = [
+                        rec[0] for rec in catalog
+                        if rec[1] and not rec[2] and not rec[3] and not rec[4]
+                        and rec[0] not in ALLOWED_COLUMNS[family]
+                    ]
+                    if mandatory_unmapped:
+                        raise RuntimeError(
+                            "HOLD_STAGE_UNMAPPED_NOT_NULL_" + family + "_" +
+                            ",".join(mandatory_unmapped[:6])
+                        )
                     cur.execute("""SELECT array_agg(a.attname ORDER BY k.ord)
                         FROM pg_index i
                         JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(num,ord)
@@ -209,7 +225,7 @@ def apply_one(race: dict, entries: list[dict], now: datetime) -> tuple[int, int]
                     )
                     inserted[family] = 0
                     for row in rows:
-                        params = [Jsonb(row[k]) if isinstance(row.get(k), (dict, list))
+                        params = [Jsonb(row.get(k)) if isinstance(row.get(k), (dict, list))
                                   else row.get(k) for k in cols]
                         cur.execute(query, params)
                         inserted[family] += cur.rowcount
