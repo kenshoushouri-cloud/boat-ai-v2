@@ -1,4 +1,4 @@
-# V5 concise operational status — 2026-10-26 20:33 JST
+# V5 concise operational status — 2026-10-26 20:41 JST
 ## Goal and fixed boundaries
 - V5 main system: verify/correct **13 shared physical `boat_data_stage.*` families** 2025-07 onward, unify schema/semantics, prove predeadline timestamps, then real walk-forward ROI backtest; continue research capture. Old `public.v2_*` copies are lineage only, not presumed accurate, and `boat_data.*` are legacy-backed VIEWs, not cleansed V5 tables. No old data mass scans or cleanup.
 - ConoHa local PostgreSQL database is named `railway` (NOT active Railway cloud). Keep costs/CPU/RAM/WAL low. No Railway service/Agent, no production cutover, BUY OFF.
@@ -21,7 +21,10 @@
   - 2026-03: 4,692 / 28,152
   - 2026-04: 4,380 / 26,280
   - 2026-05: 4,896 / 29,376
-- 2026-03 to 2026-05 tested at 20:33 JST: three rows complete, each races_missing_entries=0, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0; read-only ROLLBACK. **11/16 months stage races↔entries verified internally**; remaining five months & the other 11 families NOT certified. Even passing months have NO independent official correctness / historical predeadline capture verification.
+  - 2026-06: 4,692 / 28,152
+  - 2026-07: 4,932 / 29,592
+  - 2026-08: 4,932 / 29,592
+- 2026-06 to 2026-08 tested at 20:41 JST: three rows complete, each races_missing_entries=0, orphan_entry_races=0, invalid_lane_races=0, invalid_racer_races=0; read-only ROLLBACK. **14/16 months stage races↔entries internally checked**; remaining two months and other 11 families NOT certified. Passing months have NO independent official completeness/correctness or historical predeadline capture verification.
 
 ## Next ONE task
-- Run same **existing tested stage-only** script with `2026-06 3` (June–August 2026) sequentially; stop on any timeout, avoid increased load or duplicate runs. Continue small batches only after verification. Post-night-delta, check service status and refreshed shared data before final claim. Backtest only after all 13 family coverage/normalization and as-of criteria satisfied.
+- Run same **existing tested stage-only** script with `2026-09 2` (September–October 2026, October partial) sequentially; stop on any timeout, avoid increased load or duplicate runs. Continue small batches only after verification. Post-night-delta, check service status and refreshed shared data before final claim. Backtest only after all 13 family coverage/normalization and as-of criteria satisfied.
