@@ -135,6 +135,43 @@ def official_page(kind: str, rid: str):
         return result.text, observed, sha256(result.content).hexdigest()
 
 
+
+def official_structured_exhibition(before_html: str):
+    """Accept only official per-lane structural time evidence, never regex order.
+
+    Shared historical parser reads official HTML only; it has no database
+    access in this path and does not read/write legacy result tables.
+    Partial official exhibition pages are intentionally retried unchanged.
+    """
+    from historical_beforeinfo_parser_v3 import (
+        inspect_exhibition_time_page, EXHIBITION_STATUS_COMPLETE,
+        EXHIBITION_STATUS_OFFICIAL_PARTIAL, EXHIBITION_STATUS_OFFICIAL_ABSENT,
+    )
+    evidence = inspect_exhibition_time_page(before_html)
+    status = evidence.get("status")
+    lanes = evidence.get("lanes") or []
+    if status == EXHIBITION_STATUS_OFFICIAL_PARTIAL:
+        raise RuntimeError("HOLD_OFFICIAL_EXHIBITION_PARTIAL_LANES_" +
+                           ",".join(str(i) for i in lanes))
+    if status == EXHIBITION_STATUS_OFFICIAL_ABSENT:
+        raise RuntimeError("HOLD_OFFICIAL_EXHIBITION_NOT_PUBLISHED_YET")
+    if status != EXHIBITION_STATUS_COMPLETE:
+        raise RuntimeError("HOLD_OFFICIAL_EXHIBITION_STRUCTURED_PARSE_" +
+                           str(status)[:30])
+    rows = evidence.get("rows") or []
+    # "fallback_text_times" has positional rather than verified per-lane
+    # identities; it is unsuitable for production V5 snapshots.
+    if evidence.get("source") != "primary_structured_rows":
+        raise RuntimeError("HOLD_EXHIBITION_LANES_NOT_STRUCTURALLY_VERIFIED")
+    if (len(rows) != 6 or
+            {r.get("lane") for r in rows} != set(range(1, 7)) or
+            any(r.get("exhibition_time") is None or
+                not 5.0 <= float(r["exhibition_time"]) <= 9.0
+                for r in rows)):
+        raise RuntimeError("HOLD_EXHIBITION_NOT_SIX_VALID_LANES")
+    return rows
+
+
 def prepare_rows(race, entries, before_html, odds_html, before_at, odds_at,
                  before_hash, odds_hash):
     """Parse official payload into 140 stage-only rows (6+6+120+1+1+6)."""
@@ -147,7 +184,7 @@ def prepare_rows(race, entries, before_html, odds_html, before_at, odds_at,
     if not before_html or parser._looks_no_data(before_html):
         raise RuntimeError("HOLD_MISSING_OFFICIAL_BEFOREINFO")
     weather = parser.parse_weather(before_html)
-    exhibition = parser.parse_exhibition(before_html)
+    exhibition = official_structured_exhibition(before_html)
     if len(exhibition) != 6 or {x.get("lane") for x in exhibition} != set(range(1,7)):
         raise RuntimeError("HOLD_EXHIBITION_NOT_SIX_VALID_LANES")
     if any(x.get("exhibition_time") is None or
