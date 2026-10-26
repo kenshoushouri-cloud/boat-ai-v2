@@ -1,16 +1,19 @@
-# V5 current compact pointer — 2026-10-26 22:10 JST
+# V5 current compact pointer — 2026-10-26 22:24 JST
 Active handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
 Design: `docs/V5_DIRECT_PRIMARY_LEGACY_FALLBACK_PARALLEL_DESIGN_20261026.md`
-New chat: read this + active handoff + `docs/NEXT_CHAT_START_HERE.md`; do not bulk-load old handoffs.
+New chat: read this + active handoff + `docs/NEXT_CHAT_START_HERE.md`; avoid old handoff bulk.
 
-Decision: V5 PRIMARY direct official collection to physical `boat_data_stage.*`, existing legacy SECONDARY only to distinct `public.v2_*` until proved safe. No duplicate writers, blind backfill, BUY, collector stop or cutover. Current V5 realtime forward script still invokes legacy v21; no independent V5 stage live writer installed. Railway cloud unused; ConoHa local database is named `railway`.
+User urgent target: V5 official PRIMARY writes ONLY to physical `boat_data_stage.*`; independent legacy SECONDARY writes only `public.v2_*`, temporary until reliability + rollback. Existing V5 forward wrapper still calls v21; legacy-only active writer by default. **NO PRODUCTION SWITCH YET**, BUY OFF; preserve old acquisition incl. odds/exhibition/weather. Railway cloud unused; ConoHa local DB name `railway`.
 
-**Confirmed 2026-10-26 ConoHa tests:**
-- 22:00 JST `v5_direct_primary_stage_routes_offline_test_20261026.sh` ran 10/10 PASS; route-contract unit tests only, NOT live collector readiness.
-- 22:02 JST 5s READ ONLY `v5_today_entries_source_vs_stage_readonly_20261026.sql`: stage entries missing for 144 race IDs; old physical source had 6 valid entries for each (144/144; 864 rows), 0 absent and 0 incomplete. Current-state **source→stage lag** only. Not proof entries existed before cutoff or that V5 made predictions.
+**ConoHa verified 2026-10-26**:
+- 22:00 offline direct stage route contracts 10/10 PASS.
+- 22:02 source vs stage entry discrepancy: 144 missing stage races, all 144 have six valid source rows in public (864); *current-state sync lag only*, no cutoff-time proof.
+- 22:10 six scheduled timers confirmed. Stage11 one-time sync still scheduled 10/27 03:05.
+- 22:13 static writer audit confirms V5 wrapper invokes v21 collector, public writer paths/DDL hints, routing uncertified.
+- 22:24 physical catalog preflight on ConoHa: 13 source-stage physical pairs, snapshot unique keys reported KEY_OK, no missing legacy columns to stage in shown results, canonical `boat_data.*` sampled names are VIEW; ROLLBACK/no changes. This does NOT prove writes.
 
-**22:10 JST inventory:** six timers scheduled: forward+shadow 22:15, daily night 23:00, midnight catchup 00:45, stage11 recovery 03:05, daily morning 07:00; four enabled timers plus two transient timers, no runtime outcome proof.
-**22:13 JST:** ConoHa writer route audit completed (source hints only), verifies forward V5 wrapper uses v21 collector, legacy CREATE/ALTER text remains and no writer routing certification. User demands immediate split: V5 physical stage PRIMARY / old public.v2_* SECONDARY.
-**Next ONE task:** run GitHub preflight `deploy/conoha/v5_dual_collection_physical_preflight_readonly_20261026.sh` @ `3e069d73dcbf994fc02bda834c827aad068425ea` on ConoHa. Only read-only pg_catalog, 13 stages, 6 realtime snapshot unique keys, canonical VIEW check, timers. Then build native direct stage writer, verify first race and reader isolation; do NOT enable current v5_data.raw_* flags or stop legacy. No actual cutover yet.
-**Scheduled checkpoint:** existing one-time `boat-v5-stage11-delta-20261027-recovery.timer` at 2026-10-27 03:05 JST unchanged. After run, verify journal first, then monthly stage QA `2026-10 1`; no success claim in advance.
-Retain existing collectors incl. odds/exhibition/weather and historical records, BUY OFF, backup work deferred; cost discipline. Main handoff carries detailed constraints.
+**New GitHub-only code:** `v5/native_stage_race_entries_pg.py` @ `dcd04325f594d56c4226ce7abbb12260f803a9b8`: independent official HTTP (shares tested legacy *parser functions only*), single-race stage physical `races`+ `entries` INSERT-only writer, default preview, gated apply; 14 unit tests not yet run. Stage delta write collision guard blocks live apply before 10/27 06:00, requires completed journal verification. No direct realtime odds/exhibition/weather V5 code yet. No installed V5 native service/timer.
+
+**Next ONE task:** ConoHa run tmp-only, offline `deploy/conoha/v5_native_stage_core_offline_test_20261026.sh` at commit `745451ea9fdbedf8ac58df96a0f8e4d8c8bb3899`; check 14/14. Then target read-only future-race official parser preview and proceed with separate native snapshot collector before safely switching live V5 read/write and leaving legacy on public.
+
+Never prematurely cancel 03:05 stage sync, stop legacy, enable old `v5_data.raw_*` route flags, or BUY. CPU/RAM/WAL cost discipline; backups deferred, no deletion.
