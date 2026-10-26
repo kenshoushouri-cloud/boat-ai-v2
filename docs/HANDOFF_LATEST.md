@@ -96,5 +96,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - GitHub既存`deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`の`--table races --apply`は**昼間08:00-22:59 JSTに限りraces一表のみ**stage-only差分同期を許容。元public表・VIEW・collectorには書込なし、PGスキーマ/PK/marker/16GiB空き/件数上限/120秒予算/トランザクション同値検証などがある。主キー全期間を同期し、stageにしかない行は削除し得るため、これはstage物理表を更新する作業である。夜間の残り11表同期を昼間に行わない。実行完了証明はまだ無い。
 - 外部現行バックアップ独立復元は未完。stage-onlyコピーはV5正本切替やV4削除の許可ではない、旧原本は継続しBUY OFF。
 
+## 2026-10-26 10:13 JST STAGE races全期間delta成功
+- ユーザーTermius実機確認：10:12:35 `DELTA_PREVIEW_METADATA_PASS races pk=race_id columns=16 source_disk_MB=16`→`PREVIEW_COMPLETE families=1 NO_WRITES NO_CUTOVER`。
+- 10:12:40 `DELTA_VERIFIED races source_rows=74208 stage_rows=74208 insert_update_delete=[144,0,0] bounded_windows=19`、`DELTA_TABLE_COMMITTED races legacy_untouched=YES live_view_untouched=YES CDC=NO cutover=NO_GO BUY=OFF`、`STAGE12_DELTA_SNAPSHOT_PASS families=1`。空きディスク62.41 GiB。13系統のうち**races一系統だけ当日144件をstageに追加**し、全期間のそのテーブルをread+stage-writeトランザクション内で検査。現行writer/13 VIEW未切替、旧表未削除。
+- **事後の別トランザクション確認はまだしていない**。残り11系統の10/26最新entries, 展示, odds, 結果, 天候等は同期されておらず、venuesは前回stage保存。旧collector稼働中は今後も差分発生。V5本番予測未稼働、BUY OFF。
+- シェルに途中で折返し/編集されたように見える表示があるが、実行結果は前段preview→後段applyとも成功。次に削除・本番切替を行う根拠にはしない。
+
 ## Next ONE task
-Termiusでcommit固定の既存guarded delta runnerについて`--table races` catalog-only previewを成功確認後、ユーザー承認済みstage複製作業として`--table races --apply`を**同一ワンコマンド内**で実行。ログ`DELTA_VERIFIED races source_rows=... stage_rows=... insert_update_delete=...`・`DELTA_TABLE_COMMITTED races`を実機確認、HOLD/timeout時は再実行前に診断。これはraces1系統だけで、ほか11系統とvenuesは未同期。すべてのcollector/forward timerおよびV5 shadow monitorを保持し、自動購入OFF、本番切替なし。
+Termiusで既存read-only `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` を再実行し、`TODAY_RACES live_original=144 v5_stage=144 missing_in_stage=0` の事後証明を取る。通過後は残り11表の夜間stage差分同期準備と最新独立バックアップ/復元試験を優先。収集中のV4 writer/forward timer/VIEWを触れず、重複GET・本番切替・V4削除・BUY禁止。
