@@ -61,6 +61,7 @@ def run() -> int:
                     missing_mapped = sorted(set(provided) - existing)
                     # An explicit value can still be NULL at runtime; this
                     # report checks only whether a writer *maps* the column.
+                    column_types = {r[0]:r[1] for r in schema}
                     required_mapped = [
                         name for name, _, required, hasdefault, identity, generated in schema
                         if required and not (hasdefault or identity or generated)
@@ -84,6 +85,10 @@ def run() -> int:
                           + "|absent_writer_columns=" + (",".join(missing_mapped) or "-")
                           + "|unique_key=" + ",".join(conflict_key)
                           + "|unique_key_valid=" + str(key_ok), flush=True)
+                    if unmapped_required:
+                        print("REQUIRED_TYPES|" + family + "|"
+                              + ",".join(name + ":" + column_types[name]
+                                         for name in unmapped_required), flush=True)
                     if "id" in existing and "id" in unmapped_required:
                         print(f"WARNING|{family}|REQUIRES_SAFE_NONCOLLIDING_ID_STRATEGY",
                               flush=True)
@@ -92,7 +97,7 @@ def run() -> int:
                               flush=True)
                     if unmapped_required or missing_mapped or not key_ok:
                         errors.append(family)
-            db.rollback()
+        # Exiting the read-only transaction context ends it safely.
     if errors:
         print("V5_NATIVE_STAGE_SEVEN_FAMILY_SCHEMA_HOLD="
               + ",".join(errors) + "|NO_WRITES", flush=True)
