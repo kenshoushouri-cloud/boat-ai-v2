@@ -1,72 +1,24 @@
-# V5 compact handoff — 2026-10-26 17:45 JST
+# V5 concise status — 2026-10-26 JST
 
-## Priority / user's latest decisions
-- V5 **早期安定稼働＋実データ予測/前向きバックテスト** を最優先。ConoHaとGitHubを使う。Railwayには現行データなし（ユーザー確認）・Railway接続は不要。
-- **Google Drive再認証・新規バックアップ構築・Drive重複整理・ConoHaの旧dump削除は、V5運用が落ち着くまで保留**。既存バックアップを削除しない。ConoHa rootは10/26 16:58時点99G中32G使用/63G空き。
-- BUY=OFF、本番writer cutover=NO_GO、V4旧原本と13 live VIEW/collectorの継続、取り返せない展示/odds/気象の事前captureを保護。OS再起動・収集中のコード置換・重複collector実行禁止。Railway Agent/AI禁止、低コスト優先。
+## User priority and safety
+- **Before backtest:** verify all 13 families from **2025-07 through now** for one canonical path/schema/type/content convention and correct source/time semantics. Plan: `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md`.
+- ConoHa `railway` (local Postgres) + GitHub only; Railway has no current data per user, no need to connect.
+- Original public.v2_* data & live collectors preserved. Current `boat_data.*` = legacy-reading VIEWs, `boat_data_stage.*` = isolated physical copies. LIVE writer cutover = NO_GO, BUY=OFF. Do not alter live timers, stop collector, run concurrent sync, or reboot.
+- Google Drive/new backup work postponed by user until stable operation; retain all existing backups, never delete or destructively rewrite while restore is unverified.
+- Target 2025-07+ research; do not treat late-loaded mutable odds, exhibition, stats, or created_at/updated_at as immutable original pre-deadline captures. Missing value != weak racer and NULL != zero. As-of/data leak audit prerequisite before any valid ROI claim.
 
-## Verified current physical/data state
-- ConoHa DB名 `railway` は**DBローカル名称**。Railwayサービス稼働の証拠ではない。
-- 旧原本`public.v2_*`、その参照先の`boat_data.*` 13 VIEW、V5 stage`boat_data_stage.*` 13物理表。正式live writer切替0/13、常時CDCなし。
-- 10/26 07:45:54 morning finished 288/288（success144, no_race144, failed0）。no_raceは不開催144の証明ではない。丸亀(15)の`ENTRY_STATS_PARSE_FAILED`による艇別13 stats一括NULL疑いは未解決。
-- 10/26 10:12 stage `races` の限定差分同期成功、全期間74208=74208行。10:18 当日144/144 race IDs一致。**残る11種類は未同期**。
-- ユーザー実機10/26 17:17: `boat-v5-stage11-delta-20261027-recovery.timer` は`ActiveState=active`、`NextElapseUSecRealtime=Tue 2026-10-27 03:05:00 JST`。当該timerは予定どおり予約済み、**再予約・変更・サーバー再起動しない**。17:40に翌日03:00からのjournalが`-- No entries --`なのは実行前なので正常。結果はまだ未確認。
-- ConoHa 5分shadow監視は少なくとも10/26朝起動実績あり、LIVE VIEW read-only/sampled input only。**V5実DB特徴量adapter・実測asof検証・3連単本番予測/ROI・自動購入は未達**。
+## Confirmed environment / progress
+- 10/26 17:17 screenshot: stage11 one-time timer `boat-v5-stage11-delta-20261027-recovery.timer` active, next **2026-10-27 03:05 JST**. Status/result AFTER 03:05 still unverified. Pilot stage `races` previously copied; remaining 11 delta staged tables are scheduled. Snapshot is not continuous CDC. No double run.
+- 10/26 GitHub-only V5 synthetic tests: 18/18 quality, then revised 17/17 VIEW adapter; total **35 current synthetic tests PASS** by user ConoHa screenshots, no actual V5 real-data inference or ROI proof.
+- 10/26 read-only six-row real VIEW diagnostic `race_id=20261026_10_01`: 6 lanes, 6 distinct `racer_number` (4189,4872,3441,4442,4113,4273), `racer_no` SQL NULL in all; 13 checked statistic columns non-NULL for all six. This does NOT prove valid numeric ranges, trustworthy capture timing or other races/months. Revised synthetic VIEW adapter tolerates absent legacy alias as shape only, BUY still HOLD.
+- Subsequent six-row stats range query against live VIEW timed out at 5s on 10/26 18:50; not a numerical validation result. Avoid daytime heavy LIVE VIEW scans.
 
-## Prediction/data-quality policy & new GitHub-only work
-- 13項目全必須の一律除外は不採用。正規の公式未集計は高評価選手の強さを減点せず、根拠付きunknownとする。NULLだけを根拠に公式未集計とみなさない。parser失敗/原因不明NULL/6艇ID不一致はHOLD。ゼロ埋め、後日情報による過去予測の再構成を禁止。
-- Existing pure `v5/entry_quality_policy.py`, `v5/offline_mainline_inference.py`; both not deployed for real live prediction.
-- 10/26 GitHubに **`v5/offline_paper_quality_bridge.py`** (commit `327217e29cd4f77da53ff3d71a80de24464e8812`) と **`tests/test_v5_offline_paper_quality_bridge.py`** (commit `191c099351fbe4f19e87db808b30217373bc7b7d`) を追加。synthetic input only / fail-closed: completeなら合成1着確率演算のみ、official-unreportedはmissing-awareモデル未検証HOLD、unknown/parse failure/ID不整合もHOLD、全経路BUY=OFF。**GitHub commit確認済、ConoHaでsynthetic-only 18件ALL PASS（10/26 18:06スクリーンショット）、実モデルの収益性証明なし**。
-- Backtestは2025-07以降の可能な全期間を採用し、締切前snapshot/asofの真正性・選手/モーター/気象の時期・データリークを検証してから評価。特徴量は検証前に恣意的に選別しない。
-
-## 2026-10-26 synthetic-only test runner
-- GitHub `deploy/conoha/v5_synthetic_quality_selftest_readonly_20261026.sh` (commit `37f54c4f67f64b8632281eb1c975a0cbde126ec5`) added. Fetches exactly six known Python files pinned to commit `690ab7beab6eb02e5d9b8dcddda22fb92f33fb18` into a temporary directory and runs two stdlib unittest files. It does not access PostgreSQL, systemd, collectors, or BUY; temporary files removed after completion.
-- **User's ConoHa stdout screenshot 2026-10-26 18:06 JST confirmed**: `Ran 18 tests in 0.008s`, `OK`, `V5_SYNTHETIC_UNIT_TEST_PASS DB=NO DB_WRITES=NO COLLECTOR_UNTOUCHED=YES BUY=OFF`. This proves isolated synthetic test gates only; not actual model, real-data quality or ROI. No live deployment.
-
-## 2026-10-26 18:11 read-only VIEW schema inspection (user screenshot)
-- `information_schema.columns` on ConoHa `railway` for `boat_data.entries` and `boat_data.races` showed **metadata only**; terminal output used pager and paused at `:` before all races columns were visible. No row data and no DB write.
-- `entries` has `race_id text`, `lane integer`, **both** `racer_no text` and `racer_number integer` (identity cross-check needed), 13 stat names used by `v5.entry_quality_policy.STATS` including `motor_no text`, `boat_no text` (type-safe conversion mandatory), `recent_form jsonb`, `raw jsonb`, `created_at`/`updated_at` timestamptz. Those timestamps must **never** be treated as immutable original first observation or deadline-before proof.
-- Visible beginning of `races`: `race_id text`, `race_date date`, `venue_code text`, `venue_name text`, `race_no integer`, `race_title text`. Rest of columns **not yet seen**. No claim of a cutoff field until full read-only metadata result.
-- 10/26 18:15追加のユーザースクリーンショット: `boat_data.races`は16列。`deadline_at timestamptz`, `race_date date`, `status text`, `data_quality_score integer`, `missing_count integer`, `deadline_time text`; `created_at` / `updated_at`は初観測証明に使えない。SQLはmetadataのみ・DB変更なし。
-
-## GitHub-only real VIEW shape adapter, 10/26 evening
-- `v5/offline_entry_view_adapter.py` (commit `e05a821a758122adfd2a985e04fcd7d9e2af8df8`): pure input mappings->strict six-entry diagnostic, catches mismatched `racer_no text` and `racer_number int`, parses motor/boat IDs only when digit text, requires timezone-aware JST deadline and same-day race_id, rejects missing/unknown numbers, **all paths hard-HOLD for real selection/forward/BUY**. No DB read/write or feature scoring, no first-seen evidence claim.
-- `tests/test_v5_offline_entry_view_adapter.py` (commit `ad8e8a1b3297ae0392929b69bef83fd50f4fe476`): 13 synthetic cases for malformed values, identity, cutoff/timezones, invalid/missing, and immutable HOLD flags. **2026-10-26 18:23 JST ConoHa screenshot confirmed 13/13 PASS**: `Ran 13 tests in 0.006s`, `OK`, `V5_VIEW_ADAPTER_TEST_PASS DB=NO DB_WRITES=NO LIVE_COLLECTOR=UNTOUCHED BUY=OFF` (synthetic-only, no actual DB rows or model scoring).
-- `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` (commit `547b83fd7e6dd7ad793f2754e72fe6a29f4bb6c5`): pinned 3-file temp-folder unittest test-runner. No DB, service, timers or BUY.
-
-## 2026-10-26 18:28 JST — actual VIEW diagnostic (user terminal screenshot)
-- READ ONLY + 5s timeout on `boat_data.entries` limited to `race_id='20261026_10_01'` executed and rolled back successfully. Output: `entry_rows=6 | lanes=6 | racers=6 | identity_holds=6 | basic_missing_rows=0` (basic missing only checks `avg_st, motor_no, boat_no`, not all 13 stats). No writes or timer changes.
-- IMPORTANT: all six rows fail `racer_no text` vs `racer_number integer` canonical identity comparison, but the reason is **unproven**; may be schema semantics or formatting, not necessarily data corruption. DO NOT change data, loosen guard or declare six-player identity valid. Existing pure adapter must HOLD until verified.
-- The first Bash `-c` query with `!~` failed history expansion; the corrected single-quoted HEREDOC SQL succeeded.
-
-## 2026-10-26 18:35 JST — six actual racer identities (user screenshot)
-- Read-only six rows for `race_id=20261026_10_01`: 1=4189,2=4872,3=3441,4=4442,5=4113,6=4273 in `racer_number` (integer); legacy `racer_no` displayed blank in all rows; `racer_name` also displayed blank. **psql blank display alone cannot distinguish SQL NULL from empty string.** Data not corrupted on this evidence; six distinct canonical candidates exist but independent source provenance and deadline-asof still unverified. Do not fill `racer_name` with guessed names.
-- GitHub-only update `v5/offline_entry_view_adapter.py` commit `830563fcbafa5534d89e5433cb31418a5e7e7856`: treat NULL or empty legacy alias as absent, keep canonical `racer_number` int shape validation and all real scoring/forward/BUY hard HOLD, track `legacy_identity_absent_lanes`. Malformed present legacy values, mismatching numbers, invalid integer, duplicate racer/lanes remain HOLD.
-- `tests/test_v5_offline_entry_view_adapter.py` commit `61d5d2a4918b9ea10526af87dd817f92817beb48`: added four tests (17 tests total) for sparse legacy, malformed/missing canonical, conflicts. Existing historic 13/13 PASS applies **only to old code**, new 17 tests NOT RUN yet.
-- Pinned `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` updated commit `3e234cf0415f89d5d7d2ffbdae4ff9060d640309`; fetches three Python files from immutable test commit and runs pure synthetic 17-case unittest in /tmp. Never deploy into running collector/DB.
-
-## 2026-10-26 18:44 JST — updated synthetic unit result
-- User's ConoHa terminal screenshot explicitly shows `Ran 17 tests in 0.010s`, `OK`, `V5_VIEW_ADAPTER_SPARSE_IDENTITY_TEST_PASS DB=NO DB_WRITES=NO LIVE_COLLECTOR=UNTOUCHED BUY=OFF`. Revised adapter's 17/17 tests confirmed, old 13-case run superseded; other 18 synthetic quality cases passed separately = **35 currently checked tests** (not 48 distinct).
-- No real race-model scoring/profit backtest, no immutable original as-of evidence, no real-data BUY authorization proven; old legacy `racer_no` shown blank (NULL vs empty string not yet distinguished), `racer_number` populated for all six.
-- No production DB/collector/timer changes associated with these synthetic tests.
-
-## 2026-10-26 18:47 JST — 13-field non-NULL inspection on one real race (user screenshot)
-- In ConoHa `railway` DB, `boat_data.entries`, `race_id='20261026_10_01'`, confirmed 6 rows: lane1/4189, 2/4872, 3/3441, 4/4442, 5/4113, 6/4273. `racer_no IS NULL` **SQL_NULL** for all 6; `racer_number` populated.
-- `13 - num_nonnulls(avg_st,national_win_rate,national_place2_rate,national_place3_rate,local_win_rate,local_place2_rate,local_place3_rate,motor_no,motor_place2_rate,motor_place3_rate,boat_no,boat_place2_rate,boat_place3_rate)` = 0 for each lane (6 × 13 = 78 non-NULL cells).
-- Confirmed only **presence/non-NULL**, NOT actual value range, 13-field statistical validity, original race/deadline capture, or model score. DB transaction `BEGIN READ ONLY`, `statement_timeout=5s`, `ROLLBACK` succeeded; no writes or timer changes.
-
-## 2026-10-26 18:50 JST — read-only range query timed out
-- User's ConoHa screenshot: the six-entry 13-field non-NULL result from 18:47 stands. Next SQL for numeric ranges/equipment format against `boat_data.entries` returned `ERROR: canceling statement due to statement timeout` after `BEGIN READ ONLY; SET LOCAL statement_timeout='5s'`. No range/format results; cannot claim PASS or bad values. `psql -v ON_ERROR_STOP=1` returned to shell, aborted read-only transaction is closed. No DB writes.
-- Avoid repeating this heavy VIEW query or increasing timeout while active live collectors run. Identify an efficient bounded physical-stage approach only after planned stage11 synchronization, and verify source/time provenance before using historical odds/exhibition.
-- No change to 03:05 stage11 one-time timer, legacy collection, BUY=OFF, backups deferred, Railway unused.
-
-## 2026-10-26 evening — user requests all heavy work overnight
-- User's preference: once night window begins, try to finish V5 stage11 sync, evidence checks, and 2025-07 onward V5 walk-forward backtest without disrupting daytime collection. This is a **target**, not a completed deployment or guarantee of overnight finish.
-- Verified pinned runner `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`: stage11 `--remaining --apply` allowed only **03:00–05:44 JST**; `--table races` is the only daylight exception. Each table uses REPEATABLE READ, short lock timeout, per-table time budget, bounded pk windows and rollback on failed parity. 11 stage tables may not all finish before the safe window closes.
-- Already scheduled for 2026-10-27 03:05 JST: `boat-v5-stage11-delta-20261027-recovery.timer`. Preserve this and do **not** schedule a second concurrent copy. No current second/backtest timer exists based on verified evidence. Concurrent or blind second run is forbidden.
-- After stage sync: run catalog/stage parity checks and assess whether a true frozen/original-before-deadline evidence dataset exists. Existing `research/v5_exhibition_time_rank_frozen_forward_pg.py` handles **one** frozen exhibition research experiment, and `backtest_n02_walkforward_pg.py` is N02/V24-lineage, **not** a verified end-to-end V5 full feature/ROI pipeline. Synthetic V5 math and quality tests (18+17) passed but do not prove live prediction/forward eligibility.
-- Under no circumstances turn 2025-07 onward retrospective mutable entry/odds/exhibition data into pretended original as-of captures. For unavailable evidence, report eligible subset plus specific HOLD reasons; don't assert full historical ROI.
-- Backtest should be **sequential, read-only, resource-capped, resumable by date/chunk** with a hard stop before live data collection, and only after source/version/point-in-time proof + test run. Avoid spending CPU/RAM/WAL on nighttime backtests if stage11 not finished. BUY=OFF, cutover=NO_GO.
+## Checked GitHub storage contract
+- `boat_shared_storage_contract.RELATIONS`: fixed **13** legacy `public.v2_*` → logical `boat_data.*` VIEW mapping. Stage uses `boat_data_stage.*` physical copies; the original venues stage is protected. A separate `boat_history_archive` DB exists and is NOT identical to the live DB.
+- `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`: 11 remaining tables allowed only 03:00–05:44 JST; per-table REPEATABLE READ/PK windows/verify/rollback and staged writes only. Full-history V5 model/ROI engine is NOT yet validated, so overnight all-period backtest must not run blindly.
+- New `deploy/conoha/v5_storage_13_family_catalog_readonly_20261026.sql` (commit `73a7590012a0311fd3ba1a8c39aa76b9765685d0`) queries PG system catalogs only, 13 src/view/stage relation kinds, ordered column schema, PK, relevant date columns, origin marker. **Not yet run**. No user data scans/writes and NOT a period-coverage proof.
+- New full-period normalize-first plan is `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md` (commit `8da0ddeeb52b08d957cf7e9449a5ed7461681ab3`).
 
 ## Next ONE task
-- At 2026-10-27 03:05 JST, the *already scheduled* stage11 copy runs on ConoHa. After completion check `boat-v5-stage11-delta-20261027-recovery.service` via read-only journal to decide whether staged physical tables can be used. If sync failed/incomplete, first resolve its HOLD reasons. Do not prematurely schedule a "backtest all overnight" timer without a validated V5 real-model/as-of data pipeline.
+- Run **catalog-only SQL now**, user submits 13-family diagnostic output. DO NOT equate catalog match to uniform 2025-07+ historical coverage. Identify HOLDs, then plan safe monthly per-family range sampling on stage physical data after existing stage11 sync finishes.
+- Only after period/content/provenance gates and safe V5-only normalizations pass, backtest validated as-of periods with bounded sequential low-cost workload. No duplicate timer, no service changes, no arbitrary row rewrites.
