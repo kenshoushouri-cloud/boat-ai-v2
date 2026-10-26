@@ -90,5 +90,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 安全な優先順：最新stage差分(まずREAD ONLYの当日ID照合)→全13系統の最終差分同期と本文/PK parity→現行V4+V5包含バックアップのオフサイト独立復元証明→短い切替窓で全writer/V5読み書き検証→安定稼働→旧3.035GiB相当原本の削除候補ごと承認→バックアップ世代整理。リアルタイム・展示・オッズは停止せず、データ保持を優先。
 - ConoHa固定VPS契約の場合、容量解放だけで直ちに月額が下がるとは限らない。Railway費用には本ConoHa DBの容量削除は直接効かない。空き容量確保と将来のプラン選択が主効果。
 
+## 2026-10-26 09:42 JST V5当日races未同期確定
+- ユーザーTermiusでread-only `v5_fast_start_shadow_freshness_readonly_20261026.sql`再実行、13 VIEW/13物理stageすべて存在PASS。ただし`TODAY_RACES | live_original=144 | v5_stage=0 | missing_in_stage=144 | STAGE_STALE_USE_LIVE_VIEWS_FOR_PAPER_UNTIL_SYNC`。朝収集完了後もstageへの自動CDCはない。旧原本LIVE VIEWを読むshadow監視だけは継続できる。
+- 現時点でV5への正本切替はNO_GO。stage13表の存在≠144Rの当日鮮度≠13表全期間同値。
+- GitHub既存`deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`の`--table races --apply`は**昼間08:00-22:59 JSTに限りraces一表のみ**stage-only差分同期を許容。元public表・VIEW・collectorには書込なし、PGスキーマ/PK/marker/16GiB空き/件数上限/120秒予算/トランザクション同値検証などがある。主キー全期間を同期し、stageにしかない行は削除し得るため、これはstage物理表を更新する作業である。夜間の残り11表同期を昼間に行わない。実行完了証明はまだ無い。
+- 外部現行バックアップ独立復元は未完。stage-onlyコピーはV5正本切替やV4削除の許可ではない、旧原本は継続しBUY OFF。
+
 ## Next ONE task
-既存 `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` を現在時刻でTermiusのPostgreSQLにREAD ONLYで再実行し、10/26のV4原本とV5 stageのrace_id一致／未同期件数を現物確認。次の差分同期の範囲と必要なバックアップを判断する。削除・自動切替・collector再起動・二重HTTP GETは禁止。
+Termiusでcommit固定の既存guarded delta runnerについて`--table races` catalog-only previewを成功確認後、ユーザー承認済みstage複製作業として`--table races --apply`を**同一ワンコマンド内**で実行。ログ`DELTA_VERIFIED races source_rows=... stage_rows=... insert_update_delete=...`・`DELTA_TABLE_COMMITTED races`を実機確認、HOLD/timeout時は再実行前に診断。これはraces1系統だけで、ほか11系統とvenuesは未同期。すべてのcollector/forward timerおよびV5 shadow monitorを保持し、自動購入OFF、本番切替なし。
