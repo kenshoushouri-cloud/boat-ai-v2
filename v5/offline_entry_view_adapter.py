@@ -3,7 +3,7 @@
 Pure function: no PostgreSQL, network, disk, timers, model inference or BUY.
 Schema observed on 2026-10-26: boat_data.races has race_id, race_date,
 deadline_at (timestamptz); boat_data.entries has race_id, lane,
-racer_no (text), racer_number (integer), 13 STATS columns.
+racer_no (sparse legacy text), racer_number (populated integer), 13 STATS columns.
 Input rows must have been fetched separately by an explicitly READ-ONLY caller.
 
 Neither created_at/updated_at nor deadline_at authenticate original
@@ -34,6 +34,9 @@ class OfflineViewDiagnostic:
     entry_quality_status: str = ""
     checked_lanes: int = 0
     metadata_shape_consistent: bool = False
+    # Legacy field may be absent while populated integer field is present;
+    # this is an observation, not independently authenticated provenance.
+    legacy_identity_absent_lanes: int = 0
     # No official first-sight or independent provenance even after shape PASS.
     original_first_observation_verified: bool = False
     independently_authenticated_source: bool = False
@@ -73,13 +76,21 @@ def _equipment_number(value: object) -> int | None:
 
 
 def _racer_identity(row: Mapping) -> int:
+    # The 2026-10-26 live VIEW had all six racer_number values, while
+    # racer_no was displayed blank (NULL or empty string). Treat a blank
+    # legacy alias as absent, NOT as a conflicting second identity.
+    # Even when validated for shape, actual identity provenance is unproven
+    # and downstream selection/forward/BUY remains hard HOLD.
     number = row["racer_number"]
     old_text = row["racer_no"]
-    if (type(number) is not int or not 1 <= number <= 9999
-            or type(old_text) is not str
+    if type(number) is not int or not 1 <= number <= 9999:
+        raise _InvalidRow("absent or invalid canonical racer number")
+    if old_text is None or old_text == "":
+        return number
+    if (type(old_text) is not str
             or not re.fullmatch(r"[0-9]{1,4}", old_text)
             or int(old_text) != number):
-        raise _InvalidRow("conflicting or absent racer identity")
+        raise _InvalidRow("conflicting or malformed legacy racer number")
     return number
 
 
@@ -111,6 +122,7 @@ def inspect_offline_view_rows(
         return OfflineViewDiagnostic("SIX_ENTRY_SHAPE_HOLD", race_id)
 
     lane_inputs = []
+    legacy_absent_lanes = 0
     try:
         for row in entries:
             if not isinstance(row, Mapping) or not _REQUIRED_ENTRY.issubset(row):
@@ -118,6 +130,8 @@ def inspect_offline_view_rows(
             if row["race_id"] != race_id or type(row["lane"]) is not int:
                 raise _InvalidRow("race/lane mismatch")
             racer = _racer_identity(row)
+            if row["racer_no"] is None or row["racer_no"] == "":
+                legacy_absent_lanes += 1
             stats = {
                 key: (_equipment_number(row[key]) if key in {"motor_no", "boat_no"}
                       else _number(row[key]))
@@ -139,9 +153,11 @@ def inspect_offline_view_rows(
         return OfflineViewDiagnostic(
             "ENTRY_QUALITY_HOLD", race_id, quality.status,
             checked_lanes=len(quality.lanes),
+            legacy_identity_absent_lanes=legacy_absent_lanes,
         )
     return OfflineViewDiagnostic(
         "VIEW_SHAPE_ONLY_ORIGINAL_ASOF_UNVERIFIED_HOLD",
         race_id, quality.status, checked_lanes=6,
         metadata_shape_consistent=True,
+        legacy_identity_absent_lanes=legacy_absent_lanes,
     )
