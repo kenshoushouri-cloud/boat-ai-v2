@@ -41,23 +41,28 @@ def check_one(db, src, dest, keys):
                 found = cur.fetchone()
                 if not found or found[0] not in ("r","p"):
                     raise RuntimeError("HOLD_NOT_PHYSICAL_"+fullname)
-            cur.execute(sql.SQL("""
-              WITH source_rows AS MATERIALIZED (
-                SELECT * FROM {} WHERE race_id >= %s AND race_id < %s
-              ), stage_rows AS MATERIALIZED (
-                SELECT * FROM {} WHERE race_id >= %s AND race_id < %s
-              )
-              SELECT (SELECT count(*) FROM source_rows) AS source_count,
-                     (SELECT count(*) FROM stage_rows) AS stage_count,
-                     (SELECT count(*) FROM source_rows s WHERE NOT EXISTS(
-                          SELECT 1 FROM stage_rows d WHERE {})) AS missing_stage,
-                     (SELECT count(*) FROM stage_rows d WHERE NOT EXISTS(
-                          SELECT 1 FROM source_rows s WHERE {})) AS extra_stage,
-                     (SELECT count(*) FROM source_rows s JOIN stage_rows d
-                          ON {} WHERE to_jsonb(s) IS DISTINCT FROM to_jsonb(d))
+            source_scope = sql.SQL("s.race_id >= {} AND s.race_id < {}").format(
+                sql.Literal(LOW), sql.Literal(HIGH))
+            stage_scope = sql.SQL("d.race_id >= {} AND d.race_id < {}").format(
+                sql.Literal(LOW), sql.Literal(HIGH))
+            # Query real indexed physical tables directly (no MATERIALIZED CTE).
+            # Otherwise 35k odds snapshot keys can degrade to quadratic scans.
+            query=sql.SQL("""
+              SELECT (SELECT count(*) FROM {} s WHERE {}) AS source_count,
+                     (SELECT count(*) FROM {} d WHERE {}) AS stage_count,
+                     (SELECT count(*) FROM {} s WHERE {} AND NOT EXISTS(
+                          SELECT 1 FROM {} d WHERE {})) AS missing_stage,
+                     (SELECT count(*) FROM {} d WHERE {} AND NOT EXISTS(
+                          SELECT 1 FROM {} s WHERE {})) AS extra_stage,
+                     (SELECT count(*) FROM {} s JOIN {} d ON {}
+                          WHERE {} AND to_jsonb(s) IS DISTINCT FROM to_jsonb(d))
                        AS changed_common
-            """).format(source,target,comparison,comparison,comparison),
-                (LOW,HIGH,LOW,HIGH))
+            """).format(
+                source,source_scope,target,stage_scope,
+                source,source_scope,target,comparison,
+                target,stage_scope,source,comparison,
+                source,target,comparison,source_scope)
+            cur.execute(query)
             source_count,stage_count,missing,extra,changed=cur.fetchone()
             if source_count == 0:
                 verdict="HOLD_EMPTY_SOURCE"
