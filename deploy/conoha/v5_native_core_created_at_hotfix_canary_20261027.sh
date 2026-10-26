@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Repair V5 official core stage created_at NOT NULL omission.
+# Repair V5 official core stage created_at and negative bigint entries.id.
 # Runs corrected source in a temporary overlay, never edits installed release.
 # PREVIEW default; gated apply writes one 2026-10-27 official race/6 entries only.
 set -euo pipefail
@@ -16,7 +16,7 @@ trap 'rm -rf -- "$work"' EXIT
 cp -a "$RELEASE/." "$work/"
 mkdir -p "$work/tests"
 chmod 0755 "$work" "$work/v5" "$work/tests"
-REF="8c688a8dbe36599252be523c4e77c5b4a0a4e785"
+REF="056503ca3f774c86156c563e64fe08d8f7d4193c"
 URL="https://raw.githubusercontent.com/kenshoushouri-cloud/boat-ai-v2/$REF"
 for src in v5/native_stage_race_entries_pg.py tests/test_v5_native_stage_race_entries_pg.py; do
   curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 8 --max-time 15 \
@@ -32,7 +32,7 @@ echo "=== V5 CREATED_AT HOTFIX CORE OFFLINE TESTS, NO DB/HTTP ==="
      python3 -m unittest discover -s tests \
          -p test_v5_native_stage_race_entries_pg.py -v
 )
-echo "V5_CORE_CREATED_AT_OFFLINE_PASS"
+echo "V5_CORE_CREATED_AT_AND_ENTRY_ID_OFFLINE_PASS"
 echo "=== VERIFIED 03:05 STAGE11 JOURNAL, READ ONLY ==="
 for unit in boat-v5-stage11-delta-20261027-recovery.timer boat-v5-stage11-delta-20261027-recovery.service; do
   state="$(systemctl is-active "$unit" 2>/dev/null || true)"
@@ -65,7 +65,7 @@ preview="$(runuser -u postgres -- env "${common[@]}" \
 printf "%s\n" "$preview"
 grep -q "V5_NATIVE_STAGE_OFFICIAL_VALIDATED race=20261027_" <<< "$preview" || { echo "HOLD_OFFICIAL_PREVIEW_NO_RACE"; exit 2; }
 grep -q "V5_NATIVE_STAGE_PREVIEW_NO_DB_NO_WRITES_NO_BUY" <<< "$preview" || { echo "HOLD_PREVIEW_NOT_COMPLETE"; exit 2; }
-echo "V5_CREATED_AT_HOTFIX_PREVIEW_PASS_NO_WRITES"
+echo "V5_CORE_CREATED_AT_ENTRY_ID_HOTFIX_PREVIEW_PASS_NO_WRITES"
 if [[ "${V5_CREATED_AT_CANARY_APPLY_APPROVED:-NO}" != "YES" ]]; then
   echo "V5_CREATED_AT_HOTFIX_PREVIEW_ONLY_NO_TIMERS_NO_OLD_STOP"; exit 0
 fi
