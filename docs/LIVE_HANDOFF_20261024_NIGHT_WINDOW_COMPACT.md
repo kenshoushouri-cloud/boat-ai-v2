@@ -118,5 +118,8 @@
 - 2026-10-26 10:39 JST ユーザーTermiusにてstage11一回限り復旧タイマー予約のPASSを実機確認：`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`UNIT=boat-v5-stage11-delta-20261027-recovery.timer`、`NEXT=Tue 2026-10-27 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO`。データ差分同期はまだ実行されていない。元の停止済みタイマーの再起動・重複予約は絶対にしない。
 - バックアップ準備：既存Driveバックアップは過去の10/19世代のみ確認履歴、ConoHa同VPSの10/23 railwayと10/24 history dumpは最新10/26データの独立保全を証明しない。Google Driveコネクタの2アカウントをREAD ONLYで`boat-ai-v5`/`main_current_202610`/`dump`検索したが、新しい暗号化バックアップファイルを特定できなかった（検索結果ゼロ≠不在の証明）。既存Pythonインベントリに`/var/backups`と既知の2dumpフォルダを追加したread-only `deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`（commit `b43a725e4dcc20fb460fe200aa001645910fc01c`）をGitHub作成、実機未実行。秘密・ダンプ本文・DBに触れない。BUY OFF。
 
+## 2026-10-26 10:44 JST backup保存先監査
+- 10/26 10:44 JST Termius read-onlyバックアップpath監査完走：`pg_dump/pg_restore/age/rclone`あり、10/23 railway dumpの指定ディレクトリに393138215Bファイル1件、10/24履歴dumpの**指定ディレクトリはNOT_ACCESSIBLE_OR_ABSENT**（紛失と未確定、場所/名前違い疑い）。`/var/backups`直下0件は非再帰なので中のファイル不在証明ではない。空き67011411968B=約62.41GiB。最新10/26独立バックアップ/復元は未達。27日03:05の stage11-recovery.timer は10:39にPASS予約済み、触らない。BUY OFF / writer未切替。
+
 ## 次の1作業
-**Next ONE task:** Termiusでコミット固定の`deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`をrootの`python3`でread-only実行し、既存dumpフォルダ・age/rclone/pg_restore/空き容量などメタデータのみ確認。旧dump削除・Drive upload/rclone変更/DB変更/タイマー追加はしない。夜間stage11実行後は必ず`journalctl -u boat-v5-stage11-delta-20261027-recovery.service --no-pager -n 100`で11系統コミット結果を確認し、結果が確認されるまで本番切替・V4削除はNO-GO。
+**Next ONE task:** Termius rootで`find /var/backups -maxdepth 2`（history名のディレクトリや`boat_history_archive.dump`のみ、metadata）をREAD ONLYで実行して10/24の履歴dump所在を確認。まだ新規dump・upload・削除・stage timer変更なし。
