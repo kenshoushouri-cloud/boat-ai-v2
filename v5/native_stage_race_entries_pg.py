@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import subprocess
+from urllib.parse import urlsplit, parse_qs
 from typing import Any
 
 JST = timezone(timedelta(hours=9))
@@ -97,6 +98,13 @@ def official_fetch(race_id: str) -> tuple[str, datetime]:
             "User-Agent": "Mozilla/5.0 (compatible; V5-stage-racelist-canary/1.0)"
         })
         resp.raise_for_status()
+        landed = urlsplit(resp.url)
+        expected = {"rno":[str(number)], "jcd":[venue],
+                    "hd":[day.replace("-", "")]}
+        if (landed.scheme!="https" or landed.netloc!="www.boatrace.jp"
+                or landed.path!="/owpc/pc/race/racelist"
+                or landed.fragment or parse_qs(landed.query)!=expected):
+            raise RuntimeError("HOLD_OFFICIAL_RACELIST_REDIRECT_OR_RACE_ID")
         if len(resp.content) > 1_500_000:
             raise RuntimeError("HOLD_OFFICIAL_PAGE_TOO_LARGE")
         captured = datetime.now(JST)
