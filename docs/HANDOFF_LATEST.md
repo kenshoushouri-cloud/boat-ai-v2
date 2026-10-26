@@ -83,5 +83,10 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 旧10/19暗号Drive世代と10/23-24同VPS dumpsは現行10/26バックアップ/独立復元の代用不可。最新世代のDrive保管・独立リストアは未達。**削除も切替も本ターン未実施、BUY OFF、収集継続**。
 - 08:40:19 V5 VIEWで三国1R(10_01)出走6・展示6・odds120で入力形状PASS。芦屋2R(21_02)は08:40の展示0・odds未準備、収集継続し欠測を0で埋めない。
 
+## 2026-10-26 V4/V5重複データの容量監査を準備
+- ユーザー承認で、V4重複原本容量・V5複製容量・インデックスを13ペアのみmetadata計測するread-only SQL `deploy/conoha/v5_v4_stage_disk_comparison_readonly_20261026.sql`（commit `1df408b5379377963fe06b480ddd987b2533deaf`）をGitHub追加。13ペアは`v5/offline_stage_batch_plan.py`と完全一致を確認。SQL本体はGitHub保存済みだが実ConoHaで**未実行**。
+- `pg_total_relation_size`はtable/index/TOASTを含む物理割当、実際の削除で回収できるGBの保証ではない。Stage最新差分やCDC、全期間内容一致、旧writer停止、独立backup/restoreが未合格のため**削除許可なし**。V4原本は現行収集先、物理stageの切替0/13、BUY OFF。
+- サイズ検査はread-only transaction/ROLLBACKとカタログ関数で行い、行の全件count、DDL、切替、重複コピーを実施しない。ConoHa上で容量を報告してから安全な削除候補表にする。
+
 ## Next ONE task
-Termiusで`journalctl -u boat-v5-shadow-live-readonly.service --since "2026-10-26 08:35" --no-pager | grep -E '20261026_10_01|20261026_21_02|V5_SHADOW_READONLY_PASS|HOLD' | tail -25`をread-only実行し、08:40/08:45のV5 VIEWで三国1Rが展示6+オッズ120となったか、芦屋2Rの展示が追加されたか確認。収集停止/二重取得/再起動/手動backfill禁止。次の段階は実V5モデルへのpredecision品質adapter（研究のみ）を別途検証し、BUY OFF維持。
+Termiusでcommit固定のSQLを`psql -X -v ON_ERROR_STOP=1 -d railway -f -`として1回実行してもらい、13系統の`v4_total_mib/v5_total_mib`とサマリ`old_source_total_gib/v5_stage_total_gib`を回収する。収集タイマーとwriterには触れない。結果と独立復元・writer切替状況から削除対象/推定削減量を報告、削除は別途ユーザー承認。
