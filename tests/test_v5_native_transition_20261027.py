@@ -80,6 +80,11 @@ class TransitionTests(unittest.TestCase):
             "trifecta_payout_yen":0}))
         self.assertTrue(results.verified_result({"result_status":"cancelled"}))
 
+    def test_results_native_mandatory_metadata_columns_are_mapped(self):
+        self.assertIn("official",results.FIELDS)
+        self.assertIn("created_at",results.FIELDS)
+        self.assertIn("updated_at",results.FIELDS)
+
     def test_results_gate_denies_without_local_db(self):
         with patch.dict(os.environ,{},clear=True):
             with self.assertRaisesRegex(RuntimeError,"LOCAL_DB"):
