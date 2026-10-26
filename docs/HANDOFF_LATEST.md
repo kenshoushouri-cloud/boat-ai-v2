@@ -114,5 +114,9 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - 既設一時timerが残っていれば、予定日時とstage-onlyコマンドを検証して`systemctl start`だけ実施し、GC済みなら別名の安全な一回限りtimerを設定する復旧専用`deploy/conoha/v5_stage11_delta_timer_recover_guarded_20261026.sh`（commit `2f53818294e85b5a0674a248f04dfaaf6f3585cb`）追加。root/10月26日日中限定、runner既存検査、旧4タイマー active検査、stageサービス非稼働、unit仕様検証と実行予定JST検証、不一致ならSTOP/HOLD。既存collector, DB, VIEW, BUYは触れない。
 - **復旧コードはGitHubに作成したのみ、Termius未実行**。実機PASSまで27日03:05の同期予約は未確定。夜間sync後も完全cutoverではない。外部バックアップ/独立復元未達。旧V4原本を削除しない。
 
+## 2026-10-26 10:39 JST stage11予約復旧PASS・最新backup事前検査準備
+- 2026-10-26 10:39 JST ユーザーTermiusにてstage11一回限り復旧タイマー予約のPASSを実機確認：`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`UNIT=boat-v5-stage11-delta-20261027-recovery.timer`、`NEXT=Tue 2026-10-27 03:05:00 JST`、`STAGE_SCOPE=11_NO_RACES`、`LEGACY_COLLECTION=UNCHANGED LIVE_VIEW=UNCHANGED BUY=OFF CUTOVER=NO_GO`。データ差分同期はまだ実行されていない。元の停止済みタイマーの再起動・重複予約は絶対にしない。
+- バックアップ準備：既存Driveバックアップは過去の10/19世代のみ確認履歴、ConoHa同VPSの10/23 railwayと10/24 history dumpは最新10/26データの独立保全を証明しない。Google Driveコネクタの2アカウントをREAD ONLYで`boat-ai-v5`/`main_current_202610`/`dump`検索したが、新しい暗号化バックアップファイルを特定できなかった（検索結果ゼロ≠不在の証明）。既存Pythonインベントリに`/var/backups`と既知の2dumpフォルダを追加したread-only `deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`（commit `b43a725e4dcc20fb460fe200aa001645910fc01c`）をGitHub作成、実機未実行。秘密・ダンプ本文・DBに触れない。BUY OFF。
+
 ## Next ONE task
-ユーザーTermiusで安全な復旧専用`v5_stage11_delta_timer_recover_guarded_20261026.sh`をコミット固定で1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Tue 2026-10-27 03:05:00 JST`と`UNIT=`を確認。HOLDなら出力を見て無理な強制起動をしない。BUY OFF / old collectors untouched。
+**Next ONE task:** Termiusでコミット固定の`deploy/conoha/v5_backup_restore_path_inventory_readonly_20261026.py`をrootの`python3`でread-only実行し、既存dumpフォルダ・age/rclone/pg_restore/空き容量などメタデータのみ確認。旧dump削除・Drive upload/rclone変更/DB変更/タイマー追加はしない。夜間stage11実行後は必ず`journalctl -u boat-v5-stage11-delta-20261027-recovery.service --no-pager -n 100`で11系統コミット結果を確認し、結果が確認されるまで本番切替・V4削除はNO-GO。
