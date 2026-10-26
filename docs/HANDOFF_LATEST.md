@@ -1,28 +1,27 @@
-# V5 current compact pointer — 2026-10-27 00:15 JST
+# V5 current compact pointer — 2026-10-27 00:31 JST
 Active detailed handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
-Design: `docs/V5_DIRECT_PRIMARY_LEGACY_FALLBACK_PARALLEL_DESIGN_20261026.md`
-Next chat: read ONLY this pointer, active compact handoff, and `docs/NEXT_CHAT_START_HERE.md`. Do not bulk-read past handoffs.
+Next chat should read only this pointer + active compact handoff + `docs/NEXT_CHAT_START_HERE.md`; do not bulk-read old handoffs.
 
-## Decision (user priority)
-V5 must collect OFFICIAL data directly, write ONLY physical common `boat_data_stage.*` (primary). Existing legacy collector temporarily continues ONLY `public.v2_*` (secondary) until validated V5. No same-table dual writers. User proposes finishing V5 realtime and restoring Oct26 gaps to eliminate overnight old→stage sync. **Only the copy/sync can be retired upon full parity; postrace results catchup still needed.** BUY OFF. ConoHa local PG `railway`, Railway cloud unused.
+## User-approved target
+- **V5 PRIMARY** independent BOAT RACE official acquisition to physical `boat_data_stage.*`. Old system is temporary fallback with writes to `public.v2_*` only.
+- **Once V5 truly running end-to-end**, stop OLD collector/services, preserve rollback unit definitions briefly, and decommission duplicate old→stage nightly sync. **Only after full historic/ongoing data parity, stage-only V5 backtest/read verification and an independently restorable backup may original old tables be deleted.** Do not maintain unneeded old system indefinitely; cost savings and move to V5 backtesting are user's priority.
+- BUY OFF; Railway cloud unused; ConoHa local PostgreSQL database is `railway`.
 
-## Verified evidence
-- Oct26 22:00 V5 fixed stage routes 10/10 PASS offline.
-- 22:02 144 Oct26 stage entry-races missing vs old physical source complete 144/144 (864 rows). Current-state availability, NOT proof of before-deadline capture.
-- 22:24 all 13 old/stage pairs are distinct physical tables; six stage snapshot indexes reported KEY_OK; canonical `boat_data.*` sampled names are legacy VIEWs, NOT writable physical targets.
-- 23:31 V5 native core offline tests 14/14 PASS. 23:44 direct official discovery: 14 next-day venues, official race `20261027_01_01` with 6 entries, capture 23:44:08, cutoff 15:22 JST, NO DB writes. 23:59 core stage-canary offline tests 11/11 PASS.
-- Existing V5 forward-window STILL invokes v21 old writer to public. **No V5 production physical-stage native collector installed or running.** No live stage insert verified.
+## Verified evidence (screenshots 2026-10-26/27)
+- 22:00 V5 fixed stage offline 10/10 PASS; physical 13 old→stage table pairs distinct; canonical `boat_data.*` is currently VIEWs, not stage physical write destination.
+- Oct26 old-source → stage entry gap 144 races/864 rows. **2026-10-27 00:23 JST repaired in stage via INSERT-only COMMITTED 864 rows**, old source untouched.
+- 2026-10-26 23:44 JST official 2026-10-27 index 14 venues + Omura 1R 6 valid entrants direct HTTPS; no legacy database. Native core tests 14/14, official-index 9/9, stage core 11/11 PASS offline.
+- 2026-10-27 00:23 JST new V5 native realtime 6-family offline tests 15/15 PASS; **NOT proof of native stage live writer or scheduled production operation.**
+- **2026-10-27 00:31 JST six-family read-only Oct26 audit:** all 6 families stage 0 vs legacy source: entry snapshots 1,800 / 144 races; exhibition 816 / 136; odds 35,160 / 142; weather 300 / 144; race condition 300 / 144; racer condition 1,800 / 144. **Total 40,176 source rows, 0 stage rows**. Source snapshot_at labels all earlier than source race deadline but this is NOT independent capture proof. Old data NOT fully replicated, so do not delete or stop old now.
 
-## New GitHub-only work 2026-10-27
-- `v5/native_official_realtime_stage_pg.py` @ `09dbb8658f1d7ff6d1065cc0386737863b332219`: independent OFFICIAL racelist+beforeinfo+odds3t HTTP, reuses legacy parser FUNCTIONS only (never old fetch/collect/save/DDL), constructs six physical stage snapshot families (6 entries+6 exhibition+120 odds+1 weather+1 race condition+6 racer conditions=140). Fail closed on missing/incomplete data, >3m before deadline, stage keys, BUY ON, night delta, legacy overlap; disabled by default. **Not integrated with all-race 5-min service; no ConoHa execution or DB write proven.**
-- 15 new offline tests `tests/test_v5_native_official_realtime_stage_pg.py`; ConoHa user screenshot 2026-10-27 00:23 confirms **15/15 PASS** (offline only, not production writes).
-- Date-scoped 26 missing-entries INSERT-only recovery `deploy/conoha/v5_oct26_entries_targeted_recovery_20261027.py` @ `cd85c71dde624008ca5adacdd5f0b39db7b01ac6`; guarded script `deploy/conoha/v5_oct26_entries_recovery_guarded_20261027.sh` @ `3cb641367c5f82c341dd6abc16815cb9c248ef29` (preview default; `V5_APPLY_OCT26_REPAIR=YES` requires approval explicitly from operator), scoped <=144 missing Oct26 races; six lanes, only missing full races, all columns/physical checks, atomic INSERT only, no deletes/overwrites, stage advisory lock and HOLD 03:00-05:59. **ConoHa 2026-10-27 00:23 screenshot confirms 144 stage-missing races, 144 complete source races, INSERT-only 864 rows and COMMITTED, stage_date_rows=864.** This restores Oct26 core entries only, not realtime or other stage families, and not predeadline as-of proof.
+## Code created (not production-deployed)
+- Native direct official 1R core to stage races/entries gated single canary `v5/native_stage_race_entries_pg.py` (offline tests PASS); direct official index orchestration `v5/native_official_stage_canary.py`.
+- Native direct official `beforeinfo` + `odds3t` to stage 6-family snapshots `v5/native_official_realtime_stage_pg.py` @ `09dbb8658f1d7ff6d1065cc0386737863b332219`. Fail closed on missing odds 120/exhibition six/weather, 3m cutoff, BUY, staged delta conflicts. Only tests run; **no V5 native realtime systemd service/timer yet**.
+- Source→stage real-time exact **Oct26 one-day** read-only parity: `deploy/conoha/v5_oct26_realtime_exact_parity_readonly_20261027.py` @ `f7479904dbcb6de74874217cf9b56241b853d2a3`, not run. Uses bounded indexed key/JSON row compare, **not whole-history deletion authorization**.
+- Production native status read-only: `deploy/conoha/v5_native_cutover_status_readonly_20261027.sh` @ `3d85399998ecadce51182d376d4f9c3599e58ac2`, not run.
+- Existing one-time stage11 old→stage 11-family delta **scheduled 2026-10-27 03:05 JST**, and 00:45 result catchup. Keep pending unless truly replaced; stage reconciliation can UPDATE/DELETE stage-only rows. Existing `boat-v5-forward-window.service` invokes v21 legacy collector (`--max-races 2`, five minute 07:00–23:55), not an independent V5 writer.
+- Post-03:05 journal + monthly stage read-only checker `deploy/conoha/v5_after_stage11_20261027_readonly_checkpoint.sh` @ `99fa89a46cdd7657b6c50e9187948c578c526408`.
 
 ## Next ONE task
-As soon as possible, run `deploy/conoha/v5_oct26_realtime_source_stage_audit_readonly_20261027.py` @ `3ed391bdd30e339e7b725434b13787b79f25d8e7` on ConoHa using local postgres venv. STRICT READ ONLY: counts each of 6 realtime snapshot source/stage families on Oct26 plus labelled snapshot_at before/after deadline; this is NOT proof of actual capture. Determine which near-cutoff snapshots remain only in public, whether night delta 03:05 can safely reconcile them, and whether stage already has gaps. No second manual sync while 03:05 scheduled.
-
-**User asks whether matching old collection schedule is enough:** no guarantee. Current `boat-v5-forward-window.timer` every 5 min 07:00–23:55, **V5 legacy-wrapper service --max-races 2** and shared flock lock. Same scheduling can collide; new independently-native V5 writer must run with staggered start, bounded due-race queue/retries and per-cutoff completeness before old writer decommission. During transition legacy remains on `public.v2_*`. True historical realtime (odds/exhibition/weather) requires actually saved time-bound original snapshots; official result/racelist rereads cannot reconstruct original predeadline values.
-
-Keep Oct27 00:45 postrace catchup and 03:05 stage11 scheduled reconciliation; do NOT stop them merely because Oct26 entries 864 rows were filled. Stop nightly copy only AFTER all-family parity + live independent V5 output and safe rollback. After 06:00 inspect journal and October QA with read-only checker `deploy/conoha/v5_after_stage11_20261027_readonly_checkpoint.sh` @ `99fa89a46cdd7657b6c50e9187948c578c526408`.
-
-Remaining before "FULLY LIVE": native full-day race/entry scheduler, five-minute independent native realtime scheduler, postrace results stage writer, deployment/systemd rollout, production capture proof, stage reader parity, restore/rollback proof, conditional old sync decommission. Do not set old `v5_data.raw_*` route flags, prematurely stop legacy, change BUY, or start duplicate V5 physical writers. Costs CPU/RAM/WAL minimum.
+After existing 03:05 scheduled stage delta, check journal/QA and **exact six-family 2026-10-26 snapshot parity** with above read-only script; this can show whether 40,176 snapshot rows were copied. Do NOT run concurrent extra sync before scheduled timer.
+In parallel implement + validate V5-native all-races morning/day/night core collector, predeadline bounded multi-venue realtime scheduler with shared provider throttle/isolated staging, native result catchup, stage-only V5 forecast/backtest reader. Confirm stable V5 actual writes/capture/evaluation + backup, then stop old services/timers, test rollback; finally delete old data only after full historical + current content parity verified. Never turn on BUY or erase provenance/historic original data prematurely.
