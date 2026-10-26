@@ -16,7 +16,7 @@
 ## Checked GitHub storage contract
 - `boat_shared_storage_contract.RELATIONS`: fixed **13** legacy `public.v2_*` → logical `boat_data.*` VIEW mapping. Stage uses `boat_data_stage.*` physical copies; the original venues stage is protected. A separate `boat_history_archive` DB exists and is NOT identical to the live DB.
 - `deploy/conoha/v5_stage12_delta_reconcile_guarded_20261025.py`: 11 remaining tables allowed only 03:00–05:44 JST; per-table REPEATABLE READ/PK windows/verify/rollback and staged writes only. Full-history V5 model/ROI engine is NOT yet validated, so overnight all-period backtest must not run blindly.
-- New `deploy/conoha/v5_storage_13_family_catalog_readonly_20261026.sql` (commit `73a7590012a0311fd3ba1a8c39aa76b9765685d0`) queries PG system catalogs only, 13 src/view/stage relation kinds, ordered column schema, PK, relevant date columns, origin marker. **Not yet run**. No user data scans/writes and NOT a period-coverage proof.
+- New `deploy/conoha/v5_storage_13_family_catalog_readonly_20261026.sql` (commit `9406568e4d7f358362acf0317acb31377fd48484`) queries PG system catalogs only, 13 src/view/stage relation kinds, ordered column schema, PK, relevant date columns, origin marker. **Not yet run**. No user data scans/writes and NOT a period-coverage proof.
 - New full-period normalize-first plan is `docs/V5_202507_TO_CURRENT_STORAGE_UNIFICATION_PLAN_20261026.md` (commit `8da0ddeeb52b08d957cf7e9449a5ed7461681ab3`).
 
 ## Next ONE task
