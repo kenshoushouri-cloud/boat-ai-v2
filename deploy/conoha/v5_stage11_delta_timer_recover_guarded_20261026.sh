@@ -17,16 +17,14 @@ hold(){ printf 'HOLD: %s\n' "$*" >&2; exit 2; }
 prop(){ systemctl show "$1" -p "$2" --value --no-pager 2>/dev/null || true; }
 check_unit(){
   local name="$1" t="$1.timer" svc="$1.service" cat_t cat_s
-  [[ "$(prop "$t" LoadState)" == "loaded" ]] || hold "$t is not loaded"
-  cat_t=$(systemctl cat "$t" --no-pager) || hold "Cannot inspect $t"
-  cat_s=$(systemctl cat "$svc" --no-pager) || hold "Cannot inspect $svc"
+  [[ "$(prop "$t" LoadState)" == "loaded" ]] || return 1
+  cat_t=$(systemctl cat "$t" --no-pager) || return 1
+  cat_s=$(systemctl cat "$svc" --no-pager) || return 1
   # Verify existing transient timer and service from our pinned scheduler.
-  [[ "$cat_t" == *"OnCalendar="*"2026-10-27"*"03:05"* ]] ||
-    hold "Unrecognized calendar configuration in $t"
+  [[ "$cat_t" == *"OnCalendar="*"2026-10-27"*"03:05"* ]] || return 1
   [[ "$cat_s" == *"$TARGET"* && "$cat_s" == *"--remaining --apply"* &&
      "$cat_s" == *"V5_STAGE12_DELTA_APPROVED=YES"* &&
-     "$cat_s" == *"flock"* ]] ||
-    hold "Unrecognized stage-only service command in $svc"
+     "$cat_s" == *"flock"* ]] || return 1
 }
 confirm(){
   local name="$1" t="$1.timer" next state
@@ -74,7 +72,7 @@ systemd-analyze calendar "$CLOCK" >/dev/null || hold "Calendar failed to validat
 status=$(prop "$ORIG.timer" LoadState)
 case "$status" in
   loaded)
-    check_unit "$ORIG"
+    check_unit "$ORIG" || hold "Cannot verify existing original timer/service configuration"
     state=$(prop "$ORIG.timer" ActiveState)
     case "$state" in
       active) confirm "$ORIG"; exit 0;;
@@ -89,7 +87,7 @@ case "$status" in
     # systemd may garbage-collect a stopped transient timer.
     # Use a fresh unique one-shot name only if the prior timer is gone.
     if [[ "$(prop "$ALT.timer" LoadState)" == "loaded" ]]; then
-      check_unit "$ALT"
+      check_unit "$ALT" || { systemctl stop "$ALT.timer" >/dev/null 2>&1 || true; hold "Cannot verify alternate timer/service configuration"; }
       [[ "$(prop "$ALT.timer" ActiveState)" == "active" ]] && { confirm "$ALT"; exit 0; }
       [[ "$(prop "$ALT.timer" ActiveState)" == "inactive" ]] ||
         hold "Unknown alternate timer state"
@@ -108,7 +106,7 @@ case "$status" in
         "$TARGET" --remaining --apply ||
         hold "Could not create fresh isolated recovery timer"
     fi
-    check_unit "$ALT"
+    check_unit "$ALT" || { systemctl stop "$ALT.timer" >/dev/null 2>&1 || true; hold "Cannot verify recovered timer/service configuration"; }
     confirm "$ALT";;
   *) hold "Unexpected original timer LoadState: $status";;
 esac
