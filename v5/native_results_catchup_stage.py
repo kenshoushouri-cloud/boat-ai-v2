@@ -22,7 +22,7 @@ FINAL=frozenset(("official","cancelled","trifecta_invalid"))
 FIELDS=("race_id","race_date","result_status","race_status",
         "trifecta_ticket","trifecta_payout_yen","source","fetched_at",
         "first_lane","second_lane","third_lane","fourth_lane",
-        "fifth_lane","sixth_lane")
+        "fifth_lane","sixth_lane","official","created_at","updated_at")
 GATES=("V5_NATIVE_RESULTS_STAGE_APPROVED",
        "CONFIRM_V5_SHARED_PRIMARY_CANARY",
        "CONFIRM_LEGACY_WRITES_SEPARATELY")
@@ -103,7 +103,10 @@ def fetch_parsed(rid):
         raise RuntimeError("HOLD_OFFICIAL_RESULT_UNRESOLVED")
     parsed.update({"race_id":rid,"race_date":day,
                    "source":"official_v5_native_result",
-                   "fetched_at":captured.isoformat()})
+                   "fetched_at":captured.isoformat(),
+                   "official": parsed["result_status"]=="official",
+                   "created_at":captured.isoformat(),
+                   "updated_at":captured.isoformat()})
     return parsed
 
 def save_one(parsed):
@@ -125,6 +128,29 @@ def save_one(parsed):
                 found=cur.fetchone()
                 if not found or found[0] not in ("r","p"):
                     raise RuntimeError("HOLD_RESULTS_NOT_PHYSICAL")
+                cur.execute("""SELECT attname,attnotnull,atthasdef,attidentity,
+                                      attgenerated,atttypid
+                        FROM pg_attribute WHERE attrelid=to_regclass(%s)
+                          AND attnum>0 AND NOT attisdropped""",
+                            ("boat_data_stage.results",))
+                catalog=cur.fetchall()
+                names={rec[0] for rec in catalog}
+                if not set(FIELDS)<=names:
+                    raise RuntimeError("HOLD_RESULTS_MISSING_COLUMNS")
+                unmapped=[rec[0] for rec in catalog
+                          if rec[1] and not rec[2] and not rec[3] and not rec[4]
+                          and rec[0] not in FIELDS]
+                if unmapped:
+                    raise RuntimeError("HOLD_RESULTS_UNMAPPED_REQUIRED_" +
+                                       ",".join(unmapped[:5]))
+                official_type=[rec[5] for rec in catalog if rec[0]=="official"]
+                cur.execute("SELECT 'pg_catalog.bool'::regtype::oid")
+                bool_oid=cur.fetchone()[0]
+                if official_type != [bool_oid]:
+                    raise RuntimeError("HOLD_RESULTS_OFFICIAL_TYPE_NOT_BOOL")
+                if any(parsed.get(k) is None for k in
+                       ("created_at","updated_at","fetched_at","official")):
+                    raise RuntimeError("HOLD_RESULTS_MISSING_NATIVE_METADATA")
                 cur.execute("SELECT count(*) FROM boat_data_stage.races WHERE race_id=%s",
                             (rid,))
                 if cur.fetchone()[0]!=1:
