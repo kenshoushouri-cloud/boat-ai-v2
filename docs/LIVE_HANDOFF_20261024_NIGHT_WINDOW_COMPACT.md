@@ -121,5 +121,8 @@
 ## 2026-10-26 10:44 JST backup保存先監査
 - 10/26 10:44 JST Termius read-onlyバックアップpath監査完走：`pg_dump/pg_restore/age/rclone`あり、10/23 railway dumpの指定ディレクトリに393138215Bファイル1件、10/24履歴dumpの**指定ディレクトリはNOT_ACCESSIBLE_OR_ABSENT**（紛失と未確定、場所/名前違い疑い）。`/var/backups`直下0件は非再帰なので中のファイル不在証明ではない。空き67011411968B=約62.41GiB。最新10/26独立バックアップ/復元は未達。27日03:05の stage11-recovery.timer は10:39にPASS予約済み、触らない。BUY OFF / writer未切替。
 
+## 2026-10-26 10:48 JST Drive offload scope
+- 10/26 10:48 JST ConoHa歴史DBdump実在：`/var/backups/boat-history-20261024-U6CRLt/boat_history_archive.dump` 81865791 bytes。以前のスキャナNOT_ACCESSIBLE結果はこの実測より優先しない。ユーザー指示：ConoHa上のバックアップは全てGoogle Drive側へ暗号化退避、独立復元合格後にConoHaのバックアップ旧ファイル削除を個別確認。現行DBや収集は削除不可。Google Drive Bに新規`boat-ai-v5-production-backups-20261026`フォルダ(id `1WJ8MQUN1P1wFGHOi-lws-PaMeIXXFSID`)を作成成功。旧V3/V4/10/19ファイルは変更なし。ConoHa rclone `v5_gdrive:` の同一アカウント接続は未検証、Drive 403履歴あり。
+
 ## 次の1作業
-**Next ONE task:** Termius rootで`find /var/backups -maxdepth 2`（history名のディレクトリや`boat_history_archive.dump`のみ、metadata）をREAD ONLYで実行して10/24の履歴dump所在を確認。まだ新規dump・upload・削除・stage timer変更なし。
+**Next ONE task:** commit `474e8ef3ece1254183c75a0a218bc87f59c26e03` の `deploy/conoha/v5_drive_offload_preflight_20261026.py --expected-folder-id 1WJ8MQUN1P1wFGHOi-lws-PaMeIXXFSID` をTermius rootで実行。既存dump候補メタデータとDriveフォルダID/容量を低レートread-only確認。HOLDなら転送しない。age recipient/独立復元前にはConoHaから一切削除しない。10/27 03:05 stage11 timerは触れない。
