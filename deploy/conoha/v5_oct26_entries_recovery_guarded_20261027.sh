@@ -10,6 +10,8 @@ work="$(mktemp /tmp/v5-oct26-stage-recovery.XXXXXXXX.py)"
 trap 'rm -f -- "$work"' EXIT
 curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 8 --max-time 15 \
   "$url" -o "$work"
+# PostgreSQL peer user must be able to read the immutable temporary script.
+chmod 0644 "$work"
 if [[ ! -x /opt/boat-ai-v5-venv/bin/python ]]; then
   echo "HOLD_V5_PYTHON_VENV_NOT_FOUND"; exit 2
 fi
