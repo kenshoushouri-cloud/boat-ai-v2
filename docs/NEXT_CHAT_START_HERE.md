@@ -17,4 +17,6 @@ ConoHaの旧 `public.v2_*` にcollectorが書込中、13 `boat_data` VIEWは旧�
 
 10/26 10:18 JST、ユーザー実機read-onlyで`TODAY_RACES`原本144/V5 stage144/欠損0=`STAGE_RACE_IDS_MATCH_NOW`。前段10:12のguarded races deltaで全期間74208/74208、追加144、削除0、旧writer untouched。まだ11系統の当日差分未同期、V5 stage→正式writer切替0/13、BUY OFF。新規`deploy/conoha/v5_stage11_delta_schedule_once_20261026.sh`（commit `77a02288896df3fc6b8de6c98458a935420588da`）をGitHub追加。2026-10-27 03:05 JST一回限りstage-only 11系統sync、PG metadata preview/日付・timer・空き容量等のguard付き。**未スケジュール、ConoHa未実行**。当日最新オフサイトバックアップ・独立復元未確認、V4削除禁止。
 
-**Next ONE task:** ユーザーにpin固定の夜間stage11 schedule scriptをTermiusで一度だけ実行してもらい、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`とNEXTを確認。旧collectorと5分forwardとVIEWは変更せず、BUY OFF。夜間11系統delta後に全表パリティ検査。並行して現在の独立オフサイトbackup/restoreの確認準備。
+10/26 10:30 JST stage11 night timer: 11表metadata preview PASS/no writes、実際のNEXT=Tue 2026-10-27 03:05:00 JST。しかし元scheduler末尾が誤って26日03:05を検証したため`HOLD: Unexpected next start, timer stopped`。同期未実施。GitHub元schedulerの誤判定修正 commit `b619fc7727e223b32ba2fe41a615a825433b16d5`。**元schedulerを再実行しない**。既存timer restart または一時unit GC後の別名再予約を安全に分岐する`deploy/conoha/v5_stage11_delta_timer_recover_guarded_20261026.sh` commit `2f53818294e85b5a0674a248f04dfaaf6f3585cb`追加、未実行。既存collector・VIEW不変、BUY OFF、V4削除・stage正式切替禁止。
+
+**Next ONE task:** ユーザーTermiusでcommit固定のstage11 timer recovery scriptを一度実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`、`NEXT=Tue 2026-10-27 03:05:00 JST`、UNITを確認。HOLDなら停止し原因をread-onlyで確認。
