@@ -138,11 +138,21 @@ def main():
     if arg.apply and os.environ.get("V5_OCT26_ONLY_SYNC_APPROVED")!="YES":
         raise RuntimeError("HOLD_EXPLICIT_OCT26_APPROVAL_REQUIRED")
     n=datetime.now(JST)
-    if arg.apply and (n.date().isoformat()!="2026-10-27" or not (0<=n.hour<3)):
-        raise RuntimeError("HOLD_EARLY_WINDOW_ONLY_BEFORE_0300_JST")
-    # Prevent crossing stage11 scheduled synchronization window.
-    if arg.apply and n.hour==2 and n.minute>=30:
-        raise RuntimeError("HOLD_TOO_CLOSE_TO_0305_TIMER")
+    if arg.apply and n.date().isoformat()!="2026-10-27":
+        raise RuntimeError("HOLD_ONLY_OCT27_DATE_SCOPED_REPAIR")
+    # Morning operator resume after the one-shot 03:05 job has completed.
+    early=(0<=n.hour<2 or (n.hour==2 and n.minute<30))
+    morning=(6<=n.hour<21)
+    if arg.apply and not (early or morning):
+        raise RuntimeError("HOLD_UNSAFE_STAGE11_RECONCILIATION_WINDOW")
+    if arg.apply and morning:
+        import subprocess
+        for unit in ("boat-v5-stage11-delta-20261027-recovery.service",
+                     "boat-v5-stage11-delta-20261027-recovery.timer"):
+            done=subprocess.run(["systemctl","is-active",unit],
+                                capture_output=True,text=True,timeout=3)
+            if done.returncode==0 or done.stdout.strip() in ("active","activating"):
+                raise RuntimeError("HOLD_STAGE11_STILL_ACTIVE_"+unit)
     if arg.apply and os.environ.get("V5_MIDNIGHT_CATCHUP_CONFIRMED")!="YES":
         raise RuntimeError("HOLD_0045_CATCHUP_NOT_CONFIRMED")
     import psycopg
