@@ -19,5 +19,9 @@
 - 10/26 GitHubに **`v5/offline_paper_quality_bridge.py`** (commit `327217e29cd4f77da53ff3d71a80de24464e8812`) と **`tests/test_v5_offline_paper_quality_bridge.py`** (commit `191c099351fbe4f19e87db808b30217373bc7b7d`) を追加。synthetic input only / fail-closed: completeなら合成1着確率演算のみ、official-unreportedはmissing-awareモデル未検証HOLD、unknown/parse failure/ID不整合もHOLD、全経路BUY=OFF。**GitHub commit確認済、unittestは未実行、実モデルの収益性証明なし**。
 - Backtestは2025-07以降の可能な全期間を採用し、締切前snapshot/asofの真正性・選手/モーター/気象の時期・データリークを検証してから評価。特徴量は検証前に恣意的に選別しない。
 
+## 2026-10-26 synthetic-only test runner
+- GitHub `deploy/conoha/v5_synthetic_quality_selftest_readonly_20261026.sh` (commit `37f54c4f67f64b8632281eb1c975a0cbde126ec5`) added. Fetches exactly six known Python files pinned to commit `690ab7beab6eb02e5d9b8dcddda22fb92f33fb18` into a temporary directory and runs two stdlib unittest files. It does not access PostgreSQL, systemd, collectors, or BUY; temporary files removed after completion.
+- **Execution result not yet received; never report tests PASS without the real stdout and exit status.** No live model deployment.
+
 ## Next ONE task
-10/27 03:05以降に、ユーザーがConoHaで実行したread-onlyのjournal/systemctl出力で**stage11差分同期の結果**を確認する（`boat-v5-stage11-delta-20261027-recovery.service`）。成功でもlive writer切替は許可しない。実行前の今はコード/データ移行・timerは触らず、GitHub-onlyの合成テスト／実DB adapter設計を続ける。バックアップ関連の古いNext taskはユーザー方針により保留。
+User may run the pinned synthetic-only selftest in ConoHa Termius once; inspect its pass/fail output. After 2026-10-27 03:05 JST, check one-time stage11 delta service journal read-only; don't rerun/schedule the timer. If tests fail, patch only isolated GitHub test/bridge code, without touching the live collector. Google Drive/backups remain deferred by user choice.
