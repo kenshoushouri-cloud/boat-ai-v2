@@ -99,7 +99,8 @@ def main():
         print("NO_CURRENT_UPCOMING_STAGE_RACES_FOR_DIAGNOSIS_NO_WRITES")
         return 0
     print("V5_OFFICIAL_EXHIBITION_DIAGNOSIS_BEGIN_READ_ONLY_NO_BUY")
-    success=all(summarize(rid) for rid in targets)
+    outcomes=[summarize(rid) for rid in targets]
+    success=all(outcomes)
     print("V5_OFFICIAL_EXHIBITION_DIAGNOSIS_COMPLETE_NO_WRITES_NO_BUY")
     return 0 if success else 2
 
