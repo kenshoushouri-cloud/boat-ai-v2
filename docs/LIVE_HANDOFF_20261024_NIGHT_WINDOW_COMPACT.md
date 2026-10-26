@@ -108,5 +108,8 @@
 ## 2026-10-26 10:13 JST latest
 - 10/26 10:12:40 JST Termius：V5専用stageの`races`だけ日中guarded差分同期完了。`DELTA_VERIFIED races source_rows=74208 stage_rows=74208 insert_update_delete=[144,0,0] bounded_windows=19`、`DELTA_TABLE_COMMITTED`、stage-only、旧writer/V4原本/13 LIVE VIEW untouched、継続CDCなし、BUY OFF。空き62.41GiB。残り11系統の10/26最新データは夜間同期未実施。V5本番prediction/writer cutoverは未実施。
 
+## 2026-10-26 10:18 JST 最新
+- 10/26 10:18 JST、ユーザー実機read-onlyで`TODAY_RACES`原本144/V5 stage144/欠損0=`STAGE_RACE_IDS_MATCH_NOW`。前段10:12のguarded races deltaで全期間74208/74208、追加144、削除0、旧writer untouched。まだ11系統の当日差分未同期、V5 stage→正式writer切替0/13、BUY OFF。新規`deploy/conoha/v5_stage11_delta_schedule_once_20261026.sh`（commit `77a02288896df3fc6b8de6c98458a935420588da`）をGitHub追加。2026-10-27 03:05 JST一回限りstage-only 11系統sync、PG metadata preview/日付・timer・空き容量等のguard付き。**未スケジュール、ConoHa未実行**。当日最新オフサイトバックアップ・独立復元未確認、V4削除禁止。
+
 ## 次の1作業
-**Next ONE task:** Termiusに以前と同じ`deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` をread-only実行してもらい、今日の144RがV5 stageにもあり `missing_in_stage=0` であることを事後確認。既存collector/forward timer維持、データ削除・本番writer切替・BUY禁止。パス後に11表夜間同期準備と現行外部バックアップ＋独立復元を進める。
+**Next ONE task:** ユーザーにpin固定の夜間stage11 schedule scriptをTermiusで一度だけ実行してもらい、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`とNEXTを確認。旧collectorと5分forwardとVIEWは変更せず、BUY OFF。夜間11系統delta後に全表パリティ検査。並行して現在の独立オフサイトbackup/restoreの確認準備。
