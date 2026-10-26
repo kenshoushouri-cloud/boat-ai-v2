@@ -41,12 +41,15 @@ def target_ids(day,venues,max_venues=24,max_race_no=12):
 def main(argv=None):
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--day",default=None)
+    ap.add_argument("--scope",choices=("today","tomorrow"),default="tomorrow")
     ap.add_argument("--apply",action="store_true")
     ap.add_argument("--max-venues",type=int,default=1)
     ap.add_argument("--max-race-no",type=int,default=1)
     ap.add_argument("--max-requests",type=int,default=200)
     opts=ap.parse_args(argv)
-    day=choose_day(datetime.now(JST),opts.day)
+    now=datetime.now(JST)
+    requested=opts.day or (now.date().strftime("%Y%m%d") if opts.scope=="today" else None)
+    day=choose_day(now,requested)
     if opts.apply:
         authorize()  # deny before any HTTP request
     if not 1<=opts.max_requests<=288:
