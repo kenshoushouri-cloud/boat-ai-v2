@@ -1,8 +1,10 @@
 [Unit]
-Description=Schedule V5 native results (00:55) AFTER guarded canary proof
+Description=Schedule V5 native results (00:55/01:55/02:55 JST); disabled until proven
 
 [Timer]
 OnCalendar=*-*-* 00:55:00 Asia/Tokyo
+OnCalendar=*-*-* 01:55:00 Asia/Tokyo
+OnCalendar=*-*-* 02:55:00 Asia/Tokyo
 Unit=boat-v5-native-results.service
 Persistent=false
 AccuracySec=30s
