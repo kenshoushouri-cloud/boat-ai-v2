@@ -68,7 +68,7 @@ SELECT target_name AS family,
          WHEN source_shape IS DISTINCT FROM stage_shape THEN 'HOLD_COLUMN_SHAPE'
          WHEN source_pk IS NULL OR stage_pk IS DISTINCT FROM source_pk THEN 'HOLD_PRIMARY_KEY'
          WHEN target_name<>'venues' AND
-              stage_note NOT LIKE 'BOAT_V5_STAGE_ONLY_SNAPSHOT_20261025 source=public.'||source_name||' %'
+              coalesce(stage_note,'') NOT LIKE 'BOAT_V5_STAGE_ONLY_SNAPSHOT_20261025 source=public.'||source_name||' %'
               THEN 'HOLD_STAGE_ORIGIN_PROOF'
          ELSE 'CATALOG_SHAPE_OK_PERIOD_NOT_AUDITED'
        END AS catalog_verdict,
