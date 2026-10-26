@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule V5 native realtime (07:02–23:57, every five minutes) AFTER guarded canary proof
+
+[Timer]
+OnCalendar=*-*-* 07..23:2/5:00 Asia/Tokyo
+Unit=boat-v5-native-realtime.service
+Persistent=false
+AccuracySec=30s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
