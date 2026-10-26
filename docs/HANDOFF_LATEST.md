@@ -102,5 +102,11 @@ K詳細書込前の限定gate `v5/k_detail_backfill_gate_20261026.py`。既存gu
 - **事後の別トランザクション確認はまだしていない**。残り11系統の10/26最新entries, 展示, odds, 結果, 天候等は同期されておらず、venuesは前回stage保存。旧collector稼働中は今後も差分発生。V5本番予測未稼働、BUY OFF。
 - シェルに途中で折返し/編集されたように見える表示があるが、実行結果は前段preview→後段applyとも成功。次に削除・本番切替を行う根拠にはしない。
 
+## 2026-10-26 10:18 JST races同期の独立事後検証PASS
+- ユーザーTermiusで`deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` read-only実行：13個のVIEWとstage存在PASS。 `TODAY_RACES | live_original=144 | v5_stage=144 | missing_in_stage=0 | STAGE_RACE_IDS_MATCH_NOW`。 `ROLLBACK`、追加書込みなし。**現時点の今日のraces主キーの一致**。全列比較/11系統鮮度・予測稼働/継続CDC/独立復元は未証明。10:12:40 `races`は全期間74208/74208行と当該トランザクション中検証済み。
+- 残る11系統だけを翌朝03:05（2026-10-27 JST）に一度syncする、新`deploy/conoha/v5_stage11_delta_schedule_once_20261026.sh` をGitHubに追加・日付ガードを確認（commit `77a02288896df3fc6b8de6c98458a935420588da`）。既存の10/25用一回限り設定の複製を日付更新し、runnerは10:12にraces実績のある`f7f52aea5bb30a034a19837d2b449d07eeb3db9b`にピン留め。新規一時systemd timer名は`boat-v5-stage11-delta-20261027`、previewはPGカタログ限定no write、続く夜間`--remaining --apply`はstageのみ。旧タイマー/旧データの変更なし、CPUQuota50% MemoryMax750M、flock/DBチェックあり。
+- **この時点ではGitHubコード作成のみ**、ConoHaへinstall/schedule未実行。予約はユーザーのTermius実行後に初めて有効になる。`BUY OFF`・writer切替NO-GO・独立外部復元は未達。stageだけを夜間に追込んでも翌日のデータは再びlagするため、writer移行設計を別途要する。
+
+
 ## Next ONE task
-Termiusで既存read-only `deploy/conoha/v5_fast_start_shadow_freshness_readonly_20261026.sql` を再実行し、`TODAY_RACES live_original=144 v5_stage=144 missing_in_stage=0` の事後証明を取る。通過後は残り11表の夜間stage差分同期準備と最新独立バックアップ/復元試験を優先。収集中のV4 writer/forward timer/VIEWを触れず、重複GET・本番切替・V4削除・BUY禁止。
+ユーザーTermiusでコミット固定の`v5_stage11_delta_schedule_once_20261026.sh`を1回実行し、`PASS: STAGE11_DELTA_ONLY_SCHEDULED_NOT_YET_APPLIED`と`NEXT=Tue 2026-10-27 03:05:00 JST`を確認。**今の段階では夜間実行はまだ行われない**。既存収集は一切停止しない。次に独立バックアップ/復元の実行環境を整備し、03:05以後11系統の`DELTA_VERIFIED / DELTA_TABLE_COMMITTED / STAGE12_DELTA_SNAPSHOT_PASS families=11`を確認。失敗ならHOLD・手動再実行禁止。
