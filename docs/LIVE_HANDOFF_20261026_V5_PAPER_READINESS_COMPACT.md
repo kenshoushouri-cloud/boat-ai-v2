@@ -45,6 +45,11 @@
 - `tests/test_v5_offline_entry_view_adapter.py` commit `61d5d2a4918b9ea10526af87dd817f92817beb48`: added four tests (17 tests total) for sparse legacy, malformed/missing canonical, conflicts. Existing historic 13/13 PASS applies **only to old code**, new 17 tests NOT RUN yet.
 - Pinned `deploy/conoha/v5_offline_view_adapter_selftest_readonly_20261026.sh` updated commit `3e234cf0415f89d5d7d2ffbdae4ff9060d640309`; fetches three Python files from immutable test commit and runs pure synthetic 17-case unittest in /tmp. Never deploy into running collector/DB.
 
+## 2026-10-26 18:44 JST — updated synthetic unit result
+- User's ConoHa terminal screenshot explicitly shows `Ran 17 tests in 0.010s`, `OK`, `V5_VIEW_ADAPTER_SPARSE_IDENTITY_TEST_PASS DB=NO DB_WRITES=NO LIVE_COLLECTOR=UNTOUCHED BUY=OFF`. Revised adapter's 17/17 tests confirmed, old 13-case run superseded; other 18 synthetic quality cases passed separately = **35 currently checked tests** (not 48 distinct).
+- No real race-model scoring/profit backtest, no immutable original as-of evidence, no real-data BUY authorization proven; old legacy `racer_no` shown blank (NULL vs empty string not yet distinguished), `racer_number` populated for all six.
+- No production DB/collector/timer changes associated with these synthetic tests.
+
 ## Next ONE task
-- Run/inspect the new **17-case synthetic-only** test on ConoHa; optional separately run a six-row read-only query to differentiate legacy `racer_no IS NULL` vs `racer_no=''`. Do not claim success until user screenshot shows stdout `OK` and `V5_VIEW_ADAPTER_SPARSE_IDENTITY_TEST_PASS`.
-- 2026-10-27 03:05 JST one-time stage11 sync untouched; afterward read-only check journal. No production cutover, no BUY, no backups, no Railway.
+- In a **READ ONLY** transaction limited to `race_id='20261026_10_01'` and 5-second statement_timeout, inspect 6 rows' `racer_no` actual SQL NULL vs empty and per-lane missing field names over all 13 statistical columns; don't conflate previously checked basic 3 fields with full completeness.
+- 2026-10-27 03:05 JST one-time stage11 sync still untouched; afterward check service journal read-only. No V5 live cutover, no BUY, no backup work, no Railway access.
