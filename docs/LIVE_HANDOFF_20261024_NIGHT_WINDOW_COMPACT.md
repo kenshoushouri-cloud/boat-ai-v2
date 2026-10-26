@@ -129,5 +129,12 @@
 Google Drive connector direct root+folder READ-ONLY metadata audit of both accounts: A has 7 named known backup/recovery files including V3/V4, B has 3 old V5/recovery files. Duplicate CANDIDATES (name+byte-size only): A/B `main_current_20261019.dump.age` 297756932 bytes each, and A/B recovery-related `boat_v5_key_recovery_20261019.age` 371 bytes each. Content hash, decrypt, independent restore unverified; **do not delete keys or any backup**. Different dates and types are distinct restore generations, not safe duplicates.
 Drive B new V5-only production root has 2 new subfolders confirmed by connector readback: `00_pending_integrity_and_restore_verification`, `10_verified_recovery_generations`, created 2026-10-26; backup objects not uploaded. Canonical full inventory `docs/V5_GOOGLE_DRIVE_DUPLICATE_INVENTORY_20261026.md`. No old A/B files moved or deleted, no backup uploads, V4 legacy unchanged, BUY OFF, 27 Oct 03:05 stage11 recovery timer untouched.
 
+## 2026-10-26 11:18 JST backup read-only investigation
+- 2026-10-26 11:18 JST Termius実機:
+- ConoHa V5 Drive preflight: backup拡張子9件/740088294 bytesの一覧は完了したが、最後が`HOLD=RCLONE_DRIVE_ROOT_QUERY_FAILED_OR_RATE_LIMIT`。rclone遠隔rootフォルダID/Drive B同一アカウント/空き容量未確認。転送不可。APIの連続再試行・Google Driveの旧資産削除禁止。
+- 5件のローカルSHA256照合：`railway_20261023 MATCH`、`collector_tar MATCH`、`v5_runtime_tar MATCH`、`systemd_tar MATCH`の4/5・420642855 bytes；`history_20261024=HOLD_MISSING_OR_INACCESSIBLE`。10:48の直接findで同名履歴dump81865791バイト存在、11:01 remote preflight内でも列挙された。**ディレクトリsuffix綴り・大文字小文字の誤記が疑われるが、原因未確定**。削除・再dump不要。
+- 文字列手入力を避けて`/var/backups/boat-history-20261024-*/boat_history_archive.dump`に厳密に一致するファイルだけを1件選び、stat/元SHA256`73019758...`をread-only検証する`deploy/conoha/v5_history_backup_locate_hash_readonly_20261026.py` commit `f8fcb5d3a669e002035481811958b24c85ec8a29`をGitHub追加。**実機ではまだ未実行**。
+- 10/27 03:05 JST stage11 11表の復旧タイマー予約は維持する。legacy collector・VIEW・BUY OFF・cutover NO-GO、V4原本/バックアップの削除禁止。
+
 ## 次の1作業
-**Next ONE task:** Get Termius final `PREFLIGHT=...` or `HOLD=...` from the single running `v5_drive_offload_preflight_20261026.py` call; if remote ID/quota PASS, design encrypted no-overwrite transfer of one already SHA-baselined known dump to the new B pending folder, and verify age recipient/decrypt recoverability before any upload. For Drive dedup require byte SHA and at least one independently restored survivor first. No deletion of ConoHa/Drive or timer changes.
+**Next ONE task:** Termiusでpin固定の`v5_history_backup_locate_hash_readonly_20261026.py`を一度だけ`nice -n 15 python3 -`で実行し、`HISTORY_CANDIDATES=1`、`HISTORY_DISCOVERED_DIR`と`HISTORY_LOCAL_SHA256=PASS_BASELINE_20261024`を確認。PASSなら既存5件は各々ローカルSHA基準一致（最新バックアップではない）。HOLDならファイル再取得や削除はせず原因をread-only確認。Drive remote HOLDはまだ再試行しない。
