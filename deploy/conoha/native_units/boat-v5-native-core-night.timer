@@ -1,8 +1,8 @@
 [Unit]
-Description=Schedule V5 native core-night (23:03) AFTER guarded canary proof
+Description=Schedule V5 native core-night (23:13 JST); disabled until proven
 
 [Timer]
-OnCalendar=*-*-* 23:03:00 Asia/Tokyo
+OnCalendar=*-*-* 23:13:00 Asia/Tokyo
 Unit=boat-v5-native-core-night.service
 Persistent=false
 AccuracySec=30s
