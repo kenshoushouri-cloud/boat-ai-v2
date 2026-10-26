@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Oct 26 ONLY: 12 source->stage families, guarded INSERT-MISSING-ONLY.
+"""Oct 26 ONLY: 12 source->stage families, guarded Oct26-scoped insert/update reconciliation.
 
-Old sources and previously reconciled dates are never written. Entire APPLY
-transaction rolls back if ANY source/stage 2026-10-26 row differs or is extra.
+Old sources and previously reconciled dates are never written. Existing date-scoped divergent source rows are reconciled. Entire APPLY
+transaction rolls back if ANY extra stage-only 2026-10-26 key persists.
 The 13th venues table is date-independent, deliberately excluded.
 Snapshot captures are copied as-is; not authenticated predeadline evidence.
 No legacy stop, stage timer cancellation, schema DDL, sequence changes or BUY.
@@ -99,20 +99,33 @@ def parity(cur,sql,src,dst,field,keys):
     cur.execute(q)
     return cur.fetchone()
 
-def copy_missing(cur,sql,src,dst,field,columns,keys):
+def copy_oct26_upsert(cur,sql,src,dst,field,columns,keys):
+    """Insert new PKs and repair changed columns only within the Oct26 source slice.
+
+    Never deletes anything and never touches an older-date source key. Existing
+    stage-only keys are a HOLD before this function runs.
+    """
     s=sql.Identifier(*src.split("."))
     d=sql.Identifier(*dst.split("."))
     cols=sql.SQL(",").join(sql.Identifier(c) for c in columns)
     values=sql.SQL(",").join(sql.SQL("s.{}").format(sql.Identifier(c))
                              for c in columns)
     cond=day_condition("s",field,sql)
-    join=sql.SQL(" AND ").join(sql.SQL("d.{}=s.{}").format(
-             sql.Identifier(k),sql.Identifier(k)) for k in keys)
-    q=sql.SQL("""INSERT INTO {} ({}) OVERRIDING SYSTEM VALUE
-         SELECT {} FROM {} s WHERE {} AND NOT EXISTS (
-           SELECT 1 FROM {} d WHERE {})
-         ON CONFLICT DO NOTHING
-    """).format(d,cols,values,s,cond,d,join)
+    nonkey=[col for col in columns if col not in keys]
+    if not nonkey:
+        raise RuntimeError("HOLD_NO_UPDATABLE_COLUMNS_"+dst)
+    updates=sql.SQL(",").join(
+       sql.SQL("{}=EXCLUDED.{}").format(sql.Identifier(col),sql.Identifier(col))
+       for col in nonkey)
+    differs=sql.SQL(" OR ").join(
+       sql.SQL("t.{} IS DISTINCT FROM EXCLUDED.{}").format(
+           sql.Identifier(col),sql.Identifier(col)) for col in nonkey)
+    conflict=sql.SQL(",").join(sql.Identifier(k) for k in keys)
+    q=sql.SQL("""INSERT INTO {} AS t ({}) OVERRIDING SYSTEM VALUE
+        SELECT {} FROM {} s WHERE {}
+        ON CONFLICT ({}) DO UPDATE SET {}
+        WHERE {}
+    """).format(d,cols,values,s,cond,conflict,updates,differs)
     cur.execute(q)
     return cur.rowcount
 
@@ -158,16 +171,16 @@ def main():
                     print("OCT26_BEFORE|"+new+
                           f"|source={sc}|stage={dc}|missing={missing}"+
                           f"|extra={extra}|different={different}",flush=True)
-                    if extra or different:
-                        raise RuntimeError("HOLD_PREEXISTING_DIVERGENCE_"+new)
+                    if extra:
+                        raise RuntimeError("HOLD_STAGE_ONLY_KEYS_"+new)
                     if arg.apply:
-                        added=copy_missing(cur,sql,src,dst,field,columns,keys)
+                        changed=copy_oct26_upsert(cur,sql,src,dst,field,columns,keys)
                         after=parity(cur,sql,src,dst,field,keys)
                         if (after[0]!=after[1] or
-                            any(after[i] for i in (2,3,4)) or added!=missing):
+                            any(after[i] for i in (2,3,4)) or changed!=(missing+different)):
                             raise RuntimeError("HOLD_OCT26_PARITY_ROLLBACK_"+new)
-                        report.append((new,added,after[0]))
-                        print(f"OCT26_VERIFIED|{new}|inserted={added}|rows={after[0]}",
+                        report.append((new,changed,after[0]))
+                        print(f"OCT26_VERIFIED|{new}|inserted_or_updated={changed}|rows={after[0]}",
                               flush=True)
                 if not arg.apply:
                     print("V5_OCT26_ONLY_PREVIEW_COMPLETE_NO_WRITES_NO_BUY",
