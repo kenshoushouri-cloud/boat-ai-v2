@@ -53,7 +53,7 @@ def run(*, apply: bool = False) -> dict:
                     raise RuntimeError("HOLD_MISSING_STAGE_UNIQUE_INDEX")
                 cols = []
                 for name in (SOURCE, TARGET):
-                    cur.execute("""SELECT attname, attgenerated
+                    cur.execute("""SELECT attname, attgenerated, attidentity
                         FROM pg_attribute WHERE attrelid=to_regclass(%s)
                           AND attnum>0 AND NOT attisdropped
                         ORDER BY attnum""", (name,))
@@ -61,8 +61,8 @@ def run(*, apply: bool = False) -> dict:
                 names_src, names_dst = (set(x[0] for x in group) for group in cols)
                 if names_src != names_dst:
                     raise RuntimeError("HOLD_SOURCE_STAGE_COLUMN_SET_DIFF")
-                if any(x[1] for group in cols for x in group):
-                    raise RuntimeError("HOLD_GENERATED_COLUMNS_UNSUPPORTED")
+                if any(x[1] or x[2] == "a" for group in cols for x in group):
+                    raise RuntimeError("HOLD_GENERATED_OR_ALWAYS_IDENTITY_COLUMNS")
                 # Do not assume current data was captured before the race deadline.
                 cur.execute("""WITH missing AS MATERIALIZED (
                     SELECT race_id FROM boat_data_stage.races
