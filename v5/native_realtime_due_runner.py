@@ -81,11 +81,23 @@ def main(argv=None):
     for i,rid in enumerate(planned):
         # The per-race collector validates deadline, 120 odds, 6 exhibition
         # and ALL six physical targets before performing atomic writes.
-        rc=collect_one(["--race-id",rid,"--apply"])
-        if rc!=0:
+        try:
+            rc=collect_one(["--race-id",rid,"--apply"])
+        except Exception as exc:
+            # Failure of one race (e.g. official exhibition not published)
+            # must NOT discard other eligible races from this timer tick.
+            # Each collector performs its own atomic per-race transaction.
             failed+=1
-            print(f"V5_NATIVE_REALTIME_RACE_HOLD id={rid} status={rc}",
+            print(f"V5_NATIVE_REALTIME_RACE_HOLD id={rid} "
+                  f"{type(exc).__name__}:{str(exc).splitlines()[0][:150]}",
                   flush=True)
+        else:
+            if rc!=0:
+                failed+=1
+                print(f"V5_NATIVE_REALTIME_RACE_HOLD id={rid} status={rc}",
+                      flush=True)
+            else:
+                print(f"V5_NATIVE_REALTIME_RACE_OK id={rid}", flush=True)
         if i+1<len(planned):
             time.sleep(.5)
     if failed or extra:
