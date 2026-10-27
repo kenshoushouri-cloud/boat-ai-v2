@@ -68,6 +68,35 @@ class TransitionTests(unittest.TestCase):
                 realtime.main(["--apply"])
             candidates.assert_not_called()
 
+    def test_realtime_unpublished_first_race_still_collects_next_race(self):
+        ids=["20261027_23_03","20261027_10_02"]
+        observed=[]
+        def collect(args):
+            observed.append(args[1])
+            if args[1]==ids[0]:
+                raise RuntimeError("HOLD_OFFICIAL_EXHIBITION_NOT_PUBLISHED_YET")
+            return 0
+        with patch.object(realtime,"ready_to_apply") as gate, \
+             patch.object(realtime,"candidates",return_value=ids), \
+             patch.object(realtime,"collect_one",side_effect=collect), \
+             patch.object(realtime.time,"sleep"), \
+             patch("builtins.print") as printed:
+            self.assertEqual(realtime.main(["--apply","--max-races","24"]),3)
+        self.assertEqual(observed,ids)
+        gate.assert_called_once()
+        all_lines="\n".join(str(call) for call in printed.call_args_list)
+        self.assertIn("V5_NATIVE_REALTIME_RACE_HOLD id="+ids[0],all_lines)
+        self.assertIn("V5_NATIVE_REALTIME_RACE_OK id="+ids[1],all_lines)
+
+    def test_realtime_partial_race_status_not_marked_batch_success(self):
+        ids=["20261027_23_03","20261027_10_02"]
+        with patch.object(realtime,"ready_to_apply"), \
+             patch.object(realtime,"candidates",return_value=ids), \
+             patch.object(realtime,"collect_one",side_effect=[2,0]) as collect, \
+             patch.object(realtime.time,"sleep"):
+            self.assertEqual(realtime.main(["--apply"]),3)
+        self.assertEqual(collect.call_count,2)
+
     def test_results_valid_trifecta_only(self):
         self.assertTrue(results.verified_result({
             "result_status":"official","trifecta_ticket":"1-2-3",
