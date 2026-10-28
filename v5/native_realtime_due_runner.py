@@ -15,6 +15,7 @@ import time
 
 from v5.native_official_realtime_stage_pg import ready_to_apply, main as collect_one
 from v5.native_stage_race_entries_pg import JST
+from v5.native_deadline_sync import sync as deadline_sync
 
 def candidates(*,max_races=16):
     import psycopg
@@ -63,6 +64,14 @@ def main(argv=None):
     args=ap.parse_args(argv)
     if args.apply:
         ready_to_apply()  # fail before SELECT or official HTTP
+        try:
+            # Refresh shifted official deadlines first so the queue window and
+            # 180s guard use current values. A sync failure must not block
+            # collection of the races already due.
+            deadline_sync(apply=True)
+        except Exception as exc:
+            print("V5_NATIVE_DEADLINE_SYNC_HOLD "+type(exc).__name__+":"+
+                  str(exc).splitlines()[0][:150],flush=True)
     ids=candidates(max_races=args.max_races)
     extra=len(ids)>args.max_races
     planned=ids[:args.max_races]
