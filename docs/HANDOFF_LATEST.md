@@ -1,4 +1,4 @@
-# V5 current compact pointer — 2026-10-27 00:31 JST
+# V5 current compact pointer — 2026-10-31
 Active detailed handoff: `docs/LIVE_HANDOFF_20261026_V5_PAPER_READINESS_COMPACT.md`
 Next chat should read only this pointer + active compact handoff + `docs/NEXT_CHAT_START_HERE.md`; do not bulk-read old handoffs.
 
@@ -24,7 +24,16 @@ Next chat should read only this pointer + active compact handoff + `docs/NEXT_CH
 
 **2026-10-27 00:43 JST user terminal:** ran `deploy/conoha/v5_post_sync_parity_checkpoint_20261027.sh` before intended start; exact output `HOLD_CHECKPOINT_ONLY_AFTER_20261027_0600_JST`. This is a correct preflight hold, **NO journal/QA/parity queries executed**, no writes/stop/deletes. Rerun same command AFTER 06:00 JST; do not treat this HOLD as stage sync failure. Existing 00:45 result catchup and 03:05 stage delta were still upcoming at screenshot time.
 
-## Next ONE task
+## Next ONE task (updated 2026-10-31)
+Phase: data collection; accuracy first, no deadline rush. V5-native independent collection is running; legacy collectors remain as fallback; BUY OFF.
+Status: deadline sync (PR #583), course-stats stage collector (PR #584) deployed; native results match legacy since 10/27; timers active: core 06:15/11:13/16:13/23:13, realtime every 5 min, results 00:55/01:55/02:55, course-stats 06:50. V5 import from legacy stopped 10/27. Legacy writers not stopped.
+Next ONE task: design the stage-only forecast/backtest reader, using the usable periods in the project doc `v5-usable-periods-20261031`:
+- probability evaluation: 2025-07 onward (races/entries/results; entry columns use *_place2_rate, racer_class_text).
+- odds-based purchase-condition validation: only where pre-deadline odds_snapshots exist (2026-08-31..10-08, 2026-10-23 onward; 10/20-22 partial). Final odds (2025-07..2026-06, captured after the race) are for payout/ROI reference only.
+- exclude 10/9..10/19 (no odds anywhere) and mask 10/16-17 entries (values missing, unrecoverable). Course stats are missing before 2026-07 and 10/9..10/29 and cannot be backfilled (official site only shows current values).
+Pending, not blocking: cancel-aware deadline sync; course-stats runtime growth (~93 min); October exhibition coverage ~55% (cause unchecked); ntfy notification; legacy stop only after backup inventory and a proven stage-only reader; no legacy data deletion before that.
+
+### (superseded as of 2026-10-31) previous Next ONE task
 After the existing 03:05 one-time stage delta completes, run **one paste AFTER 2026-10-27 06:00 JST**: `deploy/conoha/v5_post_sync_parity_checkpoint_20261027.sh` @ `938be58502357cae438eaeeb59902b87b4b8e755` to check stage journal/Oct race-entry QA and **indexed exact six-family 2026-10-26 snapshot key+JSON parity**. This determines whether 40,176 source snapshot rows were fully copied. Read-only; cannot itself authorize historic old-data deletion. Do NOT run concurrent extra sync before scheduled timer.
 In parallel implement + validate V5-native all-races morning/day/night core collector, predeadline bounded multi-venue realtime scheduler with shared provider throttle/isolated staging, native result catchup, stage-only V5 forecast/backtest reader. Confirm stable V5 actual writes/capture/evaluation + backup, then stop old services/timers, test rollback; finally delete old data only after full historical + current content parity verified. Never turn on BUY or erase provenance/historic original data prematurely.
 
